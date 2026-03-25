@@ -84,6 +84,14 @@ uv run --project tests/browser --extra test python -m pytest tests/browser -q --
 Use `./scripts/validate-test-blueprints.sh` when you want the local panel and
 browser regressions against `_out/test-blueprints/preview_runtime_showcase/`.
 
+The generated `_out/test-blueprints/` tree has a directory page and individual
+sites:
+
+- `_out/test-blueprints/index.html` is the catalog for all local HTML-producing
+  test fixtures
+- `_out/test-blueprints/preview_runtime_showcase/` is one standalone entry in
+  that catalog, focused on browser/runtime regression coverage
+
 Use `./scripts/generate-review-artifacts.sh` when you want the local artifact
 set that is most useful during patch review:
 

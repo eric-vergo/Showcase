@@ -113,6 +113,19 @@ including:
 - the curated test-doc sites emitted by `lake exe blueprint-test-docs`
 - the standalone `preview_runtime_showcase` browser-regression site
 
+The output root has two layers:
+
+- `_out/test-blueprints/index.html` is the generated directory page for all
+  local HTML-producing test fixtures
+- `_out/test-blueprints/<slug>/` is one concrete rendered fixture site
+
+`preview_runtime_showcase` is one such concrete site. It is listed from the
+directory page, but it is not itself the directory page.
+
+When you are browsing generated local artifacts, prefer opening the test
+blueprint index first and then drilling into a specific site such as
+`preview_runtime_showcase`.
+
 Metadata now comes from two sources that are unified at generation time:
 
 - curated doc-backed fixtures declared in
@@ -224,6 +237,10 @@ That path builds and serves the default showcase under
 `tests/test_blueprints/preview_runtime_showcase/`. The reference blueprints are
 useful as release-facing artifacts, but the local test blueprint outputs are
 the primary rendering-development oracle.
+
+When you are browsing generated local artifacts, prefer opening the test
+blueprint index first and then drilling into a specific site such as
+`preview_runtime_showcase`.
 
 ### Select Projects or Forward Test Flags
 

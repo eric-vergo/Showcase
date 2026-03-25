@@ -165,6 +165,18 @@ tree:
 - [categorized test blueprint index](https://leanprover.github.io/verso-blueprint/test-blueprints/)
 - [preview runtime showcase](https://leanprover.github.io/verso-blueprint/test-blueprints/preview_runtime_showcase/html-multi/)
 
+The distinction is:
+
+- the categorized test blueprint index is the directory page for all local
+  HTML-producing test fixtures
+- `preview_runtime_showcase` is one specific standalone rendered site listed in
+  that directory
+
+Most entries in the test blueprint index are curated doc-backed fixtures. The
+showcase is different: it is a small standalone Blueprint package used for the
+browser/runtime regression path and for exercising richer cross-page behavior in
+one place.
+
 ## Documentation
 
 ### User Documentation
