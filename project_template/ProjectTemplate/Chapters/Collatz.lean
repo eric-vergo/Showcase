@@ -13,8 +13,8 @@ A small exploratory chapter about the Collatz iteration on natural numbers.
 :::
 
 :::definition "collatz_step" (parent := "collatz_core")
-The Collatz step sends an even natural number $`n`$ to $`n / 2`$ and an odd one
-to $`3 * n + 1`$. The odd branch combines {uses "multiplication_spec"}[] with
+The Collatz step sends an even natural number $`n` to $`n / 2` and an odd one
+to $`3 * n + 1`. The odd branch combines {uses "multiplication_spec"}[] with
 {uses "addition_spec"}[].
 :::
 
@@ -27,8 +27,8 @@ def collatzTerminatesAtOne (n : Nat) : Prop :=
 ```
 
 :::theorem "collatz_conjecture" (parent := "collatz_core") (tags := "playful, famous, incomplete") (effort := "medium")
-For every positive natural number $`n`$, repeated application of the Collatz
-step eventually reaches $`1`$.
+For every positive natural number $`n`, repeated application of the Collatz
+step eventually reaches $`1`.
 This is the usual termination statement of the Collatz conjecture, phrased in
 terms of {uses "collatz_step"}[].
 :::
