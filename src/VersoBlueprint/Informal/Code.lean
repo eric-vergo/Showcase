@@ -127,18 +127,35 @@ instance : FromArgs CodeConfig m where
 end
 
 structure TexConfig where
-  label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
+  label? : Option Data.Label := none
+  slot : String := Data.defaultTexSourceSlot
 
 section
 variable [Monad m] [MonadError m]
 
+private def texSlot : ValDesc m String := {
+  description := "a tex witness slot name"
+  signature := CanMatch.Ident ∪ CanMatch.String
+  get := fun
+    | .name id =>
+      pure id.getId.toString
+    | .str s =>
+      let slot := s.getString.trimAscii.toString
+      if slot.isEmpty then
+        throwErrorAt s "Expected a non-empty tex witness slot"
+      else
+        pure slot
+    | other =>
+      throwError "Expected a tex witness slot identifier or string, got {toMessageData other}"
+}
+
 def TexConfig.parse : ArgParse m TexConfig :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) =>
+  (fun labelArg? slotArg? =>
     {
-      label := LabelNameParsing.parse labelArg.val
-      labelSyntax := labelArg.syntax
-    }) <$> .positional `label (.withSyntax .string)
+      label? := labelArg?.map (fun labelArg => LabelNameParsing.parse labelArg.val)
+      slot := slotArg?.getD Data.defaultTexSourceSlot
+    }) <$> ((some <$> .positional `label (.withSyntax .string)) <|> pure none)
+        <*> .named `slot texSlot true
 
 instance : FromArgs TexConfig m where
   fromArgs := TexConfig.parse
@@ -191,7 +208,11 @@ def rocq : CodeBlockExpanderOf Unit
 
 private def texImpl : CodeBlockExpanderOf TexConfig
   | cfg, contents => do
-    Environment.registerTexSource cfg.label { raw := contents.getString }
+    match cfg.label? with
+    | some label =>
+      Environment.registerTexSource label cfg.slot { raw := contents.getString }
+    | none =>
+      pure ()
     ``(Block.concat #[])
 
 @[code_block]

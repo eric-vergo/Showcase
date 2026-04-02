@@ -33,7 +33,7 @@ Those labels are the key to the whole system. They are used to:
 - identify nodes in the summary and graph views
 - connect `{uses "addition_spec"}[]` references
 - attach inline Lean code with a labeled `lean` code block
-- attach raw TeX source for porting with a labeled `tex` code block
+- attach raw TeX source for porting with a `tex` code block
 - tag compiled declarations with `@[blueprint "label"]`
 
 If you pick stable labels early, the rest of the project structure becomes much
