@@ -50,7 +50,7 @@ These identifiers are used by:
 
 - `{uses "addition_spec"}[]` references
 - labeled inline Lean code blocks
-- labeled `tex` code blocks carrying raw TeX source
+- `tex` code blocks carrying raw TeX source
 - `@[blueprint "label"]` on compiled Lean declarations
 - summary and graph nodes
 - preview lookup and exported metadata
@@ -294,8 +294,8 @@ After that, Blueprint math can use the macro in rendered pages:
 We write $`a \NatAdd b` for addition on natural numbers.
 ```
 
-Blueprint nodes can also store raw general-TeX source through a labeled `tex`
-code block:
+Blueprint nodes can also store raw general-TeX source through `tex`
+code blocks:
 
 ````md
 :::theorem "addition_right_identity"
@@ -309,10 +309,54 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 ```
 ````
 
+To keep a raw TeX witness without attaching it to a Blueprint node, omit the
+label:
+
+````md
+```tex
+\begin{theorem}
+Unlabeled TeX witness kept in the source file while porting.
+\end{theorem}
+```
+````
+
+To start a port from TeX before writing the Verso statement, use a labeled
+standalone witness block:
+
+````md
+```tex "raw_addition_right_identity"
+\begin{theorem}\label{thm:addition-right-identity}
+For every natural number $n$, adding zero on the right leaves it unchanged.
+\end{theorem}
+```
+````
+
+If a label needs more than one TeX witness, give each block a separate slot:
+
+````md
+```tex "raw_addition_right_identity" (slot := statement)
+\begin{theorem}\label{thm:addition-right-identity}
+For every natural number $n$, adding zero on the right leaves it unchanged.
+\end{theorem}
+```
+
+```tex "raw_addition_right_identity" (slot := "proof")
+\begin{proof}
+Raw proof witness kept near the imported source.
+\end{proof}
+```
+````
+
 Current behavior:
 
-- the `tex` block label is parsed like labeled `lean` blocks
-- the block stores the raw TeX source on the associated Blueprint node
+- unlabeled `tex` blocks are accepted as hidden source witnesses and do not
+  create Blueprint nodes
+- labeled `tex` block labels are parsed like labeled `lean` blocks
+- a labeled block stores the raw TeX source on the associated Blueprint node
+  under slot `"default"` unless `(slot := ...)` is provided
+- the same label may have several TeX witnesses as long as they use different
+  slots
+- repeating the same `(label, slot)` pair is an error
 - the block is not displayed in the rendered output
 - the current primary use is to help port an existing TeX source alongside the
   Blueprint entry

@@ -282,9 +282,9 @@ def registerCode (label : Label) (code : Syntax)
       | none => state.localData
     return { state with data, localData }
 
-def registerTexSource (label : Label) (texSource : TexSource) : m Unit := do
+def registerTexSource (label : Label) (slot : String) (texSource : TexSource) : m Unit := do
   modifyM fun state => do
-    let data ← state.data.registerTexSource label texSource
+    let data ← state.data.registerTexSource label slot texSource
     let localData :=
       match data.get? label with
       | some node => state.localData.insert label node
