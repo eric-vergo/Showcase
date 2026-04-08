@@ -1,7 +1,7 @@
 import Lake
 open Lake DSL
 
-require verso from git "https://github.com/leanprover/verso"@"main"
+require verso from git "https://github.com/leanprover/verso"@"v4.29.0"
 require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"
 
 package ProjectTemplate where

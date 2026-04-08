@@ -37,27 +37,28 @@ python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock
 
 That command is intentionally heavyweight by default: it creates the git
 worktree, syncs the root checkout's `.lake/`, and warms the reference blueprint
-clones used by the current checkout. When `origin/main` exists, the new
-worktree defaults to `origin/main` rather than local `main` as its base. If
-you only want the linked checkout itself, use:
+clones used by the current checkout. The new worktree defaults to the preferred
+active release ref such as `origin/v4.29.0`. If you only want the linked
+checkout itself, use:
 
 ```bash
 python3 -m scripts.blueprint_harness create-worktree <name> --lightweight
 ```
 
-If you want to verify that local `main` is still in sync with the preferred
-main ref before branching or landing, use:
+If you want to verify that the active local release branch is still in sync
+with the preferred release ref before branching or landing, use:
 
 ```bash
-python3 -m scripts.blueprint_harness main-status
-python3 -m scripts.blueprint_harness main-status --require-sync
+python3 -m scripts.blueprint_harness release-status
+python3 -m scripts.blueprint_harness release-status --require-sync
 ```
 
-To land one reviewed branch onto `main` from the root checkout, use:
+To land one reviewed branch onto the active release branch from the root
+checkout, use:
 
 ```bash
-python3 -m scripts.blueprint_harness land-main feat/some-branch
-python3 -m scripts.blueprint_harness land-main feat/some-branch --cleanup
+python3 -m scripts.blueprint_harness land-release feat/some-branch
+python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
 From a linked worktree, do not treat `lake build` or `lake test` as the
@@ -71,6 +72,25 @@ cache, prefer:
 python3 -m scripts.blueprint_harness sync-root-lake
 python3 -m scripts.blueprint_reference_harness sync
 ```
+
+If you want to bump the package Lean toolchain and pin the matching `verso`
+release in the root package plus the tracked in-repo fixtures, use:
+
+```bash
+python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
+python3 -m scripts.blueprint_harness bump-toolchain 4.29.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --verso-ref v4.29.0
+```
+
+That command:
+
+- rewrites the managed `lean-toolchain` files
+- rewrites the managed `require verso from git ...` pins to the matching
+  release tag
+- refreshes the committed `lake-manifest.json` files for the root package,
+  `project_template`, and `tests/test_blueprints/preview_runtime_showcase/`
+- runs the standard build/test validation set unless you pass
+  `--skip-validation`
 
 For rendering and browser regressions, prefer the in-repo test blueprints under
 `tests/test_blueprints/` over the external reference blueprints. The default
@@ -133,14 +153,16 @@ dependency state, including project-specific Mathlib builds.
 
 Use `worktree-list` as the local dashboard for parallel work. It combines the
 small manual records under `.worktrees/_meta/` with live Git state such as the
-current branch, dirty status, and commit distance from `main`. `worktree-list`
+current branch, dirty status, and commit distance from the active release
+branch. `worktree-list`
 already refreshes that metadata before printing; `worktree-sync` remains only
 as a compatibility alias for the same dashboard command. Locked worktrees are
 the ones another active session should not touch.
 
 When you run `generate`, `validate`, or `sync` from the root checkout while it
-is on `main`, the reference CLI expects that checkout to stay clean and in
-sync. Use `--allow-unsafe-root-main` only as an explicit maintainer override.
+is on the active release branch, the reference CLI expects that checkout to
+stay clean and in sync. Use `--allow-unsafe-root-release` only as an explicit
+maintainer override.
 
 If you want to make manual changes in one external reference blueprint repo,
 use a separate editable clone instead of the disposable validation clones:

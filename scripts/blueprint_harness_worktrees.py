@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, local_release_ref, preferred_release_ref
+
 
 ROOT_METADATA_FILENAME = "_root.json"
 REGISTRY_FILENAME = "registry.json"
@@ -69,11 +71,11 @@ def utc_now() -> str:
 
 
 def worktree_name(repo_root: Path, path: Path) -> str:
-    return "main" if path.resolve() == repo_root.resolve() else path.name
+    return ROOT_WORKTREE_NAME if path.resolve() == repo_root.resolve() else path.name
 
 
 def metadata_path(repo_root: Path, name: str) -> Path:
-    if name == "main":
+    if name == ROOT_WORKTREE_NAME:
         return repo_root / ".worktrees" / METADATA_DIRNAME / ROOT_METADATA_FILENAME
     return repo_root / ".worktrees" / METADATA_DIRNAME / f"{name}.json"
 
@@ -196,7 +198,7 @@ def prune_stale_metadata(repo_root: Path, active_names: set[str]) -> None:
         return
     for path in meta_dir.glob("*.json"):
         if path.name == ROOT_METADATA_FILENAME:
-            keep = "main" in active_names
+            keep = ROOT_WORKTREE_NAME in active_names
         else:
             keep = path.stem in active_names
         if not keep:
@@ -230,9 +232,7 @@ def ref_oid(repo_root: Path, ref: str) -> str | None:
 
 
 def preferred_main_ref(repo_root: Path) -> str:
-    if ref_oid(repo_root, "refs/remotes/origin/main") is not None:
-        return "origin/main"
-    return "main"
+    return preferred_release_ref(repo_root)
 
 
 def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
@@ -310,7 +310,7 @@ def worktree_last_commit(path: Path) -> tuple[str | None, str | None, str | None
 def collect_worktree_facts(repo_root: Path, git_wt: GitWorktree) -> dict[str, object]:
     ref = git_wt.branch or git_wt.head
     dirty, tracked_changes, untracked_changes = worktree_status_counts(git_wt.path)
-    main_ahead, main_behind = rev_list_counts(repo_root, ref, "main")
+    main_ahead, main_behind = rev_list_counts(repo_root, ref, local_release_ref(repo_root))
     upstream = branch_upstream(repo_root, git_wt.branch) if git_wt.branch is not None else None
     upstream_ahead, upstream_behind = (
         rev_list_counts(repo_root, ref, upstream) if upstream is not None else (None, None)
@@ -390,7 +390,7 @@ def sync_worktree_registry(repo_root: Path) -> tuple[list[WorktreeRecord], Path]
 def resolve_worktree_name(current_name: str | None, requested_name: str | None) -> str:
     if requested_name:
         return requested_name
-    return current_name or "main"
+    return current_name or ROOT_WORKTREE_NAME
 
 
 def worktree_record_map(repo_root: Path) -> tuple[dict[str, WorktreeRecord], Path]:

@@ -48,9 +48,11 @@ def add_allow_local_build_argument(command_parser: argparse.ArgumentParser, *, h
 
 def add_allow_unsafe_root_main_argument(command_parser: argparse.ArgumentParser) -> None:
     command_parser.add_argument(
+        "--allow-unsafe-root-release",
         "--allow-unsafe-root-main",
+        dest="allow_unsafe_root_release",
         action="store_true",
-        help="Allow this command to run from the root checkout even when local `main` is dirty or out of sync.",
+        help="Allow this command to run from the root checkout even when the active release branch is dirty or out of sync.",
     )
 
 

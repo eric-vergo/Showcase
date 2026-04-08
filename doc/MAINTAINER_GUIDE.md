@@ -36,8 +36,8 @@ The supported repository-local entry points are:
 ./scripts/generate-reference-blueprints.sh
 ./scripts/validate-reference-blueprints.sh
 python3 -m scripts.blueprint_harness create-worktree <name>
-python3 -m scripts.blueprint_harness land-main <source-ref>
-python3 -m scripts.blueprint_harness main-status
+python3 -m scripts.blueprint_harness land-release <source-ref>
+python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness --help
 python3 -m scripts.blueprint_reference_harness generate
 python3 -m scripts.blueprint_reference_harness validate
@@ -65,8 +65,8 @@ modules are the single source of truth for orchestration and path resolution:
 
 Rule of thumb:
 
-- if the task is about linked worktrees, root `main`, or local coordination,
-  use `blueprint_harness`
+- if the task is about linked worktrees, the active root release branch, or
+  local coordination, use `blueprint_harness`
 - if the task is about building, validating, syncing, editing, or pruning the
   reference projects, use `blueprint_reference_harness`
 
@@ -261,10 +261,10 @@ For local fixture/browser filtering, pass pytest args through
 
 Run `python3 -m scripts.blueprint_reference_harness --help` for the full flag surface.
 
-When you run the reference CLI from the root checkout while it is on `main`,
-it expects that checkout to stay clean and in sync with the preferred main ref.
-Use `--allow-unsafe-root-main` only as an explicit maintainer override on
-`generate`, `validate`, or `sync`.
+When you run the reference CLI from the root checkout while it is on the active
+release branch, it expects that checkout to stay clean and in sync with the
+preferred release ref. Use `--allow-unsafe-root-release` only as an explicit
+maintainer override on `generate`, `validate`, or `sync`.
 
 To inspect the active catalog:
 
@@ -276,7 +276,7 @@ python3 -m scripts.blueprint_test_blueprints list-json
 
 `status` compares each external catalog pin against that project's upstream
 default branch and also compares the project's committed `VersoBlueprint` pin
-against this repository's current `main`.
+against this repository's current active release branch.
 
 To warm the shared reference blueprint cache and prepare local clones for the
 current checkout:
@@ -284,6 +284,21 @@ current checkout:
 ```bash
 python3 -m scripts.blueprint_reference_harness sync
 ```
+
+To bump the package Lean toolchain and pin the matching `verso` release in the
+root package plus the tracked in-repo fixtures:
+
+```bash
+python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
+python3 -m scripts.blueprint_harness bump-toolchain 4.29.0 --skip-validation
+```
+
+That command rewrites the managed `lean-toolchain` and `require verso` pins,
+refreshes the committed manifests for the root package, `project_template`, and
+`tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
+build/test validation pass that maintainers would otherwise do manually. Pass
+`--verso-ref <tag>` only when the Lean toolchain ref and the upstream `verso`
+release tag need to differ.
 
 To remove stale harness-managed reference caches and orphaned local clones:
 
@@ -368,28 +383,29 @@ python3 -m scripts.blueprint_harness create-worktree <name>
 
 That command is intentionally heavyweight by default: after `git worktree add`
 it syncs the root checkout's `.lake/` and warms the shared and per-worktree
-reference blueprint clones. When `origin/main` exists, new worktrees now base
-off `origin/main` by default rather than local `main`.
+reference blueprint clones. New worktrees now base off the preferred active
+release ref, typically something like `origin/v4.29.0`.
 
 If you want to verify that the root checkout has not drifted before branching
 or landing, use:
 
 ```bash
-python3 -m scripts.blueprint_harness main-status
-python3 -m scripts.blueprint_harness main-status --require-sync
+python3 -m scripts.blueprint_harness release-status
+python3 -m scripts.blueprint_harness release-status --require-sync
 ```
 
-To land one reviewed branch onto `main` safely from the root checkout, use:
+To land one reviewed branch onto the active release branch safely from the root
+checkout, use:
 
 ```bash
-python3 -m scripts.blueprint_harness land-main feat/some-branch
-python3 -m scripts.blueprint_harness land-main feat/some-branch --cleanup
+python3 -m scripts.blueprint_harness land-release feat/some-branch
+python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
-`land-main` refuses to proceed unless the root checkout is on a clean, in-sync
-local `main`, and it only accepts fast-forward source refs. With `--cleanup`,
-it also removes the source worktree and deletes the source branch when that can
-be done safely.
+`land-release` refuses to proceed unless the root checkout is on a clean,
+in-sync local release branch such as `v4.29.0`, and it only accepts
+fast-forward source refs. With `--cleanup`, it also removes the source worktree
+and deletes the source branch when that can be done safely.
 
 After creation, ordinary `generate` and `validate` runs reuse the worktree's
 current `.lake/`; they do not automatically resync it from the root checkout.
@@ -447,7 +463,7 @@ The local coordination layer is now machine-readable and untracked.
 - `worktree-retire` removes one merged clean linked worktree, deletes its local
   branch when one exists, and prunes its stale reference clones
 - detached linked worktrees are also retireable once their `HEAD` commit is
-  reachable from `origin/main` or local `main`
+  reachable from the preferred active release ref
 - by default, each session should only retire or delete worktrees and branches
   it created or landed itself; broader cleanup should be explicit
 
@@ -532,7 +548,7 @@ The repository includes these GitHub Actions workflows:
 - `.github/workflows/reference-blueprints-deploy.yml`
 
 `ci.yml` is the main verification workflow. It keeps the always-on checks for
-pull requests and pushes to `main`:
+pull requests and pushes to release branches named like `v4.29.0`:
 
 - `Blueprint Build`
 - `Blueprint Tests`
@@ -543,7 +559,7 @@ the in-repo template as a fresh standalone repository and smoke-tests the
 template-owned CI path.
 
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
-pushes to `main`, and manual dispatch, it:
+pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
 - builds the four projects currently published to Pages:
   `project-template`, `noperthedron`, `spherepackingblueprint`, and `verso-flt`
@@ -555,7 +571,8 @@ pushes to `main`, and manual dispatch, it:
   `.lake/` trees on the GitHub runner
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
-successful `reference-blueprints.yml` run on `main`, downloads the site
+successful `reference-blueprints.yml` run on a release branch named like
+`v4.29.0`, downloads the site
 artifact from that triggering run, uploads a Pages artifact, and deploys it to
 GitHub Pages.
 

@@ -23,7 +23,8 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command([sys.executable, "-m", "scripts.blueprint_harness", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("create-worktree", result.stdout)
-        self.assertIn("land-main", result.stdout)
+        self.assertIn("bump-toolchain", result.stdout)
+        self.assertIn("land-release", result.stdout)
 
     def test_blueprint_reference_harness_help(self) -> None:
         result = self.run_command([sys.executable, "-m", "scripts.blueprint_reference_harness", "--help"])
