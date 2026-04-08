@@ -880,12 +880,12 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             checkout_root = root / "by-worktree"
             (cache_root / "noperthedron").mkdir(parents=True)
             (cache_root / "oldproject").mkdir(parents=True)
-            (checkout_root / "main" / "noperthedron").mkdir(parents=True)
-            (checkout_root / "main" / "oldproject").mkdir(parents=True)
+            (checkout_root / "v4.29.0" / "noperthedron").mkdir(parents=True)
+            (checkout_root / "v4.29.0" / "oldproject").mkdir(parents=True)
             (checkout_root / "stale-worktree" / "noperthedron").mkdir(parents=True)
 
             removals = reference_prune_plan(
-                {"main", "cleanup-automation"},
+                {"v4.29.0", "cleanup-automation"},
                 {"noperthedron"},
                 cache_root,
                 checkout_root,
@@ -895,7 +895,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 {path.relative_to(root).as_posix() for path in removals},
                 {
                     "cache/oldproject",
-                    "by-worktree/main/oldproject",
+                    "by-worktree/v4.29.0/oldproject",
                     "by-worktree/stale-worktree",
                 },
             )

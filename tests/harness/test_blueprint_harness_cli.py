@@ -34,25 +34,32 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["status", "--example", "noperthedron"])
 
-    def test_reference_generate_parses_allow_unsafe_root_main(self) -> None:
+    def test_reference_generate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["generate", "--allow-unsafe-root-main"])
-        self.assertTrue(args.allow_unsafe_root_main)
+        args = parser.parse_args(["generate", "--allow-unsafe-root-release"])
+        self.assertTrue(args.allow_unsafe_root_release)
 
-    def test_reference_validate_parses_allow_unsafe_root_main(self) -> None:
+    def test_reference_validate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["validate", "--allow-unsafe-root-main"])
-        self.assertTrue(args.allow_unsafe_root_main)
+        args = parser.parse_args(["validate", "--allow-unsafe-root-release"])
+        self.assertTrue(args.allow_unsafe_root_release)
 
-    def test_reference_sync_parses_allow_unsafe_root_main(self) -> None:
+    def test_reference_sync_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["sync", "--allow-unsafe-root-main"])
-        self.assertTrue(args.allow_unsafe_root_main)
+        args = parser.parse_args(["sync", "--allow-unsafe-root-release"])
+        self.assertTrue(args.allow_unsafe_root_release)
 
     def test_main_status_parses_require_sync(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["main-status", "--require-sync"])
+        args = parser.parse_args(["release-status", "--require-sync"])
         self.assertTrue(args.require_sync)
+
+    def test_bump_toolchain_parses_optional_flags(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["bump-toolchain", "4.29.0", "--verso-ref", "v4.29.0", "--skip-validation"])
+        self.assertEqual(args.toolchain, "4.29.0")
+        self.assertEqual(args.verso_ref, "v4.29.0")
+        self.assertTrue(args.skip_validation)
 
     def test_create_worktree_parses_lock_flag(self) -> None:
         parser = build_parser()
@@ -70,7 +77,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
     def test_land_main_parses_cleanup_flags(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["land-main", "feat/demo", "--cleanup", "--keep-remote", "--no-push"])
+        args = parser.parse_args(["land-release", "feat/demo", "--cleanup", "--keep-remote", "--no-push"])
         self.assertEqual(args.source, "feat/demo")
         self.assertTrue(args.cleanup)
         self.assertTrue(args.keep_remote)
@@ -134,56 +141,117 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
     def test_create_worktree_uses_preferred_main_ref_by_default(self) -> None:
         layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
-        original = harness_mod.preferred_main_ref
+        originals = {
+            "preferred_main_ref": harness_mod.preferred_main_ref,
+            "active_release_branch": harness_mod.active_release_branch,
+        }
         try:
-            harness_mod.preferred_main_ref = lambda _repo_root: "origin/main"
-            self.assertEqual(harness_mod.resolve_create_worktree_base(layout, None), "origin/main")
+            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
+            self.assertEqual(harness_mod.resolve_create_worktree_base(layout, None), "origin/v4.29.0")
         finally:
-            harness_mod.preferred_main_ref = original
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
 
     def test_create_worktree_rejects_unsynced_local_main_base(self) -> None:
         layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
         originals = {
             "preferred_main_ref": harness_mod.preferred_main_ref,
             "main_sync_status": harness_mod.main_sync_status,
+            "active_release_branch": harness_mod.active_release_branch,
         }
         try:
-            harness_mod.preferred_main_ref = lambda _repo_root: "origin/main"
+            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
             harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="abc",
                 upstream_oid="def",
                 relationship="diverged",
             )
-            with self.assertRaisesRegex(SystemExit, "refusing to use local `main` as the worktree base"):
-                harness_mod.resolve_create_worktree_base(layout, "main")
+            with self.assertRaisesRegex(SystemExit, "refusing to use local `v4.29.0` as the worktree base"):
+                harness_mod.resolve_create_worktree_base(layout, "v4.29.0")
         finally:
             for name, value in originals.items():
                 setattr(harness_mod, name, value)
 
     def test_main_status_require_sync_returns_nonzero_when_unsynced(self) -> None:
         args = argparse.Namespace(require_sync=True)
-        layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
+        layout = SimpleNamespace(repo_root=Path("/tmp/repo"), package_root=Path("/tmp/worktree"))
         originals = {
             "detect_harness_layout": harness_mod.detect_harness_layout,
             "main_sync_status": harness_mod.main_sync_status,
             "current_branch_name": harness_mod.current_branch_name,
+            "active_release_branch": harness_mod.active_release_branch,
+            "branch_policy_path": harness_mod.branch_policy_path,
+            "default_dev_branch": harness_mod.default_dev_branch,
+            "checkout_branch_role": harness_mod.checkout_branch_role,
+            "checkout_is_backport_only": harness_mod.checkout_is_backport_only,
         }
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
             harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="abc",
                 upstream_oid="def",
                 relationship="behind",
             )
-            harness_mod.current_branch_name = lambda _repo_root: "main"
+            harness_mod.current_branch_name = lambda _repo_root: "fix/demo"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
+            harness_mod.branch_policy_path = lambda _repo_root: Path("/tmp/worktree/branch-policy.json")
+            harness_mod.default_dev_branch = lambda _repo_root: "v4.29.0"
+            harness_mod.checkout_branch_role = lambda _repo_root: "default_dev"
+            harness_mod.checkout_is_backport_only = lambda _repo_root: False
             self.assertEqual(harness_mod.command_main_status(args), 1)
         finally:
             for name, value in originals.items():
                 setattr(harness_mod, name, value)
+
+    def test_release_status_reports_backport_policy_fields(self) -> None:
+        args = argparse.Namespace(require_sync=False)
+        layout = SimpleNamespace(repo_root=Path("/tmp/repo"), package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "main_sync_status": harness_mod.main_sync_status,
+            "current_branch_name": harness_mod.current_branch_name,
+            "active_release_branch": harness_mod.active_release_branch,
+            "branch_policy_path": harness_mod.branch_policy_path,
+            "default_dev_branch": harness_mod.default_dev_branch,
+            "checkout_branch_role": harness_mod.checkout_branch_role,
+            "checkout_is_backport_only": harness_mod.checkout_is_backport_only,
+        }
+        out = io.StringIO()
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
+                local_ref="v4.28.0",
+                upstream_ref="origin/v4.28.0",
+                local_oid="abc",
+                upstream_oid="abc",
+                relationship="in_sync",
+            )
+            harness_mod.current_branch_name = lambda _repo_root: "fix/backport"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.28.0"
+            harness_mod.branch_policy_path = lambda _repo_root: Path("/tmp/worktree/branch-policy.json")
+            harness_mod.default_dev_branch = lambda _repo_root: "v4.29.0"
+            harness_mod.checkout_branch_role = lambda _repo_root: "backport"
+            harness_mod.checkout_is_backport_only = lambda _repo_root: True
+
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_main_status(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        output = out.getvalue()
+        self.assertIn("current_branch=fix/backport", output)
+        self.assertIn("branch_policy=/tmp/worktree/branch-policy.json", output)
+        self.assertIn("default_dev_branch=v4.29.0", output)
+        self.assertIn("active_release_branch=v4.28.0", output)
+        self.assertIn("checkout_role=backport", output)
+        self.assertIn("backport_only=true", output)
 
     def test_land_main_rejects_unsynced_main(self) -> None:
         args = argparse.Namespace(source="feat/demo", no_push=False, cleanup=False, keep_remote=False)
@@ -193,19 +261,21 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "current_branch_name": harness_mod.current_branch_name,
             "worktree_is_clean": harness_mod.worktree_is_clean,
             "main_sync_status": harness_mod.main_sync_status,
+            "active_release_branch": harness_mod.active_release_branch,
         }
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
-            harness_mod.current_branch_name = lambda _repo_root: "main"
+            harness_mod.current_branch_name = lambda _repo_root: "v4.29.0"
             harness_mod.worktree_is_clean = lambda _path: True
             harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="abc",
                 upstream_oid="def",
                 relationship="behind",
             )
-            with self.assertRaisesRegex(SystemExit, "sync `main` before landing"):
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
+            with self.assertRaisesRegex(SystemExit, "sync `v4.29.0` before landing"):
                 harness_mod.command_land_main(args)
         finally:
             for name, value in originals.items():
@@ -222,23 +292,25 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "ref_oid": harness_mod.ref_oid,
             "is_ancestor": harness_mod.is_ancestor,
             "preferred_main_ref": harness_mod.preferred_main_ref,
+            "active_release_branch": harness_mod.active_release_branch,
             "run": harness_mod.run,
         }
         commands: list[list[str]] = []
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
-            harness_mod.current_branch_name = lambda _repo_root: "main"
+            harness_mod.current_branch_name = lambda _repo_root: "v4.29.0"
             harness_mod.worktree_is_clean = lambda _path: True
             harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="abc",
                 upstream_oid="abc",
                 relationship="in_sync",
             )
             harness_mod.ref_oid = lambda _repo_root, ref: "deadbeef" if ref == "feat/demo" else None
-            harness_mod.is_ancestor = lambda _repo_root, ancestor, descendant: (ancestor, descendant) == ("main", "feat/demo")
-            harness_mod.preferred_main_ref = lambda _repo_root: "origin/main"
+            harness_mod.is_ancestor = lambda _repo_root, ancestor, descendant: (ancestor, descendant) == ("v4.29.0", "feat/demo")
+            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
             harness_mod.run = lambda command, *, cwd: commands.append(command)
 
             self.assertEqual(harness_mod.command_land_main(args), 0)
@@ -246,7 +318,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             for name, value in originals.items():
                 setattr(harness_mod, name, value)
 
-        self.assertEqual(commands, [["git", "merge", "--ff-only", "feat/demo"], ["git", "push", "origin", "main"]])
+        self.assertEqual(commands, [["git", "merge", "--ff-only", "feat/demo"], ["git", "push", "origin", "v4.29.0"]])
 
     def test_land_main_cleanup_removes_branch_worktree_and_remote(self) -> None:
         args = argparse.Namespace(source="feat/demo", no_push=False, cleanup=True, keep_remote=False)
@@ -266,6 +338,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "ref_oid": harness_mod.ref_oid,
             "is_ancestor": harness_mod.is_ancestor,
             "preferred_main_ref": harness_mod.preferred_main_ref,
+            "active_release_branch": harness_mod.active_release_branch,
             "run": harness_mod.run,
             "branch_worktrees": harness_mod.branch_worktrees,
             "local_branch_ref": harness_mod.local_branch_ref,
@@ -274,18 +347,19 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         commands: list[list[str]] = []
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
-            harness_mod.current_branch_name = lambda _repo_root: "main"
+            harness_mod.current_branch_name = lambda _repo_root: "v4.29.0"
             harness_mod.worktree_is_clean = lambda _path: True
             harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="abc",
                 upstream_oid="abc",
                 relationship="in_sync",
             )
             harness_mod.ref_oid = lambda _repo_root, ref: "deadbeef" if ref in {"feat/demo", "refs/heads/feat/demo", "refs/remotes/origin/feat/demo"} else None
-            harness_mod.is_ancestor = lambda _repo_root, ancestor, descendant: (ancestor, descendant) == ("main", "feat/demo")
-            harness_mod.preferred_main_ref = lambda _repo_root: "origin/main"
+            harness_mod.is_ancestor = lambda _repo_root, ancestor, descendant: (ancestor, descendant) == ("v4.29.0", "feat/demo")
+            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
             harness_mod.run = lambda command, *, cwd: commands.append(command)
             harness_mod.branch_worktrees = lambda _repo_root, branch: [demo_worktree] if branch == "feat/demo" else []
             harness_mod.local_branch_ref = lambda _repo_root, branch: branch if branch == "feat/demo" else None
@@ -300,7 +374,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             commands,
             [
                 ["git", "merge", "--ff-only", "feat/demo"],
-                ["git", "push", "origin", "main"],
+                ["git", "push", "origin", "v4.29.0"],
                 ["git", "worktree", "remove", str(demo_worktree.path)],
                 ["git", "branch", "-d", "feat/demo"],
                 ["git", "push", "origin", "--delete", "feat/demo"],
@@ -318,7 +392,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest=None,
             project=None,
             skip_build=False,
-            allow_unsafe_root_main=False,
+            allow_unsafe_root_release=False,
             serial=False,
             allow_local_build=False,
         )
@@ -348,6 +422,41 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["layout"], layout)
         self.assertFalse(seen["allow_unsafe"])
         self.assertEqual(seen["command_name"], "generate")
+
+    def test_bump_toolchain_uses_helper(self) -> None:
+        args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, skip_validation=False)
+        layout = SimpleNamespace(package_root=Path("/tmp/package"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "bump_toolchain_checkout": harness_mod.bump_toolchain_checkout,
+        }
+        seen: dict[str, object] = {}
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+
+            def fake_bump(package_root, toolchain, *, verso_ref, validate):
+                seen["package_root"] = package_root
+                seen["toolchain"] = toolchain
+                seen["verso_ref"] = verso_ref
+                seen["validate"] = validate
+                return SimpleNamespace(
+                    lean_ref="v4.29.0",
+                    toolchain_spec="leanprover/lean4:v4.29.0",
+                    verso_ref="v4.29.0",
+                    verso_tag_oid="deadbeef",
+                )
+
+            harness_mod.bump_toolchain_checkout = fake_bump
+
+            self.assertEqual(harness_mod.command_bump_toolchain(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        self.assertEqual(seen["package_root"], layout.package_root)
+        self.assertEqual(seen["toolchain"], "4.29.0")
+        self.assertEqual(seen["verso_ref"], None)
+        self.assertTrue(seen["validate"])
 
     def test_reference_edit_uses_prepare_reference_checkout(self) -> None:
         project = HarnessProject(
@@ -525,6 +634,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "git_worktree_map": harness_mod.git_worktree_map,
             "ref_merged_into_main": harness_mod.ref_merged_into_main,
             "worktree_is_clean": harness_mod.worktree_is_clean,
+            "local_release_ref": harness_mod.local_release_ref,
             "run": harness_mod.run,
             "resolve_manifest_path": harness_mod.resolve_manifest_path,
             "load_project_catalog": harness_mod.load_project_catalog,
@@ -546,6 +656,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             harness_mod.git_worktree_map = lambda _repo_root: {"reference-edit": detached}
             harness_mod.ref_merged_into_main = lambda _repo_root, ref: ref == "abc123"
             harness_mod.worktree_is_clean = lambda _path: True
+            harness_mod.local_release_ref = lambda _repo_root: "v4.29.0"
             harness_mod.run = lambda command, *, cwd: commands.append(command)
             harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
             harness_mod.load_project_catalog = lambda _manifest_path: []
@@ -570,9 +681,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "detect_harness_layout": harness_mod.detect_harness_layout,
             "worktree_record_map": harness_mod.worktree_record_map,
             "git_worktree_map": harness_mod.git_worktree_map,
+            "local_release_ref": harness_mod.local_release_ref,
         }
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.local_release_ref = lambda _repo_root: "v4.29.0"
             harness_mod.worktree_record_map = lambda _repo_root: (
                 {
                     "demo": SimpleNamespace(
@@ -641,7 +754,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest=None,
             project=None,
             run_lean_tests=True,
-            allow_unsafe_root_main=False,
+            allow_unsafe_root_release=False,
             skip_panel_regression=False,
             skip_browser_tests=False,
             serial=False,
@@ -683,7 +796,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest=None,
             project=None,
             run_lean_tests=False,
-            allow_unsafe_root_main=False,
+            allow_unsafe_root_release=False,
             skip_panel_regression=False,
             skip_browser_tests=False,
             serial=False,
@@ -723,7 +836,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest=None,
             project=None,
             skip_build=False,
-            allow_unsafe_root_main=True,
+            allow_unsafe_root_release=True,
             skip_local_checkout=False,
         )
         layout = SimpleNamespace(
@@ -807,6 +920,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "selected_projects": reference_harness_mod.selected_projects,
             "main_sync_status": reference_harness_mod.main_sync_status,
             "collect_reference_project_status": reference_harness_mod.collect_reference_project_status,
+            "active_release_branch": reference_harness_mod.active_release_branch,
         }
         out = io.StringIO()
         try:
@@ -815,12 +929,13 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             reference_harness_mod.load_project_catalog = lambda _manifest_path: [project]
             reference_harness_mod.selected_projects = lambda _catalog, _values: [project]
             reference_harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
-                local_ref="main",
-                upstream_ref="origin/main",
+                local_ref="v4.29.0",
+                upstream_ref="origin/v4.29.0",
                 local_oid="111",
                 upstream_oid="111",
                 relationship="in_sync",
             )
+            reference_harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
             reference_harness_mod.collect_reference_project_status = lambda _layout, _project: status
 
             with redirect_stdout(out):
@@ -831,7 +946,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
         output = out.getvalue()
         self.assertIn("project_manifest=/tmp/projects.json", output)
-        self.assertIn("main_relationship=in_sync", output)
+        self.assertIn("release_relationship=in_sync", output)
+        self.assertIn("verso_blueprint_ref=v4.29.0", output)
         self.assertIn("noperthedron\tsource=git:https://github.com/example/noperthedron.git@abc123", output)
         self.assertIn("catalog_status=behind", output)
         self.assertIn("catalog_behind=12", output)

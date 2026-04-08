@@ -16,7 +16,7 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 
 - [ ] Ask Lake maintainers to honor package overrides during `lake update`
   bootstrap, not only during manifest-based materialization.
-  - confirmed on Lean `v4.29.0-rc6`
+  - confirmed on Lean `v4.29.0`
   - `loadWorkspace` passes `packageOverrides` only to `materializeDeps`, while
     `updateManifest` calls `updateAndMaterialize` without threading overrides
   - practical effect:

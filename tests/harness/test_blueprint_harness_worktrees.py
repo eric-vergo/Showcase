@@ -8,6 +8,7 @@ import unittest
 
 from scripts.blueprint_harness_worktrees import (
     METADATA_DIRNAME,
+    ROOT_WORKTREE_NAME,
     WorktreeRecord,
     collect_worktree_facts,
     metadata_path,
@@ -23,7 +24,7 @@ class BlueprintHarnessWorktreesTests(unittest.TestCase):
         text = """
 worktree /tmp/repo
 HEAD abc
-branch refs/heads/main
+branch refs/heads/v4.29.0
 
 worktree /tmp/repo/.worktrees/harness-rework
 HEAD def
@@ -35,7 +36,7 @@ HEAD 1234567
         worktrees = parse_git_worktree_porcelain(text, repo_root)
 
         self.assertEqual([(worktree.name, worktree.branch, worktree.head) for worktree in worktrees], [
-            ("main", "main", "abc"),
+            (ROOT_WORKTREE_NAME, "v4.29.0", "abc"),
             ("harness-rework", "feat/harness-rework", "def"),
             ("detached-edit", None, "1234567"),
         ])
@@ -45,7 +46,7 @@ HEAD 1234567
     def test_resolve_worktree_name_prefers_explicit_name(self) -> None:
         self.assertEqual(resolve_worktree_name("harness-rework", "doc-polish"), "doc-polish")
         self.assertEqual(resolve_worktree_name("harness-rework", None), "harness-rework")
-        self.assertEqual(resolve_worktree_name(None, None), "main")
+        self.assertEqual(resolve_worktree_name(None, None), ROOT_WORKTREE_NAME)
 
     def test_sync_worktree_registry_creates_local_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -55,7 +56,7 @@ HEAD 1234567
             subprocess_text = f"""
 worktree {repo_root}
 HEAD abc
-branch refs/heads/main
+branch refs/heads/v4.29.0
 
 worktree {worktree_dir}
 HEAD def
@@ -71,16 +72,16 @@ branch refs/heads/feat/demo
             try:
                 worktrees_mod.git_worktrees = lambda _repo_root: parse_git_worktree_porcelain(subprocess_text, repo_root)
                 worktrees_mod.collect_worktree_facts = lambda _repo_root, git_wt: {
-                    "dirty": git_wt.name == "main",
-                    "tracked_changes": 1 if git_wt.name == "main" else 0,
+                    "dirty": git_wt.name == ROOT_WORKTREE_NAME,
+                    "tracked_changes": 1 if git_wt.name == ROOT_WORKTREE_NAME else 0,
                     "untracked_changes": 0,
-                    "merged_into_main": git_wt.name == "main",
-                    "main_ahead": 0 if git_wt.name == "main" else 1,
-                    "main_behind": 0 if git_wt.name == "main" else 2,
-                    "upstream": "origin/main" if git_wt.name == "main" else None,
-                    "upstream_ahead": 0 if git_wt.name == "main" else None,
-                    "upstream_behind": 0 if git_wt.name == "main" else None,
-                    "last_commit": "abc1234" if git_wt.name == "main" else "def5678",
+                    "merged_into_main": git_wt.name == ROOT_WORKTREE_NAME,
+                    "main_ahead": 0 if git_wt.name == ROOT_WORKTREE_NAME else 1,
+                    "main_behind": 0 if git_wt.name == ROOT_WORKTREE_NAME else 2,
+                    "upstream": "origin/v4.29.0" if git_wt.name == ROOT_WORKTREE_NAME else None,
+                    "upstream_ahead": 0 if git_wt.name == ROOT_WORKTREE_NAME else None,
+                    "upstream_behind": 0 if git_wt.name == ROOT_WORKTREE_NAME else None,
+                    "last_commit": "abc1234" if git_wt.name == ROOT_WORKTREE_NAME else "def5678",
                     "last_commit_at": "2026-03-19T00:00:00Z",
                     "last_commit_subject": "demo",
                 }
@@ -89,13 +90,13 @@ branch refs/heads/feat/demo
                 for name, value in originals.items():
                     setattr(worktrees_mod, name, value)
 
-            self.assertEqual([record.name for record in records], ["main", "demo"])
-            self.assertTrue(metadata_path(repo_root, "main").exists())
+            self.assertEqual([record.name for record in records], [ROOT_WORKTREE_NAME, "demo"])
+            self.assertTrue(metadata_path(repo_root, ROOT_WORKTREE_NAME).exists())
             self.assertTrue(metadata_path(repo_root, "demo").exists())
             self.assertEqual(metadata_path(repo_root, "demo"), repo_root / ".worktrees" / METADATA_DIRNAME / "demo.json")
             self.assertFalse((worktree_dir / ".codex-worktree.json").exists())
             self.assertTrue(registry.exists())
-            root_metadata = json.loads(metadata_path(repo_root, "main").read_text(encoding="utf-8"))
+            root_metadata = json.loads(metadata_path(repo_root, ROOT_WORKTREE_NAME).read_text(encoding="utf-8"))
             demo_metadata = json.loads(metadata_path(repo_root, "demo").read_text(encoding="utf-8"))
             self.assertEqual(root_metadata["status"], "base")
             self.assertFalse(root_metadata["locked"])
@@ -105,8 +106,8 @@ branch refs/heads/feat/demo
             self.assertNotIn("dirty", demo_metadata)
             generated_registry = json.loads(registry.read_text(encoding="utf-8"))
             by_name = {entry["name"]: WorktreeRecord(**entry) for entry in generated_registry["worktrees"]}
-            self.assertTrue(by_name["main"].dirty)
-            self.assertEqual(by_name["main"].tracked_changes, 1)
+            self.assertTrue(by_name[ROOT_WORKTREE_NAME].dirty)
+            self.assertEqual(by_name[ROOT_WORKTREE_NAME].tracked_changes, 1)
             self.assertEqual(by_name["demo"].main_ahead, 1)
             self.assertEqual(by_name["demo"].main_behind, 2)
 
@@ -116,7 +117,7 @@ branch refs/heads/feat/demo
             worktree_dir = repo_root / ".worktrees" / "demo"
             worktree_dir.mkdir(parents=True)
             for name, root_checkout, status, summary, priority, locked in [
-                ("main", True, "base", "main", None, False),
+                (ROOT_WORKTREE_NAME, True, "base", "root", None, False),
                 ("demo", False, "active", "demo", "P1", True),
             ]:
                 path = metadata_path(repo_root, name)
@@ -184,7 +185,7 @@ branch refs/heads/feat/demo
             subprocess_text = f"""
 worktree {repo_root}
 HEAD abc
-branch refs/heads/main
+branch refs/heads/v4.29.0
 
 worktree {worktree_dir}
 HEAD def
@@ -203,10 +204,10 @@ branch refs/heads/feat/demo
                     "dirty": git_wt.name == "demo",
                     "tracked_changes": 5 if git_wt.name == "demo" else 0,
                     "untracked_changes": 1 if git_wt.name == "demo" else 0,
-                    "merged_into_main": git_wt.name == "main",
+                    "merged_into_main": git_wt.name == ROOT_WORKTREE_NAME,
                     "main_ahead": 2 if git_wt.name == "demo" else 0,
                     "main_behind": 7 if git_wt.name == "demo" else 0,
-                    "upstream": None if git_wt.name == "demo" else "origin/main",
+                    "upstream": None if git_wt.name == "demo" else "origin/v4.29.0",
                     "upstream_ahead": None if git_wt.name == "demo" else 0,
                     "upstream_behind": None if git_wt.name == "demo" else 0,
                     "last_commit": "updated",
@@ -218,7 +219,7 @@ branch refs/heads/feat/demo
                 for name, value in originals.items():
                     setattr(worktrees_mod, name, value)
 
-            self.assertEqual([record.name for record in records], ["main", "demo"])
+            self.assertEqual([record.name for record in records], [ROOT_WORKTREE_NAME, "demo"])
             demo_metadata = json.loads(metadata_path(repo_root, "demo").read_text(encoding="utf-8"))
             self.assertEqual(demo_metadata["created_at"], "2026-03-19T00:00:00Z")
             self.assertEqual(demo_metadata["updated_at"], "2026-03-19T01:00:00Z")
@@ -227,7 +228,7 @@ branch refs/heads/feat/demo
             self.assertNotIn("tracked_changes", demo_metadata)
             rewritten = json.loads(registry.read_text(encoding="utf-8"))
             by_name = {entry["name"]: entry for entry in rewritten["worktrees"]}
-            self.assertEqual(by_name["main"]["created_at"], "2026-03-19T00:00:00Z")
+            self.assertEqual(by_name[ROOT_WORKTREE_NAME]["created_at"], "2026-03-19T00:00:00Z")
             self.assertEqual(by_name["demo"]["created_at"], "2026-03-19T00:00:00Z")
             self.assertTrue(by_name["demo"]["locked"])
             self.assertEqual(by_name["demo"]["priority"], "P1")
@@ -291,7 +292,7 @@ branch refs/heads/feat/demo
             subprocess_text = f"""
 worktree {repo_root}
 HEAD abc
-branch refs/heads/main
+branch refs/heads/v4.29.0
 
 worktree {worktree_dir}
 HEAD def
@@ -354,7 +355,7 @@ branch refs/heads/feat/demo
             subprocess_text = f"""
 worktree {repo_root}
 HEAD abc
-branch refs/heads/main
+branch refs/heads/v4.29.0
 
 worktree {worktree_dir}
 HEAD def
@@ -399,9 +400,10 @@ branch refs/heads/feat/demo
             subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             (repo_root / "tracked.txt").write_text("base\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=repo_root, check=True)
+            (repo_root / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt", "lean-toolchain"], cwd=repo_root, check=True)
             subprocess.run(["git", "commit", "-m", "base"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "branch", "-M", "main"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "branch", "-M", "v4.29.0"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             subprocess.run(["git", "branch", "feature"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["git", "checkout", "feature"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

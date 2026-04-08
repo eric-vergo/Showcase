@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 
+from scripts.blueprint_harness_branches import active_release_branch, local_release_ref, root_checkout_namespace
 from scripts.blueprint_harness import current_branch_name, main_sync_status, ref_oid, ref_sync_status, worktree_is_clean
 from scripts.blueprint_harness_cli import (
     add_allow_local_build_argument,
@@ -268,7 +269,11 @@ def collect_reference_project_status(layout, project: HarnessProject) -> Referen
     blueprint_ref = None
     if blueprint_pin is not None:
         blueprint_ref = blueprint_pin.resolved_ref or blueprint_pin.input_ref
-    blueprint_relationship, blueprint_ahead, blueprint_behind = compare_refs(layout.repo_root, blueprint_ref, "main")
+    blueprint_relationship, blueprint_ahead, blueprint_behind = compare_refs(
+        layout.repo_root,
+        blueprint_ref,
+        local_release_ref(layout.repo_root),
+    )
 
     return ReferenceProjectStatus(
         project=project,
@@ -337,7 +342,8 @@ def should_use_local_build(layout, allow_local_build: bool) -> bool:
 def root_main_safety_findings(layout) -> list[str]:
     if layout.in_linked_worktree:
         return []
-    if current_branch_name(layout.repo_root) != "main":
+    release_branch = active_release_branch(layout.repo_root)
+    if current_branch_name(layout.repo_root) != release_branch:
         return []
 
     findings: list[str] = []
@@ -345,7 +351,7 @@ def root_main_safety_findings(layout) -> list[str]:
         findings.append("root checkout has local modifications")
     status = main_sync_status(layout.repo_root)
     if status.relationship != "in_sync":
-        findings.append(f"local `main` is {status.relationship} relative to `{status.upstream_ref}`")
+        findings.append(f"local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`")
     return findings
 
 
@@ -364,7 +370,7 @@ def require_safe_root_main(layout, *, allow_unsafe: bool, command_name: str) -> 
 
     raise SystemExit(
         f"[blueprint-reference-harness] refusing to run `{command_name}` from the root checkout: {details}. "
-        "Create a linked worktree or pass `--allow-unsafe-root-main` to override."
+        "Create a linked worktree or pass `--allow-unsafe-root-release` to override."
     )
 
 
@@ -552,7 +558,7 @@ def browser_test_command(package_root: Path, project: HarnessProject, site_dir: 
 
 def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_main, command_name="generate")
+    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
     output_root = resolve_output_root(args.output_root, Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     projects = selected_projects(load_project_catalog(manifest_path), args.project)
@@ -575,7 +581,7 @@ def command_generate(args: argparse.Namespace) -> int:
 
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_main, command_name="validate")
+    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
     output_root = resolve_output_root(args.output_root, Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     projects = selected_projects(load_project_catalog(manifest_path), args.project)
@@ -674,12 +680,13 @@ def command_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     projects = selected_projects(load_project_catalog(manifest_path), args.project)
+    release_branch = active_release_branch(layout.repo_root)
     main_status = main_sync_status(layout.repo_root)
     print(f"project_manifest={manifest_path}")
-    print("verso_blueprint_ref=main")
-    print(f"preferred_main_ref={main_status.upstream_ref}")
-    print(f"main_relationship={main_status.relationship}")
-    print(f"main_oid={main_status.local_oid or ''}")
+    print(f"verso_blueprint_ref={release_branch}")
+    print(f"preferred_release_ref={main_status.upstream_ref}")
+    print(f"release_relationship={main_status.relationship}")
+    print(f"release_oid={main_status.local_oid or ''}")
     print(f"{main_status.upstream_ref}_oid={main_status.upstream_oid or ''}")
 
     for project in projects:
@@ -705,7 +712,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 def command_reference_sync(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_main, command_name="sync")
+    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     projects = selected_projects(load_project_catalog(manifest_path), args.project)
     sync_reference_blueprints(
@@ -801,7 +808,10 @@ def command_reference_prune(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     projects = load_project_catalog(manifest_path)
-    active_names = {worktree.name for worktree in git_worktrees(layout.repo_root)}
+    active_names = {
+        root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
+        for worktree in git_worktrees(layout.repo_root)
+    }
     project_ids = {project.project_id for project in projects if project.git_checkout}
     removals = reference_prune_plan(
         active_names,

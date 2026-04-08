@@ -9,6 +9,11 @@ This repository keeps local parallel work simple:
 
 ## Branch Conventions
 
+- `branch-policy.json` is the tracked source of truth for the repository's
+  default development branch.
+- If a checkout's `lean-toolchain` release line differs from
+  `branch-policy.json.default_dev_branch`, treat that checkout as backport-only
+  and keep changes scoped to backports or explicit branch-policy maintenance.
 - Use `feat/<slug>` for user-facing or architectural changes.
 - Use `fix/<slug>` for bug fixes.
 - Use `docs/<slug>` for documentation-only work.

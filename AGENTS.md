@@ -10,7 +10,19 @@
   - `tests/browser`
   - `scripts`
   - `doc`
-- Primary branch at the repository root: `main`
+- The tracked default-development branch is stored in `branch-policy.json`.
+
+## Branch Policy
+
+- `branch-policy.json` is the tracked source of truth for the repository's
+  default development branch.
+- The current checkout's release line comes from `lean-toolchain`.
+- If the current checkout's release line differs from
+  `branch-policy.json.default_dev_branch`, treat the checkout as backport-only.
+- In a backport-only checkout, do not do new feature or cleanup work unless the
+  user explicitly asks for a backport or branch-policy maintenance.
+- Use `python3 -m scripts.blueprint_harness release-status` when you need the
+  resolved branch policy for the current checkout.
 
 ## Worktree Policy
 
@@ -35,8 +47,7 @@
 - `/home/egallego/lean/verso-blueprint-old/WORKTREE_DASHBOARD.md` is archival
   only; do not update it unless the user explicitly asks for archival work.
 - Feature and legacy worktree branches are local-only by default. Do not push
-  anything except `main` to `origin` unless the user explicitly asks for that
-  push.
+  any branch to `origin` unless the user explicitly asks for that push.
 
 ## Release Status
 

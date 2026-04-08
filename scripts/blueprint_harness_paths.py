@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from scripts.blueprint_harness_branches import root_checkout_namespace
+
 
 @dataclass(frozen=True)
 class HarnessLayout:
@@ -37,7 +39,7 @@ class HarnessLayout:
 
     @property
     def reference_project_checkout_namespace(self) -> str:
-        return self.worktree_name or "main"
+        return self.worktree_name or root_checkout_namespace(self.repo_root)
 
     @property
     def reference_project_checkout_root(self) -> Path:
@@ -45,7 +47,7 @@ class HarnessLayout:
 
     @property
     def reference_project_edit_namespace(self) -> str:
-        return self.worktree_name or "main"
+        return self.worktree_name or root_checkout_namespace(self.repo_root)
 
     @property
     def reference_project_edit_root(self) -> Path:

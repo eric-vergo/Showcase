@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - v*
 
 permissions:
   contents: read

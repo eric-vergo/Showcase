@@ -7,6 +7,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.blueprint_harness_branches import (
+    ROOT_WORKTREE_NAME,
+    active_release_branch,
+    branch_policy_path,
+    checkout_branch_role,
+    default_dev_branch,
+    checkout_is_backport_only,
+    local_release_ref,
+    preferred_release_ref,
+    root_checkout_namespace,
+)
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
 from scripts.blueprint_harness_paths import (
     canonical_example_site_dir,
@@ -18,6 +29,7 @@ from scripts.blueprint_harness_references import (
     reference_prune_plan,
     sync_reference_blueprints,
 )
+from scripts.blueprint_harness_toolchains import bump_toolchain_checkout
 from scripts.blueprint_harness_utils import run
 from scripts.blueprint_harness_worktrees import (
     GitWorktree,
@@ -111,18 +123,7 @@ def branch_exists(repo_root: Path, branch: str) -> bool:
 
 
 def preferred_main_ref(repo_root: Path) -> str:
-    if (
-        subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"],
-            cwd=repo_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        return "origin/main"
-    return "main"
+    return preferred_release_ref(repo_root)
 
 
 def current_branch_name(repo_root: Path) -> str | None:
@@ -192,7 +193,7 @@ def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSy
 
 def main_sync_status(repo_root: Path) -> RefSyncStatus:
     upstream_ref = preferred_main_ref(repo_root)
-    return ref_sync_status(repo_root, "main", upstream_ref)
+    return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
 
 
 def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
@@ -207,16 +208,17 @@ def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
 
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
+    release_branch = active_release_branch(layout.repo_root)
     preferred_base = preferred_main_ref(layout.repo_root)
     if requested_base is None:
         requested_base = preferred_base
 
-    if requested_base == "main" and preferred_base != "main":
+    if requested_base == release_branch and preferred_base != release_branch:
         status = main_sync_status(layout.repo_root)
         if status.relationship != "in_sync":
             raise SystemExit(
-                f"[blueprint-harness] local `main` is {status.relationship} relative to `{status.upstream_ref}`; "
-                "refusing to use local `main` as the worktree base. Rebase local `main` first or pass "
+                f"[blueprint-harness] local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`; "
+                f"refusing to use local `{release_branch}` as the worktree base. Rebase local `{release_branch}` first or pass "
                 f"`--base {status.upstream_ref}` explicitly."
             )
     return requested_base
@@ -229,13 +231,14 @@ def ref_merged_into_main(repo_root: Path, ref: str) -> bool:
 def merged_clean_worktree_candidates(repo_root: Path, current_path: Path) -> list[tuple[str, Path, str]]:
     candidates: list[tuple[str, Path, str]] = []
     records, _registry = worktree_record_map(repo_root)
+    release_branch = local_release_ref(repo_root)
     for record in records.values():
         path = Path(record.path)
         if record.root_checkout or path.resolve() == current_path.resolve():
             continue
         if record.locked:
             continue
-        if record.branch is None or record.branch == "main":
+        if record.branch is None or record.branch == release_branch:
             continue
         if not record.merged_into_main or record.dirty:
             continue
@@ -301,7 +304,7 @@ def print_worktree_dashboard(records, registry: Path) -> None:
         print(
             f"{record.name}\tlock={lock_or_blank(record.locked)}\tpriority={record.priority or ''}\tstatus={record.status}\t"
             f"owner={record.owner or ''}\tbranch={record.branch or ''}\tdirty={bool_or_blank(record.dirty)}\t"
-            f"main_ahead={text_or_blank(record.main_ahead)}\tmain_behind={text_or_blank(record.main_behind)}\t"
+            f"base_ahead={text_or_blank(record.main_ahead)}\tbase_behind={text_or_blank(record.main_behind)}\t"
             f"scope={scope}\tsummary={record.summary or ''}"
         )
 
@@ -314,6 +317,23 @@ def command_sync_root_lake(_: argparse.Namespace) -> int:
 
     sync_root_worktree_lake(layout)
     print("[blueprint-harness] synced `.lake/` from root worktree")
+    return 0
+
+
+def command_bump_toolchain(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    result = bump_toolchain_checkout(
+        layout.package_root,
+        args.toolchain,
+        verso_ref=args.verso_ref,
+        validate=not args.skip_validation,
+    )
+    print(f"package_root={layout.package_root}")
+    print(f"toolchain_ref={result.lean_ref}")
+    print(f"toolchain_spec={result.toolchain_spec}")
+    print(f"verso_ref={result.verso_ref}")
+    print(f"verso_tag_oid={result.verso_tag_oid}")
+    print(f"validated={str(not args.skip_validation).lower()}")
     return 0
 
 
@@ -363,15 +383,22 @@ def command_create_worktree(args: argparse.Namespace) -> int:
 
 def command_main_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    status = main_sync_status(layout.repo_root)
-    print(f"current_branch={current_branch_name(layout.repo_root) or ''}")
-    print(f"preferred_main_ref={status.upstream_ref}")
-    print(f"main_oid={status.local_oid or ''}")
+    release_branch = active_release_branch(layout.package_root)
+    status = main_sync_status(layout.package_root)
+    print(f"current_branch={current_branch_name(layout.package_root) or ''}")
+    print(f"branch_policy={branch_policy_path(layout.package_root)}")
+    print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
+    print(f"active_release_branch={release_branch}")
+    print(f"checkout_role={checkout_branch_role(layout.package_root)}")
+    print(f"backport_only={bool_or_blank(checkout_is_backport_only(layout.package_root))}")
+    print(f"release_tracking_ref={status.local_ref}")
+    print(f"preferred_release_ref={status.upstream_ref}")
+    print(f"release_oid={status.local_oid or ''}")
     print(f"{status.upstream_ref}_oid={status.upstream_oid or ''}")
     print(f"relationship={status.relationship}")
     if args.require_sync and status.relationship != "in_sync":
         print(
-            f"[blueprint-harness] local `main` is {status.relationship} relative to `{status.upstream_ref}`",
+            f"[blueprint-harness] local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`",
             file=sys.stderr,
         )
         return 1
@@ -406,37 +433,39 @@ def cleanup_source_branch(layout, branch: str, *, delete_remote: bool) -> None:
 
 def command_land_main(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
+    release_branch = active_release_branch(layout.repo_root)
     if layout.in_linked_worktree:
-        raise SystemExit("[blueprint-harness] run `land-main` from the root checkout, not from a linked worktree")
-    if current_branch_name(layout.repo_root) != "main":
-        raise SystemExit("[blueprint-harness] root checkout must be on `main` before landing changes")
+        raise SystemExit("[blueprint-harness] run `land-release` from the root checkout, not from a linked worktree")
+    status = main_sync_status(layout.repo_root)
+    tracking_ref = status.local_ref
+    if current_branch_name(layout.repo_root) != tracking_ref:
+        raise SystemExit(f"[blueprint-harness] root checkout must be on `{tracking_ref}` before landing changes")
     if not worktree_is_clean(layout.package_root):
         raise SystemExit("[blueprint-harness] root checkout has local modifications; commit or stash them first")
 
-    status = main_sync_status(layout.repo_root)
     if status.relationship != "in_sync":
         raise SystemExit(
-            f"[blueprint-harness] local `main` is {status.relationship} relative to `{status.upstream_ref}`; "
-            "sync `main` before landing additional changes"
+            f"[blueprint-harness] local `{tracking_ref}` is {status.relationship} relative to `{status.upstream_ref}`; "
+            f"sync `{tracking_ref}` before landing additional changes"
         )
 
     source_ref = args.source
     if ref_oid(layout.repo_root, source_ref) is None:
         raise SystemExit(f"[blueprint-harness] unknown source ref `{source_ref}`")
-    if source_ref in {"main", status.upstream_ref}:
-        raise SystemExit("[blueprint-harness] source ref must not be `main` itself")
-    if not is_ancestor(layout.repo_root, "main", source_ref):
+    if source_ref in {tracking_ref, status.upstream_ref}:
+        raise SystemExit(f"[blueprint-harness] source ref must not be `{tracking_ref}` itself")
+    if not is_ancestor(layout.repo_root, tracking_ref, source_ref):
         raise SystemExit(
-            f"[blueprint-harness] source ref `{source_ref}` is not a fast-forward descendant of local `main`; "
+            f"[blueprint-harness] source ref `{source_ref}` is not a fast-forward descendant of local `{tracking_ref}`; "
             "rebase or merge it first"
         )
 
     run(["git", "merge", "--ff-only", source_ref], cwd=layout.repo_root)
-    print(f"[blueprint-harness] landed `{source_ref}` onto local `main`")
+    print(f"[blueprint-harness] landed `{source_ref}` onto local `{tracking_ref}`")
 
-    if preferred_main_ref(layout.repo_root) == "origin/main" and not args.no_push:
-        run(["git", "push", "origin", "main"], cwd=layout.repo_root)
-        print("[blueprint-harness] pushed `main` to origin")
+    if preferred_main_ref(layout.repo_root) == f"origin/{tracking_ref}" and not args.no_push:
+        run(["git", "push", "origin", tracking_ref], cwd=layout.repo_root)
+        print(f"[blueprint-harness] pushed `{tracking_ref}` to origin")
 
     if args.cleanup:
         cleanup_branch = None
@@ -449,8 +478,8 @@ def command_land_main(args: argparse.Namespace) -> int:
             print(
                 "[blueprint-harness] cleanup skipped: source ref is not a branch name tracked locally or under origin"
             )
-        elif cleanup_branch == "main":
-            print("[blueprint-harness] cleanup skipped: refusing to clean up `main`")
+        elif cleanup_branch == tracking_ref:
+            print(f"[blueprint-harness] cleanup skipped: refusing to clean up `{tracking_ref}`")
         else:
             cleanup_source_branch(layout, cleanup_branch, delete_remote=not args.keep_remote)
 
@@ -461,13 +490,15 @@ def command_paths(_: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(None, layout.package_root)
     projects = load_project_catalog(manifest_path)
+    release_branch = active_release_branch(layout.repo_root)
     print(f"package_root={layout.package_root}")
     print(f"repo_root={layout.repo_root}")
     print(f"worktree_name={layout.worktree_name or ''}")
     print(f"artifact_root={layout.artifact_root}")
     print(f"project_manifest={resolve_manifest_path(None, layout.package_root)}")
     print("local_override_strategy=ephemeral_lakefile_rewrite")
-    print(f"preferred_main_ref={preferred_main_ref(layout.repo_root)}")
+    print(f"active_release_branch={release_branch}")
+    print(f"preferred_release_ref={preferred_main_ref(layout.repo_root)}")
     print(f"root_lake={layout.repo_root / '.lake'}")
     print(f"reference_output_root={layout.reference_output_root}")
     print(f"test_blueprint_output_root={layout.test_blueprint_output_root}")
@@ -494,6 +525,7 @@ def command_worktree_prune_candidates(_: argparse.Namespace) -> int:
 
 def command_worktree_retire(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
+    release_branch = local_release_ref(layout.repo_root)
     name = resolve_worktree_name(layout.worktree_name, args.name)
     records, _registry = worktree_record_map(layout.repo_root)
     if name not in records:
@@ -511,16 +543,16 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         raise SystemExit("[blueprint-harness] cannot retire the root checkout")
     if path.resolve() == layout.package_root.resolve():
         raise SystemExit("[blueprint-harness] cannot retire the current active worktree from inside itself")
-    if branch == "main":
-        raise SystemExit("[blueprint-harness] cannot retire a linked worktree attached to `main`")
+    if branch == release_branch:
+        raise SystemExit(f"[blueprint-harness] cannot retire a linked worktree attached to `{release_branch}`")
     merge_subject = branch or worktree.head
     if not ref_merged_into_main(layout.repo_root, merge_subject):
         if branch is None:
             raise SystemExit(
                 f"[blueprint-harness] detached worktree `{name}` is at `{worktree.head}` "
-                "which is not merged into the preferred main ref"
+                "which is not merged into the preferred release ref"
             )
-        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into the preferred main ref")
+        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into the preferred release ref")
     if not worktree_is_clean(path):
         raise SystemExit(f"[blueprint-harness] worktree `{name}` has local modifications")
 
@@ -537,7 +569,10 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
 
     manifest_path = resolve_manifest_path(None, layout.package_root)
     projects = load_project_catalog(manifest_path)
-    active_names = {worktree.name for worktree in git_worktrees(layout.repo_root)}
+    active_names = {
+        root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
+        for worktree in git_worktrees(layout.repo_root)
+    }
     project_ids = {project.project_id for project in projects if project.git_checkout}
     removals = reference_prune_plan(
         active_names,
@@ -582,9 +617,9 @@ def command_worktree_status(args: argparse.Namespace) -> int:
     print(f"dirty={bool_or_blank(record.dirty)}")
     print(f"tracked_changes={text_or_blank(record.tracked_changes)}")
     print(f"untracked_changes={text_or_blank(record.untracked_changes)}")
-    print(f"merged_into_main={bool_or_blank(record.merged_into_main)}")
-    print(f"main_ahead={text_or_blank(record.main_ahead)}")
-    print(f"main_behind={text_or_blank(record.main_behind)}")
+    print(f"merged_into_base={bool_or_blank(record.merged_into_main)}")
+    print(f"base_ahead={text_or_blank(record.main_ahead)}")
+    print(f"base_behind={text_or_blank(record.main_behind)}")
     print(f"upstream={record.upstream or ''}")
     print(f"upstream_ahead={text_or_blank(record.upstream_ahead)}")
     print(f"upstream_behind={text_or_blank(record.upstream_behind)}")
@@ -649,26 +684,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_root_lake.set_defaults(func=command_sync_root_lake)
 
+    bump_toolchain = subparsers.add_parser(
+        "bump-toolchain",
+        help="Bump the managed Lean toolchain pins, select the matching `verso` release, and refresh tracked manifests.",
+    )
+    bump_toolchain.add_argument(
+        "toolchain",
+        help="Lean toolchain release such as `v4.29.0`, `4.29.0`, or `leanprover/lean4:v4.29.0`.",
+    )
+    bump_toolchain.add_argument(
+        "--verso-ref",
+        default=None,
+        help="Override the `verso` release tag. Defaults to the normalized Lean toolchain release ref.",
+    )
+    bump_toolchain.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Refresh the pins and manifests but skip the follow-up build/test validation.",
+    )
+    bump_toolchain.set_defaults(func=command_bump_toolchain)
+
     main_status = subparsers.add_parser(
-        "main-status",
-        help="Show whether local `main` is in sync with the preferred main ref.",
+        "release-status",
+        aliases=["main-status"],
+        help="Show whether the active local release branch is in sync with its preferred upstream ref.",
     )
     main_status.add_argument(
         "--require-sync",
         action="store_true",
-        help="Exit nonzero when local `main` is not in sync with the preferred main ref.",
+        help="Exit nonzero when the active local release branch is not in sync with its preferred upstream ref.",
     )
     main_status.set_defaults(func=command_main_status)
 
     land_main = subparsers.add_parser(
-        "land-main",
-        help="Fast-forward land one reviewed source ref onto root `main`, optionally push, and clean up the source branch.",
+        "land-release",
+        aliases=["land-main"],
+        help="Fast-forward land one reviewed source ref onto the active root release branch, optionally push, and clean up the source branch.",
     )
-    land_main.add_argument("source", help="Source ref to land onto `main`. This must be a fast-forward descendant of local `main`.")
+    land_main.add_argument(
+        "source",
+        help="Source ref to land onto the active release branch. This must be a fast-forward descendant of that local release branch.",
+    )
     land_main.add_argument(
         "--no-push",
         action="store_true",
-        help="Update local `main` but do not push `origin/main` afterward.",
+        help="Update the local release branch but do not push the matching `origin/<release>` branch afterward.",
     )
     land_main.add_argument(
         "--cleanup",
@@ -698,7 +758,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_worktree.add_argument(
         "--base",
         default=None,
-        help="Base ref used when creating a new branch. Defaults to `origin/main` when available, else `main`.",
+        help="Base ref used when creating a new branch. Defaults to the preferred active release ref.",
     )
     create_worktree.add_argument(
         "--skip-sync",
