@@ -23,6 +23,9 @@
   user explicitly asks for a backport or branch-policy maintenance.
 - Use `python3 -m scripts.blueprint_harness release-status` when you need the
   resolved branch policy for the current checkout.
+- Use `python3 -m scripts.blueprint_harness require-branch-role default_dev`
+  before non-backport implementation work when you want an explicit machine
+  check.
 
 ## Worktree Policy
 

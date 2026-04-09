@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import io
 from pathlib import Path
 from types import SimpleNamespace
@@ -429,10 +429,18 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         originals = {
             "detect_harness_layout": harness_mod.detect_harness_layout,
             "bump_toolchain_checkout": harness_mod.bump_toolchain_checkout,
+            "require_checkout_role": harness_mod.require_checkout_role,
         }
         seen: dict[str, object] = {}
         try:
             harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.require_checkout_role = lambda checkout_root, *, required_role, operation: seen.update(
+                {
+                    "role_checkout_root": checkout_root,
+                    "required_role": required_role,
+                    "operation": operation,
+                }
+            )
 
             def fake_bump(package_root, toolchain, *, verso_ref, validate):
                 seen["package_root"] = package_root
@@ -454,9 +462,44 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 setattr(harness_mod, name, value)
 
         self.assertEqual(seen["package_root"], layout.package_root)
+        self.assertEqual(seen["role_checkout_root"], layout.package_root)
+        self.assertEqual(seen["required_role"], "default_dev")
+        self.assertEqual(seen["operation"], "bump-toolchain")
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
         self.assertTrue(seen["validate"])
+
+    def test_require_branch_role_parses_requested_role(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["require-branch-role", "default_dev"])
+        self.assertEqual(args.role, "default_dev")
+
+    def test_require_branch_role_returns_nonzero_on_mismatch(self) -> None:
+        args = argparse.Namespace(role="default_dev")
+        layout = SimpleNamespace(repo_root=Path("/tmp/repo"), package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "print_branch_policy_status": harness_mod.print_branch_policy_status,
+            "checkout_branch_role": harness_mod.checkout_branch_role,
+            "active_release_branch": harness_mod.active_release_branch,
+            "default_dev_branch": harness_mod.default_dev_branch,
+        }
+        out = io.StringIO()
+        err = io.StringIO()
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.print_branch_policy_status = lambda _layout: None
+            harness_mod.checkout_branch_role = lambda _checkout_root: "backport"
+            harness_mod.active_release_branch = lambda _checkout_root: "v4.28.0"
+            harness_mod.default_dev_branch = lambda _checkout_root: "v4.29.0"
+            with redirect_stdout(out), redirect_stderr(err):
+                self.assertEqual(harness_mod.command_require_branch_role(args), 1)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("checkout `v4.28.0` is backport-only", err.getvalue())
 
     def test_reference_edit_uses_prepare_reference_checkout(self) -> None:
         project = HarnessProject(

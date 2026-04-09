@@ -44,6 +44,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
     def commit(self, root: Path, message: str) -> str:
         self.run_git(root, "config", "user.name", "Test User")
         self.run_git(root, "config", "user.email", "test@example.com")
+        self.run_git(root, "config", "commit.gpgsign", "false")
         self.run_git(root, "commit", "-m", message)
         return subprocess.run(
             ["git", "rev-parse", "HEAD"],

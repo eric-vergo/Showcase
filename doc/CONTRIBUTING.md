@@ -14,6 +14,8 @@ This repository keeps local parallel work simple:
 - If a checkout's `lean-toolchain` release line differs from
   `branch-policy.json.default_dev_branch`, treat that checkout as backport-only
   and keep changes scoped to backports or explicit branch-policy maintenance.
+- Use `python3 -m scripts.blueprint_harness require-branch-role default_dev`
+  when you want automation to block non-backport work on backport-only lines.
 - Use `feat/<slug>` for user-facing or architectural changes.
 - Use `fix/<slug>` for bug fixes.
 - Use `docs/<slug>` for documentation-only work.
