@@ -10,6 +10,9 @@ from pathlib import Path
 BRANCH_POLICY_FILENAME = "branch-policy.json"
 LEAN_TOOLCHAIN_PREFIX = "leanprover/lean4:"
 ROOT_WORKTREE_NAME = "root"
+CHECKOUT_ROLE_DEFAULT_DEV = "default_dev"
+CHECKOUT_ROLE_BACKPORT = "backport"
+CHECKOUT_ROLE_CHOICES = (CHECKOUT_ROLE_DEFAULT_DEV, CHECKOUT_ROLE_BACKPORT)
 NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(?:[-.A-Za-z0-9]+)?$")
 
 
@@ -75,11 +78,38 @@ def default_dev_branch(checkout_root: Path) -> str:
 
 
 def checkout_branch_role(checkout_root: Path) -> str:
-    return "default_dev" if active_release_branch(checkout_root) == default_dev_branch(checkout_root) else "backport"
+    return (
+        CHECKOUT_ROLE_DEFAULT_DEV
+        if active_release_branch(checkout_root) == default_dev_branch(checkout_root)
+        else CHECKOUT_ROLE_BACKPORT
+    )
 
 
 def checkout_is_backport_only(checkout_root: Path) -> bool:
-    return checkout_branch_role(checkout_root) == "backport"
+    return checkout_branch_role(checkout_root) == CHECKOUT_ROLE_BACKPORT
+
+
+def require_checkout_role(checkout_root: Path, *, required_role: str, operation: str) -> None:
+    if required_role not in CHECKOUT_ROLE_CHOICES:
+        known = ", ".join(CHECKOUT_ROLE_CHOICES)
+        raise SystemExit(f"[blueprint-harness] unknown checkout role `{required_role}`; known roles: {known}")
+
+    actual_role = checkout_branch_role(checkout_root)
+    if actual_role == required_role:
+        return
+
+    active_branch = active_release_branch(checkout_root)
+    default_branch = default_dev_branch(checkout_root)
+    if required_role == CHECKOUT_ROLE_DEFAULT_DEV:
+        raise SystemExit(
+            f"[blueprint-harness] refusing to run `{operation}` from backport-only checkout `{active_branch}`; "
+            f"the default development branch is `{default_branch}`"
+        )
+
+    raise SystemExit(
+        f"[blueprint-harness] refusing to run `{operation}` from default-development checkout `{active_branch}`; "
+        f"backport-only work must target a non-default release branch (default: `{default_branch}`)"
+    )
 
 
 def ref_exists(repo_root: Path, ref: str) -> bool:

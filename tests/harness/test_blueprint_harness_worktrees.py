@@ -398,6 +398,7 @@ branch refs/heads/feat/demo
             subprocess.run(["git", "init"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
             (repo_root / "tracked.txt").write_text("base\n", encoding="utf-8")
             (repo_root / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")

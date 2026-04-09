@@ -50,6 +50,15 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             self.assertEqual(branches_mod.checkout_branch_role(root), "backport")
             self.assertTrue(branches_mod.checkout_is_backport_only(root))
 
+    def test_require_checkout_role_rejects_backport_for_default_dev_only_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(root / "lean-toolchain", "leanprover/lean4:v4.28.0\n")
+            self.write(root / "branch-policy.json", '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0"\n}\n')
+
+            with self.assertRaisesRegex(SystemExit, "refusing to run `bump-toolchain` from backport-only checkout `v4.28.0`"):
+                branches_mod.require_checkout_role(root, required_role="default_dev", operation="bump-toolchain")
+
 
 if __name__ == "__main__":
     unittest.main()

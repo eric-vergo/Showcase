@@ -392,7 +392,11 @@ or landing, use:
 ```bash
 python3 -m scripts.blueprint_harness release-status
 python3 -m scripts.blueprint_harness release-status --require-sync
+python3 -m scripts.blueprint_harness require-branch-role default_dev
 ```
+
+Use `require-branch-role default_dev` when a script or agent should refuse to
+do non-backport work from a backport-only checkout.
 
 To land one reviewed branch onto the active release branch safely from the root
 checkout, use:

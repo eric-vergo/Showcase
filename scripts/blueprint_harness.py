@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
+    CHECKOUT_ROLE_CHOICES,
     ROOT_WORKTREE_NAME,
     active_release_branch,
     branch_policy_path,
@@ -16,6 +17,7 @@ from scripts.blueprint_harness_branches import (
     checkout_is_backport_only,
     local_release_ref,
     preferred_release_ref,
+    require_checkout_role,
     root_checkout_namespace,
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
@@ -322,6 +324,7 @@ def command_sync_root_lake(_: argparse.Namespace) -> int:
 
 def command_bump_toolchain(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
+    require_checkout_role(layout.package_root, required_role="default_dev", operation="bump-toolchain")
     result = bump_toolchain_checkout(
         layout.package_root,
         args.toolchain,
@@ -335,6 +338,23 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
     print(f"verso_tag_oid={result.verso_tag_oid}")
     print(f"validated={str(not args.skip_validation).lower()}")
     return 0
+
+
+def print_branch_policy_status(layout) -> RefSyncStatus:
+    release_branch = active_release_branch(layout.package_root)
+    status = main_sync_status(layout.package_root)
+    print(f"current_branch={current_branch_name(layout.package_root) or ''}")
+    print(f"branch_policy={branch_policy_path(layout.package_root)}")
+    print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
+    print(f"active_release_branch={release_branch}")
+    print(f"checkout_role={checkout_branch_role(layout.package_root)}")
+    print(f"backport_only={bool_or_blank(checkout_is_backport_only(layout.package_root))}")
+    print(f"release_tracking_ref={status.local_ref}")
+    print(f"preferred_release_ref={status.upstream_ref}")
+    print(f"release_oid={status.local_oid or ''}")
+    print(f"{status.upstream_ref}_oid={status.upstream_oid or ''}")
+    print(f"relationship={status.relationship}")
+    return status
 
 
 def command_create_worktree(args: argparse.Namespace) -> int:
@@ -384,18 +404,7 @@ def command_create_worktree(args: argparse.Namespace) -> int:
 def command_main_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     release_branch = active_release_branch(layout.package_root)
-    status = main_sync_status(layout.package_root)
-    print(f"current_branch={current_branch_name(layout.package_root) or ''}")
-    print(f"branch_policy={branch_policy_path(layout.package_root)}")
-    print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
-    print(f"active_release_branch={release_branch}")
-    print(f"checkout_role={checkout_branch_role(layout.package_root)}")
-    print(f"backport_only={bool_or_blank(checkout_is_backport_only(layout.package_root))}")
-    print(f"release_tracking_ref={status.local_ref}")
-    print(f"preferred_release_ref={status.upstream_ref}")
-    print(f"release_oid={status.local_oid or ''}")
-    print(f"{status.upstream_ref}_oid={status.upstream_oid or ''}")
-    print(f"relationship={status.relationship}")
+    status = print_branch_policy_status(layout)
     if args.require_sync and status.relationship != "in_sync":
         print(
             f"[blueprint-harness] local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`",
@@ -403,6 +412,30 @@ def command_main_status(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+def command_require_branch_role(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    print_branch_policy_status(layout)
+    actual_role = checkout_branch_role(layout.package_root)
+    if actual_role == args.role:
+        return 0
+
+    active_branch = active_release_branch(layout.package_root)
+    default_branch = default_dev_branch(layout.package_root)
+    if args.role == "default_dev":
+        print(
+            f"[blueprint-harness] checkout `{active_branch}` is backport-only; "
+            f"default development branch is `{default_branch}`",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"[blueprint-harness] checkout `{active_branch}` is the default development branch; "
+            "a backport-only branch is required for this operation",
+            file=sys.stderr,
+        )
+    return 1
 
 
 def cleanup_source_branch(layout, branch: str, *, delete_remote: bool) -> None:
@@ -715,6 +748,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit nonzero when the active local release branch is not in sync with its preferred upstream ref.",
     )
     main_status.set_defaults(func=command_main_status)
+
+    require_role = subparsers.add_parser(
+        "require-branch-role",
+        help="Exit nonzero unless the current checkout matches the requested branch-policy role.",
+    )
+    require_role.add_argument(
+        "role",
+        choices=CHECKOUT_ROLE_CHOICES,
+        help="Required checkout role: `default_dev` for the main development line, or `backport` for maintenance-only release lines.",
+    )
+    require_role.set_defaults(func=command_require_branch_role)
 
     land_main = subparsers.add_parser(
         "land-release",
