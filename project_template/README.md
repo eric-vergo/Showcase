@@ -46,8 +46,8 @@ The important files are:
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the rendering entry point
 - `lakefile.lean`: the package definition and the `blueprint-gen` executable
-- `.github/workflows/pages.yml`: GitHub Actions workflow that builds and deploys
-  the generated HTML to GitHub Pages
+- `.github/workflows/pages.yml`: thin caller into the shared Pages reusable
+  workflow that builds and deploys the generated HTML to GitHub Pages
 - `scripts/ci-pages.sh`: the local command that the Pages workflow runs
 
 ## What the template demonstrates
