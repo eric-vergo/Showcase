@@ -21,6 +21,7 @@ project that already has the right moving parts:
 project_template/
   .github/
     workflows/
+      blueprint-pages.yml
       pages.yml
   .gitignore
   lakefile.lean
@@ -46,8 +47,10 @@ The important files are:
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the rendering entry point
 - `lakefile.lean`: the package definition and the `blueprint-gen` executable
-- `.github/workflows/pages.yml`: thin caller into the shared Pages reusable
-  workflow that builds and deploys the generated HTML to GitHub Pages
+- `.github/workflows/blueprint-pages.yml`: copyable reusable Pages workflow
+  used by the template
+- `.github/workflows/pages.yml`: thin caller into the local reusable workflow
+  that builds and deploys the generated HTML to GitHub Pages
 - `scripts/ci-pages.sh`: the local command that the Pages workflow runs
 
 ## What the template demonstrates
@@ -85,6 +88,7 @@ the site manually, `lake exe blueprint-gen --output _out/site` still works.
 ## GitHub Pages
 
 The template includes `.github/workflows/pages.yml`.
+It also includes `.github/workflows/blueprint-pages.yml`.
 
 - on pull requests, it builds the Blueprint site and uploads the Pages artifact
 - on pushes to `main`, it deploys `_out/site/html-multi` to GitHub Pages
