@@ -4,6 +4,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import shlex
+import re
 import subprocess
 import sys
 import tempfile
@@ -102,7 +103,25 @@ def current_repo_head() -> str:
     return result.stdout.strip()
 
 
-def package_lakefile_text(*, blueprint_repo_url: str, blueprint_ref: str, packages_dir: str | None) -> str:
+def current_lean_toolchain() -> str:
+    return (PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")
+
+
+def current_verso_require_line() -> str:
+    text = (PACKAGE_ROOT / "lakefile.lean").read_text(encoding="utf-8")
+    match = re.search(r"^\s*require\s+verso\s+from\s+.+$", text, flags=re.MULTILINE)
+    if match is None:
+        raise SystemExit("[math-lint-smoke] could not find a `require verso ...` line in the current lakefile")
+    return match.group(0)
+
+
+def package_lakefile_text(
+    *,
+    verso_require_line: str,
+    blueprint_repo_url: str,
+    blueprint_ref: str,
+    packages_dir: str | None,
+) -> str:
     config_lines = [
         "package Smoke where",
         "  precompileModules := false",
@@ -115,7 +134,7 @@ def package_lakefile_text(*, blueprint_repo_url: str, blueprint_ref: str, packag
             "import Lake",
             "open Lake DSL",
             "",
-            'require verso from git "https://github.com/leanprover/verso"@"v4.29.0"',
+            verso_require_line,
             f'require VersoBlueprint from git "{blueprint_repo_url}"@"{blueprint_ref}"',
             "",
             *config_lines,
@@ -127,12 +146,21 @@ def package_lakefile_text(*, blueprint_repo_url: str, blueprint_ref: str, packag
     )
 
 
-def materialize_case(workspace: Path, case: Case, *, blueprint_repo_url: str, blueprint_ref: str) -> Path:
+def materialize_case(
+    workspace: Path,
+    case: Case,
+    *,
+    lean_toolchain: str,
+    verso_require_line: str,
+    blueprint_repo_url: str,
+    blueprint_ref: str,
+) -> Path:
     project_dir = workspace / case.name
     project_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+    (project_dir / "lean-toolchain").write_text(lean_toolchain, encoding="utf-8")
     (project_dir / "lakefile.lean").write_text(
         package_lakefile_text(
+            verso_require_line=verso_require_line,
             blueprint_repo_url=blueprint_repo_url,
             blueprint_ref=blueprint_ref,
             packages_dir=case.packages_dir,
@@ -183,6 +211,8 @@ def main() -> int:
     ensure_node_available()
     blueprint_repo_url = PACKAGE_ROOT.resolve().as_uri()
     blueprint_ref = current_repo_head()
+    lean_toolchain = current_lean_toolchain()
+    verso_require_line = current_verso_require_line()
 
     with tempfile.TemporaryDirectory(prefix="verso-blueprint-math-lint-smoke-") as tmp:
         workspace = Path(tmp)
@@ -191,6 +221,8 @@ def main() -> int:
             project_dir = materialize_case(
                 workspace,
                 case,
+                lean_toolchain=lean_toolchain,
+                verso_require_line=verso_require_line,
                 blueprint_repo_url=blueprint_repo_url,
                 blueprint_ref=blueprint_ref,
             )
