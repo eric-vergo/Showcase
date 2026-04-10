@@ -1,4 +1,4 @@
-import katex from "../.lake/packages/verso/vendored-js/katex/katex.mjs";
+import { pathToFileURL } from "node:url";
 
 function sanitizeMessage(message) {
   return String(message ?? "")
@@ -17,8 +17,25 @@ function readPayload() {
   }
 }
 
+async function loadKatex() {
+  const katexPath = process.argv[3] ?? "";
+  if (!katexPath) return null;
+  try {
+    const katexModule = await import(pathToFileURL(katexPath).href);
+    return katexModule.default ?? katexModule;
+  } catch {
+    return null;
+  }
+}
+
 const payload = readPayload();
-if (!payload || typeof payload.source !== "string") {
+const katex = await loadKatex();
+if (
+  !payload ||
+  typeof payload.source !== "string" ||
+  !katex ||
+  typeof katex.renderToString !== "function"
+) {
   process.exit(1);
 }
 

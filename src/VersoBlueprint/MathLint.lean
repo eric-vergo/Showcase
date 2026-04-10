@@ -91,36 +91,72 @@ an external repository slug.
 private def katexLintScriptPath : System.FilePath :=
   "static-web" / "katex-lint.mjs"
 
+private def versoKatexModulePath : System.FilePath :=
+  "vendored-js" / "katex" / "katex.mjs"
+
+private structure RuntimePaths where
+  script : System.FilePath
+  katexModule : System.FilePath
+
 initialize nodeAvailableRef : IO.Ref (Option Bool) ← IO.mkRef none
+initialize runtimePathsRef : IO.Ref (Option (Option RuntimePaths)) ← IO.mkRef none
 initialize lintCacheRef : IO.Ref (Std.HashMap String (Option Failure)) ← IO.mkRef {}
 
-private partial def findAssetRootFrom (dir : System.FilePath) : IO (Option System.FilePath) := do
-  if ← (dir / katexLintScriptPath).pathExists then
-    pure (some dir)
+private partial def findPackageAssetFrom
+    (dir : System.FilePath) (assetPath : System.FilePath) : IO (Option System.FilePath) := do
+  let candidate := dir / assetPath
+  if ← candidate.pathExists then
+    pure (some (← IO.FS.realPath candidate))
   else
     match dir.parent with
     | some parent =>
       if parent == dir then
         pure none
       else
-        findAssetRootFrom parent
+        findPackageAssetFrom parent assetPath
     | none => pure none
 
 /--
-Locate the package root that owns `VersoBlueprint.MathLint`.
+Locate a package-owned asset by starting from the module source or build output.
 
-This works both in the main checkout and when VersoBlueprint is pulled in as a Lake dependency,
-because the module search path resolves to the package's source tree and we walk upward looking for
-the vendored lint script directly under that package root.
+We first try the source tree from `LEAN_SRC_PATH`, then fall back to the compiled `.olean` path from
+`LEAN_PATH`. Walking upward from either location lets us recover the package root in root checkouts,
+linked worktrees, and dependency checkouts without assuming a specific Lake `packagesDir`.
 -/
-private def findAssetRoot : IO (Option System.FilePath) := do
+private def findPackageAsset (moduleName : Name) (assetPath : System.FilePath) : IO (Option System.FilePath) := do
   let srcSearchPath ← Lean.getSrcSearchPath
-  let some modPath ← srcSearchPath.findModuleWithExt "lean" `VersoBlueprint.MathLint
-    | return none
-  let modPath ← IO.FS.realPath modPath
-  let some dir := modPath.parent
-    | return none
-  findAssetRootFrom dir
+  let srcPath? ← srcSearchPath.findModuleWithExt "lean" moduleName
+  if let some srcPath := srcPath? then
+    let srcPath ← IO.FS.realPath srcPath
+    if let some dir := srcPath.parent then
+      if let some asset := ← findPackageAssetFrom dir assetPath then
+        return some asset
+  try
+    let oleanPath ← Lean.findOLean moduleName
+    let oleanPath ← IO.FS.realPath oleanPath
+    let some dir := oleanPath.parent
+      | return none
+    findPackageAssetFrom dir assetPath
+  catch _ =>
+    pure none
+
+/--
+Resolve the external files needed by the KaTeX math linter.
+
+These paths are resolved once per Lean process because they are stable for a given checkout.
+-/
+private def runtimePaths : IO (Option RuntimePaths) := do
+  match ← runtimePathsRef.get with
+  | some cached => pure cached
+  | none =>
+    let resolved ← do
+      let some script ← findPackageAsset `VersoBlueprint.MathLint katexLintScriptPath
+        | return none
+      let some katexModule ← findPackageAsset `Verso.Output.Html.KaTeX versoKatexModulePath
+        | return none
+      pure (some { script, katexModule })
+    runtimePathsRef.set (some resolved)
+    pure resolved
 
 /-- Probe `node` once per Lean process so missing Node just disables linting quietly. -/
 private def nodeAvailable : IO Bool := do
@@ -229,15 +265,13 @@ def lint? (payload : Payload) : IO (Option Failure) := do
     return cached
 
   let result ← do
-    let some root ← findAssetRoot
+    let some { script, katexModule } ← runtimePaths
       | return none
-    let script := root / katexLintScriptPath
     let out ←
       try
         IO.Process.output {
           cmd := "node"
-          args := #[script.toString, key]
-          cwd := some root
+          args := #[script.toString, key, katexModule.toString]
         }
       catch _ =>
         return none
