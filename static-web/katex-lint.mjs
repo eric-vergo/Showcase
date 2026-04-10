@@ -1,4 +1,4 @@
-import katex from "../vendored-js/katex/katex.mjs";
+import katex from "../.lake/packages/verso/vendored-js/katex/katex.mjs";
 
 function sanitizeMessage(message) {
   return String(message ?? "")

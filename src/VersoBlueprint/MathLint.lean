@@ -81,8 +81,15 @@ private structure RawResult where
   inPrelude : Bool := false
 deriving FromJson, ToJson, Repr
 
+/--
+Package-relative location of the vendored KaTeX lint entrypoint.
+
+The package root is either the repository checkout itself or the Lake dependency root under
+`.lake/packages/VersoBlueprint`, so the script path must stay relative to that root rather than to
+an external repository slug.
+-/
 private def katexLintScriptPath : System.FilePath :=
-  "verso-blueprint" / "static-web" / "katex-lint.mjs"
+  "static-web" / "katex-lint.mjs"
 
 initialize nodeAvailableRef : IO.Ref (Option Bool) ← IO.mkRef none
 initialize lintCacheRef : IO.Ref (Std.HashMap String (Option Failure)) ← IO.mkRef {}
@@ -103,7 +110,8 @@ private partial def findAssetRootFrom (dir : System.FilePath) : IO (Option Syste
 Locate the package root that owns `VersoBlueprint.MathLint`.
 
 This works both in the main checkout and when VersoBlueprint is pulled in as a Lake dependency,
-because the module search path resolves to either the workspace source tree or `.lake/packages/...`.
+because the module search path resolves to the package's source tree and we walk upward looking for
+the vendored lint script directly under that package root.
 -/
 private def findAssetRoot : IO (Option System.FilePath) := do
   let srcSearchPath ← Lean.getSrcSearchPath
