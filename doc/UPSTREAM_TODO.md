@@ -14,6 +14,20 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 - [ ] Decide whether page-level KaTeX preludes belong in core `verso`, and if
   so upstream a generic hook instead of keeping a Blueprint-owned mechanism.
 
+- [ ] Provide a cleaner upstream way for elaboration-time helpers to resolve
+  package-owned runtime assets without downstream packages hand-rolling module
+  search-path heuristics.
+  - current Blueprint pressure point:
+    KaTeX math lint needs to locate both Blueprint's `static-web/katex-lint.mjs`
+    and Verso's vendored `katex.mjs` during elaboration
+  - current local workaround:
+    resolve package roots from module locations and pass absolute paths into the
+    helper process instead of assuming a fixed `.lake/packages/...` layout
+  - desired upstream direction:
+    either expose a stable package-root/package-asset lookup API in the
+    elaboration context, or provide a Verso-owned helper entrypoint that hides
+    the vendored asset layout from downstream packages
+
 - [ ] Ask Lake maintainers to honor package overrides during `lake update`
   bootstrap, not only during manifest-based materialization.
   - confirmed on Lean `v4.29.0`

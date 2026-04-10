@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last updated: 2026-03-23
+Last updated: 2026-04-10
 
 This document tracks active cleanup and follow-up work for Blueprint support in
 this repository.
@@ -48,6 +48,24 @@ Priority:
    fixes look much more complex than they really are
 2. prefer landing this cleanup before deeper browser-runtime refactors
    accumulate on top of the current embedding model
+
+### Elaboration-Time Asset Resolution
+
+Goal: stop elaboration-time helper tools from depending on ad hoc package-path
+guessing across root checkouts, linked worktrees, and consumer dependency
+layouts.
+
+Work:
+
+1. replace the current Blueprint math-lint path heuristics with one Lean-side
+   resolver that computes the exact asset paths before spawning `node`
+2. pass explicit helper-script and KaTeX-library paths into the Node checker
+   instead of hard-coding `.lake/packages/...` assumptions inside JS modules
+3. add regression coverage for at least:
+   root checkout, linked worktree, consumer dependency checkout, and a
+   non-default Lake `packagesDir` layout
+4. audit whether other elaboration-time helpers rely on similar search-path or
+   package-name assumptions and consolidate them behind the same resolver
 
 ### Duplicate Identity Hardening
 
