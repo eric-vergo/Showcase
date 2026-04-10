@@ -56,6 +56,8 @@ jobs:
             ${{ runner.os }}-lake-packages-v2-
       - name: Run Lean tests
         run: ./scripts/run-lean-tests.sh
+      - name: Run consumer math lint smoke
+        run: python3 ./scripts/check_math_lint_fresh_repo.py
 
   harness-tests:
     name: Harness Tests
@@ -69,7 +71,7 @@ jobs:
       - name: Run Python harness tests
         run: python3 -m unittest discover -s tests/harness -p 'test_*.py'
       - name: Check Python harness syntax
-        run: python3 -m py_compile scripts/blueprint_harness.py scripts/blueprint_reference_harness.py scripts/blueprint_harness_cli.py scripts/blueprint_harness_paths.py scripts/blueprint_harness_projects.py scripts/blueprint_harness_worktrees.py scripts/check_project_template_fresh_repo.py scripts/prepare_reference_blueprints_pages.py
+        run: python3 -m py_compile scripts/blueprint_harness.py scripts/blueprint_reference_harness.py scripts/blueprint_harness_cli.py scripts/blueprint_harness_paths.py scripts/blueprint_harness_projects.py scripts/blueprint_harness_worktrees.py scripts/check_project_template_fresh_repo.py scripts/check_math_lint_fresh_repo.py scripts/prepare_reference_blueprints_pages.py
 
   project-template-fresh-repo:
     name: Project Template Fresh Repo
