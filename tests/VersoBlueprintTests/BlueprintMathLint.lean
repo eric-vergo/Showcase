@@ -9,34 +9,10 @@ import VersoBlueprint
 namespace Verso.VersoBlueprintTests.BlueprintMathLint
 
 open Informal
-open Lean
 
 private def extractedRaw? (rawSource : String) (span : Informal.MathLint.Span) : Option String := do
   let (start, stop) ← Informal.MathLint.inlineCodeRawRangeOfDecodedSpan? rawSource span
   pure <| start.extract rawSource stop
-
-private partial def findKatexLintRootFrom (dir : System.FilePath) : IO (Option System.FilePath) := do
-  if ← (dir / "static-web" / "katex-lint.mjs").pathExists then
-    pure (some dir)
-  else
-    match dir.parent with
-    | some parent =>
-      if parent == dir then
-        pure none
-      else
-        findKatexLintRootFrom parent
-    | none => pure none
-
-private def katexLintAssetsAvailable : IO Bool := do
-  let srcSearchPath ← Lean.getSrcSearchPath
-  let some modPath ← srcSearchPath.findModuleWithExt "lean" `VersoBlueprint.MathLint
-    | return false
-  let modPath ← IO.FS.realPath modPath
-  let some dir := modPath.parent
-    | return false
-  let some root ← findKatexLintRootFrom dir
-    | return false
-  (root / "static-web" / "katex-lint.mjs").pathExists
 
 private def localNodeAvailable : IO Bool := do
   try
@@ -45,21 +21,18 @@ private def localNodeAvailable : IO Bool := do
   catch _ =>
     pure false
 
-private def lintShouldBeOperational : IO Bool := do
-  pure <| (← localNodeAvailable) && (← katexLintAssetsAvailable)
-
 /-- info: true -/
 #guard_msgs in
 #eval
   show IO Bool from do
     let source := r#"\undefinedmacro"#
-    let shouldLint ← lintShouldBeOperational
+    let nodeAvailable ← localNodeAvailable
     let report ← Informal.MathLint.lint? {
       mode := .inline
       source
     }
     pure <|
-      if !shouldLint then
+      if !nodeAvailable then
         true
       else
         match report with
