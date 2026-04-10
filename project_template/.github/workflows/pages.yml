@@ -14,5 +14,5 @@ permissions:
 
 jobs:
   pages:
-    uses: ejgallego/verso-blueprint/.github/workflows/blueprint-pages.yml@main
+    uses: ./.github/workflows/blueprint-pages.yml
     secrets: inherit
