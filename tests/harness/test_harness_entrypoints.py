@@ -84,6 +84,11 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("--site-output", result.stdout)
 
+    def test_math_lint_fresh_repo_smoke_help(self) -> None:
+        result = self.run_command([sys.executable, "scripts/check_math_lint_fresh_repo.py", "--help"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("fresh consumer Blueprint projects", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
