@@ -72,6 +72,19 @@
           "publish": true
         }
       ],
+      "prepare_command": [
+        "git",
+        "-c",
+        "url.https://github.com/.insteadOf=git@github.com:",
+        "-c",
+        "url.https://github.com/.insteadOf=ssh://git@github.com/",
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "Sphere-Packing-LaTeX-Reference"
+      ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
@@ -122,6 +135,15 @@
           "ref": "5a8c3b093166d7f8368fe4a610b88bac097ffc35",
           "publish": true
         }
+      ],
+      "prepare_command": [
+        "git",
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "algebraic-combinatorics"
       ],
       "build_command": ["lake", "build", "blueprint-gen"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
