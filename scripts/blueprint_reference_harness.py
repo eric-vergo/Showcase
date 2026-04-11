@@ -345,19 +345,19 @@ def project_target_is_outdated(status: ReferenceProjectStatus) -> bool:
     return status.project_relationship in {"behind", "diverged", "missing_local", "missing_upstream"}
 
 
-def blueprint_target_is_outdated(status: ReferenceProjectStatus) -> bool:
+def downstream_blueprint_pin_has_drift(status: ReferenceProjectStatus) -> bool:
     if status.error is not None:
-        return True
+        return False
     return status.blueprint_relationship in {"behind", "diverged", "missing_local", "missing_upstream"}
 
 
-def status_has_issue(status: ReferenceProjectStatus) -> bool:
-    return project_target_is_outdated(status) or blueprint_target_is_outdated(status)
+def status_has_catalog_issue(status: ReferenceProjectStatus) -> bool:
+    return project_target_is_outdated(status)
 
 
 def print_release_target_summary(status: ReleaseTargetStatus) -> None:
     outdated_projects = sum(1 for project_status in status.project_statuses if project_target_is_outdated(project_status))
-    outdated_blueprint_pins = sum(1 for project_status in status.project_statuses if blueprint_target_is_outdated(project_status))
+    downstream_pin_drift = sum(1 for project_status in status.project_statuses if downstream_blueprint_pin_has_drift(project_status))
     print(
         "\t".join(
             [
@@ -368,7 +368,7 @@ def print_release_target_summary(status: ReleaseTargetStatus) -> None:
                 f"deploy_pages={str(status.deploy_pages).lower()}",
                 f"project_count={len(status.project_statuses)}",
                 f"outdated_projects={outdated_projects}",
-                f"outdated_blueprint_pins={outdated_blueprint_pins}",
+                f"downstream_pin_drift={downstream_pin_drift}",
             ]
         )
     )
@@ -391,7 +391,7 @@ def print_release_target_project_status(release_id: str, status: ReferenceProjec
         f"blueprint_pin_source={text_or_blank(status.blueprint_pin.source_path if status.blueprint_pin is not None else None)}",
         f"blueprint_resolved_ref={text_or_blank(status.blueprint_pin.resolved_ref if status.blueprint_pin is not None else None)}",
         f"blueprint_status={text_or_blank(status.blueprint_relationship)}",
-        f"blueprint_outdated={str(blueprint_target_is_outdated(status)).lower()}",
+        f"downstream_pin_drift={str(downstream_blueprint_pin_has_drift(status)).lower()}",
         f"skip={text_or_blank(status.skipped)}",
         f"error={text_or_blank(status.error)}",
     ]
@@ -898,12 +898,12 @@ def command_release_status(args: argparse.Namespace) -> int:
             deploy_pages=release_target.deploy_pages,
             project_statuses=tuple(statuses),
         )
-        if args.outdated_only and not any(status_has_issue(status) for status in summary.project_statuses):
+        if args.outdated_only and not any(status_has_catalog_issue(status) for status in summary.project_statuses):
             continue
 
         print_release_target_summary(summary)
         for status in summary.project_statuses:
-            if args.outdated_only and not status_has_issue(status):
+            if args.outdated_only and not status_has_catalog_issue(status):
                 continue
             print_release_target_project_status(release_target.release_id, status)
     return 0
