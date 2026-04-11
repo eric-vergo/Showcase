@@ -74,6 +74,16 @@ class ReferenceProjectStatus:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class ReleaseTargetStatus:
+    release_id: str
+    toolchain: str
+    verso_ref: str
+    branch: str
+    deploy_pages: bool
+    project_statuses: tuple[ReferenceProjectStatus, ...]
+
+
 BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?',
     re.MULTILINE | re.DOTALL,
@@ -251,7 +261,16 @@ def compare_refs(repo_root: Path, ref: str | None, base_ref: str | None) -> tupl
     return status.relationship, ahead, behind
 
 
-def collect_reference_project_status(layout, project: HarnessProject) -> ReferenceProjectStatus:
+def local_compare_ref(repo_root: Path, ref: str | None) -> str | None:
+    if ref is None:
+        return None
+    local_ref = f"refs/heads/{ref}"
+    if ref_oid(repo_root, local_ref) is not None:
+        return local_ref
+    return ref
+
+
+def collect_reference_project_status(layout, project: HarnessProject, *, blueprint_base_ref: str | None = None) -> ReferenceProjectStatus:
     if not project.git_checkout:
         return ReferenceProjectStatus(
             project=project,
@@ -278,7 +297,7 @@ def collect_reference_project_status(layout, project: HarnessProject) -> Referen
     blueprint_relationship, blueprint_ahead, blueprint_behind = compare_refs(
         layout.repo_root,
         blueprint_ref,
-        local_release_ref(layout.repo_root),
+        local_compare_ref(layout.repo_root, blueprint_base_ref or local_release_ref(layout.repo_root)),
     )
 
     return ReferenceProjectStatus(
@@ -318,6 +337,67 @@ def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     print("\t".join(fields))
 
 
+def project_target_is_outdated(status: ReferenceProjectStatus) -> bool:
+    if status.error is not None:
+        return True
+    if not status.project.git_checkout:
+        return False
+    return status.project_relationship in {"behind", "diverged", "missing_local", "missing_upstream"}
+
+
+def blueprint_target_is_outdated(status: ReferenceProjectStatus) -> bool:
+    if status.error is not None:
+        return True
+    return status.blueprint_relationship in {"behind", "diverged", "missing_local", "missing_upstream"}
+
+
+def status_has_issue(status: ReferenceProjectStatus) -> bool:
+    return project_target_is_outdated(status) or blueprint_target_is_outdated(status)
+
+
+def print_release_target_summary(status: ReleaseTargetStatus) -> None:
+    outdated_projects = sum(1 for project_status in status.project_statuses if project_target_is_outdated(project_status))
+    outdated_blueprint_pins = sum(1 for project_status in status.project_statuses if blueprint_target_is_outdated(project_status))
+    print(
+        "\t".join(
+            [
+                f"release={status.release_id}",
+                f"toolchain={status.toolchain}",
+                f"verso_ref={status.verso_ref}",
+                f"branch={status.branch}",
+                f"deploy_pages={str(status.deploy_pages).lower()}",
+                f"project_count={len(status.project_statuses)}",
+                f"outdated_projects={outdated_projects}",
+                f"outdated_blueprint_pins={outdated_blueprint_pins}",
+            ]
+        )
+    )
+
+
+def print_release_target_project_status(release_id: str, status: ReferenceProjectStatus) -> None:
+    project = status.project
+    source = f"in_repo:{project.project_root}" if project.in_repo_example else f"git:{project.repository}@{project.ref}"
+    fields = [
+        f"release={release_id}",
+        f"project={project.project_id}",
+        f"source={source}",
+        f"publish={str(project.publish).lower()}",
+        f"catalog_ref={text_or_blank(status.catalog_ref)}",
+        f"project_upstream_ref={text_or_blank(status.project_upstream_ref)}",
+        f"catalog_status={text_or_blank(status.project_relationship)}",
+        f"catalog_ahead={text_or_blank(status.project_ahead)}",
+        f"catalog_behind={text_or_blank(status.project_behind)}",
+        f"outdated={str(project_target_is_outdated(status)).lower()}",
+        f"blueprint_pin_source={text_or_blank(status.blueprint_pin.source_path if status.blueprint_pin is not None else None)}",
+        f"blueprint_resolved_ref={text_or_blank(status.blueprint_pin.resolved_ref if status.blueprint_pin is not None else None)}",
+        f"blueprint_status={text_or_blank(status.blueprint_relationship)}",
+        f"blueprint_outdated={str(blueprint_target_is_outdated(status)).lower()}",
+        f"skip={text_or_blank(status.skipped)}",
+        f"error={text_or_blank(status.error)}",
+    ]
+    print("\t".join(fields))
+
+
 def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
     try:
         return load_project_catalog_manifest(manifest_path)
@@ -348,6 +428,15 @@ def require_checkout_release(layout, release_id: str, *, command_name: str) -> N
         f"[blueprint-reference-harness] refusing to run `{command_name}` for release target `{release_id}` "
         f"from checkout release `{active_release}`. Create or switch to a `{release_id}` checkout first."
     )
+
+
+def selected_release_targets(catalog: HarnessProjectCatalog, release: str | None, package_root: Path) -> tuple[object, ...]:
+    if release is not None:
+        try:
+            return (resolve_release_target(catalog, release, package_root),)
+        except ValueError as err:
+            raise SystemExit(f"[blueprint-reference-harness] {err}") from err
+    return catalog.release_targets
 
 
 def should_use_local_build(layout, allow_local_build: bool) -> bool:
@@ -756,6 +845,70 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_release_status(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
+    catalog = load_project_catalog(manifest_path)
+    releases = selected_release_targets(catalog, args.release, layout.package_root)
+    known_project_ids = {project.project_id for project in catalog.projects}
+    if args.project is not None:
+        unknown = sorted({value for value in args.project if value not in known_project_ids})
+        if unknown:
+            known = ", ".join(sorted(known_project_ids))
+            raise SystemExit(
+                f"[blueprint-reference-harness] unknown project(s) {', '.join(unknown)}; known projects: {known}"
+            )
+
+    print(f"project_manifest={manifest_path}")
+    for release_target in releases:
+        projects = resolve_projects_for_release(catalog, release_target.release_id, None)
+        if args.project is not None:
+            allowed = set(args.project)
+            projects = [project for project in projects if project.project_id in allowed]
+
+        statuses: list[ReferenceProjectStatus] = []
+        for project in projects:
+            try:
+                status = collect_reference_project_status(
+                    layout,
+                    project,
+                    blueprint_base_ref=release_target.branch,
+                )
+            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
+                status = ReferenceProjectStatus(
+                    project=project,
+                    catalog_ref=None,
+                    project_upstream_ref=None,
+                    project_relationship=None,
+                    project_ahead=None,
+                    project_behind=None,
+                    blueprint_pin=None,
+                    blueprint_relationship=None,
+                    blueprint_ahead=None,
+                    blueprint_behind=None,
+                    error=str(err),
+                )
+            statuses.append(status)
+
+        summary = ReleaseTargetStatus(
+            release_id=release_target.release_id,
+            toolchain=release_target.toolchain,
+            verso_ref=release_target.verso_ref,
+            branch=release_target.branch,
+            deploy_pages=release_target.deploy_pages,
+            project_statuses=tuple(statuses),
+        )
+        if args.outdated_only and not any(status_has_issue(status) for status in summary.project_statuses):
+            continue
+
+        print_release_target_summary(summary)
+        for status in summary.project_statuses:
+            if args.outdated_only and not status_has_issue(status):
+                continue
+            print_release_target_project_status(release_target.release_id, status)
+    return 0
+
+
 def command_reference_sync(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
@@ -997,6 +1150,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.add_argument("--release", default=None, help="Release target to inspect. Defaults to the current checkout release line.")
     status.set_defaults(func=command_status)
+
+    release_status = subparsers.add_parser(
+        "release-status",
+        help="Summarize release-target compatibility coverage and detect outdated reference targets.",
+    )
+    add_manifest_argument(release_status)
+    add_project_selection_argument(
+        release_status,
+        help_text="Restrict output to the selected project. Repeat to select more.",
+        include_example_alias=False,
+    )
+    release_status.add_argument(
+        "--release",
+        default=None,
+        help="Release target to inspect. Defaults to all declared release targets.",
+    )
+    release_status.add_argument(
+        "--outdated-only",
+        action="store_true",
+        help="Print only release targets and projects with drift or errors.",
+    )
+    release_status.set_defaults(func=command_release_status)
 
     sync = subparsers.add_parser(
         "sync",

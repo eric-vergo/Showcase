@@ -11,7 +11,12 @@ import scripts.blueprint_harness as harness_mod
 import scripts.blueprint_reference_harness as reference_harness_mod
 from scripts.blueprint_harness import build_parser, create_worktree_sync_policy
 from scripts.blueprint_reference_harness import generate_projects
-from scripts.blueprint_harness_projects import HarnessProject
+from scripts.blueprint_harness_projects import (
+    HarnessProject,
+    HarnessProjectCatalog,
+    HarnessProjectTarget,
+    HarnessReleaseTarget,
+)
 from scripts.blueprint_harness_worktrees import GitWorktree
 
 
@@ -56,6 +61,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["projects", "--release", "v4.29.0"])
         self.assertEqual(args.release, "v4.29.0")
+
+    def test_reference_release_status_parses_flags(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["release-status", "--release", "v4.28.0", "--outdated-only"])
+        self.assertEqual(args.release, "v4.28.0")
+        self.assertTrue(args.outdated_only)
 
     def test_main_status_parses_require_sync(self) -> None:
         parser = build_parser()
@@ -1043,6 +1054,126 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("blueprint_pin_source=lake-manifest.json", output)
         self.assertIn("blueprint_resolved_ref=deadbeef", output)
         self.assertIn("blueprint_status=behind", output)
+
+    def test_reference_release_status_summarizes_and_filters_outdated_targets(self) -> None:
+        template = HarnessProject(
+            project_id="project-template",
+            source_kind="in_repo_example",
+            project_root="project_template",
+            build_target=None,
+            generator=None,
+            repository=None,
+            ref=None,
+            prepare_command=None,
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            targets=(
+                HarnessProjectTarget(release="v4.28.0", ref=None, publish=True),
+                HarnessProjectTarget(release="v4.29.0", ref=None, publish=True),
+            ),
+        )
+        nop = HarnessProject(
+            project_id="noperthedron",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/noperthedron.git",
+            ref=None,
+            prepare_command=None,
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            targets=(HarnessProjectTarget(release="v4.29.0", ref="deadbeef", publish=True),),
+        )
+        sphere = HarnessProject(
+            project_id="spherepackingblueprint",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/sphere.git",
+            ref=None,
+            prepare_command=None,
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            targets=(HarnessProjectTarget(release="v4.28.0", ref="cafebabe", publish=True),),
+        )
+        catalog = HarnessProjectCatalog(
+            version=2,
+            release_targets=(
+                HarnessReleaseTarget("v4.28.0", "v4.28.0", "v4.28.0", "v4.28.0", False),
+                HarnessReleaseTarget("v4.29.0", "v4.29.0", "v4.29.0", "v4.29.0", True),
+            ),
+            projects=(template, nop, sphere),
+        )
+        args = argparse.Namespace(manifest=None, project=None, release=None, outdated_only=True)
+        layout = SimpleNamespace(package_root=Path("/tmp/package"), repo_root=Path("/tmp/repo"))
+        originals = {
+            "detect_harness_layout": reference_harness_mod.detect_harness_layout,
+            "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
+            "load_project_catalog": reference_harness_mod.load_project_catalog,
+            "collect_reference_project_status": reference_harness_mod.collect_reference_project_status,
+        }
+        out = io.StringIO()
+        try:
+            reference_harness_mod.detect_harness_layout = lambda _start=None: layout
+            reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: catalog
+
+            def fake_collect(_layout, project, *, blueprint_base_ref=None):
+                if project.project_id == "noperthedron":
+                    return reference_harness_mod.ReferenceProjectStatus(
+                        project=project,
+                        catalog_ref="deadbeef",
+                        project_upstream_ref="origin/main",
+                        project_relationship="behind",
+                        project_ahead=0,
+                        project_behind=3,
+                        blueprint_pin=None,
+                        blueprint_relationship=None,
+                        blueprint_ahead=None,
+                        blueprint_behind=None,
+                    )
+                return reference_harness_mod.ReferenceProjectStatus(
+                    project=project,
+                    catalog_ref=project.ref,
+                    project_upstream_ref="origin/main" if project.git_checkout else None,
+                    project_relationship="in_sync" if project.git_checkout else None,
+                    project_ahead=0 if project.git_checkout else None,
+                    project_behind=0 if project.git_checkout else None,
+                    blueprint_pin=None,
+                    blueprint_relationship=None,
+                    blueprint_ahead=None,
+                    blueprint_behind=None,
+                    skipped="in_repo_example" if project.in_repo_example else None,
+                )
+
+            reference_harness_mod.collect_reference_project_status = fake_collect
+
+            with redirect_stdout(out):
+                self.assertEqual(reference_harness_mod.command_release_status(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(reference_harness_mod, name, value)
+
+        output = out.getvalue()
+        self.assertIn("project_manifest=/tmp/projects.json", output)
+        self.assertIn("release=v4.29.0", output)
+        self.assertIn("outdated_projects=1", output)
+        self.assertIn("project=noperthedron", output)
+        self.assertNotIn("project=spherepackingblueprint", output)
 
 
 if __name__ == "__main__":
