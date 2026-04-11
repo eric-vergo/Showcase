@@ -71,7 +71,7 @@ Rule of thumb:
   reference projects, use `blueprint_reference_harness`
 
 The default reference project catalog lives at `tests/harness/projects.json`.
-It currently includes the in-repo `project-template` plus three external
+It currently includes the in-repo `project-template` plus four external
 reference blueprint repositories, and it is the extension point for future
 ephemeral GitHub checkout validations.
 
@@ -105,6 +105,7 @@ This builds and renders the current generation catalog:
 - `noperthedron`
 - `spherepackingblueprint`
 - `verso-flt`
+- `algebraic-combinatorics`
 
 ### Generate the Test Blueprints
 
@@ -612,7 +613,8 @@ The staging helper is:
 The harness is now project-driven rather than example-hardcoded.
 
 - the default catalog points at `ejgallego/verso-noperthedron`,
-  `ejgallego/verso-sphere-packing`, and `ejgallego/verso-flt`
+  `ejgallego/verso-sphere-packing`, `ejgallego/verso-flt`, and
+  `ejgallego/verso-algebraic-combinatorics`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
 - external entries should declare the repository ref plus the build and

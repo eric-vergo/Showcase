@@ -65,7 +65,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         self.assertEqual(
             [project.project_id for project in projects],
-            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt"],
+            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
         self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0"])
         self.assertTrue(projects[0].in_repo_example)
@@ -96,6 +96,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "FLT",
             ),
         )
+        self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
+        self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
+        self.assertEqual(projects[4].targets[0].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -215,10 +218,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         release = resolve_release_target(catalog, "v4.28.0", PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
 
-        self.assertEqual([project.project_id for project in projects], ["project-template", "spherepackingblueprint", "verso-flt"])
+        self.assertEqual(
+            [project.project_id for project in projects],
+            ["project-template", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
+        )
         self.assertEqual(projects[1].selected_release, "v4.28.0")
         self.assertEqual(projects[1].ref, "4e5e74681b9912ea0fef85ae858feae3ce012e3d")
         self.assertEqual(projects[2].ref, "20337860407a1478283bbc634f804fdd97a331b8")
+        self.assertEqual(projects[3].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
 
     def test_duplicate_project_ids_are_rejected(self) -> None:
         manifest_data = {
