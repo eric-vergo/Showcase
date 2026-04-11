@@ -1172,6 +1172,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("project_manifest=/tmp/projects.json", output)
         self.assertIn("release=v4.29.0", output)
         self.assertIn("outdated_projects=1", output)
+        self.assertIn("downstream_pin_drift=0", output)
         self.assertIn("project=noperthedron", output)
         self.assertNotIn("project=spherepackingblueprint", output)
 
