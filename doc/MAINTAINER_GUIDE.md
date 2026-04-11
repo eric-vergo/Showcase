@@ -277,7 +277,10 @@ To inspect the active catalog:
 ```bash
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status
+python3 -m scripts.blueprint_reference_harness release-status
 python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
+python3 -m scripts.blueprint_reference_harness release-status --release v4.28.0
+python3 -m scripts.blueprint_reference_harness release-status --outdated-only
 python3 -m scripts.blueprint_test_blueprints list-json
 ```
 
@@ -285,10 +288,20 @@ python3 -m scripts.blueprint_test_blueprints list-json
 default branch and also compares the project's committed `VersoBlueprint` pin
 against this repository's current active release branch.
 
+`release-status` summarizes the declared release targets, reports which
+projects belong to each release line, and can filter down to stale targets with
+`--outdated-only`.
+
 `projects`, `status`, `generate`, `validate`, and `sync` all default to the
-current checkout's release line. `projects` and `status` may inspect any
-declared release target with `--release ...`, but `generate`, `validate`, and
-`sync` require a matching checkout release line.
+current checkout's release line. `projects`, `status`, and `release-status` may
+inspect any declared release target with `--release ...`, but `generate`,
+`validate`, and `sync` require a matching checkout release line.
+
+Current catalog summary:
+
+- `v4.29.0`: `project-template`, `noperthedron`
+- `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
+  `algebraic-combinatorics`
 
 To warm the shared reference blueprint cache and prepare local clones for the
 current checkout:
@@ -593,13 +606,18 @@ successful `reference-blueprints.yml` run on a release branch named like
 `v4.29.0`, re-resolves that branch's release target, and only uploads and
 deploys GitHub Pages when the selected target has `deploy_pages: true`.
 
-The staged Pages artifact layout is:
+At the moment that means:
+
+- `v4.29.0` deploys Pages for its selected reference targets
+- `v4.28.0` still validates its selected targets in CI, but does not deploy
+  Pages
+
+The staged Pages artifact layout is release-target dependent. It always
+includes:
 
 - `_site/index.html`
-- `_site/reference-blueprints/project-template/`
-- `_site/reference-blueprints/noperthedron/`
-- `_site/reference-blueprints/spherepackingblueprint/`
-- `_site/reference-blueprints/verso-flt/`
+- `_site/reference-blueprints/<project-id>/` for each deployable reference
+  target selected on that branch
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
