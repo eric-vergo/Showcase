@@ -76,7 +76,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
-        self.assertEqual(projects[1].targets[0].ref, "2ff4a3c671ab224a9db682e3ac146a23657b84e8")
+        self.assertEqual(projects[1].targets[0].ref, "47f28af5e6d3edf0de439b7de9c3f121e14e4707")
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(
@@ -114,7 +114,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
-        self.assertEqual(projects[4].targets[0].ref, "5a8c3b093166d7f8368fe4a610b88bac097ffc35")
+        self.assertEqual(projects[4].targets[0].ref, "6506b992702a6e47a29d90d504f9e55eb65e13e9")
         self.assertEqual(
             projects[4].prepare_command,
             (
@@ -238,7 +238,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         self.assertEqual([project.project_id for project in projects], ["project-template", "noperthedron"])
         self.assertEqual(projects[1].selected_release, "v4.29.0")
-        self.assertEqual(projects[1].ref, "2ff4a3c671ab224a9db682e3ac146a23657b84e8")
+        self.assertEqual(projects[1].ref, "47f28af5e6d3edf0de439b7de9c3f121e14e4707")
 
     def test_resolve_projects_for_older_release_uses_matching_targets(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -251,9 +251,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ["project-template", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
         self.assertEqual(projects[1].selected_release, "v4.28.0")
-        self.assertEqual(projects[1].ref, "118f287af5963a30224ab26983bdcbbe80bb49f2")
+        self.assertEqual(projects[1].ref, "4346c148b91c3a0d1060a0413176e8290a3e0839")
         self.assertEqual(projects[2].ref, "1d4f671ee5aa6169bd263384d52d97b8957d2d15")
-        self.assertEqual(projects[3].ref, "5a8c3b093166d7f8368fe4a610b88bac097ffc35")
+        self.assertEqual(projects[3].ref, "6506b992702a6e47a29d90d504f9e55eb65e13e9")
 
     def test_duplicate_project_ids_are_rejected(self) -> None:
         manifest_data = {
