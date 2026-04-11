@@ -68,9 +68,22 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "4e5e74681b9912ea0fef85ae858feae3ce012e3d",
+          "ref": "118f287af5963a30224ab26983bdcbbe80bb49f2",
           "publish": true
         }
+      ],
+      "prepare_command": [
+        "git",
+        "-c",
+        "url.https://github.com/.insteadOf=git@github.com:",
+        "-c",
+        "url.https://github.com/.insteadOf=ssh://git@github.com/",
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "Sphere-Packing-LaTeX-Reference"
       ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
@@ -87,7 +100,7 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "20337860407a1478283bbc634f804fdd97a331b8",
+          "ref": "1d4f671ee5aa6169bd263384d52d97b8957d2d15",
           "publish": true
         }
       ],
@@ -119,9 +132,18 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "d4c635938646cfbb714e3ceea75586f9c3a1140d",
+          "ref": "5a8c3b093166d7f8368fe4a610b88bac097ffc35",
           "publish": true
         }
+      ],
+      "prepare_command": [
+        "git",
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "algebraic-combinatorics"
       ],
       "build_command": ["lake", "build", "blueprint-gen"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],

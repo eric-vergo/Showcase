@@ -79,6 +79,22 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].targets[0].ref, "2ff4a3c671ab224a9db682e3ac146a23657b84e8")
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
+        self.assertEqual(
+            projects[2].prepare_command,
+            (
+                "git",
+                "-c",
+                "url.https://github.com/.insteadOf=git@github.com:",
+                "-c",
+                "url.https://github.com/.insteadOf=ssh://git@github.com/",
+                "submodule",
+                "update",
+                "--init",
+                "--depth",
+                "1",
+                "Sphere-Packing-LaTeX-Reference",
+            ),
+        )
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual(
             projects[3].prepare_command,
@@ -98,7 +114,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
-        self.assertEqual(projects[4].targets[0].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
+        self.assertEqual(projects[4].targets[0].ref, "5a8c3b093166d7f8368fe4a610b88bac097ffc35")
+        self.assertEqual(
+            projects[4].prepare_command,
+            (
+                "git",
+                "submodule",
+                "update",
+                "--init",
+                "--depth",
+                "1",
+                "algebraic-combinatorics",
+            ),
+        )
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -223,9 +251,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ["project-template", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
         self.assertEqual(projects[1].selected_release, "v4.28.0")
-        self.assertEqual(projects[1].ref, "4e5e74681b9912ea0fef85ae858feae3ce012e3d")
-        self.assertEqual(projects[2].ref, "20337860407a1478283bbc634f804fdd97a331b8")
-        self.assertEqual(projects[3].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
+        self.assertEqual(projects[1].ref, "118f287af5963a30224ab26983bdcbbe80bb49f2")
+        self.assertEqual(projects[2].ref, "1d4f671ee5aa6169bd263384d52d97b8957d2d15")
+        self.assertEqual(projects[3].ref, "5a8c3b093166d7f8368fe4a610b88bac097ffc35")
 
     def test_duplicate_project_ids_are_rejected(self) -> None:
         manifest_data = {
