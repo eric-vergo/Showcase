@@ -168,6 +168,33 @@ is on the active release branch, the reference CLI expects that checkout to
 stay clean and in sync. Use `--allow-unsafe-root-release` only as an explicit
 maintainer override.
 
+The reference project manifest now declares explicit release targets and
+per-project compatibility entries in
+[`tests/harness/projects.json`](../tests/harness/projects.json). By default the
+reference CLI resolves the current checkout's release line and only touches the
+reference projects that declare a target for that release. You can inspect a
+specific declared release with:
+
+```bash
+python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
+python3 -m scripts.blueprint_reference_harness status --release v4.29.0
+python3 -m scripts.blueprint_reference_harness release-status
+python3 -m scripts.blueprint_reference_harness release-status --outdated-only
+```
+
+`release-status` is the summary/drift view for the release-target catalog. It
+shows which reference blueprints belong to each release line and can narrow to
+stale entries with `--outdated-only`.
+
+Current release map:
+
+- `v4.29.0`: `project-template`, `noperthedron`
+- `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
+  `algebraic-combinatorics`
+
+`generate`, `validate`, and `sync` refuse to run a different release target
+from the wrong checkout; switch to the corresponding release branch first.
+
 If you want to make manual changes in one external reference blueprint repo,
 use a separate editable clone instead of the disposable validation clones:
 

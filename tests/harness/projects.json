@@ -1,5 +1,21 @@
 {
-  "version": 1,
+  "version": 2,
+  "release_targets": [
+    {
+      "id": "v4.28.0",
+      "toolchain": "v4.28.0",
+      "verso_ref": "v4.28.0",
+      "branch": "v4.28.0",
+      "deploy_pages": false
+    },
+    {
+      "id": "v4.29.0",
+      "toolchain": "v4.29.0",
+      "verso_ref": "v4.29.0",
+      "branch": "v4.29.0",
+      "deploy_pages": true
+    }
+  ],
   "projects": [
     {
       "id": "project-template",
@@ -8,6 +24,16 @@
         "kind": "in_repo_example",
         "project_root": "project_template"
       },
+      "targets": [
+        {
+          "release": "v4.28.0",
+          "publish": true
+        },
+        {
+          "release": "v4.29.0",
+          "publish": true
+        }
+      ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
@@ -18,9 +44,15 @@
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-noperthedron.git",
-        "ref": "51c791ba2757bf89b39d200a67cbd11ac5d36d57",
         "project_root": "."
       },
+      "targets": [
+        {
+          "release": "v4.29.0",
+          "ref": "2ff4a3c671ab224a9db682e3ac146a23657b84e8",
+          "publish": true
+        }
+      ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
@@ -31,9 +63,15 @@
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-sphere-packing.git",
-        "ref": "3dfc9532ec92f2dcea0b29f4d0ecdc1a9aa814b5",
         "project_root": "."
       },
+      "targets": [
+        {
+          "release": "v4.28.0",
+          "ref": "4e5e74681b9912ea0fef85ae858feae3ce012e3d",
+          "publish": true
+        }
+      ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
@@ -44,9 +82,15 @@
       "source": {
         "kind": "git_checkout",
         "repository": "https://github.com/ejgallego/verso-flt.git",
-        "ref": "bf1c6213a65be63b8f4ef946c8730a4d080302c4",
         "project_root": "."
       },
+      "targets": [
+        {
+          "release": "v4.28.0",
+          "ref": "20337860407a1478283bbc634f804fdd97a331b8",
+          "publish": true
+        }
+      ],
       "prepare_command": [
         "git",
         "-c",
@@ -59,6 +103,25 @@
         "--depth",
         "1",
         "FLT"
+      ],
+      "build_command": ["lake", "build", "blueprint-gen"],
+      "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+      "site_subdir": "html-multi"
+    },
+    {
+      "id": "algebraic-combinatorics",
+      "description": "External algebraic combinatorics blueprint example currently maintained on the v4.28.0 line.",
+      "source": {
+        "kind": "git_checkout",
+        "repository": "https://github.com/ejgallego/verso-algebraic-combinatorics.git",
+        "project_root": "."
+      },
+      "targets": [
+        {
+          "release": "v4.28.0",
+          "ref": "d4c635938646cfbb714e3ceea75586f9c3a1140d",
+          "publish": true
+        }
       ],
       "build_command": ["lake", "build", "blueprint-gen"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],

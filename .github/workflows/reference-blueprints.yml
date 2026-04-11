@@ -11,33 +11,41 @@ permissions:
   contents: read
 
 jobs:
-  build-reference-blueprints:
-    name: ${{ matrix.job_name }}
+  resolve-reference-release:
+    name: Resolve Reference Release
     runs-on: ubuntu-latest
+    outputs:
+      manifest_path: ${{ steps.resolve.outputs.manifest_path }}
+      release_id: ${{ steps.resolve.outputs.release_id }}
+      toolchain: ${{ steps.resolve.outputs.toolchain }}
+      verso_ref: ${{ steps.resolve.outputs.verso_ref }}
+      branch: ${{ steps.resolve.outputs.branch }}
+      deploy_pages: ${{ steps.resolve.outputs.deploy_pages }}
+      reference_project_count: ${{ steps.resolve.outputs.reference_project_count }}
+      reference_matrix: ${{ steps.resolve.outputs.reference_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve release metadata
+        id: resolve
+        run: python3 ./scripts/emit_reference_release_matrix.py --github-output >> "$GITHUB_OUTPUT"
+
+  build-reference-blueprints:
+    name: Build Reference ${{ matrix.project_id }}
+    runs-on: ubuntu-latest
+    needs: resolve-reference-release
+    if: ${{ needs.resolve-reference-release.outputs.reference_project_count != '0' }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - job_name: Build Project Template
-            project_id: project-template
-            artifact_name: reference-blueprints-project-template
-            artifact_path: _out/reference-blueprints/project-template
-          - job_name: Build Sphere Packing
-            project_id: spherepackingblueprint
-            artifact_name: reference-blueprints-spherepacking
-            artifact_path: _out/reference-blueprints/spherepackingblueprint
-          - job_name: Build Noperthedron
-            project_id: noperthedron
-            artifact_name: reference-blueprints-noperthedron
-            artifact_path: _out/reference-blueprints/noperthedron
-          - job_name: Build Verso FLT
-            project_id: verso-flt
-            artifact_name: reference-blueprints-verso-flt
-            artifact_path: _out/reference-blueprints/verso-flt
+      matrix: ${{ fromJSON(needs.resolve-reference-release.outputs.reference_matrix) }}
     env:
       BP_REFERENCE_CHECKOUT_MODE: shared
     steps:
       - uses: actions/checkout@v4
+      - name: Show resolved release target
+        run: |
+          echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
+          echo "toolchain=${{ needs.resolve-reference-release.outputs.toolchain }}"
+          echo "verso_ref=${{ needs.resolve-reference-release.outputs.verso_ref }}"
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -99,30 +107,22 @@ jobs:
     name: Build Site Artifact
     runs-on: ubuntu-latest
     needs:
+      - resolve-reference-release
       - build-reference-blueprints
       - build-test-blueprints
+    if: ${{ needs.resolve-reference-release.outputs.deploy_pages == 'true' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Download sphere packing artifact
+      - name: Show deploy release target
+        run: |
+          echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
+          echo "deploy_pages=${{ needs.resolve-reference-release.outputs.deploy_pages }}"
+      - name: Download reference blueprint artifacts
         uses: actions/download-artifact@v4
         with:
-          name: reference-blueprints-spherepacking
-          path: _out/reference-blueprints/spherepackingblueprint
-      - name: Download starter template artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: reference-blueprints-project-template
-          path: _out/reference-blueprints/project-template
-      - name: Download noperthedron artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: reference-blueprints-noperthedron
-          path: _out/reference-blueprints/noperthedron
-      - name: Download verso-flt artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: reference-blueprints-verso-flt
-          path: _out/reference-blueprints/verso-flt
+          pattern: reference-blueprints-*
+          path: _out/reference-blueprints
+          merge-multiple: true
       - name: Download test blueprints artifact
         uses: actions/download-artifact@v4
         with:

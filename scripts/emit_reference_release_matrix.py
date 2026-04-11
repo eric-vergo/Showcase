@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.blueprint_harness_paths import detect_harness_layout
+from scripts.blueprint_harness_projects import (
+    default_project_manifest,
+    load_project_catalog,
+    reference_build_matrix,
+    resolve_projects_for_release,
+    resolve_release_target,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Emit release-aware reference blueprint metadata for CI workflows."
+    )
+    parser.add_argument(
+        "--manifest",
+        default=None,
+        help="Project manifest path. Defaults to tests/harness/projects.json in the current checkout.",
+    )
+    parser.add_argument(
+        "--release",
+        default=None,
+        help="Release target id. Defaults to the current checkout release line.",
+    )
+    parser.add_argument(
+        "--github-output",
+        action="store_true",
+        help="Print GitHub Actions step outputs instead of plain JSON.",
+    )
+    return parser.parse_args()
+
+
+def resolve_manifest_path(layout, path_text: str | None) -> Path:
+    if path_text is None:
+        return default_project_manifest(layout.package_root)
+    path = Path(path_text)
+    if path.is_absolute():
+        return path.resolve()
+    return (Path.cwd() / path).resolve()
+
+
+def payload(args: argparse.Namespace) -> dict[str, object]:
+    layout = detect_harness_layout(Path(__file__))
+    manifest_path = resolve_manifest_path(layout, args.manifest)
+    catalog = load_project_catalog(manifest_path)
+    release_target = resolve_release_target(catalog, args.release, layout.package_root)
+    projects = resolve_projects_for_release(catalog, release_target.release_id, None)
+    return {
+        "manifest_path": str(manifest_path),
+        "release_id": release_target.release_id,
+        "toolchain": release_target.toolchain,
+        "verso_ref": release_target.verso_ref,
+        "branch": release_target.branch,
+        "deploy_pages": release_target.deploy_pages,
+        "reference_project_count": len(projects),
+        "reference_matrix": reference_build_matrix(projects),
+    }
+
+
+def emit_github_output(data: dict[str, object]) -> None:
+    print(f"manifest_path={data['manifest_path']}")
+    print(f"release_id={data['release_id']}")
+    print(f"toolchain={data['toolchain']}")
+    print(f"verso_ref={data['verso_ref']}")
+    print(f"branch={data['branch']}")
+    print(f"deploy_pages={str(data['deploy_pages']).lower()}")
+    print(f"reference_project_count={data['reference_project_count']}")
+    print("reference_matrix<<__CODEX__")
+    print(json.dumps(data["reference_matrix"], separators=(",", ":")))
+    print("__CODEX__")
+
+
+def main() -> int:
+    args = parse_args()
+    data = payload(args)
+    if args.github_output:
+        emit_github_output(data)
+    else:
+        print(json.dumps(data, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

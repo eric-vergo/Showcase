@@ -11,7 +11,11 @@ import unittest
 from scripts.blueprint_harness_projects import (
     HarnessProject,
     default_project_manifest,
+    load_project_catalog,
     load_projects_manifest,
+    reference_build_matrix,
+    resolve_projects_for_release,
+    resolve_release_target,
 )
 from scripts.blueprint_harness_references import (
     OFFICIAL_BLUEPRINT_REQUIRE,
@@ -56,18 +60,23 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
     def test_default_manifest_contains_current_external_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
-        projects = load_projects_manifest(manifest)
+        catalog = load_project_catalog(manifest)
+        projects = list(catalog.projects)
 
         self.assertEqual(
             [project.project_id for project in projects],
-            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt"],
+            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
+        self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0"])
         self.assertTrue(projects[0].in_repo_example)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
         self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
+        self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0"])
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
+        self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
+        self.assertEqual(projects[1].targets[0].ref, "2ff4a3c671ab224a9db682e3ac146a23657b84e8")
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
@@ -87,34 +96,53 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "FLT",
             ),
         )
+        self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
+        self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
+        self.assertEqual(projects[4].targets[0].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
-        projects = load_projects_manifest(default_project_manifest(PACKAGE_ROOT))
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
+        projects = resolve_projects_for_release(catalog, release.release_id, None)
+        matrix = reference_build_matrix(projects)
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
 
-        for project in projects:
-            expected_path = f"_out/reference-blueprints/{project.project_id}"
-            self.assertIn(f"project_id: {project.project_id}", workflow_text)
-            self.assertGreaterEqual(
-                workflow_text.count(expected_path),
-                2,
-                msg=f"expected workflow to both build and stage `{project.project_id}`",
-            )
+        self.assertIn("emit_reference_release_matrix.py", workflow_text)
+        self.assertIn("pattern: reference-blueprints-*", workflow_text)
+        self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
+
+        for entry in matrix["include"]:
+            self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
+            self.assertEqual(entry["artifact_path"], f"_out/reference-blueprints/{entry['project_id']}")
 
     def test_git_checkout_project_is_supported(self) -> None:
         manifest_data = {
-            "version": 1,
+            "version": 2,
+            "release_targets": [
+                {
+                    "id": "v4.29.0",
+                    "toolchain": "v4.29.0",
+                    "verso_ref": "v4.29.0",
+                    "branch": "v4.29.0",
+                    "deploy_pages": True,
+                }
+            ],
             "projects": [
                 {
                     "id": "external-blueprint",
                     "source": {
                         "kind": "git_checkout",
                         "repository": "https://github.com/example/external-blueprint.git",
-                        "ref": "main",
                         "project_root": "."
                     },
+                    "targets": [
+                        {
+                            "release": "v4.29.0",
+                            "ref": "main",
+                        }
+                    ],
                     "build_command": ["lake", "build"],
                     "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
                     "site_subdir": "html-multi"
@@ -133,7 +161,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {
-            "version": 1,
+            "version": 2,
+            "release_targets": [
+                {
+                    "id": "v4.29.0",
+                    "toolchain": "v4.29.0",
+                    "verso_ref": "v4.29.0",
+                    "branch": "v4.29.0",
+                    "deploy_pages": True,
+                }
+            ],
             "projects": [
                 {
                     "id": "project-template",
@@ -141,6 +178,11 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         "kind": "in_repo_example",
                         "project_root": "project_template",
                     },
+                    "targets": [
+                        {
+                            "release": "v4.29.0",
+                        }
+                    ],
                     "build_command": ["lake", "build"],
                     "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
                     "site_subdir": "html-multi",
@@ -160,19 +202,55 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].build_command, ("lake", "build"))
         self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
 
+    def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+
+        release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
+        projects = resolve_projects_for_release(catalog, release.release_id, None)
+
+        self.assertEqual([project.project_id for project in projects], ["project-template", "noperthedron"])
+        self.assertEqual(projects[1].selected_release, "v4.29.0")
+        self.assertEqual(projects[1].ref, "2ff4a3c671ab224a9db682e3ac146a23657b84e8")
+
+    def test_resolve_projects_for_older_release_uses_matching_targets(self) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+
+        release = resolve_release_target(catalog, "v4.28.0", PACKAGE_ROOT)
+        projects = resolve_projects_for_release(catalog, release.release_id, None)
+
+        self.assertEqual(
+            [project.project_id for project in projects],
+            ["project-template", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
+        )
+        self.assertEqual(projects[1].selected_release, "v4.28.0")
+        self.assertEqual(projects[1].ref, "4e5e74681b9912ea0fef85ae858feae3ce012e3d")
+        self.assertEqual(projects[2].ref, "20337860407a1478283bbc634f804fdd97a331b8")
+        self.assertEqual(projects[3].ref, "d4c635938646cfbb714e3ceea75586f9c3a1140d")
+
     def test_duplicate_project_ids_are_rejected(self) -> None:
         manifest_data = {
-            "version": 1,
+            "version": 2,
+            "release_targets": [
+                {
+                    "id": "v4.29.0",
+                    "toolchain": "v4.29.0",
+                    "verso_ref": "v4.29.0",
+                    "branch": "v4.29.0",
+                    "deploy_pages": True,
+                }
+            ],
             "projects": [
                 {
                     "id": "dup",
                     "source": {"kind": "in_repo_example"},
+                    "targets": [{"release": "v4.29.0"}],
                     "build_target": "a",
                     "generator": "a"
                 },
                 {
                     "id": "dup",
                     "source": {"kind": "in_repo_example"},
+                    "targets": [{"release": "v4.29.0"}],
                     "build_target": "b",
                     "generator": "b"
                 }

@@ -71,9 +71,14 @@ Rule of thumb:
   reference projects, use `blueprint_reference_harness`
 
 The default reference project catalog lives at `tests/harness/projects.json`.
-It currently includes the in-repo `project-template` plus three external
+It currently includes the in-repo `project-template` plus four external
 reference blueprint repositories, and it is the extension point for future
 ephemeral GitHub checkout validations.
+
+That manifest is now release-aware. It declares top-level `release_targets`
+for supported Lean / `verso` lines and per-project `targets` keyed by release
+id. The reference harness resolves one concrete release target first and then
+selects only the projects that declare compatibility entries for that target.
 
 The local test blueprint metadata is intentionally separate:
 
@@ -100,6 +105,7 @@ This builds and renders the current generation catalog:
 - `noperthedron`
 - `spherepackingblueprint`
 - `verso-flt`
+- `algebraic-combinatorics`
 
 ### Generate the Test Blueprints
 
@@ -271,12 +277,31 @@ To inspect the active catalog:
 ```bash
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status
+python3 -m scripts.blueprint_reference_harness release-status
+python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
+python3 -m scripts.blueprint_reference_harness release-status --release v4.28.0
+python3 -m scripts.blueprint_reference_harness release-status --outdated-only
 python3 -m scripts.blueprint_test_blueprints list-json
 ```
 
 `status` compares each external catalog pin against that project's upstream
 default branch and also compares the project's committed `VersoBlueprint` pin
 against this repository's current active release branch.
+
+`release-status` summarizes the declared release targets, reports which
+projects belong to each release line, and can filter down to stale targets with
+`--outdated-only`.
+
+`projects`, `status`, `generate`, `validate`, and `sync` all default to the
+current checkout's release line. `projects`, `status`, and `release-status` may
+inspect any declared release target with `--release ...`, but `generate`,
+`validate`, and `sync` require a matching checkout release line.
+
+Current catalog summary:
+
+- `v4.29.0`: `project-template`, `noperthedron`
+- `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
+  `algebraic-combinatorics`
 
 To warm the shared reference blueprint cache and prepare local clones for the
 current checkout:
@@ -565,28 +590,34 @@ template-owned CI path.
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
 pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
-- builds the four projects currently published to Pages:
-  `project-template`, `noperthedron`, `spherepackingblueprint`, and `verso-flt`
+- resolves the current branch's release target from `tests/harness/projects.json`
+- builds only the reference projects that declare compatibility with that
+  release target
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
-- stages a site artifact under `_site/`
+- stages a site artifact under `_site/` only when the selected release target
+  has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
 - uses the shared reference-checkout mode in CI to avoid duplicating warmed
   `.lake/` trees on the GitHub runner
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.29.0`, downloads the site
-artifact from that triggering run, uploads a Pages artifact, and deploys it to
-GitHub Pages.
+`v4.29.0`, re-resolves that branch's release target, and only uploads and
+deploys GitHub Pages when the selected target has `deploy_pages: true`.
 
-The staged Pages artifact layout is:
+At the moment that means:
+
+- `v4.29.0` deploys Pages for its selected reference targets
+- `v4.28.0` still validates its selected targets in CI, but does not deploy
+  Pages
+
+The staged Pages artifact layout is release-target dependent. It always
+includes:
 
 - `_site/index.html`
-- `_site/reference-blueprints/project-template/`
-- `_site/reference-blueprints/noperthedron/`
-- `_site/reference-blueprints/spherepackingblueprint/`
-- `_site/reference-blueprints/verso-flt/`
+- `_site/reference-blueprints/<project-id>/` for each deployable reference
+  target selected on that branch
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -600,7 +631,8 @@ The staging helper is:
 The harness is now project-driven rather than example-hardcoded.
 
 - the default catalog points at `ejgallego/verso-noperthedron`,
-  `ejgallego/verso-sphere-packing`, and `ejgallego/verso-flt`
+  `ejgallego/verso-sphere-packing`, `ejgallego/verso-flt`, and
+  `ejgallego/verso-algebraic-combinatorics`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
 - external entries should declare the repository ref plus the build and

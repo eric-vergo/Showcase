@@ -20,11 +20,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  upload-pages-artifact:
-    name: Upload Pages Artifact
+  resolve-reference-release:
+    name: Resolve Deploy Release
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.resolve.outputs.release_id }}
+      deploy_pages: ${{ steps.resolve.outputs.deploy_pages }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Resolve release metadata
+        id: resolve
+        run: python3 ./scripts/emit_reference_release_matrix.py --github-output >> "$GITHUB_OUTPUT"
+
+  upload-pages-artifact:
+    name: Upload Pages Artifact
+    if: github.event.workflow_run.conclusion == 'success' && needs.resolve-reference-release.outputs.deploy_pages == 'true'
+    runs-on: ubuntu-latest
+    needs: resolve-reference-release
+    steps:
+      - name: Show deploy release target
+        run: |
+          echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
+          echo "deploy_pages=${{ needs.resolve-reference-release.outputs.deploy_pages }}"
       - name: Download built site artifact
         uses: actions/download-artifact@v8
         with:
@@ -40,11 +60,13 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.resolve-reference-release.outputs.deploy_pages == 'true'
     environment:
       name: github-pages
     runs-on: ubuntu-latest
-    needs: upload-pages-artifact
+    needs:
+      - resolve-reference-release
+      - upload-pages-artifact
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
