@@ -75,6 +75,11 @@ It currently includes the in-repo `project-template` plus three external
 reference blueprint repositories, and it is the extension point for future
 ephemeral GitHub checkout validations.
 
+That manifest is now release-aware. It declares top-level `release_targets`
+for supported Lean / `verso` lines and per-project `targets` keyed by release
+id. The reference harness resolves one concrete release target first and then
+selects only the projects that declare compatibility entries for that target.
+
 The local test blueprint metadata is intentionally separate:
 
 - curated doc-backed fixtures live in
@@ -271,12 +276,18 @@ To inspect the active catalog:
 ```bash
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status
+python3 -m scripts.blueprint_reference_harness projects --release v4.29.0
 python3 -m scripts.blueprint_test_blueprints list-json
 ```
 
 `status` compares each external catalog pin against that project's upstream
 default branch and also compares the project's committed `VersoBlueprint` pin
 against this repository's current active release branch.
+
+`projects`, `status`, `generate`, `validate`, and `sync` all default to the
+current checkout's release line. `projects` and `status` may inspect any
+declared release target with `--release ...`, but `generate`, `validate`, and
+`sync` require a matching checkout release line.
 
 To warm the shared reference blueprint cache and prepare local clones for the
 current checkout:
@@ -565,20 +576,21 @@ template-owned CI path.
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
 pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
-- builds the four projects currently published to Pages:
-  `project-template`, `noperthedron`, `spherepackingblueprint`, and `verso-flt`
+- resolves the current branch's release target from `tests/harness/projects.json`
+- builds only the reference projects that declare compatibility with that
+  release target
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
-- stages a site artifact under `_site/`
+- stages a site artifact under `_site/` only when the selected release target
+  has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
 - uses the shared reference-checkout mode in CI to avoid duplicating warmed
   `.lake/` trees on the GitHub runner
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.29.0`, downloads the site
-artifact from that triggering run, uploads a Pages artifact, and deploys it to
-GitHub Pages.
+`v4.29.0`, re-resolves that branch's release target, and only uploads and
+deploys GitHub Pages when the selected target has `deploy_pages: true`.
 
 The staged Pages artifact layout is:
 

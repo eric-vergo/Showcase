@@ -20,7 +20,13 @@ from scripts.blueprint_harness_cli import (
     add_serial_argument,
 )
 from scripts.blueprint_harness_paths import detect_harness_layout, resolve_output_root
-from scripts.blueprint_harness_projects import HarnessProject, load_projects_manifest, resolve_manifest_path
+from scripts.blueprint_harness_projects import HarnessProject, resolve_manifest_path
+from scripts.blueprint_harness_projects import (
+    HarnessProjectCatalog,
+    load_project_catalog as load_project_catalog_manifest,
+    resolve_projects_for_release,
+    resolve_release_target,
+)
 from scripts.blueprint_harness_references import (
     bump_reference_project,
     OFFICIAL_BLUEPRINT_URL_PATTERNS,
@@ -312,27 +318,36 @@ def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     print("\t".join(fields))
 
 
-def selected_projects(catalog: list[HarnessProject], values: list[str] | None) -> list[HarnessProject]:
-    if not values:
-        return list(catalog)
-    by_id = {project.project_id: project for project in catalog}
-    seen: set[str] = set()
-    result: list[HarnessProject] = []
-    for value in values:
-        if value not in by_id:
-            known = ", ".join(sorted(by_id))
-            raise SystemExit(f"[blueprint-reference-harness] unknown project `{value}`; known projects: {known}")
-        if value not in seen:
-            result.append(by_id[value])
-            seen.add(value)
-    return result
-
-
-def load_project_catalog(manifest_path: Path) -> list[HarnessProject]:
+def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
     try:
-        return load_projects_manifest(manifest_path)
+        return load_project_catalog_manifest(manifest_path)
     except (FileNotFoundError, ValueError) as err:
         raise SystemExit(f"[blueprint-reference-harness] {err}") from err
+
+
+def select_release_projects(
+    catalog: HarnessProjectCatalog,
+    *,
+    release: str | None,
+    project_ids: list[str] | None,
+    package_root: Path,
+) -> tuple[str, list[HarnessProject]]:
+    try:
+        selected_release = resolve_release_target(catalog, release, package_root)
+        projects = resolve_projects_for_release(catalog, selected_release.release_id, project_ids)
+    except ValueError as err:
+        raise SystemExit(f"[blueprint-reference-harness] {err}") from err
+    return selected_release.release_id, projects
+
+
+def require_checkout_release(layout, release_id: str, *, command_name: str) -> None:
+    active_release = active_release_branch(layout.package_root)
+    if release_id == active_release:
+        return
+    raise SystemExit(
+        f"[blueprint-reference-harness] refusing to run `{command_name}` for release target `{release_id}` "
+        f"from checkout release `{active_release}`. Create or switch to a `{release_id}` checkout first."
+    )
 
 
 def should_use_local_build(layout, allow_local_build: bool) -> bool:
@@ -561,7 +576,14 @@ def command_generate(args: argparse.Namespace) -> int:
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
     output_root = resolve_output_root(args.output_root, Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = selected_projects(load_project_catalog(manifest_path), args.project)
+    catalog = load_project_catalog(manifest_path)
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+    )
+    require_checkout_release(layout, release_id, command_name="generate")
 
     generate_projects(
         layout,
@@ -573,6 +595,7 @@ def command_generate(args: argparse.Namespace) -> int:
     )
 
     print(f"[blueprint-reference-harness] project manifest: {manifest_path}")
+    print(f"[blueprint-reference-harness] release target: {release_id}")
     print("[blueprint-reference-harness] generated project outputs:")
     for project in projects:
         print(output_dir_for(project, output_root))
@@ -584,10 +607,18 @@ def command_validate(args: argparse.Namespace) -> int:
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
     output_root = resolve_output_root(args.output_root, Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = selected_projects(load_project_catalog(manifest_path), args.project)
+    catalog = load_project_catalog(manifest_path)
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+    )
+    require_checkout_release(layout, release_id, command_name="validate")
     failures: list[StepFailure] = []
 
     print(f"[blueprint-reference-harness] validation output root: {output_root}")
+    print(f"[blueprint-reference-harness] release target: {release_id}")
     use_local_build = should_use_local_build(layout, args.allow_local_build)
     if args.run_lean_tests:
         if use_local_build:
@@ -659,8 +690,15 @@ def command_validate(args: argparse.Namespace) -> int:
 def command_projects(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = load_project_catalog(manifest_path)
+    catalog = load_project_catalog(manifest_path)
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+    )
     print(f"project_manifest={manifest_path}")
+    print(f"release_target={release_id}")
     for project in projects:
         if project.in_repo_example:
             source = f"in_repo:{project.project_root}"
@@ -679,10 +717,18 @@ def command_projects(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = selected_projects(load_project_catalog(manifest_path), args.project)
+    catalog = load_project_catalog(manifest_path)
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+    )
+    require_checkout_release(layout, release_id, command_name="status")
     release_branch = active_release_branch(layout.repo_root)
     main_status = main_sync_status(layout.repo_root)
     print(f"project_manifest={manifest_path}")
+    print(f"selected_release_target={release_id}")
     print(f"verso_blueprint_ref={release_branch}")
     print(f"preferred_release_ref={main_status.upstream_ref}")
     print(f"release_relationship={main_status.relationship}")
@@ -714,13 +760,21 @@ def command_reference_sync(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = selected_projects(load_project_catalog(manifest_path), args.project)
+    catalog = load_project_catalog(manifest_path)
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+    )
+    require_checkout_release(layout, release_id, command_name="sync")
     sync_reference_blueprints(
         layout,
         projects,
         warm_build=not args.skip_build,
         prepare_local_checkout=not args.skip_local_checkout,
     )
+    print(f"[blueprint-reference-harness] release target: {release_id}")
     print(f"[blueprint-reference-harness] reference cache root: {layout.reference_project_cache_root}")
     print(f"[blueprint-reference-harness] reference checkout root: {layout.reference_project_checkout_root}")
     return 0
@@ -729,7 +783,12 @@ def command_reference_sync(args: argparse.Namespace) -> int:
 def command_reference_edit(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    project = selected_projects(load_project_catalog(manifest_path), [args.project])[0]
+    catalog = load_project_catalog(manifest_path)
+    project_map = {project.project_id: project for project in catalog.projects}
+    if args.project not in project_map:
+        known = ", ".join(sorted(project_map))
+        raise SystemExit(f"[blueprint-reference-harness] unknown project `{args.project}`; known projects: {known}")
+    project = project_map[args.project]
     edit_dir, branch, base_ref = prepare_reference_edit_checkout(
         layout,
         project,
@@ -749,8 +808,20 @@ def command_reference_edit(args: argparse.Namespace) -> int:
 def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = [project for project in load_project_catalog(manifest_path) if project.git_checkout]
-    projects = selected_projects(catalog, args.project)
+    catalog = load_project_catalog(manifest_path)
+    project_map = {project.project_id: project for project in catalog.projects if project.git_checkout}
+    if args.project:
+        seen: set[str] = set()
+        projects: list[HarnessProject] = []
+        for value in args.project:
+            if value not in project_map:
+                known = ", ".join(sorted(project_map))
+                raise SystemExit(f"[blueprint-reference-harness] unknown project `{value}`; known projects: {known}")
+            if value not in seen:
+                projects.append(project_map[value])
+                seen.add(value)
+    else:
+        projects = list(project_map.values())
     failures: list[StepFailure] = []
     output_root = layout.artifact_root / "reference-blueprints-edit"
 
@@ -807,7 +878,7 @@ def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
 def command_reference_prune(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = load_project_catalog(manifest_path)
+    projects = load_project_catalog(manifest_path).projects
     active_names = {
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
@@ -845,6 +916,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_root_argument(generate)
     add_project_selection_argument(generate, help_text="Render only the selected project. Repeat to render more than one.")
     add_manifest_argument(generate)
+    generate.add_argument("--release", default=None, help="Release target to validate. Defaults to the current checkout release line.")
     generate.add_argument(
         "--skip-build",
         action="store_true",
@@ -865,6 +937,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_root_argument(validate)
     add_project_selection_argument(validate, help_text="Restrict generation to the selected project. Repeat to select more.")
     add_manifest_argument(validate)
+    validate.add_argument("--release", default=None, help="Release target to validate. Defaults to the current checkout release line.")
     validate.add_argument(
         "--run-lean-tests",
         action="store_true",
@@ -904,6 +977,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="List the configured harness projects from the active manifest.",
     )
     add_manifest_argument(projects)
+    add_project_selection_argument(
+        projects,
+        help_text="Restrict output to the selected project. Repeat to select more.",
+        include_example_alias=False,
+    )
+    projects.add_argument("--release", default=None, help="Release target to list. Defaults to the current checkout release line.")
     projects.set_defaults(func=command_projects)
 
     status = subparsers.add_parser(
@@ -916,6 +995,7 @@ def build_parser() -> argparse.ArgumentParser:
         help_text="Restrict status output to the selected project. Repeat to select more.",
         include_example_alias=False,
     )
+    status.add_argument("--release", default=None, help="Release target to inspect. Defaults to the current checkout release line.")
     status.set_defaults(func=command_status)
 
     sync = subparsers.add_parser(
@@ -928,6 +1008,7 @@ def build_parser() -> argparse.ArgumentParser:
         help_text="Restrict sync to the selected project. Repeat to select more.",
         include_example_alias=False,
     )
+    sync.add_argument("--release", default=None, help="Release target to sync. Defaults to the current checkout release line.")
     sync.add_argument(
         "--skip-build",
         action="store_true",

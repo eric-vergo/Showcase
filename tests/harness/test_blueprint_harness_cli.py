@@ -36,18 +36,26 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
     def test_reference_generate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["generate", "--allow-unsafe-root-release"])
+        args = parser.parse_args(["generate", "--allow-unsafe-root-release", "--release", "v4.29.0"])
         self.assertTrue(args.allow_unsafe_root_release)
+        self.assertEqual(args.release, "v4.29.0")
 
     def test_reference_validate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["validate", "--allow-unsafe-root-release"])
+        args = parser.parse_args(["validate", "--allow-unsafe-root-release", "--release", "v4.29.0"])
         self.assertTrue(args.allow_unsafe_root_release)
+        self.assertEqual(args.release, "v4.29.0")
 
     def test_reference_sync_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["sync", "--allow-unsafe-root-release"])
+        args = parser.parse_args(["sync", "--allow-unsafe-root-release", "--release", "v4.29.0"])
         self.assertTrue(args.allow_unsafe_root_release)
+        self.assertEqual(args.release, "v4.29.0")
+
+    def test_reference_projects_parses_release_filter(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["projects", "--release", "v4.29.0"])
+        self.assertEqual(args.release, "v4.29.0")
 
     def test_main_status_parses_require_sync(self) -> None:
         parser = build_parser()
@@ -391,6 +399,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             output_root=None,
             manifest=None,
             project=None,
+            release=None,
             skip_build=False,
             allow_unsafe_root_release=False,
             serial=False,
@@ -422,6 +431,42 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["layout"], layout)
         self.assertFalse(seen["allow_unsafe"])
         self.assertEqual(seen["command_name"], "generate")
+
+    def test_reference_generate_rejects_mismatched_release_target(self) -> None:
+        args = argparse.Namespace(
+            output_root=None,
+            manifest=None,
+            project=None,
+            release="v4.28.0",
+            skip_build=False,
+            allow_unsafe_root_release=False,
+            serial=False,
+            allow_local_build=False,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/package"), repo_root=Path("/tmp/package"), in_linked_worktree=False)
+        originals = {
+            "detect_harness_layout": reference_harness_mod.detect_harness_layout,
+            "require_safe_root_main": reference_harness_mod.require_safe_root_main,
+            "resolve_output_root": reference_harness_mod.resolve_output_root,
+            "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
+            "load_project_catalog": reference_harness_mod.load_project_catalog,
+            "select_release_projects": reference_harness_mod.select_release_projects,
+            "active_release_branch": reference_harness_mod.active_release_branch,
+        }
+        try:
+            reference_harness_mod.detect_harness_layout = lambda _start=None: layout
+            reference_harness_mod.require_safe_root_main = lambda _layout, *, allow_unsafe, command_name: None
+            reference_harness_mod.resolve_output_root = lambda _path_text, _start=None: Path("/tmp/out")
+            reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(), release_targets=())
+            reference_harness_mod.select_release_projects = lambda _catalog, *, release, project_ids, package_root: ("v4.28.0", [])
+            reference_harness_mod.active_release_branch = lambda _package_root: "v4.29.0"
+
+            with self.assertRaisesRegex(SystemExit, "Create or switch to a `v4.28.0` checkout first"):
+                reference_harness_mod.command_generate(args)
+        finally:
+            for name, value in originals.items():
+                setattr(reference_harness_mod, name, value)
 
     def test_bump_toolchain_uses_helper(self) -> None:
         args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, skip_validation=False)
@@ -530,7 +575,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         try:
             reference_harness_mod.detect_harness_layout = lambda _start=None: layout
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
-            reference_harness_mod.load_project_catalog = lambda _manifest_path: [project]
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(project,))
 
             def fake_prepare(_layout, _project, *, branch, base_ref):
                 seen["layout"] = _layout
@@ -585,20 +630,14 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "detect_harness_layout": reference_harness_mod.detect_harness_layout,
             "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
             "load_project_catalog": reference_harness_mod.load_project_catalog,
-            "selected_projects": reference_harness_mod.selected_projects,
             "bump_reference_project": reference_harness_mod.bump_reference_project,
         }
         seen: dict[str, object] = {}
         try:
             reference_harness_mod.detect_harness_layout = lambda _start=None: layout
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
-            reference_harness_mod.load_project_catalog = lambda _manifest_path: [project]
-
-            def fake_selected(catalog, values):
-                seen["selected_values"] = values
-                return catalog
-
-            reference_harness_mod.selected_projects = fake_selected
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(project,))
+            seen["selected_values"] = ["noperthedron"]
 
             def fake_bump(
                 _layout,
@@ -796,6 +835,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             output_root=None,
             manifest=None,
             project=None,
+            release=None,
             run_lean_tests=True,
             allow_unsafe_root_release=False,
             skip_panel_regression=False,
@@ -811,7 +851,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "resolve_output_root": reference_harness_mod.resolve_output_root,
             "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
             "load_project_catalog": reference_harness_mod.load_project_catalog,
-            "selected_projects": reference_harness_mod.selected_projects,
+            "select_release_projects": reference_harness_mod.select_release_projects,
+            "require_checkout_release": reference_harness_mod.require_checkout_release,
             "should_use_local_build": reference_harness_mod.should_use_local_build,
             "find_prebuilt_lean_test_artifact": reference_harness_mod.find_prebuilt_lean_test_artifact,
             "run_capturing_failure": reference_harness_mod.run_capturing_failure,
@@ -821,8 +862,9 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             reference_harness_mod.detect_harness_layout = lambda _start=None: layout
             reference_harness_mod.resolve_output_root = lambda _path_text, _start=None: Path("/tmp/out")
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
-            reference_harness_mod.load_project_catalog = lambda _manifest_path: []
-            reference_harness_mod.selected_projects = lambda _catalog, _values: []
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(), release_targets=())
+            reference_harness_mod.select_release_projects = lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", [])
+            reference_harness_mod.require_checkout_release = lambda _layout, release_id, *, command_name: None
             reference_harness_mod.should_use_local_build = lambda _layout, _allow_local_build: False
             reference_harness_mod.find_prebuilt_lean_test_artifact = lambda _package_root: Path("/tmp/VersoBlueprintTests.olean")
             reference_harness_mod.run_capturing_failure = lambda _step, _command, cwd: None
@@ -838,6 +880,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             output_root=None,
             manifest=None,
             project=None,
+            release=None,
             run_lean_tests=False,
             allow_unsafe_root_release=False,
             skip_panel_regression=False,
@@ -878,6 +921,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = argparse.Namespace(
             manifest=None,
             project=None,
+            release=None,
             skip_build=False,
             allow_unsafe_root_release=True,
             skip_local_checkout=False,
@@ -894,7 +938,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "require_safe_root_main": reference_harness_mod.require_safe_root_main,
             "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
             "load_project_catalog": reference_harness_mod.load_project_catalog,
-            "selected_projects": reference_harness_mod.selected_projects,
+            "select_release_projects": reference_harness_mod.select_release_projects,
+            "require_checkout_release": reference_harness_mod.require_checkout_release,
             "sync_reference_blueprints": reference_harness_mod.sync_reference_blueprints,
         }
         seen: dict[str, object] = {}
@@ -908,8 +953,9 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
             reference_harness_mod.require_safe_root_main = fake_require
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
-            reference_harness_mod.load_project_catalog = lambda _manifest_path: []
-            reference_harness_mod.selected_projects = lambda _catalog, _values: []
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(), release_targets=())
+            reference_harness_mod.select_release_projects = lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", [])
+            reference_harness_mod.require_checkout_release = lambda _layout, release_id, *, command_name: None
             reference_harness_mod.sync_reference_blueprints = lambda *_args, **_kwargs: None
 
             self.assertEqual(reference_harness_mod.command_reference_sync(args), 0)
@@ -938,7 +984,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             browser_tests_path=None,
             description=None,
         )
-        args = argparse.Namespace(manifest=None, project=None)
+        args = argparse.Namespace(manifest=None, project=None, release=None)
         layout = SimpleNamespace(package_root=Path("/tmp/package"), repo_root=Path("/tmp/repo"))
         status = reference_harness_mod.ReferenceProjectStatus(
             project=project,
@@ -960,7 +1006,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "detect_harness_layout": reference_harness_mod.detect_harness_layout,
             "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
             "load_project_catalog": reference_harness_mod.load_project_catalog,
-            "selected_projects": reference_harness_mod.selected_projects,
+            "select_release_projects": reference_harness_mod.select_release_projects,
             "main_sync_status": reference_harness_mod.main_sync_status,
             "collect_reference_project_status": reference_harness_mod.collect_reference_project_status,
             "active_release_branch": reference_harness_mod.active_release_branch,
@@ -969,8 +1015,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         try:
             reference_harness_mod.detect_harness_layout = lambda _start=None: layout
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
-            reference_harness_mod.load_project_catalog = lambda _manifest_path: [project]
-            reference_harness_mod.selected_projects = lambda _catalog, _values: [project]
+            reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(project,), release_targets=())
+            reference_harness_mod.select_release_projects = lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", [project])
             reference_harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
                 local_ref="v4.29.0",
                 upstream_ref="origin/v4.29.0",

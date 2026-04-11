@@ -1,8 +1,39 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
+
+from scripts.blueprint_harness_branches import active_release_branch, normalize_lean_release_ref
+
+
+@dataclass(frozen=True)
+class HarnessReleaseTarget:
+    release_id: str
+    toolchain: str
+    verso_ref: str
+    branch: str
+    deploy_pages: bool
+
+
+@dataclass(frozen=True)
+class HarnessProjectTarget:
+    release: str
+    ref: str | None
+    publish: bool
+
+
+@dataclass(frozen=True)
+class HarnessProjectCatalog:
+    version: int
+    release_targets: tuple[HarnessReleaseTarget, ...]
+    projects: tuple["HarnessProject", ...]
+
+    def release_target(self, release_id: str) -> HarnessReleaseTarget | None:
+        for target in self.release_targets:
+            if target.release_id == release_id:
+                return target
+        return None
 
 
 @dataclass(frozen=True)
@@ -21,6 +52,9 @@ class HarnessProject:
     panel_regression_script: str | None
     browser_tests_path: str | None
     description: str | None
+    targets: tuple[HarnessProjectTarget, ...] = ()
+    selected_release: str | None = None
+    publish: bool = True
 
     @property
     def in_repo_example(self) -> bool:
@@ -37,6 +71,12 @@ class HarnessProject:
     @property
     def in_repo_command_project(self) -> bool:
         return self.in_repo_example and self.generate_command is not None
+
+    def target_for_release(self, release: str) -> HarnessProjectTarget | None:
+        for target in self.targets:
+            if target.release == release:
+                return target
+        return None
 
 
 def default_project_manifest(package_root: Path) -> Path:
@@ -78,10 +118,88 @@ def _optional_command(data: dict, key: str, *, context: str) -> tuple[str, ...] 
     return tuple(value)
 
 
-def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
+def _optional_bool(data: dict, key: str, *, default: bool, context: str) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{context}: expected boolean field `{key}`")
+    return value
+
+
+def _load_release_targets(raw: dict, manifest_path: Path) -> tuple[HarnessReleaseTarget, ...]:
+    entries = raw.get("release_targets")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"{manifest_path}: expected non-empty top-level `release_targets` list")
+
+    targets: list[HarnessReleaseTarget] = []
+    seen_ids: set[str] = set()
+    for index, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{manifest_path}: release target #{index} must be an object")
+        context = f"{manifest_path}: release target #{index}"
+        release_id = normalize_lean_release_ref(_require_string(entry, "id", context=context))
+        if release_id in seen_ids:
+            raise ValueError(f"{context}: duplicate release target id `{release_id}`")
+        seen_ids.add(release_id)
+        toolchain = normalize_lean_release_ref(_require_string(entry, "toolchain", context=context))
+        verso_ref = normalize_lean_release_ref(_require_string(entry, "verso_ref", context=context))
+        branch = normalize_lean_release_ref(_require_string(entry, "branch", context=context))
+        deploy_pages = _optional_bool(entry, "deploy_pages", default=False, context=context)
+        targets.append(
+            HarnessReleaseTarget(
+                release_id=release_id,
+                toolchain=toolchain,
+                verso_ref=verso_ref,
+                branch=branch,
+                deploy_pages=deploy_pages,
+            )
+        )
+    return tuple(targets)
+
+
+def _load_project_targets(
+    entry: dict,
+    *,
+    context: str,
+    release_ids: set[str],
+    source_kind: str,
+) -> tuple[HarnessProjectTarget, ...]:
+    raw_targets = entry.get("targets")
+    if not isinstance(raw_targets, list) or not raw_targets:
+        raise ValueError(f"{context}: expected non-empty `targets` list")
+
+    targets: list[HarnessProjectTarget] = []
+    seen_releases: set[str] = set()
+    for index, raw_target in enumerate(raw_targets, start=1):
+        if not isinstance(raw_target, dict):
+            raise ValueError(f"{context}: target #{index} must be an object")
+        target_context = f"{context}: target #{index}"
+        release = normalize_lean_release_ref(_require_string(raw_target, "release", context=target_context))
+        if release not in release_ids:
+            raise ValueError(f"{target_context}: unknown release target `{release}`")
+        if release in seen_releases:
+            raise ValueError(f"{target_context}: duplicate release target `{release}`")
+        seen_releases.add(release)
+        ref = _optional_string(raw_target, "ref")
+        if source_kind == "git_checkout" and ref is None:
+            raise ValueError(f"{target_context}: git checkout targets must declare `ref`")
+        if source_kind == "in_repo_example" and ref is not None:
+            raise ValueError(f"{target_context}: in-repo example targets must not declare `ref`")
+        targets.append(
+            HarnessProjectTarget(
+                release=release,
+                ref=ref,
+                publish=_optional_bool(raw_target, "publish", default=True, context=target_context),
+            )
+        )
+    return tuple(targets)
+
+
+def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if raw.get("version") != 1:
+    if raw.get("version") != 2:
         raise ValueError(f"{manifest_path}: unsupported manifest version {raw.get('version')!r}")
+    release_targets = _load_release_targets(raw, manifest_path)
+    release_ids = {target.release_id for target in release_targets}
 
     entries = raw.get("projects")
     if not isinstance(entries, list):
@@ -108,7 +226,7 @@ def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
         build_target = _optional_string(entry, "build_target")
         generator = _optional_string(entry, "generator")
         repository = _optional_string(source, "repository")
-        ref = _optional_string(source, "ref") or "main"
+        ref = _optional_string(source, "ref")
         prepare_command = _optional_command(entry, "prepare_command", context=context)
         build_command = _optional_command(entry, "build_command", context=context)
         generate_command = _optional_command(entry, "generate_command", context=context)
@@ -120,6 +238,7 @@ def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
         browser_tests_path = _optional_string(validation, "browser_tests_path")
         description = _optional_string(entry, "description")
         site_subdir = _optional_string(entry, "site_subdir") or "html-multi"
+        targets = _load_project_targets(entry, context=context, release_ids=release_ids, source_kind=source_kind)
 
         if source_kind == "in_repo_example":
             target_mode = build_target is not None or generator is not None
@@ -166,6 +285,8 @@ def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
                 raise ValueError(f"{context}: git checkout projects must declare `source.repository`")
             if generate_command is None:
                 raise ValueError(f"{context}: git checkout projects must declare `generate_command`")
+            if ref is not None:
+                raise ValueError(f"{context}: git checkout projects must declare release-specific refs under `targets`, not `source.ref`")
             if build_target is not None or generator is not None:
                 raise ValueError(
                     f"{context}: git checkout projects must not declare `build_target` or `generator`"
@@ -189,7 +310,79 @@ def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
                 panel_regression_script=panel_regression_script,
                 browser_tests_path=browser_tests_path,
                 description=description,
+                targets=targets,
             )
         )
 
-    return projects
+    return HarnessProjectCatalog(version=2, release_targets=release_targets, projects=tuple(projects))
+
+
+def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
+    return list(load_project_catalog(manifest_path).projects)
+
+
+def resolve_release_target(catalog: HarnessProjectCatalog, release: str | None, package_root: Path) -> HarnessReleaseTarget:
+    selected = normalize_lean_release_ref(release) if release is not None else active_release_branch(package_root)
+    target = catalog.release_target(selected)
+    if target is None:
+        known = ", ".join(sorted(entry.release_id for entry in catalog.release_targets))
+        raise ValueError(f"{package_root}: unknown release target `{selected}`; known release targets: {known}")
+    return target
+
+
+def resolve_projects_for_release(
+    catalog: HarnessProjectCatalog,
+    release: str,
+    selected_ids: list[str] | None,
+) -> list[HarnessProject]:
+    by_id = {project.project_id: project for project in catalog.projects}
+    if selected_ids is None:
+        candidates = list(catalog.projects)
+    else:
+        seen: set[str] = set()
+        candidates: list[HarnessProject] = []
+        for value in selected_ids:
+            if value not in by_id:
+                known = ", ".join(sorted(by_id))
+                raise ValueError(f"unknown project `{value}`; known projects: {known}")
+            if value not in seen:
+                candidates.append(by_id[value])
+                seen.add(value)
+
+    resolved: list[HarnessProject] = []
+    for project in candidates:
+        target = project.target_for_release(release)
+        if target is None:
+            if selected_ids is not None:
+                raise ValueError(f"project `{project.project_id}` has no target for release `{release}`")
+            continue
+        resolved.append(
+            replace(
+                project,
+                ref=target.ref,
+                selected_release=release,
+                publish=target.publish,
+            )
+        )
+    return resolved
+
+
+def reference_artifact_name(project: HarnessProject) -> str:
+    return f"reference-blueprints-{project.project_id}"
+
+
+def reference_artifact_path(project: HarnessProject) -> str:
+    return f"_out/reference-blueprints/{project.project_id}"
+
+
+def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dict[str, str]]]:
+    return {
+        "include": [
+            {
+                "project_id": project.project_id,
+                "artifact_name": reference_artifact_name(project),
+                "artifact_path": reference_artifact_path(project),
+            }
+            for project in projects
+        ]
+    }
