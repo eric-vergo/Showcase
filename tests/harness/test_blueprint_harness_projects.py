@@ -19,6 +19,7 @@ from scripts.blueprint_harness_projects import (
 )
 from scripts.blueprint_harness_references import (
     OFFICIAL_BLUEPRINT_REQUIRE,
+    bootstrap_reference_checkout,
     bump_reference_project,
     clone_git_project,
     default_reference_bump_branch,
@@ -27,6 +28,7 @@ from scripts.blueprint_harness_references import (
     generate_git_project,
     reference_update_command,
     reference_submodule_update_command,
+    require_reference_harness_layout,
     rewrite_local_blueprint_dependency,
     rewrite_pinned_blueprint_dependency,
     seed_reference_edit_checkout_lake,
@@ -625,6 +627,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 '[submodule "tools/verso-harness"]\n\tpath = tools/verso-harness\n\turl = git@github.com:ejgallego/leanblueprint-to-verso.git\n',
                 encoding="utf-8",
             )
+            (local_dir / "verso-harness.toml").write_text(
+                'package_name = "Demo"\nblueprint_main = "Main"\nformalization_path = "DemoFormalization"\nchapter_root = "Chapters"\ntex_source_glob = "./blueprint/*.tex"\n[lt]\ndefault_chapters = []\n',
+                encoding="utf-8",
+            )
+            (local_dir / "tools" / "verso-harness" / "scripts").mkdir(parents=True)
+            (local_dir / "tools" / "verso-harness" / "scripts" / "check_harness.py").write_text(
+                "#!/usr/bin/env python3\n",
+                encoding="utf-8",
+            )
+            (local_dir / "DemoFormalization").mkdir()
 
             layout = SimpleNamespace(
                 package_root=root / "pkg",
@@ -660,6 +672,49 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(commands[0], reference_submodule_update_command())
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
+
+    def test_bootstrap_reference_checkout_requires_harness_layout(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            (project_dir / ".gitmodules").write_text(
+                '[submodule "tools/verso-harness"]\n\tpath = tools/verso-harness\n\turl = git@github.com:ejgallego/leanblueprint-to-verso.git\n',
+                encoding="utf-8",
+            )
+            (project_dir / "verso-harness.toml").write_text(
+                'package_name = "Demo"\nblueprint_main = "Main"\nformalization_path = "DemoFormalization"\nchapter_root = "Chapters"\ntex_source_glob = "./blueprint/*.tex"\n[lt]\ndefault_chapters = []\n',
+                encoding="utf-8",
+            )
+            (project_dir / "tools" / "verso-harness" / "scripts").mkdir(parents=True)
+            (project_dir / "tools" / "verso-harness" / "scripts" / "check_harness.py").write_text(
+                "#!/usr/bin/env python3\n",
+                encoding="utf-8",
+            )
+            (project_dir / "DemoFormalization").mkdir()
+
+            original_run = refs_mod.run
+            commands: list[list[str]] = []
+            try:
+                refs_mod.run = lambda command, *, cwd: commands.append(command)
+                bootstrap_reference_checkout(project_dir=project_dir)
+            finally:
+                refs_mod.run = original_run
+
+        self.assertEqual(commands, [reference_submodule_update_command()])
+
+    def test_require_reference_harness_layout_rejects_missing_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            (project_dir / "tools" / "verso-harness" / "scripts").mkdir(parents=True)
+            (project_dir / "tools" / "verso-harness" / "scripts" / "check_harness.py").write_text(
+                "#!/usr/bin/env python3\n",
+                encoding="utf-8",
+            )
+            (project_dir / "DemoFormalization").mkdir()
+
+            with self.assertRaisesRegex(SystemExit, "missing .*verso-harness.toml"):
+                require_reference_harness_layout(project_dir)
 
     def test_bump_reference_project_commits_and_pushes_when_requested(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
