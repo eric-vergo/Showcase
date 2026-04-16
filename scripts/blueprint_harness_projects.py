@@ -20,7 +20,6 @@ class HarnessReleaseTarget:
 class HarnessProjectTarget:
     release: str
     ref: str | None
-    publish: bool
 
 
 @dataclass(frozen=True)
@@ -45,7 +44,6 @@ class HarnessProject:
     generator: str | None
     repository: str | None
     ref: str | None
-    prepare_command: tuple[str, ...] | None
     build_command: tuple[str, ...] | None
     generate_command: tuple[str, ...] | None
     site_subdir: str
@@ -54,7 +52,6 @@ class HarnessProject:
     description: str | None
     targets: tuple[HarnessProjectTarget, ...] = ()
     selected_release: str | None = None
-    publish: bool = True
 
     @property
     def in_repo_example(self) -> bool:
@@ -188,7 +185,6 @@ def _load_project_targets(
             HarnessProjectTarget(
                 release=release,
                 ref=ref,
-                publish=_optional_bool(raw_target, "publish", default=True, context=target_context),
             )
         )
     return tuple(targets)
@@ -227,7 +223,6 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
         generator = _optional_string(entry, "generator")
         repository = _optional_string(source, "repository")
         ref = _optional_string(source, "ref")
-        prepare_command = _optional_command(entry, "prepare_command", context=context)
         build_command = _optional_command(entry, "build_command", context=context)
         generate_command = _optional_command(entry, "generate_command", context=context)
 
@@ -258,11 +253,6 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
                     raise ValueError(
                         f"{context}: in-repo examples using root-package targets must not declare "
                         "`repository`, `build_command`, or `generate_command`"
-                    )
-                if prepare_command is not None:
-                    raise ValueError(
-                        f"{context}: in-repo examples using root-package targets must not declare "
-                        "`prepare_command`"
                     )
             elif command_mode:
                 if generate_command is None:
@@ -303,7 +293,6 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
                 generator=generator,
                 repository=repository,
                 ref=ref,
-                prepare_command=prepare_command,
                 build_command=build_command,
                 generate_command=generate_command,
                 site_subdir=site_subdir,
@@ -361,7 +350,6 @@ def resolve_projects_for_release(
                 project,
                 ref=target.ref,
                 selected_release=release,
-                publish=target.publish,
             )
         )
     return resolved
