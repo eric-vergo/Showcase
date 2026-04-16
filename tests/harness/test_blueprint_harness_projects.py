@@ -26,6 +26,7 @@ from scripts.blueprint_harness_references import (
     default_reference_edit_base,
     generate_git_project,
     reference_update_command,
+    reference_submodule_update_command,
     rewrite_local_blueprint_dependency,
     rewrite_pinned_blueprint_dependency,
     seed_reference_edit_checkout_lake,
@@ -79,66 +80,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].targets[0].ref, "47f28af5e6d3edf0de439b7de9c3f121e14e4707")
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
-        self.assertEqual(
-            projects[1].prepare_command,
-            (
-                "git",
-                "submodule",
-                "update",
-                "--init",
-                "--depth",
-                "1",
-                "Noperthedron",
-            ),
-        )
-        self.assertEqual(
-            projects[2].prepare_command,
-            (
-                "git",
-                "-c",
-                "url.https://github.com/.insteadOf=git@github.com:",
-                "-c",
-                "url.https://github.com/.insteadOf=ssh://git@github.com/",
-                "submodule",
-                "update",
-                "--init",
-                "--depth",
-                "1",
-                "Sphere-Packing-LaTeX-Reference",
-            ),
-        )
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
-        self.assertEqual(
-            projects[3].prepare_command,
-            (
-                "git",
-                "-c",
-                "url.https://github.com/.insteadOf=git@github.com:",
-                "-c",
-                "url.https://github.com/.insteadOf=ssh://git@github.com/",
-                "submodule",
-                "update",
-                "--init",
-                "--depth",
-                "1",
-                "FLT",
-            ),
-        )
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
         self.assertEqual(projects[4].targets[0].ref, "6506b992702a6e47a29d90d504f9e55eb65e13e9")
-        self.assertEqual(
-            projects[4].prepare_command,
-            (
-                "git",
-                "submodule",
-                "update",
-                "--init",
-                "--depth",
-                "1",
-                "algebraic-combinatorics",
-            ),
-        )
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
@@ -500,7 +445,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 generator=None,
                 repository=str(remote),
                 ref=first,
-                prepare_command=None,
                 build_command=None,
                 generate_command=("lake", "exe", "blueprint-gen"),
                 site_subdir="html-multi",
@@ -529,7 +473,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="9b50e39c17434ee1a574fd27ed97006adfdc5dc1",
-            prepare_command=None,
             build_command=None,
             generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
@@ -573,7 +516,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 generator=None,
                 repository=str(remote),
                 ref=target,
-                prepare_command=None,
                 build_command=None,
                 generate_command=("lake", "exe", "blueprint-gen"),
                 site_subdir="html-multi",
@@ -618,7 +560,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 generator=None,
                 repository=str(remote),
                 ref=target,
-                prepare_command=None,
                 build_command=None,
                 generate_command=("lake", "exe", "blueprint-gen"),
                 site_subdir="html-multi",
@@ -664,7 +605,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
-            prepare_command=("git", "submodule", "update", "--init", "FLT"),
             build_command=("lake", "build"),
             generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
             site_subdir="html-multi",
@@ -681,6 +621,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             cache_dir.mkdir()
             local_dir.mkdir()
             (local_dir / "lakefile.lean").write_text('require VersoBlueprint from "../pkg"\n', encoding="utf-8")
+            (local_dir / ".gitmodules").write_text(
+                '[submodule "tools/verso-harness"]\n\tpath = tools/verso-harness\n\turl = git@github.com:ejgallego/leanblueprint-to-verso.git\n',
+                encoding="utf-8",
+            )
 
             layout = SimpleNamespace(
                 package_root=root / "pkg",
@@ -713,7 +657,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     setattr(refs_mod, name, value)
 
         self.assertEqual(warm_build_values, [False])
-        self.assertEqual(commands[0], ["git", "submodule", "update", "--init", "FLT"])
+        self.assertEqual(commands[0], reference_submodule_update_command())
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
 
@@ -728,7 +672,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
-            prepare_command=None,
             build_command=("lake", "build"),
             generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
             site_subdir="html-multi",
@@ -814,7 +757,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
-            prepare_command=None,
             build_command=("lake", "build"),
             generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
             site_subdir="html-multi",
@@ -889,7 +831,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
-            prepare_command=None,
             build_command=("lake", "build"),
             generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
@@ -942,7 +883,6 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             generator=None,
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
-            prepare_command=None,
             build_command=("lake", "build"),
             generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",

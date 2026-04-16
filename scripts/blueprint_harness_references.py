@@ -29,6 +29,12 @@ OFFICIAL_BLUEPRINT_URL_PATTERNS = tuple(
 )
 OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = " or ".join(f"`{repository}`" for repository in OFFICIAL_BLUEPRINT_REPOSITORIES)
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
+    "-c",
+    "url.https://github.com/.insteadOf=git@github.com:",
+    "-c",
+    "url.https://github.com/.insteadOf=ssh://git@github.com/",
+)
 OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
     re.MULTILINE,
@@ -102,10 +108,26 @@ def format_external_command(
     return [part.format(**placeholders) for part in command]
 
 
-def run_prepare_command(project: HarnessProject, *, project_dir: Path) -> None:
-    if project.prepare_command is None:
+def reference_submodule_update_command() -> list[str]:
+    return [
+        "git",
+        *GITHUB_SUBMODULE_URL_REWRITE_ARGS,
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "--recursive",
+    ]
+
+
+def bootstrap_reference_checkout(*, project_dir: Path) -> None:
+    if not (project_dir / ".gitmodules").exists():
         return
-    run(list(project.prepare_command), cwd=project_dir)
+    # All external reference blueprints are managed as leanblueprint-to-verso
+    # consumers, so the common bootstrap step is simply to initialize the
+    # helper and formalization submodules declared by the repo itself.
+    run(reference_submodule_update_command(), cwd=project_dir)
 
 
 def ref_is_commit_hash(ref: str | None) -> bool:
@@ -237,7 +259,7 @@ def prepare_reference_edit_checkout(
             )
         run(["git", "checkout", "-b", target_branch, target_base_ref], cwd=edit_dir)
 
-    run_prepare_command(project, project_dir=edit_dir / project.project_root)
+    bootstrap_reference_checkout(project_dir=edit_dir / project.project_root)
     return edit_dir, target_branch, target_base_ref
 
 
@@ -524,7 +546,7 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
         update_git_checkout(project, cache_dir)
     project_dir = cache_dir / project.project_root
     discard_untracked_project_manifest(project_dir)
-    run_prepare_command(project, project_dir=project_dir)
+    bootstrap_reference_checkout(project_dir=project_dir)
     cache_lakefile = project_dir / "lakefile.lean"
     original_text = cache_lakefile.read_text(encoding="utf-8")
     rewrite_local_blueprint_dependency(project_dir, layout.repo_root)
@@ -544,6 +566,7 @@ def sync_reference_local_checkout(layout, project: HarnessProject, cache_dir: Pa
         clone_git_project(project, local_dir, cwd=layout.package_root, source=str(cache_dir))
     else:
         update_git_checkout(project, local_dir)
+    bootstrap_reference_checkout(project_dir=local_dir / project.project_root)
 
     cache_lake = cache_dir / ".lake"
     if cache_lake.exists():
@@ -563,7 +586,6 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
     output_dir.mkdir(parents=True, exist_ok=True)
     discard_untracked_project_manifest(project_dir)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
-    run_prepare_command(project, project_dir=project_dir)
     rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, layout.package_root)
     if rewritten_lakefile is not None:
         print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
@@ -617,7 +639,7 @@ def generate_git_project(layout, output_root: Path, project: HarnessProject, *, 
     output_dir.mkdir(parents=True, exist_ok=True)
     original_text = (project_dir / "lakefile.lean").read_text(encoding="utf-8") if use_shared_reference_checkout() else None
     try:
-        run_prepare_command(project, project_dir=project_dir)
+        bootstrap_reference_checkout(project_dir=project_dir)
         rewritten_lakefile = rewrite_local_blueprint_dependency(project_dir, layout.package_root)
         print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
         run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)

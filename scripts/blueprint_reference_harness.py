@@ -381,7 +381,6 @@ def print_release_target_project_status(release_id: str, status: ReferenceProjec
         f"release={release_id}",
         f"project={project.project_id}",
         f"source={source}",
-        f"publish={str(project.publish).lower()}",
         f"catalog_ref={text_or_blank(status.catalog_ref)}",
         f"project_upstream_ref={text_or_blank(status.project_upstream_ref)}",
         f"catalog_status={text_or_blank(status.project_relationship)}",
