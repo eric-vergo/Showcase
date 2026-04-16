@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+import tomllib
 
 from scripts.blueprint_harness_projects import HarnessProject
 from scripts.blueprint_harness_utils import lean_low_priority_command, run
@@ -35,6 +36,7 @@ GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "-c",
     "url.https://github.com/.insteadOf=ssh://git@github.com/",
 )
+REFERENCE_HARNESS_CONFIG = "verso-harness.toml"
 OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
     re.MULTILINE,
@@ -121,6 +123,46 @@ def reference_submodule_update_command() -> list[str]:
     ]
 
 
+def require_reference_harness_layout(project_dir: Path) -> None:
+    config_path = project_dir / REFERENCE_HARNESS_CONFIG
+    if not config_path.exists():
+        raise SystemExit(
+            "[blueprint-harness] expected the external reference checkout to be a "
+            f"`leanblueprint-to-verso` consumer; missing {config_path}"
+        )
+
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"[blueprint-harness] invalid {config_path}: {exc}") from exc
+
+    formalization_path = config.get("formalization_path")
+    if not isinstance(formalization_path, str) or not formalization_path:
+        raise SystemExit(f"[blueprint-harness] expected {config_path} to declare `formalization_path`")
+    if Path(formalization_path).is_absolute():
+        raise SystemExit(f"[blueprint-harness] expected `formalization_path` in {config_path} to be relative")
+
+    helper_root = project_dir / "tools" / "verso-harness"
+    helper_check = helper_root / "scripts" / "check_harness.py"
+    if not helper_root.is_dir():
+        raise SystemExit(
+            "[blueprint-harness] expected the external reference checkout to vendor "
+            f"`tools/verso-harness`; missing {helper_root}"
+        )
+    if not helper_check.is_file():
+        raise SystemExit(
+            "[blueprint-harness] expected the external reference checkout to include the "
+            f"`leanblueprint-to-verso` helper checker; missing {helper_check}"
+        )
+
+    formalization_root = project_dir / formalization_path
+    if not formalization_root.exists():
+        raise SystemExit(
+            "[blueprint-harness] expected the external reference checkout to contain the "
+            f"configured formalization path `{formalization_path}` from {config_path}"
+        )
+
+
 def bootstrap_reference_checkout(*, project_dir: Path) -> None:
     if not (project_dir / ".gitmodules").exists():
         return
@@ -128,6 +170,7 @@ def bootstrap_reference_checkout(*, project_dir: Path) -> None:
     # consumers, so the common bootstrap step is simply to initialize the
     # helper and formalization submodules declared by the repo itself.
     run(reference_submodule_update_command(), cwd=project_dir)
+    require_reference_harness_layout(project_dir)
 
 
 def ref_is_commit_hash(ref: str | None) -> bool:
