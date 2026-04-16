@@ -53,6 +53,15 @@
           "publish": true
         }
       ],
+      "prepare_command": [
+        "git",
+        "submodule",
+        "update",
+        "--init",
+        "--depth",
+        "1",
+        "Noperthedron"
+      ],
       "build_command": ["lake", "build"],
       "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
       "site_subdir": "html-multi"

@@ -80,6 +80,18 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(
+            projects[1].prepare_command,
+            (
+                "git",
+                "submodule",
+                "update",
+                "--init",
+                "--depth",
+                "1",
+                "Noperthedron",
+            ),
+        )
+        self.assertEqual(
             projects[2].prepare_command,
             (
                 "git",
