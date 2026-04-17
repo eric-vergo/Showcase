@@ -72,6 +72,38 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "refusing to run `bump-toolchain` from backport-only checkout `v4.28.0`"):
                 branches_mod.require_checkout_role(root, required_role="default_dev", operation="bump-toolchain")
 
+    def test_preferred_release_ref_falls_back_to_remote_head_before_main_master(self) -> None:
+        originals = {
+            "active_release_branch": branches_mod.active_release_branch,
+            "ref_exists": branches_mod.ref_exists,
+            "remote_head_ref": branches_mod.remote_head_ref,
+        }
+        try:
+            branches_mod.active_release_branch = lambda _repo_root: "v4.30.0"
+            branches_mod.remote_head_ref = lambda _repo_root: "origin/v4.29.0"
+            branches_mod.ref_exists = lambda _repo_root, ref: ref == "refs/remotes/origin/v4.29.0"
+
+            self.assertEqual(branches_mod.preferred_release_ref(Path("/tmp/repo")), "origin/v4.29.0")
+        finally:
+            for name, value in originals.items():
+                setattr(branches_mod, name, value)
+
+    def test_local_release_ref_uses_local_branch_matching_remote_head(self) -> None:
+        originals = {
+            "active_release_branch": branches_mod.active_release_branch,
+            "ref_exists": branches_mod.ref_exists,
+            "remote_head_ref": branches_mod.remote_head_ref,
+        }
+        try:
+            branches_mod.active_release_branch = lambda _repo_root: "v4.30.0"
+            branches_mod.remote_head_ref = lambda _repo_root: "origin/v4.29.0"
+            branches_mod.ref_exists = lambda _repo_root, ref: ref == "refs/heads/v4.29.0"
+
+            self.assertEqual(branches_mod.local_release_ref(Path("/tmp/repo")), "v4.29.0")
+        finally:
+            for name, value in originals.items():
+                setattr(branches_mod, name, value)
+
 
 if __name__ == "__main__":
     unittest.main()

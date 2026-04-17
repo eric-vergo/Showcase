@@ -242,7 +242,14 @@ def reference_project_upstream_ref(checkout_root: Path) -> str | None:
 
 
 def project_catalog_ref(checkout_root: Path, project: HarnessProject) -> str | None:
-    ref = project.ref or "main"
+    ref = project.ref or reference_project_upstream_ref(checkout_root)
+    if ref is None:
+        return None
+    if ref.startswith("origin/"):
+        remote_ref = ref
+        if ref_oid(checkout_root, remote_ref) is not None:
+            return remote_ref
+        ref = ref[len("origin/") :]
     if ref_is_commit_hash(ref):
         return ref
     remote_ref = f"origin/{ref}"

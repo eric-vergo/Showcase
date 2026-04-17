@@ -208,7 +208,7 @@ The repository now uses two small maintainer CLIs instead of one large mixed
 surface:
 
 - `python3 -m scripts.blueprint_harness`
-  Worktree creation, root-`main` checks, landing, and local coordination
+  Worktree creation, root release-branch checks, landing, and local coordination
 - `python3 -m scripts.blueprint_reference_harness`
   Reference-project generation, validation, cache sync, editable reference
   checkouts, and prune operations
