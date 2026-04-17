@@ -645,8 +645,8 @@ The harness is now project-driven rather than example-hardcoded.
   `ejgallego/verso-algebraic-combinatorics`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
-- external entries should declare the repository ref plus the build and
-  generation commands needed after checkout
+- external entries should declare release-specific refs under `targets` plus
+  the build and generation commands needed after checkout
 - the harness currently rewrites the cloned `lakefile.lean` dependency line so
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
@@ -665,9 +665,14 @@ Minimal external catalog entry shape:
   "source": {
     "kind": "git_checkout",
     "repository": "https://github.com/org/some-user-project.git",
-    "ref": "main",
     "project_root": "."
   },
+  "targets": [
+    {
+      "release": "v4.29.0",
+      "ref": "0123456789abcdef0123456789abcdef01234567"
+    }
+  ],
   "build_command": ["lake", "build"],
   "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
   "site_subdir": "html-multi"
