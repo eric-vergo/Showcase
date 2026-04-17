@@ -139,12 +139,27 @@ def ref_exists(repo_root: Path, ref: str) -> bool:
     )
 
 
+def remote_head_ref(repo_root: Path) -> str | None:
+    result = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    ref = result.stdout.strip()
+    return ref or None
+
+
 def preferred_release_ref(repo_root: Path) -> str:
     branch = active_release_branch(repo_root)
     if ref_exists(repo_root, f"refs/remotes/origin/{branch}"):
         return f"origin/{branch}"
     if ref_exists(repo_root, f"refs/heads/{branch}"):
         return branch
+    remote_head = remote_head_ref(repo_root)
+    if remote_head is not None and ref_exists(repo_root, f"refs/remotes/{remote_head}"):
+        return remote_head
     for candidate in ("origin/main", "main", "origin/master", "master"):
         ref = f"refs/remotes/{candidate}" if candidate.startswith("origin/") else f"refs/heads/{candidate}"
         if ref_exists(repo_root, ref):
@@ -156,6 +171,11 @@ def local_release_ref(repo_root: Path) -> str:
     branch = active_release_branch(repo_root)
     if ref_exists(repo_root, f"refs/heads/{branch}"):
         return branch
+    remote_head = remote_head_ref(repo_root)
+    if remote_head is not None and remote_head.startswith("origin/"):
+        local_head = remote_head[len("origin/") :]
+        if ref_exists(repo_root, f"refs/heads/{local_head}"):
+            return local_head
     for candidate in ("main", "master"):
         if ref_exists(repo_root, f"refs/heads/{candidate}"):
             return candidate
