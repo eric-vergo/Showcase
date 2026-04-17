@@ -6,7 +6,7 @@
       "toolchain": "v4.28.0",
       "verso_ref": "v4.28.0",
       "branch": "v4.28.0",
-      "deploy_pages": false
+      "deploy_pages": true
     },
     {
       "id": "v4.29.0",

@@ -374,3 +374,28 @@ def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dic
             for project in projects
         ]
     }
+
+
+def deploy_release_artifact_name(release_id: str) -> str:
+    return f"reference-blueprints-release-{release_id}"
+
+
+def deploy_release_artifact_path(release_id: str) -> str:
+    return f"_out/reference-blueprints/{release_id}"
+
+
+def deploy_release_matrix(release_targets: tuple[HarnessReleaseTarget, ...]) -> dict[str, list[dict[str, str]]]:
+    return {
+        "include": [
+            {
+                "release_id": target.release_id,
+                "toolchain": target.toolchain,
+                "verso_ref": target.verso_ref,
+                "branch": target.branch,
+                "artifact_name": deploy_release_artifact_name(target.release_id),
+                "artifact_path": deploy_release_artifact_path(target.release_id),
+            }
+            for target in release_targets
+            if target.deploy_pages
+        ]
+    }
