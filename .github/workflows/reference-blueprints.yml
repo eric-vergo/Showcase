@@ -59,6 +59,15 @@ jobs:
           key: ${{ runner.os }}-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
+      - name: Restore Lake dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib/.lake/build
+            .lake/packages/verso/.lake/build
+          key: ${{ runner.os }}-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-lake-deps-
       - name: Show tool versions
         run: |
           lean --version
@@ -90,6 +99,15 @@ jobs:
           key: ${{ runner.os }}-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
+      - name: Restore Lake dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib/.lake/build
+            .lake/packages/verso/.lake/build
+          key: ${{ runner.os }}-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-lake-deps-
       - name: Show tool versions
         run: |
           lean --version
