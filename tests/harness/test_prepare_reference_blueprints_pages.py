@@ -80,8 +80,71 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             landing_index = (output_root / "index.html").read_text(encoding="utf-8")
             self.assertIn("reference-blueprints/project-template/", landing_index)
             self.assertIn("reference-blueprints/noperthedron/", landing_index)
+            self.assertIn("Open reference blueprint index", landing_index)
             self.assertIn("test-blueprints/", landing_index)
             self.assertIn("test-blueprints/preview_runtime_showcase/html-multi/", landing_index)
+
+    def test_prepare_pages_stages_release_namespaced_reference_blueprints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            reference_root = tmp_path / "reference-blueprints"
+            test_root = tmp_path / "test-blueprints"
+            output_root = tmp_path / "_site"
+
+            (reference_root / "v4.28.0" / "project-template" / "html-multi").mkdir(parents=True)
+            (reference_root / "v4.28.0" / "project-template" / "html-multi" / "index.html").write_text(
+                "reference project template v4.28.0",
+                encoding="utf-8",
+            )
+            (reference_root / "v4.29.0" / "project-template" / "html-multi").mkdir(parents=True)
+            (reference_root / "v4.29.0" / "project-template" / "html-multi" / "index.html").write_text(
+                "reference project template v4.29.0",
+                encoding="utf-8",
+            )
+            (reference_root / "v4.29.0" / "noperthedron" / "html-multi").mkdir(parents=True)
+            (reference_root / "v4.29.0" / "noperthedron" / "html-multi" / "index.html").write_text(
+                "reference noperthedron v4.29.0",
+                encoding="utf-8",
+            )
+
+            (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
+            (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
+                "test showcase",
+                encoding="utf-8",
+            )
+            (test_root / "index.html").write_text("test index", encoding="utf-8")
+
+            result = self.run_helper(reference_root, test_root, output_root)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+            self.assertEqual(
+                (
+                    output_root
+                    / "reference-blueprints"
+                    / "v4.28.0"
+                    / "project-template"
+                    / "index.html"
+                ).read_text(encoding="utf-8"),
+                "reference project template v4.28.0",
+            )
+            self.assertEqual(
+                (
+                    output_root
+                    / "reference-blueprints"
+                    / "v4.29.0"
+                    / "noperthedron"
+                    / "index.html"
+                ).read_text(encoding="utf-8"),
+                "reference noperthedron v4.29.0",
+            )
+
+            release_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
+            self.assertIn("reference-blueprints/v4.28.0/", release_index)
+            self.assertIn("reference-blueprints/v4.29.0/", release_index)
+
+            landing_index = (output_root / "index.html").read_text(encoding="utf-8")
+            self.assertIn("reference-blueprints/v4.28.0/", landing_index)
+            self.assertIn("reference-blueprints/v4.29.0/", landing_index)
 
 
 if __name__ == "__main__":

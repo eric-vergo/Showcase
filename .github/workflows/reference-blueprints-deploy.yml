@@ -8,9 +8,9 @@ on:
       - completed
     branches:
       - v*
+  workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
   pages: write
   id-token: write
@@ -20,39 +20,134 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  resolve-reference-release:
-    name: Resolve Deploy Release
-    if: github.event.workflow_run.conclusion == 'success'
+  resolve-deploy-releases:
+    name: Resolve Deploy Releases
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.resolve.outputs.release_id }}
-      deploy_pages: ${{ steps.resolve.outputs.deploy_pages }}
+      manifest_path: ${{ steps.resolve.outputs.manifest_path }}
+      deployable_release_count: ${{ steps.resolve.outputs.deployable_release_count }}
+      deployable_release_matrix: ${{ steps.resolve.outputs.deployable_release_matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-      - name: Resolve release metadata
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Resolve deploy release metadata
         id: resolve
-        run: python3 ./scripts/emit_reference_release_matrix.py --github-output >> "$GITHUB_OUTPUT"
+        run: python3 ./scripts/emit_reference_deploy_matrix.py --github-output >> "$GITHUB_OUTPUT"
+
+  build-reference-blueprints:
+    name: Build Release ${{ matrix.release_id }}
+    runs-on: ubuntu-latest
+    needs: resolve-deploy-releases
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_release_matrix) }}
+    env:
+      BP_REFERENCE_CHECKOUT_MODE: shared
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+      - name: Show deployable release target
+        run: |
+          echo "release_id=${{ matrix.release_id }}"
+          echo "toolchain=${{ matrix.toolchain }}"
+          echo "verso_ref=${{ matrix.verso_ref }}"
+          echo "branch=${{ matrix.branch }}"
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Restore Lake package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib
+            .lake/packages/verso
+          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.release_id }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.release_id }}-
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-
+      - name: Show tool versions
+        run: |
+          lean --version
+          lake --version
+          python3 --version
+      - name: Generate release reference blueprints
+        run: python3 -m scripts.blueprint_reference_harness generate --release ${{ matrix.release_id }} --allow-local-build --serial _out/reference-blueprints/${{ matrix.release_id }}
+      - name: Upload release reference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+
+  build-test-blueprints:
+    name: Build Test Blueprints
+    runs-on: ubuntu-latest
+    needs: resolve-deploy-releases
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Restore Lake package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib
+            .lake/packages/verso
+          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-test-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-test-
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-
+      - name: Show tool versions
+        run: |
+          lean --version
+          lake --version
+          python3 --version
+      - name: Generate test blueprints
+        run: ./scripts/generate-test-blueprints.sh
+      - name: Upload test blueprints artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-blueprints
+          path: _out/test-blueprints
 
   upload-pages-artifact:
     name: Upload Pages Artifact
-    if: github.event.workflow_run.conclusion == 'success' && needs.resolve-reference-release.outputs.deploy_pages == 'true'
     runs-on: ubuntu-latest
-    needs: resolve-reference-release
+    needs:
+      - resolve-deploy-releases
+      - build-reference-blueprints
+      - build-test-blueprints
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
     steps:
-      - name: Show deploy release target
-        run: |
-          echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
-          echo "deploy_pages=${{ needs.resolve-reference-release.outputs.deploy_pages }}"
-      - name: Download built site artifact
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v4
         with:
-          name: reference-blueprints-site
-          path: _site
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Show deploy release summary
+        run: |
+          echo "manifest_path=${{ needs.resolve-deploy-releases.outputs.manifest_path }}"
+          echo "deployable_release_count=${{ needs.resolve-deploy-releases.outputs.deployable_release_count }}"
+      - name: Download release reference artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: reference-blueprints-release-*
+          path: _out/reference-blueprints
+          merge-multiple: true
+      - name: Download test blueprints artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-blueprints
+          path: _out/test-blueprints
+      - name: Prepare combined Pages artifact
+        run: python3 ./scripts/prepare_reference_blueprints_pages.py
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -60,13 +155,13 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    if: github.event.workflow_run.conclusion == 'success' && needs.resolve-reference-release.outputs.deploy_pages == 'true'
     environment:
       name: github-pages
     runs-on: ubuntu-latest
     needs:
-      - resolve-reference-release
+      - resolve-deploy-releases
       - upload-pages-artifact
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4

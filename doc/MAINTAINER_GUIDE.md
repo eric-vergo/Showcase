@@ -605,25 +605,26 @@ pushes to release branches named like `v4.29.0`, and manual dispatch, it:
   release target
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
-- stages a site artifact under `_site/` only when the selected release target
-  has `deploy_pages: true`
+- stages a branch-local site artifact under `_site/` only when the selected
+  release target has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
 - uses the shared reference-checkout mode in CI to avoid duplicating warmed
   `.lake/` trees on the GitHub runner
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.29.0`, re-resolves that branch's release target, and only uploads and
-deploys GitHub Pages when the selected target has `deploy_pages: true`.
+`v4.29.0`, checks out the repository default-development branch as the source
+of truth for deployment policy, resolves every release target with
+`deploy_pages: true`, rebuilds each deployable reference slice in isolation,
+and assembles one combined GitHub Pages artifact.
 
 At the moment that means:
 
 - `v4.29.0` deploys Pages for its selected reference targets
-- `v4.28.0` still validates its selected targets in CI, but does not deploy
-  Pages
+- `v4.28.0` also deploys Pages for its selected reference targets
 
-The staged Pages artifact layout is release-target dependent. It always
-includes:
+The branch-local site artifact produced by `reference-blueprints.yml` for one
+release includes:
 
 - `_site/index.html`
 - `_site/reference-blueprints/<project-id>/` for each deployable reference
@@ -631,6 +632,22 @@ includes:
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
+
+The combined Pages artifact produced by `reference-blueprints-deploy.yml`
+includes:
+
+- `_site/index.html`
+- `_site/reference-blueprints/<release-id>/<project-id>/` for each deployable
+  reference target across all deployable release slices
+- `_site/test-blueprints/index.html`
+- `_site/test-blueprints/preview_runtime_showcase/`
+- `_site/test-blueprints/<slug>/`
+
+The shared staging helper understands both input shapes:
+
+- a single-release local/CI artifact rooted at `_out/reference-blueprints/<project-id>/`
+- or a deploy-time combined artifact rooted at
+  `_out/reference-blueprints/<release-id>/<project-id>/`
 
 The staging helper is:
 

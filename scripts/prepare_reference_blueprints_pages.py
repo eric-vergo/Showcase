@@ -29,9 +29,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def html_link(project_id: str) -> str:
+def html_link(project_id: str, *, release: str | None = None) -> str:
     label = html.escape(project_id)
-    href = f"reference-blueprints/{label}/"
+    if release is None:
+        href = f"reference-blueprints/{label}/"
+    else:
+        href = f"reference-blueprints/{html.escape(release)}/{label}/"
     return f'<li><a href="{href}">{label}</a></li>'
 
 
@@ -39,6 +42,93 @@ def html_test_link(slug: str) -> str:
     label = html.escape(slug)
     href = f"test-blueprints/{label}/html-multi/"
     return f'<li><a href="{href}">{label}</a></li>'
+
+
+def html_release_link(release: str) -> str:
+    label = html.escape(release)
+    href = f"reference-blueprints/{label}/"
+    return f'<li><a href="{href}">{label}</a></li>'
+
+
+def write_reference_index(reference_root: Path, release_projects: dict[str | None, list[str]]) -> None:
+    if None in release_projects:
+        items = [html_link(project_id) for project_id in release_projects[None]]
+        body = [
+            "<!doctype html>",
+            "<html lang=\"en\">",
+            "<meta charset=\"utf-8\">",
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+            "<title>Reference Blueprints</title>",
+            "<body>",
+            "<h1>Reference Blueprints</h1>",
+            "<ul>",
+            *items,
+            "</ul>",
+            "</body>",
+            "</html>",
+        ]
+        (reference_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
+        return
+
+    for release, projects in release_projects.items():
+        assert release is not None
+        release_root = reference_root / release
+        release_root.mkdir(parents=True, exist_ok=True)
+        body = [
+            "<!doctype html>",
+            "<html lang=\"en\">",
+            "<meta charset=\"utf-8\">",
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+            f"<title>Reference Blueprints {html.escape(release)}</title>",
+            "<body>",
+            f"<h1>Reference Blueprints {html.escape(release)}</h1>",
+            "<ul>",
+            *[html_link(project_id, release=release) for project_id in projects],
+            "</ul>",
+            "</body>",
+            "</html>",
+        ]
+        (release_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
+
+    body = [
+        "<!doctype html>",
+        "<html lang=\"en\">",
+        "<meta charset=\"utf-8\">",
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+        "<title>Reference Blueprint Releases</title>",
+        "<body>",
+        "<h1>Reference Blueprint Releases</h1>",
+        "<ul>",
+        *[html_release_link(release) for release in sorted(release_projects)],
+        "</ul>",
+        "</body>",
+        "</html>",
+    ]
+    (reference_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
+
+
+def copy_reference_sites(reference_root: Path, publish_reference_root: Path) -> dict[str | None, list[str]]:
+    release_projects: dict[str | None, list[str]] = {}
+    children = sorted(path for path in reference_root.iterdir() if path.is_dir())
+    if all((child / "html-multi").exists() for child in children):
+        projects: list[str] = []
+        for project_dir in children:
+            shutil.copytree(project_dir / "html-multi", publish_reference_root / project_dir.name)
+            projects.append(project_dir.name)
+        release_projects[None] = projects
+        return release_projects
+
+    for release_dir in children:
+        projects: list[str] = []
+        for project_dir in sorted(path for path in release_dir.iterdir() if path.is_dir()):
+            site_dir = project_dir / "html-multi"
+            if not site_dir.exists():
+                continue
+            shutil.copytree(site_dir, publish_reference_root / release_dir.name / project_dir.name)
+            projects.append(project_dir.name)
+        if projects:
+            release_projects[release_dir.name] = projects
+    return release_projects
 
 
 def main() -> int:
@@ -59,13 +149,8 @@ def main() -> int:
     publish_reference_root.mkdir(parents=True, exist_ok=True)
     publish_test_root.mkdir(parents=True, exist_ok=True)
 
-    reference_projects: list[str] = []
-    for project_dir in sorted(path for path in reference_root.iterdir() if path.is_dir()):
-        site_dir = project_dir / "html-multi"
-        if not site_dir.exists():
-            continue
-        shutil.copytree(site_dir, publish_reference_root / project_dir.name)
-        reference_projects.append(project_dir.name)
+    release_projects = copy_reference_sites(reference_root, publish_reference_root)
+    write_reference_index(publish_reference_root, release_projects)
 
     test_blueprints: list[str] = []
     for test_dir in sorted(path for path in test_root.iterdir() if path.is_dir()):
@@ -90,9 +175,23 @@ def main() -> int:
                 "<h1>Verso Blueprint Rendered Artifacts</h1>",
                 "<p>Generated reference and test sites assembled from the current workflow run.</p>",
                 "<h2>Reference Blueprints</h2>",
-                "<ul>",
-                *[html_link(project_id) for project_id in reference_projects],
-                "</ul>",
+                "<p><a href=\"reference-blueprints/\">Open reference blueprint index</a></p>",
+                *(
+                    [
+                        "<ul>",
+                        *[html_link(project_id) for project_id in release_projects[None]],
+                        "</ul>",
+                    ]
+                    if None in release_projects
+                    else [
+                        "<ul>",
+                        *[
+                            html_release_link(release)
+                            for release in sorted(release_projects)
+                        ],
+                        "</ul>",
+                    ]
+                ),
                 "<h2>Test Blueprints</h2>",
                 "<p><a href=\"test-blueprints/\">Open categorized test blueprint index</a></p>",
                 "<ul>",

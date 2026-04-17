@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import unittest
 
 from scripts.blueprint_harness_projects import (
+    deploy_release_matrix,
     HarnessProject,
     default_project_manifest,
     load_project_catalog,
@@ -103,6 +104,34 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         for entry in matrix["include"]:
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
             self.assertEqual(entry["artifact_path"], f"_out/reference-blueprints/{entry['project_id']}")
+
+    def test_deploy_release_matrix_includes_only_deployable_releases(self) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        matrix = deploy_release_matrix(catalog.release_targets)
+
+        self.assertEqual(
+            matrix,
+            {
+                "include": [
+                    {
+                        "release_id": "v4.28.0",
+                        "toolchain": "v4.28.0",
+                        "verso_ref": "v4.28.0",
+                        "branch": "v4.28.0",
+                        "artifact_name": "reference-blueprints-release-v4.28.0",
+                        "artifact_path": "_out/reference-blueprints/v4.28.0",
+                    },
+                    {
+                        "release_id": "v4.29.0",
+                        "toolchain": "v4.29.0",
+                        "verso_ref": "v4.29.0",
+                        "branch": "v4.29.0",
+                        "artifact_name": "reference-blueprints-release-v4.29.0",
+                        "artifact_path": "_out/reference-blueprints/v4.29.0",
+                    }
+                ]
+            },
+        )
 
     def test_git_checkout_project_is_supported(self) -> None:
         manifest_data = {

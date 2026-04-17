@@ -192,6 +192,16 @@ Current release map:
 - `v4.28.0`: `project-template`, `spherepackingblueprint`, `verso-flt`,
   `algebraic-combinatorics`
 
+Reference blueprint deployment is release-sliced:
+
+- `generate`, `validate`, and `sync` only operate on the current checkout's
+  release slice
+- the branch-local CI artifact for `reference-blueprints.yml` only includes the
+  selected release slice for that branch
+- the Pages deployment workflow rebuilds every release target with
+  `deploy_pages: true` and assembles one combined site under
+  `reference-blueprints/<release-id>/<project-id>/`
+
 `generate`, `validate`, and `sync` refuse to run a different release target
 from the wrong checkout; switch to the corresponding release branch first.
 
