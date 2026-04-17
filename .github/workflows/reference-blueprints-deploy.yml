@@ -70,6 +70,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.release_id }}-
             ${{ runner.os }}-reference-deploy-lake-packages-v2-
+      - name: Restore Lake dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib/.lake/build
+            .lake/packages/verso/.lake/build
+          key: ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.release_id }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.release_id }}-
+            ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Show tool versions
         run: |
           lean --version
@@ -106,6 +116,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-packages-v2-test-
             ${{ runner.os }}-reference-deploy-lake-packages-v2-
+      - name: Restore Lake dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake/packages/mathlib/.lake/build
+            .lake/packages/verso/.lake/build
+          key: ${{ runner.os }}-reference-deploy-lake-deps-test-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            ${{ runner.os }}-reference-deploy-lake-deps-test-
+            ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Show tool versions
         run: |
           lean --version
