@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import unittest
 
 from scripts.blueprint_harness_projects import (
-    deploy_release_matrix,
+    deploy_project_matrix,
     HarnessProject,
     default_project_manifest,
     load_project_catalog,
@@ -105,9 +105,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
             self.assertEqual(entry["artifact_path"], f"_out/reference-blueprints/{entry['project_id']}")
 
-    def test_deploy_release_matrix_includes_only_deployable_releases(self) -> None:
+    def test_deploy_project_matrix_includes_only_deployable_projects(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-        matrix = deploy_release_matrix(catalog.release_targets)
+        matrix = deploy_project_matrix(catalog.release_targets, catalog)
 
         self.assertEqual(
             matrix,
@@ -118,17 +118,55 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         "toolchain": "v4.28.0",
                         "verso_ref": "v4.28.0",
                         "branch": "v4.28.0",
-                        "artifact_name": "reference-blueprints-release-v4.28.0",
-                        "artifact_path": "_out/reference-blueprints/v4.28.0",
+                        "project_id": "project-template",
+                        "artifact_name": "reference-blueprints-release-v4.28.0__project__project-template",
+                        "artifact_path": "_out/reference-blueprints/v4.28.0/project-template",
+                    },
+                    {
+                        "release_id": "v4.28.0",
+                        "toolchain": "v4.28.0",
+                        "verso_ref": "v4.28.0",
+                        "branch": "v4.28.0",
+                        "project_id": "spherepackingblueprint",
+                        "artifact_name": "reference-blueprints-release-v4.28.0__project__spherepackingblueprint",
+                        "artifact_path": "_out/reference-blueprints/v4.28.0/spherepackingblueprint",
+                    },
+                    {
+                        "release_id": "v4.28.0",
+                        "toolchain": "v4.28.0",
+                        "verso_ref": "v4.28.0",
+                        "branch": "v4.28.0",
+                        "project_id": "verso-flt",
+                        "artifact_name": "reference-blueprints-release-v4.28.0__project__verso-flt",
+                        "artifact_path": "_out/reference-blueprints/v4.28.0/verso-flt",
+                    },
+                    {
+                        "release_id": "v4.28.0",
+                        "toolchain": "v4.28.0",
+                        "verso_ref": "v4.28.0",
+                        "branch": "v4.28.0",
+                        "project_id": "algebraic-combinatorics",
+                        "artifact_name": "reference-blueprints-release-v4.28.0__project__algebraic-combinatorics",
+                        "artifact_path": "_out/reference-blueprints/v4.28.0/algebraic-combinatorics",
                     },
                     {
                         "release_id": "v4.29.0",
                         "toolchain": "v4.29.0",
                         "verso_ref": "v4.29.0",
                         "branch": "v4.29.0",
-                        "artifact_name": "reference-blueprints-release-v4.29.0",
-                        "artifact_path": "_out/reference-blueprints/v4.29.0",
-                    }
+                        "project_id": "project-template",
+                        "artifact_name": "reference-blueprints-release-v4.29.0__project__project-template",
+                        "artifact_path": "_out/reference-blueprints/v4.29.0/project-template",
+                    },
+                    {
+                        "release_id": "v4.29.0",
+                        "toolchain": "v4.29.0",
+                        "verso_ref": "v4.29.0",
+                        "branch": "v4.29.0",
+                        "project_id": "noperthedron",
+                        "artifact_name": "reference-blueprints-release-v4.29.0__project__noperthedron",
+                        "artifact_path": "_out/reference-blueprints/v4.29.0/noperthedron",
+                    },
                 ]
             },
         )

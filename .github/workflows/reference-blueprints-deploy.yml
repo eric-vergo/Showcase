@@ -27,7 +27,8 @@ jobs:
     outputs:
       manifest_path: ${{ steps.resolve.outputs.manifest_path }}
       deployable_release_count: ${{ steps.resolve.outputs.deployable_release_count }}
-      deployable_release_matrix: ${{ steps.resolve.outputs.deployable_release_matrix }}
+      deployable_project_count: ${{ steps.resolve.outputs.deployable_project_count }}
+      deployable_project_matrix: ${{ steps.resolve.outputs.deployable_project_matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,13 +38,13 @@ jobs:
         run: python3 ./scripts/emit_reference_deploy_matrix.py --github-output >> "$GITHUB_OUTPUT"
 
   build-reference-blueprints:
-    name: Build Release ${{ matrix.release_id }}
+    name: Build Release ${{ matrix.release_id }} / ${{ matrix.project_id }}
     runs-on: ubuntu-latest
     needs: resolve-deploy-releases
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_release_matrix) }}
+      matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_matrix) }}
     env:
       BP_REFERENCE_CHECKOUT_MODE: shared
     steps:
@@ -56,6 +57,7 @@ jobs:
           echo "toolchain=${{ matrix.toolchain }}"
           echo "verso_ref=${{ matrix.verso_ref }}"
           echo "branch=${{ matrix.branch }}"
+          echo "project_id=${{ matrix.project_id }}"
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -86,7 +88,13 @@ jobs:
           lake --version
           python3 --version
       - name: Generate release reference blueprints
-        run: python3 -m scripts.blueprint_reference_harness generate --release ${{ matrix.release_id }} --allow-local-build --serial _out/reference-blueprints/${{ matrix.release_id }}
+        run: |
+          python3 -m scripts.blueprint_reference_harness generate \
+            --release ${{ matrix.release_id }} \
+            --project ${{ matrix.project_id }} \
+            --allow-local-build \
+            --serial \
+            _out/reference-blueprints/${{ matrix.release_id }}
       - name: Upload release reference artifact
         uses: actions/upload-artifact@v4
         with:
@@ -97,7 +105,7 @@ jobs:
     name: Build Test Blueprints
     runs-on: ubuntu-latest
     needs: resolve-deploy-releases
-    if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
+    if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -155,12 +163,14 @@ jobs:
         run: |
           echo "manifest_path=${{ needs.resolve-deploy-releases.outputs.manifest_path }}"
           echo "deployable_release_count=${{ needs.resolve-deploy-releases.outputs.deployable_release_count }}"
+          echo "deployable_project_count=${{ needs.resolve-deploy-releases.outputs.deployable_project_count }}"
       - name: Download release reference artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: reference-blueprints-release-*
-          path: _out/reference-blueprints
-          merge-multiple: true
+          path: _out/reference-artifact-downloads
+      - name: Stage release reference artifacts
+        run: python3 ./scripts/stage_reference_deploy_artifacts.py
       - name: Download test blueprints artifact
         uses: actions/download-artifact@v4
         with:

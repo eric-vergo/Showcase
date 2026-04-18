@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
     default_project_manifest,
-    deploy_release_matrix,
+    deploy_project_matrix,
     load_project_catalog,
     resolve_projects_for_release,
 )
@@ -53,19 +53,21 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
         for target in catalog.release_targets
         if target.deploy_pages and resolve_projects_for_release(catalog, target.release_id, None)
     )
-    matrix = deploy_release_matrix(deployable_targets)
+    matrix = deploy_project_matrix(deployable_targets, catalog)
     return {
         "manifest_path": str(manifest_path),
-        "deployable_release_count": len(matrix["include"]),
-        "deployable_release_matrix": matrix,
+        "deployable_release_count": len(deployable_targets),
+        "deployable_project_count": len(matrix["include"]),
+        "deployable_project_matrix": matrix,
     }
 
 
 def emit_github_output(data: dict[str, object]) -> None:
     print(f"manifest_path={data['manifest_path']}")
     print(f"deployable_release_count={data['deployable_release_count']}")
-    print("deployable_release_matrix<<__CODEX__")
-    print(json.dumps(data["deployable_release_matrix"], separators=(",", ":")))
+    print(f"deployable_project_count={data['deployable_project_count']}")
+    print("deployable_project_matrix<<__CODEX__")
+    print(json.dumps(data["deployable_project_matrix"], separators=(",", ":")))
     print("__CODEX__")
 
 
