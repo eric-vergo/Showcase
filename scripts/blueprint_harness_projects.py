@@ -376,26 +376,42 @@ def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dic
     }
 
 
-def deploy_release_artifact_name(release_id: str) -> str:
-    return f"reference-blueprints-release-{release_id}"
+DEPLOY_PROJECT_ARTIFACT_SEPARATOR = "__project__"
 
 
-def deploy_release_artifact_path(release_id: str) -> str:
-    return f"_out/reference-blueprints/{release_id}"
+def deploy_project_artifact_name(project: HarnessProject) -> str:
+    if project.selected_release is None:
+        raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
+    return (
+        f"reference-blueprints-release-{project.selected_release}"
+        f"{DEPLOY_PROJECT_ARTIFACT_SEPARATOR}{project.project_id}"
+    )
 
 
-def deploy_release_matrix(release_targets: tuple[HarnessReleaseTarget, ...]) -> dict[str, list[dict[str, str]]]:
-    return {
-        "include": [
-            {
-                "release_id": target.release_id,
-                "toolchain": target.toolchain,
-                "verso_ref": target.verso_ref,
-                "branch": target.branch,
-                "artifact_name": deploy_release_artifact_name(target.release_id),
-                "artifact_path": deploy_release_artifact_path(target.release_id),
-            }
-            for target in release_targets
-            if target.deploy_pages
-        ]
-    }
+def deploy_project_artifact_path(project: HarnessProject) -> str:
+    if project.selected_release is None:
+        raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
+    return f"_out/reference-blueprints/{project.selected_release}/{project.project_id}"
+
+
+def deploy_project_matrix(
+    release_targets: tuple[HarnessReleaseTarget, ...],
+    catalog: HarnessProjectCatalog,
+) -> dict[str, list[dict[str, str]]]:
+    include: list[dict[str, str]] = []
+    for target in release_targets:
+        if not target.deploy_pages:
+            continue
+        for project in resolve_projects_for_release(catalog, target.release_id, None):
+            include.append(
+                {
+                    "release_id": target.release_id,
+                    "toolchain": target.toolchain,
+                    "verso_ref": target.verso_ref,
+                    "branch": target.branch,
+                    "project_id": project.project_id,
+                    "artifact_name": deploy_project_artifact_name(project),
+                    "artifact_path": deploy_project_artifact_path(project),
+                }
+            )
+    return {"include": include}
