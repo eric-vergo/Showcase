@@ -20,7 +20,41 @@ lean_lib VersoBlueprint where
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
-  roots := #[`VersoBlueprintTests]
+  roots := #[
+    `VersoBlueprintTests.Blueprint.Support,
+    `VersoBlueprintTests.BlueprintAttribute,
+    `VersoBlueprintTests.BlueprintCodeRenderMatrix,
+    `VersoBlueprintTests.BlueprintImportedDuplicates.Direct,
+    `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA,
+    `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB,
+    `VersoBlueprintTests.BlueprintImportedDuplicates.Reexport,
+    `VersoBlueprintTests.BlueprintImportedDuplicates.Transitive,
+    `VersoBlueprintTests.BlueprintExternalHeadingStatus,
+    `VersoBlueprintTests.BlueprintGraph,
+    `VersoBlueprintTests.BlueprintInformal,
+    `VersoBlueprintTests.BlueprintInlinePrecision,
+    `VersoBlueprintTests.BlueprintLinkHover,
+    `VersoBlueprintTests.BlueprintMainWrapper,
+    `VersoBlueprintTests.BlueprintMathLint,
+    `VersoBlueprintTests.BlueprintMetadataPanel,
+    `VersoBlueprintTests.BlueprintNumbering,
+    `VersoBlueprintTests.BlueprintPreviewPanels,
+    `VersoBlueprintTests.BlueprintPreviewSchema,
+    `VersoBlueprintTests.BlueprintPreviewSource,
+    `VersoBlueprintTests.BlueprintPreviewWiring,
+    `VersoBlueprintTests.BlueprintRustCode,
+    `VersoBlueprintTests.BlueprintSummaryLinks,
+    `VersoBlueprintTests.BlueprintSummaryStatus,
+    `VersoBlueprintTests.BlueprintTexMacros,
+    `VersoBlueprintTests.BlueprintTexSource,
+    `VersoBlueprintTests.DocGenNameRender,
+    `VersoBlueprintTests.TestBlueprintRegistryMeta,
+    `VersoBlueprintTests.TestBlueprintRegistryChecks
+  ]
+
+lean_lib VersoBlueprintTestDocs where
+  srcDir := "tests"
+  roots := #[`VersoBlueprintTests.TestBlueprintRegistry]
 
 lean_exe «blueprint-test-docs» where
   root := `BlueprintTestDocsMain

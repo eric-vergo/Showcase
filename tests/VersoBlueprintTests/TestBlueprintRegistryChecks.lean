@@ -4,7 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprintTests.TestBlueprintRegistry
+import VersoBlueprintTests.TestBlueprintRegistryMeta
 
 namespace Verso.VersoBlueprintTests.TestBlueprintRegistryChecks
 
@@ -13,7 +13,7 @@ open Verso.VersoBlueprintTests.TestBlueprintRegistry
 /-- info: true -/
 #guard_msgs in
 #eval
-  let metas := curatedTestBlueprints.map (·.meta)
+  let metas := curatedTestBlueprintMetas
   let categories := metas.map (·.category)
   let kinds := metas.map (·.kind)
   let tags := metas.foldl (fun acc => fun docMeta => acc ++ docMeta.tags) #[]
@@ -27,6 +27,7 @@ open Verso.VersoBlueprintTests.TestBlueprintRegistry
     categories.contains "Metadata" &&
     categories.contains "Imports" &&
     categories.contains "Graph" &&
-    categories.contains "Runtime"
+    categories.contains "Runtime" &&
+    categories.contains "Code"
 
 end Verso.VersoBlueprintTests.TestBlueprintRegistryChecks
