@@ -6,9 +6,13 @@ Author: Emilio J. Gallego Arias
 
 import VersoManual
 import VersoBlueprint.Environment
+import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Code
 import VersoBlueprint.Profiling
 import VersoBlueprint.Rust
+import VersoBlueprint.Resolve
 
 open Verso Doc Elab
 open Verso.Genre Manual
@@ -16,10 +20,53 @@ open Lean Lean.Elab
 
 namespace Informal
 
+block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) where
+  data := toJson data
+  traverse id data _contents := do
+    let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
+      | logError s!"Malformed Rust data: {data}"
+        pure none
+    if let some _ := (← get).getDomainObject? Informal.Rust.informalRustCodeDomain cdata.label.toString then
+      pure none
+    else
+      let path ← (·.path) <$> read
+      let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-rust-code-{cdata.label}"
+      modify fun s => s.saveDomainObject Informal.Rust.informalRustCodeDomain cdata.label.toString id
+      modify fun s => s.saveDomainObjectData Informal.Rust.informalRustCodeDomain cdata.label.toString (toJson cdata)
+      pure none
+  toTeX := none
+  extraCss := Informal.Block.Assets.codeCssAssets ++ [Informal.Rust.css]
+  extraJs := ([] : List String)
+  toHtml :=
+    open Verso.Doc.Html in
+    open Verso.Output.Html in
+    some <| fun _goI _goB id data _blocks => do
+      let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
+        | HtmlT.logError s!"Malformed Rust code data: {data}"
+          pure .empty
+      let s ← HtmlT.state
+      let ctxt ← HtmlT.context
+      let attrs := s.htmlId id
+      let panelHeader :=
+        match s.getDomainObject? Resolve.informalDomainName cdata.label.toString with
+        | some obj =>
+          match fromJson? (α := BlockData) obj.data with
+          | .ok b =>
+            let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
+            codePanelHeader b (b.displayNumber s)
+          | .error _ => fallbackCodePanelHeader
+        | none => fallbackCodePanelHeader
+      let body := Informal.Rust.highlightHtml cdata.raw
+      pure <| mkCodePanel panelHeader "Associated Rust code" .empty body attrs
+
 private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
+    let data : Informal.Rust.InlineCodeData := {
+      label := cfg.label
+      raw := contents.getString
+    }
     Environment.registerRustCode cfg.label { raw := contents.getString }
-    ``(Block.concat #[])
+    ``(Block.other (Block.informalRustCode $(quote data)) #[])
 
 @[code_block]
 def rust : CodeBlockExpanderOf Informal.CodeConfig

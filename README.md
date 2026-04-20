@@ -7,6 +7,7 @@ A Blueprint project combines:
 
 - informal mathematical exposition
 - links to local Lean code or existing Lean declarations
+- optional attached Rust code blocks on labeled nodes for mixed-language notes
 - optional raw TeX source attachments on labeled nodes to help port existing TeX
 - automatic tracking of formalization progress by analyzing the associated Lean
   code and declarations, including incomplete declarations such as `sorry`
@@ -92,6 +93,30 @@ This informal node is linked to existing compiled Lean declarations.
 :::
 ```
 
+### Attached Rust code
+
+Blueprint also supports labeled inline Rust code blocks:
+
+````md
+:::definition "ffi_helper"
+Helper routine mirrored in Rust.
+:::
+
+```rust "ffi_helper"
+pub fn ffi_helper(x: i32) -> i32 {
+    x + 1
+}
+```
+````
+
+Current behavior:
+
+- the Rust block attaches to the Blueprint node with the same label
+- the rendered page shows an associated Rust code panel
+- rendering uses a small built-in syntax highlighter
+- Rust blocks do not currently affect Blueprint progress/status semantics
+- Rust diagnostics and external Rust references are not part of the current surface
+
 ### Math and TeX
 
 Blueprint supports inline math such as ``$`n + 0 = n` `` and display math such as
@@ -127,6 +152,7 @@ Blueprint can render:
 - an overview and progress summary page with `blueprint_summary`
 - a bibliography page with `blueprint_bibliography`
 - math-enabled previews and cross-links
+- associated Rust code panels for labeled inline Rust blocks
 
 Progress is computed automatically from the status of the associated Lean code
 and declarations, so the HTML summary and graph views stay aligned with the

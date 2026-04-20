@@ -47,8 +47,9 @@ pub fn broken( -> i32 { 1 }
   let out ← renderManualDocHtmlString manualImpls rustInlineDoc
   pure <|
     hasSubstr out "Inline Rust attachment." &&
-    !hasSubstr out "inline_add" &&
-    !hasSubstr out "bp_code_link_label\">Rust"
+    hasSubstr out "Associated Rust code" &&
+    hasSubstr out "inline_add" &&
+    hasSubstr out "bp_rust_kw"
 
 /-- info: true -/
 #guard_msgs in
@@ -56,7 +57,8 @@ pub fn broken( -> i32 { 1 }
   let out ← renderManualDocHtmlString manualImpls rustInvalidDoc
   pure <|
     hasSubstr out "Broken Rust attachment." &&
-    !hasSubstr out "pub fn broken" &&
-    !hasSubstr out "bp_code_link_label\">Rust"
+    hasSubstr out "Associated Rust code" &&
+    hasSubstr out "broken" &&
+    hasSubstr out "bp_rust_kw"
 
 end Verso.VersoBlueprintTests.BlueprintRustCode
