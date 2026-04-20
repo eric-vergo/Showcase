@@ -53,9 +53,13 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
           match fromJson? (α := BlockData) obj.data with
           | .ok b =>
             let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
-            codePanelHeader b (b.displayNumber s)
-          | .error _ => fallbackCodePanelHeader
-        | none => fallbackCodePanelHeader
+            let caption :=
+              match b.kind with
+              | .proof => "Rust code for proof"
+              | .statement nodeKind => s!"Rust code for {nodeKind}"
+            { (codePanelHeader b (b.displayNumber s)) with caption }
+          | .error _ => { fallbackCodePanelHeader with caption := "Rust code" }
+        | none => { fallbackCodePanelHeader with caption := "Rust code" }
       let body := Informal.Rust.highlightHtml cdata.raw
       pure <| mkCodePanel panelHeader s!"Rust code for {cdata.label}" .empty body attrs
 
