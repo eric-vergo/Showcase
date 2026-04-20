@@ -74,7 +74,7 @@ pub fn broken( -> i32 { 1 }
   let out ← renderManualDocHtmlString manualImpls rustInlineDoc
   pure <|
     hasSubstr out "Inline Rust attachment." &&
-    hasSubstr out "Associated Rust code" &&
+    hasSubstr out "Rust code for rust_inline" &&
     hasSubstr out "inline_add" &&
     hasSubstr out "bp_rust_kw"
 
@@ -84,7 +84,7 @@ pub fn broken( -> i32 { 1 }
   let out ← renderManualDocHtmlString manualImpls rustInvalidDoc
   pure <|
     hasSubstr out "Broken Rust attachment." &&
-    hasSubstr out "Associated Rust code" &&
+    hasSubstr out "Rust code for rust_invalid" &&
     hasSubstr out "broken" &&
     hasSubstr out "bp_rust_kw"
 

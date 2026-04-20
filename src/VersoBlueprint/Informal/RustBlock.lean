@@ -57,7 +57,7 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
           | .error _ => fallbackCodePanelHeader
         | none => fallbackCodePanelHeader
       let body := Informal.Rust.highlightHtml cdata.raw
-      pure <| mkCodePanel panelHeader "Associated Rust code" .empty body attrs
+      pure <| mkCodePanel panelHeader s!"Rust code for {cdata.label}" .empty body attrs
 
 private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
