@@ -16,7 +16,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: reference-blueprints-pages
+  group: >-
+    ${{
+      github.event_name == 'workflow_dispatch'
+      && format('{0}-reference-blueprints-pages-dispatch-{1}', github.repository, github.ref_name)
+      || format('{0}-reference-blueprints-pages-release', github.repository)
+    }}
   cancel-in-progress: true
 
 jobs:
