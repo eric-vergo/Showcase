@@ -18,6 +18,7 @@ import VersoBlueprint.ProvedStatus
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros
 import VersoBlueprint.Math
+import VersoBlueprint.Rust
 import VersoBlueprint.Environment
 import VersoBlueprint.Attribute
 import VersoBlueprint.Cite
@@ -26,6 +27,7 @@ import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Code
+import VersoBlueprint.Informal.RustBlock
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.MetadataView
