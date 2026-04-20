@@ -11,6 +11,7 @@ import VersoBlueprintTests.BlueprintMetadataPanel
 import VersoBlueprintTests.BlueprintPreviewSource.Provider
 import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 import VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase
+import VersoBlueprintTests.BlueprintRustCode
 import VersoBlueprintTests.BlueprintSummaryLinks.Shared
 import VersoBlueprintTests.BlueprintTexMacros
 
@@ -62,6 +63,14 @@ def curatedTestBlueprints : Array CuratedTestBlueprint := #[
     summary := "Widget-side TeX prelude and preview rendering checks."
     tags := #["preview", "widget", "tex"]
     doc := Verso.VersoBlueprintTests.BlueprintTexMacros.widgetPreviewDoc
+  },
+  {
+    slug := "rust-inline-preview"
+    title := "Rust Attachment Showcase"
+    category := "Code"
+    summary := "Inline Rust attachment rendering with simple syntax coloring."
+    tags := #["rust", "inline", "code"]
+    doc := Verso.VersoBlueprintTests.BlueprintRustCode.rustCatalogDoc
   },
   {
     slug := "metadata-panel"

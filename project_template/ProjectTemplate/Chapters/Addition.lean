@@ -47,3 +47,14 @@ This is another consequence of {uses "addition_spec"}[].
 Lean already provides this theorem as `Nat.add_assoc`, so this Blueprint entry
 links to an existing declaration instead of restating the code locally.
 :::
+
+:::definition "addition_runtime_note" (parent := "addition_core")
+Some projects keep implementation notes or helper snippets next to the informal
+statement surface. Blueprint can attach a small Rust block for that purpose.
+:::
+
+```rust "addition_runtime_note"
+pub fn add_preview(x: i32, y: i32) -> i32 {
+    x + y
+}
+```
