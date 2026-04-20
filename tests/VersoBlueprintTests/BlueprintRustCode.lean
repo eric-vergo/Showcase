@@ -30,6 +30,33 @@ pub fn inline_add(x: i32, y: i32) -> i32 {
 :::
 :::::::
 
+#docs (Genre.Manual) rustCatalogDoc "Rust Attachment Showcase" :=
+:::::::
+:::definition "rust_showcase.clean"
+Clean inline Rust attachment used for rendering review.
+:::
+
+```rust "rust_showcase.clean"
+pub fn rust_example(x: i32) -> i32 {
+    // increment once
+    x + 1
+}
+```
+
+:::definition "rust_showcase.decorated"
+Rust block with strings, comments, and numbers for simple coloring coverage.
+:::
+
+```rust "rust_showcase.decorated"
+pub fn log_label() -> &'static str {
+    // starter string
+    "hello"
+}
+
+pub const RETRIES: u32 = 3;
+```
+::::::: 
+
 #docs (Genre.Manual) rustInvalidDoc "Rust Invalid Doc" :=
 :::::::
 :::definition "rust_invalid"
