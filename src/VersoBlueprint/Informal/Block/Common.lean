@@ -229,15 +229,15 @@ deriving Repr, Inhabited
 
 def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
   match data.kind with
-  | .proof => { caption := "Code for proof" }
+  | .proof => { caption := "Lean code for proof" }
   | .statement nodeKind =>
     {
-      caption := s!"Code for {nodeKind}"
+      caption := s!"Lean code for {nodeKind}"
       number? := some numberText
     }
 
 def fallbackCodePanelHeader : CodePanelHeader := {
-  caption := "Code"
+  caption := "Lean code"
 }
 
 register_option verso.blueprint.foldProofs : Bool := {

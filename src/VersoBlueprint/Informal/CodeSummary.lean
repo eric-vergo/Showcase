@@ -505,7 +505,7 @@ private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCo
   open Verso.Output.Html in
   let orderedDecls := sortDeclsByCommand (codeData.definedDefs ++ codeData.definedTheorems)
   let previewBody := renderSummaryPreview label { source := some (.inline codeData) } hrefOf
-  let summaryTitle := codeSummaryText label codeData.definedDefs codeData.definedTheorems
+  let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
   let indicator : Output.Html :=
     if orderedDecls.isEmpty then
       .empty
@@ -597,7 +597,7 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
   let (iconClass, iconText, iconTitle) := externalIndicatorStatus health
   let badgeText := externalIndicatorText decls health
   let summaryTitle :=
-    appendRenderHealthSummary
+    s!"Lean code for {label}: " ++ appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
       renderHealth
   let badgeTitle :=
@@ -628,7 +628,7 @@ def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
   | some (.external decls) =>
     renderExternalPanelIndicator decls label hrefOf
   | none =>
-    { summaryTitle := "No associated Lean declarations" }
+    { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
 
 /--
 Render Lean summary UI for an informal block heading.

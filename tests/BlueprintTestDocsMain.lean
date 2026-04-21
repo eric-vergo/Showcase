@@ -1,6 +1,7 @@
 import VersoManual
 import VersoBlueprint.PreviewManifest
 import VersoBlueprintTests.TestBlueprintRegistry
+import VersoBlueprintTests.TestBlueprintRegistryMeta
 import Lean
 
 open Verso.VersoBlueprintTests.TestBlueprintRegistry
@@ -19,7 +20,7 @@ def main (args : List String) : IO UInt32 := do
       IO.println doc.slug
     pure 0
   | ["--list-json"] =>
-    IO.println <| Json.compress <| toJson <| curatedTestBlueprints.map (·.meta)
+    IO.println <| Json.compress <| toJson curatedTestBlueprintMetas
     pure 0
   | slug :: rest =>
     match findCuratedTestBlueprint? slug with

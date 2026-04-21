@@ -20,7 +20,7 @@ concurrency:
     ${{
       github.event_name == 'workflow_dispatch'
       && format('{0}-reference-blueprints-pages-dispatch-{1}', github.repository, github.ref_name)
-      || format('{0}-reference-blueprints-pages-release', github.repository)
+      || format('{0}-reference-blueprints-pages-release-{1}', github.repository, github.event.workflow_run.head_branch)
     }}
   cancel-in-progress: true
 

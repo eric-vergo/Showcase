@@ -58,6 +58,7 @@ The important files are:
 - labels that identify Blueprint nodes
 - `:::definition`, `:::theorem`, and `:::proof`
 - local Lean code attached to a Blueprint label
+- local Rust code attached to a Blueprint label
 - a statement linked to an existing Lean declaration
 - group and author metadata
 - rendered progress summary and dependency graph pages
