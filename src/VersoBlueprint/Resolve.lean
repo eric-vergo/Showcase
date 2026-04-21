@@ -13,6 +13,7 @@ open Lean
 
 def informalDomainName : Name := Name.mkSimple "Informal.Block.informal"
 def informalCodeDomainName : Name := Name.mkSimple "Informal.Block.informalCode"
+def informalRustCodeDomainName : Name := Name.mkSimple "Informal.Block.informalRustCode"
 def informalPreviewDomainName : Name := Name.mkSimple "Informal.Block.informalPreview"
 def informalGroupDomainName : Name := Name.mkSimple "Informal.Block.group"
 /- 

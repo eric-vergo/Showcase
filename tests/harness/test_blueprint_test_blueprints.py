@@ -28,7 +28,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
 
         self.assertEqual(
             categories,
-            ("Preview", "Relationships", "Summary", "Metadata", "Imports", "Graph", "Runtime"),
+            ("Code", "Preview", "Relationships", "Summary", "Metadata", "Imports", "Graph", "Runtime"),
         )
         self.assertEqual(fixture.slug, "preview_runtime_showcase")
         self.assertEqual(fixture.kind, "standalone_project")

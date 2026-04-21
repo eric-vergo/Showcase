@@ -15,6 +15,7 @@ If you are starting a first project, read
 - [A First Chapter](#a-first-chapter)
 - [Core Block Forms](#core-block-forms)
 - [Connecting Blocks to Lean](#connecting-blocks-to-lean)
+- [Attached Rust Code](#attached-rust-code)
 - [Math and TeX](#math-and-tex)
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
 - [Rendering Surface](#rendering-surface)
@@ -50,6 +51,7 @@ These identifiers are used by:
 
 - `{uses "addition_spec"}[]` references
 - labeled inline Lean code blocks
+- labeled inline Rust code blocks
 - `tex` code blocks carrying raw TeX source
 - `@[blueprint "label"]` on compiled Lean declarations
 - summary and graph nodes
@@ -269,6 +271,33 @@ Notes:
 - Blueprint labels are Blueprint-owned metadata
 - Blueprint label conventions do not rewrite external Lean names
 
+## Attached Rust Code
+
+Blueprint also supports labeled inline Rust code blocks as attached source:
+
+````md
+:::definition "ffi_helper"
+Helper routine mirrored in Rust.
+:::
+
+```rust "ffi_helper"
+pub fn ffi_helper(x: i32) -> i32 {
+    x + 1
+}
+```
+````
+
+Current behavior:
+
+- the `rust` block label is parsed the same way as a labeled `lean` block
+- the block attaches to the Blueprint node with the same label
+- the rendered page shows an associated Rust code panel for that node
+- Rust rendering currently uses a small built-in syntax highlighter
+- Rust attachments do not currently participate in Blueprint progress or proof
+  status computation
+- Rust diagnostics, hover information, and external Rust refs are not currently
+  part of the supported surface
+
 ## Math and TeX
 
 Blueprint supports ordinary Verso math syntax inside the informal text.
@@ -403,6 +432,9 @@ views.
 Rendered statement headers show a Lean status badge and related metadata.
 When local or external Lean material is available, the rendered page links or
 previews the associated content.
+
+When labeled inline Rust code is attached to a node, the rendered page also
+shows an associated Rust code panel below the statement body.
 
 ### Dependency graph
 
@@ -598,5 +630,9 @@ wants to use it.
 - group labels are metadata, not first-class reference targets
 - unresolved Blueprint references currently degrade locally at the call site;
   they are not accumulated into a global diagnostics report
+- Rust support currently covers only labeled inline Rust blocks with basic
+  built-in syntax coloring
+- Rust attachments currently do not provide diagnostics, hover data, or
+  external Rust symbol references
 - some rendering details and summary ranking policies are still expected to
   evolve

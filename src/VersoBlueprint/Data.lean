@@ -319,6 +319,14 @@ instance : Quote ExternalRef where
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
   { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
 
+structure RustInlineCode where
+  raw : String
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+
+open Syntax in
+instance : Quote RustInlineCode where
+  quote code := mkCApp ``RustInlineCode.mk #[quote code.raw]
+
 inductive CodeRef where
   /-
   Blueprint code references can currently come from two sources:
@@ -351,6 +359,7 @@ structure Node where
   statement : Option InformalData := none -- Informal Object statement
   proof : Option InformalData := none -- Informal Object proof
   code : Option CodeRef := none -- Informal Object associated code status
+  rustCode : Option RustInlineCode := none -- Informal object associated Rust code
   texSources : Array (String × TexSource) := #[] -- Raw TeX witnesses keyed by slot
   parent : Option Parent := none -- Optional parent group for summaries/graphs
   priority : Option String := none -- Optional author-provided triage hint
@@ -393,6 +402,14 @@ private def mergeCodeRef (label : Label) (current : Option CodeRef) (incoming : 
     return some (.literate code)
   | some (.literate _), .external _ =>
     logError m!"Label {label} has both an associated Lean code block and '(lean := ...)'; preferring inline code"
+    return current
+
+private def mergeRustCode (label : Label) (current : Option RustInlineCode) (incoming : RustInlineCode) :
+    m (Option RustInlineCode) := do
+  match current with
+  | none => return some incoming
+  | some _ =>
+    logError m!"Label {label} already has associated Rust code"
     return current
 
 private def mergeParent (label : Label) (current incoming : Option Parent) : m (Option Parent) := do
@@ -486,24 +503,17 @@ def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload
     (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
     (prUrl : Option String := none) : m Data := do
   let applyHints (node : Node) : m Node := do
-    match codeHint with
-    | none =>
-      let parent ← mergeParent label node.parent parent
-      let priority ← mergePriority label node.priority priority
-      let owner ← mergeOwner label node.owner owner
-      let effort ← mergeEffort label node.effort effort
-      let prUrl ← mergePrUrl label node.prUrl prUrl
-      let tags := mergeTags node.tags tags
-      return { node with parent, priority, owner, tags, effort, prUrl }
-    | some hint =>
-      let code ← mergeCodeRef label node.code hint
-      let parent ← mergeParent label node.parent parent
-      let priority ← mergePriority label node.priority priority
-      let owner ← mergeOwner label node.owner owner
-      let effort ← mergeEffort label node.effort effort
-      let prUrl ← mergePrUrl label node.prUrl prUrl
-      let tags := mergeTags node.tags tags
-      return { node with code, parent, priority, owner, tags, effort, prUrl }
+    let code ←
+      match codeHint with
+      | none => pure node.code
+      | some hint => mergeCodeRef label node.code hint
+    let parent ← mergeParent label node.parent parent
+    let priority ← mergePriority label node.priority priority
+    let owner ← mergeOwner label node.owner owner
+    let effort ← mergeEffort label node.effort effort
+    let prUrl ← mergePrUrl label node.prUrl prUrl
+    let tags := mergeTags node.tags tags
+    return { node with code, parent, priority, owner, tags, effort, prUrl }
   let nextCount := data.size + 1
   match data.get? label, kind with
   -- First statement for a fresh label.
@@ -558,6 +568,14 @@ def Data.registerCode (data : Data) (label : Label) (code : Syntax)
   | some node =>
     let code ← mergeCodeRef label node.code literate
     return data.insert label { node with code }
+
+def Data.registerRustCode (data : Data) (label : Label) (code : RustInlineCode) : m Data := do
+  match data.get? label with
+  | none =>
+    return data.insert label { rustCode := some code }
+  | some node =>
+    let rustCode ← mergeRustCode label node.rustCode code
+    return data.insert label { node with rustCode }
 
 /-- Register raw TeX source for an informal object label. -/
 def Data.registerTexSource (data : Data) (label : Label) (slot : String) (texSource : TexSource) : m Data := do
