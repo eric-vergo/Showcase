@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import re
 import shutil
 import subprocess
 import sys
@@ -15,7 +16,9 @@ from scripts.blueprint_harness_branches import (
     checkout_branch_role,
     default_dev_branch,
     checkout_is_backport_only,
+    load_branch_policy,
     local_release_ref,
+    normalize_lean_release_ref,
     preferred_release_ref,
     require_checkout_role,
     root_checkout_namespace,
@@ -139,6 +142,30 @@ def current_branch_name(repo_root: Path) -> str | None:
     return branch or None
 
 
+def current_commit_subject(repo_root: Path) -> str:
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    if not subject:
+        raise SystemExit("[blueprint-harness] unable to derive a PR title from the current commit subject")
+    return subject
+
+
+def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "rev-list", "--reverse", f"{preferred_main_ref(repo_root)}..{source_branch}"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def ref_oid(repo_root: Path, ref: str) -> str | None:
     result = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", ref],
@@ -228,6 +255,17 @@ def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
 
 def ref_merged_into_main(repo_root: Path, ref: str) -> bool:
     return is_ancestor(repo_root, ref, preferred_main_ref(repo_root))
+
+
+def preferred_worktree_base_ref(path: Path) -> str:
+    return preferred_release_ref(path)
+
+
+def ref_merged_into_worktree_base(repo_root: Path, ref: str, worktree_path: Path) -> bool:
+    base_ref = preferred_worktree_base_ref(worktree_path)
+    if ref_oid(repo_root, ref) is None or ref_oid(repo_root, base_ref) is None:
+        return False
+    return is_ancestor(repo_root, ref, base_ref)
 
 
 def merged_clean_worktree_candidates(repo_root: Path, current_path: Path) -> list[tuple[str, Path, str]]:
@@ -414,6 +452,172 @@ def command_main_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_prepare_backports_exemptions(values: list[str] | None) -> dict[str, str]:
+    exemptions: dict[str, str] = {}
+    for value in values or []:
+        branch, separator, reason = value.partition("=")
+        branch = branch.strip()
+        reason = reason.strip()
+        if not separator or not branch or not reason:
+            raise SystemExit(
+                "[blueprint-harness] expected `--exempt <branch>=<reason>` with both a branch and a reason"
+            )
+        exemptions[branch] = reason
+    return exemptions
+
+
+def release_marker(release_ref: str) -> str:
+    normalized = normalize_lean_release_ref(release_ref)
+    match = re.match(r"^v(\d+)\.(\d+)", normalized)
+    if match is not None:
+        return f"v{match.group(1)}{match.group(2)}"
+    return "v" + re.sub(r"[^A-Za-z0-9]+", "", normalized.removeprefix("v"))
+
+
+def slugify_backport_fragment(text: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", text.strip())
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-")
+    return cleaned or "change"
+
+
+def default_backport_branch_name(source_branch: str, release_ref: str) -> str:
+    marker = release_marker(release_ref)
+    if "/" in source_branch:
+        prefix, slug = source_branch.split("/", 1)
+        return f"{prefix}/backport-{marker}-{slugify_backport_fragment(slug)}"
+    return f"backport-{marker}-{slugify_backport_fragment(source_branch)}"
+
+
+def default_backport_worktree_name(source_branch: str, release_ref: str) -> str:
+    branch_name = default_backport_branch_name(source_branch, release_ref)
+    return branch_name.split("/", 1)[1] if "/" in branch_name else branch_name
+
+
+def prepare_backport_targets(layout, args: argparse.Namespace) -> tuple[str, ...]:
+    policy = load_branch_policy(layout.package_root)
+    if args.all_required:
+        if args.release is not None:
+            raise SystemExit("[blueprint-harness] pass either one <release> or `--all-required`, not both")
+        return policy.required_backport_branches
+    if args.release is None:
+        raise SystemExit("[blueprint-harness] expected one <release> or `--all-required`")
+    return (normalize_lean_release_ref(args.release),)
+
+
+def print_prepare_backport_pr_scaffold(
+    *,
+    default_dev: str,
+    backport_release: str,
+    source_branch: str,
+    main_pr: int,
+    main_title: str,
+    source_commits: list[str],
+) -> None:
+    paired_branch = default_backport_branch_name(source_branch, backport_release)
+    paired_worktree = default_backport_worktree_name(source_branch, backport_release)
+    paired_title = f"[backport {backport_release}] {main_title}"
+
+    print(f"default_dev_branch={default_dev}")
+    print(f"backport_release={backport_release}")
+    print(f"source_branch={source_branch}")
+    print(f"paired_worktree={paired_worktree}")
+    print(f"paired_branch={paired_branch}")
+    print(f"paired_title={paired_title}")
+    print(f"source_commits={','.join(source_commits)}")
+    print(f"base_ref=origin/{backport_release}")
+    print()
+    print("## Batch Apply")
+    print(
+        f"- Create the linked worktree on `origin/{backport_release}` and attach it to `{paired_branch}`."
+    )
+    if source_commits:
+        print(f"- Cherry-pick the default-development series with `git cherry-pick -x {' '.join(source_commits)}`.")
+    else:
+        print("- No source commits were detected beyond the default-development base.")
+    print("- Let the agent resolve any cherry-pick conflicts in the backport worktree.")
+    print("- Run validation on the backport branch before opening the paired PR.")
+    print()
+    print("## Summary")
+    print(f"Backport #{main_pr} to `{backport_release}`.")
+    print()
+    print("## Primary Review")
+    print(f"- Primary review: #{main_pr}")
+    print(f"- Keep review comments on #{main_pr} unless this backport diverges materially.")
+    print()
+    print("## Scope")
+    print(f"- Backport the already-reviewed default-development change onto `{backport_release}`.")
+    print("- Keep this PR limited to release-line-specific conflict resolution.")
+    print("- Preserve one-to-one commit provenance with `cherry-pick -x`.")
+    print()
+    print("## Backport Delta")
+    print("- No intentional release-specific changes.")
+    print("- If conflict resolution requires deviations from the default-development PR, describe them here.")
+    print()
+    print("## Validation")
+    print(f"- Describe the validation run on `{backport_release}`.")
+    print()
+    print("## Coordination")
+    print(f"- Default-dev PR: #{main_pr}")
+    print(f"- Default-dev branch: `{source_branch}`")
+    print(f"- Backport branch: `{paired_branch}`")
+
+
+def command_prepare_backports(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    policy = load_branch_policy(layout.package_root)
+    exemptions = parse_prepare_backports_exemptions(args.exempt)
+    unknown = sorted(branch for branch in exemptions if branch not in policy.required_backport_branches)
+    if unknown:
+        raise SystemExit(
+            "[blueprint-harness] unknown required backport branch(es): "
+            + ", ".join(unknown)
+            + ". Update `branch-policy.json` or remove the extra `--exempt` entries."
+        )
+
+    print(f"default_dev_branch={policy.default_dev_branch}")
+    print(f"required_backports={','.join(policy.required_backport_branches)}")
+    if not policy.required_backport_branches:
+        print("[blueprint-harness] no required backports are configured for this checkout")
+        return 0
+
+    print()
+    for branch in policy.required_backport_branches:
+        if branch in exemptions:
+            print(f"Backport {branch}: exempt: {exemptions[branch]}")
+        else:
+            print(f"Backport {branch}: pending")
+    print()
+    print("[blueprint-harness] paste these lines into the default-dev PR body while it is draft")
+    print("[blueprint-harness] replace each `pending` entry with `#<pr>` or `exempt: <reason>` before ready for review")
+    return 0
+
+
+def command_prepare_backport_pr(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    require_checkout_role(layout.package_root, required_role="default_dev", operation="prepare-backport-pr")
+    targets = prepare_backport_targets(layout, args)
+    source_branch = args.source_branch or current_branch_name(layout.package_root)
+    if not source_branch:
+        raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
+
+    main_title = args.main_title or current_commit_subject(layout.package_root)
+    source_commits = source_commit_series(layout.package_root, source_branch)
+    default_dev = default_dev_branch(layout.package_root)
+
+    for index, backport_release in enumerate(targets):
+        if index:
+            print("\n---\n")
+        print_prepare_backport_pr_scaffold(
+            default_dev=default_dev,
+            backport_release=backport_release,
+            source_branch=source_branch,
+            main_pr=args.main_pr,
+            main_title=main_title,
+            source_commits=source_commits,
+        )
+    return 0
+
+
 def command_require_branch_role(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     print_branch_policy_status(layout)
@@ -579,13 +783,14 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
     if branch == release_branch:
         raise SystemExit(f"[blueprint-harness] cannot retire a linked worktree attached to `{release_branch}`")
     merge_subject = branch or worktree.head
-    if not ref_merged_into_main(layout.repo_root, merge_subject):
+    base_ref = preferred_worktree_base_ref(path)
+    if not ref_merged_into_worktree_base(layout.repo_root, merge_subject, path):
         if branch is None:
             raise SystemExit(
                 f"[blueprint-harness] detached worktree `{name}` is at `{worktree.head}` "
-                "which is not merged into the preferred release ref"
+                f"which is not merged into `{base_ref}`"
             )
-        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into the preferred release ref")
+        raise SystemExit(f"[blueprint-harness] branch `{branch}` is not merged into `{base_ref}`")
     if not worktree_is_clean(path):
         raise SystemExit(f"[blueprint-harness] worktree `{name}` has local modifications")
 
@@ -650,6 +855,7 @@ def command_worktree_status(args: argparse.Namespace) -> int:
     print(f"dirty={bool_or_blank(record.dirty)}")
     print(f"tracked_changes={text_or_blank(record.tracked_changes)}")
     print(f"untracked_changes={text_or_blank(record.untracked_changes)}")
+    print(f"base_ref={record.base_ref or ''}")
     print(f"merged_into_base={bool_or_blank(record.merged_into_main)}")
     print(f"base_ahead={text_or_blank(record.main_ahead)}")
     print(f"base_behind={text_or_blank(record.main_behind)}")
@@ -748,6 +954,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit nonzero when the active local release branch is not in sync with its preferred upstream ref.",
     )
     main_status.set_defaults(func=command_main_status)
+
+    prepare_backports = subparsers.add_parser(
+        "prepare-backports",
+        help="Print PR-body lines for the required backport plan on the current default-dev release line.",
+    )
+    prepare_backports.add_argument(
+        "--exempt",
+        action="append",
+        default=None,
+        help="Pre-fill one required branch as `exempt: <reason>` using `--exempt <branch>=<reason>`. Repeat as needed.",
+    )
+    prepare_backports.set_defaults(func=command_prepare_backports)
+
+    prepare_backport_pr = subparsers.add_parser(
+        "prepare-backport-pr",
+        help="Print a standardized paired backport branch name, PR title, and PR body scaffold.",
+    )
+    prepare_backport_pr.add_argument(
+        "release",
+        nargs="?",
+        help="Backport release branch such as `v4.28.0`. Omit with `--all-required`.",
+    )
+    prepare_backport_pr.add_argument(
+        "--all-required",
+        action="store_true",
+        help="Print one scaffold block for every required backport release in `branch-policy.json`.",
+    )
+    prepare_backport_pr.add_argument(
+        "--main-pr",
+        type=int,
+        required=True,
+        help="Default-development PR number that remains the primary review surface.",
+    )
+    prepare_backport_pr.add_argument(
+        "--main-title",
+        default=None,
+        help="Override the default-development PR title. Defaults to the current commit subject.",
+    )
+    prepare_backport_pr.add_argument(
+        "--source-branch",
+        default=None,
+        help="Override the default-development branch name. Defaults to the current branch.",
+    )
+    prepare_backport_pr.set_defaults(func=command_prepare_backport_pr)
 
     require_role = subparsers.add_parser(
         "require-branch-role",

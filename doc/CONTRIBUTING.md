@@ -22,6 +22,13 @@ This repository keeps local parallel work simple:
 - Use `chore/<slug>` for maintenance and cleanup.
 - Use `wip/<slug>` only for local-only exploratory branches that are not ready
   for review.
+- For paired backport branches, keep the same top-level prefix and reuse the
+  default-dev slug with a release marker in front of it.
+  Examples:
+  - default-dev branch: `fix/backport-discipline`
+  - paired `v4.28.0` backport branch: `fix/backport-v428-backport-discipline`
+  - default-dev docs branch: `docs/manual-cleanup`
+  - paired `v4.28.0` docs backport branch: `docs/backport-v428-manual-cleanup`
 
 Prefer short, descriptive slugs over opaque branch names.
 
@@ -52,14 +59,32 @@ subjects such as `Update files` or `misc cleanup`.
   - notable risks or follow-up
 - When the work came from a local worktree, include the worktree name and write
   scope in the PR body or draft notes.
-- Non-draft PRs targeting `v4.29.0` must include paired backport metadata for
-  each required backport release branch listed in `branch-policy.json`, unless
-  the PR explicitly records an exemption with a reason.
+- Draft PRs targeting `v4.29.0` must declare one backport plan line for each
+  required backport release branch listed in `branch-policy.json`.
+- Non-draft PRs targeting `v4.29.0` must replace each `pending` entry with a
+  paired backport PR number or an explicit exemption reason.
+- The default-development PR is the primary review surface. Paired backport PRs
+  exist mainly so CI and merge state are visible on the maintenance line.
+- Paired backport branches should be built with `git cherry-pick -x` so every
+  backport commit records the source commit SHA from the default-development PR.
+- The paired-backport check now verifies both the recorded source SHAs and the
+  patch IDs for the commit series, so a paired backport PR should remain a
+  one-to-one cherry-pick of the default-development series.
 - The expected workflow is:
   - keep the `v4.29.0` PR in draft while the change is still converging
+  - run `python3 -m scripts.blueprint_harness prepare-backports` and paste the
+    emitted lines into the draft PR body
   - once it is ready for review, open the paired `v4.28.0` PR
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
+  - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
+  - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
+    `Backport ...: exempt: <reason>`
   - wait for CI on both PRs before merging the `v4.29.0` PR
+- Keep review comments and design discussion on the default-dev PR unless the
+  backport itself diverges materially, for example because of a conflict or a
+  release-line-specific adaptation.
 - Record the pairing in the PR body using lines like:
+  - `Backport v4.28.0: pending`
   - `Backport v4.28.0: #123`
   - `Backport v4.28.0: exempt: docs-only change`
 
