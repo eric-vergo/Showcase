@@ -208,14 +208,24 @@ python3 -m scripts.blueprint_harness sync-root-lake
 python3 -m scripts.blueprint_reference_harness sync
 ```
 
-Bump the Lean toolchain and matching `verso` pin through the harness:
+To bump the package Lean toolchain and pin the matching `verso` release or
+release candidate in the root package plus the tracked in-repo fixtures:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
-python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --verso-ref v4.29.0
+python3 -m scripts.blueprint_harness bump-toolchain 4.30-rc2
+python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --skip-validation
 ```
 
-Prune stale harness-managed reference caches and clones:
+That command rewrites the managed `lean-toolchain` and `require verso` pins,
+refreshes the committed manifests for the root package, `project_template`, and
+`tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
+build/test validation pass that maintainers would otherwise do manually. Release
+candidates use the official short RC name, for example `4.30-rc2`; the harness
+writes the corresponding Lean and `verso` tag ref, such as `v4.30.0-rc2`.
+Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
+release tag need to differ.
+
+To remove stale harness-managed reference caches and orphaned local clones:
 
 ```bash
 python3 -m scripts.blueprint_reference_harness prune --dry-run
@@ -276,7 +286,7 @@ python3 -m scripts.blueprint_harness create-worktree <name>
 That command is intentionally heavyweight by default: after `git worktree add`
 it syncs the root checkout's `.lake/` and warms the shared and per-worktree
 reference blueprint clones. New worktrees now base off the preferred active
-release ref, typically something like `origin/v4.29.0`.
+release ref, typically something like `origin/v4.30.0`.
 
 If you want to verify that the root checkout has not drifted before branching
 or landing, use:
@@ -291,7 +301,7 @@ Use `require-branch-role default_dev` when a script or agent should refuse to
 do non-backport work from a backport-only checkout.
 
 Default-development PRs also follow a paired-backport gate. In this repository
-that means draft `v4.29.0` PRs must still declare one line per required
+that means draft default-development PRs must still declare one line per required
 backport target. For a new public PR, generate the public-facing scaffold with:
 
 ```bash
@@ -301,9 +311,11 @@ python3 -m scripts.blueprint_harness prepare-pr
 That helper prints the public repository, base branch, PR title, and PR body.
 It keeps local worktree and write-scope notes out of the body unless they
 materially help review. The generated body is intentionally reviewer-oriented:
-start with a short `This PR ...` paragraph that is suitable as the squash-merge
-commit body, keep implementation inventory out of the opening summary, and do
-not include routine validation transcripts that CI already records. For an
+start with a short `This PR ...` paragraph that is suitable for permanent
+history, keep implementation inventory out of the opening summary, and do not
+include routine validation transcripts that CI already records. For PRs that
+need paired backports, use a merge commit when landing so the `cherry-pick -x`
+source commits remain in default-development history. For an
 existing PR where only the backport lines need a refresh, run:
 
 ```bash
@@ -313,14 +325,15 @@ python3 -m scripts.blueprint_harness prepare-backports
 Paste the emitted backport lines into the draft PR body. While the PR is still draft,
 each required line may remain:
 
+- `Backport v4.29.0: pending`
 - `Backport v4.28.0: pending`
-- or `Backport v4.28.0: exempt: <reason>`
+- or `Backport v4.29.0: exempt: <reason>`
 
-Once the `v4.29.0` PR is ready for review it must replace each `pending` line
+Once the default-development PR is ready for review it must replace each `pending` line
 with either:
 
-- link the paired `v4.28.0` PR in the PR body with `Backport v4.28.0: #<pr>`
-- or record `Backport v4.28.0: exempt: <reason>`
+- link the paired backport PR in the PR body with `Backport v4.29.0: #<pr>`
+- or record `Backport v4.29.0: exempt: <reason>`
 
 Use the default-development PR as the main review surface. The paired backport
 PR is primarily a maintenance-line artifact for CI, merge state, and any
@@ -332,17 +345,18 @@ prefix and reuse the default-development slug with a release marker. For
 example:
 
 - default-development branch: `fix/backport-discipline`
-- paired `v4.28.0` branch: `fix/backport-v428-backport-discipline`
+- paired `v4.29.0` branch: `fix/backport-v429-backport-discipline`
 
 To keep paired backport PRs consistent, scaffold them with:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.29.0 --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.28.0] ...`, a `backport-v4.28.0` release label, and a PR body
-that points back to the primary default-development review.
+`[backport v4.29.0] ...`, a `backport-v4.29.0` release label, and a PR body
+that points back to the primary
+default-development review.
 
 When several backport releases are required, use:
 
@@ -363,7 +377,7 @@ patch IDs of the default-development and backport commit series.
 CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
 is part of PR health, and once the PR is ready it additionally checks that the
 paired PR targets the required backport branch and that its checks are green
-before the `v4.29.0` PR can merge.
+before the default-development PR can merge.
 
 To land one reviewed branch onto the active release branch safely from the root
 checkout, use:

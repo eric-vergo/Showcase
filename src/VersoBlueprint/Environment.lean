@@ -123,7 +123,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
               (dataAcc, groupAcc, authorAcc.insert label info, conflictsAcc)
       pure { data, groups, authors, importedConflicts := sortImportedConflicts importedConflicts }
     -- Strip transient elaboration cache before exporting nodes to the environment.
-    exportEntriesFnEx env := fun state _level =>
+    exportEntriesFnEx env := fun state =>
       let nodeEntries := state.localData.toArray.map fun (name, node) =>
         let statement := node.statement.map fun s =>
           if s.previewBlocks.isEmpty then s else { s with elabStx := #[] }
@@ -134,7 +134,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
-      nodeEntries ++ groupEntries ++ authorEntries
+      OLeanEntries.uniform (nodeEntries ++ groupEntries ++ authorEntries)
   }
 
 section EnvOps

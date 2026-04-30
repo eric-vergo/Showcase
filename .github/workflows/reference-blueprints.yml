@@ -17,6 +17,7 @@ jobs:
     outputs:
       manifest_path: ${{ steps.resolve.outputs.manifest_path }}
       release_id: ${{ steps.resolve.outputs.release_id }}
+      rc: ${{ steps.resolve.outputs.rc }}
       toolchain: ${{ steps.resolve.outputs.toolchain }}
       verso_ref: ${{ steps.resolve.outputs.verso_ref }}
       branch: ${{ steps.resolve.outputs.branch }}
@@ -44,6 +45,7 @@ jobs:
       - name: Show resolved release target
         run: |
           echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
+          echo "rc=${{ needs.resolve-reference-release.outputs.rc }}"
           echo "toolchain=${{ needs.resolve-reference-release.outputs.toolchain }}"
           echo "verso_ref=${{ needs.resolve-reference-release.outputs.verso_ref }}"
       - name: Install elan

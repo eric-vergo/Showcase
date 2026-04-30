@@ -14,6 +14,14 @@
       "verso_ref": "v4.29.0",
       "branch": "v4.29.0",
       "deploy_pages": true
+    },
+    {
+      "id": "v4.30.0",
+      "toolchain": "v4.30.0",
+      "verso_ref": "v4.30.0",
+      "rc": "4.30-rc2",
+      "branch": "v4.30.0",
+      "deploy_pages": false
     }
   ],
   "projects": [
@@ -30,6 +38,9 @@
         },
         {
           "release": "v4.29.0"
+        },
+        {
+          "release": "v4.30.0"
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],

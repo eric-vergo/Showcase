@@ -135,6 +135,58 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                 ],
             )
 
+    def test_bump_toolchain_checkout_accepts_release_candidate_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp)
+            root_lakefile = 'require verso from git "https://github.com/leanprover/verso"@"v4.29.0"\n'
+            template_lakefile = (
+                'require verso from git "https://github.com/leanprover/verso"@"v4.29.0"\n'
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"\n'
+            )
+            preview_lakefile = (
+                'require verso from git "https://github.com/leanprover/verso"@"v4.29.0"\n'
+                'require VersoBlueprint from "../../../"\n'
+            )
+
+            self.write(package_root / "lean-toolchain", "leanprover/lean4:v4.29.0")
+            self.write(package_root / "lakefile.lean", root_lakefile)
+            self.write(package_root / "project_template" / "lean-toolchain", "leanprover/lean4:v4.29.0\n")
+            self.write(package_root / "project_template" / "lakefile.lean", template_lakefile)
+            self.write(
+                package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lean-toolchain",
+                "leanprover/lean4:v4.29.0\n",
+            )
+            self.write(
+                package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lakefile.lean",
+                preview_lakefile,
+            )
+
+            originals = {
+                "resolve_remote_verso_tag_oid": toolchains_mod.resolve_remote_verso_tag_oid,
+                "run": toolchains_mod.run,
+            }
+            commands: list[tuple[list[str], Path]] = []
+            try:
+                toolchains_mod.resolve_remote_verso_tag_oid = lambda _package_root, _ref: "deadbeef"
+                toolchains_mod.run = lambda command, *, cwd: commands.append((command, cwd))
+
+                result = toolchains_mod.bump_toolchain_checkout(
+                    package_root,
+                    "4.30-rc2",
+                    validate=False,
+                )
+            finally:
+                for name, value in originals.items():
+                    setattr(toolchains_mod, name, value)
+
+            self.assertEqual(result.lean_ref, "v4.30.0-rc2")
+            self.assertEqual(result.toolchain_spec, "leanprover/lean4:v4.30.0-rc2")
+            self.assertEqual(result.verso_ref, "v4.30.0-rc2")
+            self.assertEqual(result.verso_tag_oid, "deadbeef")
+            self.assertEqual((package_root / "lean-toolchain").read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0-rc2")
+            self.assertIn('require verso from git "https://github.com/leanprover/verso"@"v4.30.0-rc2"', (package_root / "lakefile.lean").read_text(encoding="utf-8"))
+            self.assertEqual(len(commands), 3)
+
     def test_bump_toolchain_checkout_rejects_missing_matching_verso_tag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package_root = Path(tmp)

@@ -59,6 +59,7 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
     return {
         "manifest_path": str(manifest_path),
         "release_id": release_target.release_id,
+        "rc": release_target.rc,
         "toolchain": release_target.toolchain,
         "verso_ref": release_target.verso_ref,
         "branch": release_target.branch,
@@ -71,6 +72,7 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
 def emit_github_output(data: dict[str, object]) -> None:
     print(f"manifest_path={data['manifest_path']}")
     print(f"release_id={data['release_id']}")
+    print(f"rc={data['rc'] or ''}")
     print(f"toolchain={data['toolchain']}")
     print(f"verso_ref={data['verso_ref']}")
     print(f"branch={data['branch']}")

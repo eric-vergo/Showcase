@@ -495,15 +495,22 @@ def print_public_pr_message_scaffold(
     summary: str | None,
     changes: list[str] | None,
 ) -> None:
+    paired_backports_required = any(": exempt:" not in line for line in backport_lines)
     print(f"repository={PUBLIC_REPOSITORY}")
     print(f"base={default_dev}")
     print(f"head={source_branch}")
     print("draft=true")
+    if paired_backports_required:
+        print("recommended_merge_method=merge")
+    else:
+        print("recommended_merge_method=squash")
     print(f"pr_title={title}")
     print()
     print("## Submission")
     print(f"- Push `{source_branch}` to a branch visible to `{PUBLIC_REPOSITORY}`.")
     print(f"- Open a draft PR against `{PUBLIC_REPOSITORY}:{default_dev}` using the title and body below.")
+    if paired_backports_required:
+        print("- Use a merge commit when landing so paired backports can cherry-pick commits that remain in default-dev history.")
     print("- Keep local worktree and write-scope notes out of the public body unless they materially help review.")
     print()
     print("## PR Submission Guardrails")
@@ -1038,12 +1045,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bump_toolchain.add_argument(
         "toolchain",
-        help="Lean toolchain release such as `v4.29.0`, `4.29.0`, or `leanprover/lean4:v4.29.0`.",
+        help="Lean toolchain ref such as `v4.29.0`, `4.29.0`, `4.30-rc2`, or `leanprover/lean4:v4.30.0-rc2`.",
     )
     bump_toolchain.add_argument(
         "--verso-ref",
         default=None,
-        help="Override the `verso` release tag. Defaults to the normalized Lean toolchain release ref.",
+        help="Override the `verso` release tag. Defaults to the normalized Lean toolchain ref.",
     )
     bump_toolchain.add_argument(
         "--skip-validation",

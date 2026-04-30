@@ -157,7 +157,7 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
       continue
     if name.isInternalOrNum || name.hasMacroScopes then
       continue
-    let baseStatus := Data.ConstantInfo.blueprintProvedStatus info
+    let baseStatus := Data.ConstantInfo.blueprintProvedStatus info (allowOpaque := true)
     let hasTypeGap := baseStatus.hasTypeGap
     let hasProofGap := baseStatus.hasProofGap
     let hasGap := baseStatus.isIncomplete

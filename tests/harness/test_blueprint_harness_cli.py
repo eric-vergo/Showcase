@@ -463,6 +463,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("Use the PR title and body below as the public PR metadata", output)
         self.assertIn("Do not add generator or tool prefixes such as `[codex]`", output)
         self.assertIn("Do not add routine validation transcripts to the PR body", output)
+        self.assertIn("recommended_merge_method=merge", output)
+        self.assertIn("Use a merge commit when landing", output)
         self.assertIn("## PR Title\nfix: tighten public PR scaffolds", output)
         self.assertIn("## PR Body", output)
         self.assertIn("This PR removes private mirror assumptions from the maintainer harness.", output)
@@ -474,6 +476,25 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertNotIn("## Risks", output)
         self.assertNotIn("Worktree:", output)
         self.assertNotIn("Write scope:", output)
+
+    def test_prepare_pr_allows_squash_when_all_backports_are_exempt(self) -> None:
+        out = io.StringIO()
+        with redirect_stdout(out):
+            harness_mod.print_public_pr_message_scaffold(
+                default_dev="v4.30.0",
+                source_branch="docs/release-note",
+                title="docs: update release note",
+                backport_lines=[
+                    "Backport v4.29.0: exempt: docs-only",
+                    "Backport v4.28.0: exempt: docs-only",
+                ],
+                summary=None,
+                changes=None,
+            )
+
+        output = out.getvalue()
+        self.assertIn("recommended_merge_method=squash", output)
+        self.assertNotIn("Use a merge commit when landing", output)
 
     def test_prepare_backport_pr_prints_standardized_scaffold(self) -> None:
         args = argparse.Namespace(
@@ -842,8 +863,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         )
         release = HarnessReleaseTarget(
             release_id="v4.29.0",
-            toolchain="v4.29.0",
-            verso_ref="v4.29.0",
+            release_toolchain="v4.29.0",
+            release_verso_ref="v4.29.0",
             branch="v4.29.0",
             deploy_pages=True,
         )

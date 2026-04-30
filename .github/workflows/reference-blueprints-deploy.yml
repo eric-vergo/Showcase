@@ -59,6 +59,7 @@ jobs:
       - name: Show deployable release target
         run: |
           echo "release_id=${{ matrix.release_id }}"
+          echo "rc=${{ matrix.rc }}"
           echo "toolchain=${{ matrix.toolchain }}"
           echo "verso_ref=${{ matrix.verso_ref }}"
           echo "branch=${{ matrix.branch }}"

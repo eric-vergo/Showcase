@@ -4,7 +4,13 @@ from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 
-from scripts.blueprint_harness_branches import active_release_branch, normalize_lean_release_ref
+from scripts.blueprint_harness_branches import (
+    active_release_branch,
+    normalize_lean_release_ref,
+    normalize_release_candidate_name,
+    release_branch_from_lean_ref,
+    release_candidate_ref,
+)
 
 
 IN_REPO_PROJECT_SOURCE_KIND = "in_repo_project"
@@ -14,10 +20,19 @@ GIT_CHECKOUT_SOURCE_KIND = "git_checkout"
 @dataclass(frozen=True)
 class HarnessReleaseTarget:
     release_id: str
-    toolchain: str
-    verso_ref: str
+    release_toolchain: str
+    release_verso_ref: str
     branch: str
     deploy_pages: bool
+    rc: str | None = None
+
+    @property
+    def toolchain(self) -> str:
+        return release_candidate_ref(self.rc) if self.rc is not None else self.release_toolchain
+
+    @property
+    def verso_ref(self) -> str:
+        return release_candidate_ref(self.rc) if self.rc is not None else self.release_verso_ref
 
 
 @dataclass(frozen=True)
@@ -137,21 +152,27 @@ def _load_release_targets(raw: dict, manifest_path: Path) -> tuple[HarnessReleas
         if not isinstance(entry, dict):
             raise ValueError(f"{manifest_path}: release target #{index} must be an object")
         context = f"{manifest_path}: release target #{index}"
-        release_id = normalize_lean_release_ref(_require_string(entry, "id", context=context))
+        release_id = release_branch_from_lean_ref(_require_string(entry, "id", context=context))
         if release_id in seen_ids:
             raise ValueError(f"{context}: duplicate release target id `{release_id}`")
         seen_ids.add(release_id)
         toolchain = normalize_lean_release_ref(_require_string(entry, "toolchain", context=context))
         verso_ref = normalize_lean_release_ref(_require_string(entry, "verso_ref", context=context))
-        branch = normalize_lean_release_ref(_require_string(entry, "branch", context=context))
+        branch = release_branch_from_lean_ref(_require_string(entry, "branch", context=context))
         deploy_pages = _optional_bool(entry, "deploy_pages", default=False, context=context)
+        rc = entry.get("rc")
+        if rc is not None:
+            if not isinstance(rc, str):
+                raise ValueError(f"{context}: expected string field `rc`")
+            rc = normalize_release_candidate_name(rc)
         targets.append(
             HarnessReleaseTarget(
                 release_id=release_id,
-                toolchain=toolchain,
-                verso_ref=verso_ref,
+                release_toolchain=toolchain,
+                release_verso_ref=verso_ref,
                 branch=branch,
                 deploy_pages=deploy_pages,
+                rc=rc,
             )
         )
     return tuple(targets)
@@ -174,7 +195,7 @@ def _load_project_targets(
         if not isinstance(raw_target, dict):
             raise ValueError(f"{context}: target #{index} must be an object")
         target_context = f"{context}: target #{index}"
-        release = normalize_lean_release_ref(_require_string(raw_target, "release", context=target_context))
+        release = release_branch_from_lean_ref(_require_string(raw_target, "release", context=target_context))
         if release not in release_ids:
             raise ValueError(f"{target_context}: unknown release target `{release}`")
         if release in seen_releases:
@@ -315,7 +336,7 @@ def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
 
 
 def resolve_release_target(catalog: HarnessProjectCatalog, release: str | None, package_root: Path) -> HarnessReleaseTarget:
-    selected = normalize_lean_release_ref(release) if release is not None else active_release_branch(package_root)
+    selected = release_branch_from_lean_ref(release) if release is not None else active_release_branch(package_root)
     target = catalog.release_target(selected)
     if target is None:
         known = ", ".join(sorted(entry.release_id for entry in catalog.release_targets))
@@ -410,6 +431,7 @@ def deploy_project_matrix(
             include.append(
                 {
                     "release_id": target.release_id,
+                    "rc": target.rc,
                     "toolchain": target.toolchain,
                     "verso_ref": target.verso_ref,
                     "branch": target.branch,

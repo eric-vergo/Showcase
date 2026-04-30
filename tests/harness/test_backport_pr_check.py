@@ -45,7 +45,8 @@ class BackportPrCheckTests(unittest.TestCase):
         template = Path(__file__).resolve().parents[2] / ".github" / "PULL_REQUEST_TEMPLATE.md"
         entries = backport_mod.parse_backport_entries(template.read_text(encoding="utf-8"))
 
-        self.assertEqual(set(entries), {"v4.28.0"})
+        self.assertEqual(set(entries), {"v4.29.0", "v4.28.0"})
+        self.assertTrue(entries["v4.29.0"].pending)
         self.assertTrue(entries["v4.28.0"].pending)
 
     def test_parse_backport_entries_accepts_pr_pending_and_exemption(self) -> None:
@@ -85,7 +86,7 @@ Backport v4.26.0: exempt: no longer maintained
 {
   "repository": {"full_name": "leanprover/verso-blueprint"},
   "pull_request": {
-    "base": {"ref": "v4.29.0"},
+    "base": {"ref": "v4.30.0"},
     "draft": true,
     "body": ""
   }
@@ -104,9 +105,9 @@ Backport v4.26.0: exempt: no longer maintained
 {
   "repository": {"full_name": "leanprover/verso-blueprint"},
   "pull_request": {
-    "base": {"ref": "v4.29.0"},
+    "base": {"ref": "v4.30.0"},
     "draft": true,
-    "body": "Backport v4.28.0: pending\\n"
+    "body": "Backport v4.29.0: pending\\nBackport v4.28.0: pending\\n"
   }
 }
 """.strip(),
@@ -207,9 +208,9 @@ Backport v4.26.0: exempt: no longer maintained
 {
   "repository": {"full_name": "leanprover/verso-blueprint"},
   "pull_request": {
-    "base": {"ref": "v4.29.0"},
+    "base": {"ref": "v4.30.0"},
     "draft": false,
-    "body": "Backport v4.28.0: pending\\n"
+    "body": "Backport v4.29.0: pending\\nBackport v4.28.0: pending\\n"
   }
 }
 """.strip(),
@@ -226,9 +227,9 @@ Backport v4.26.0: exempt: no longer maintained
 {
   "repository": {"full_name": "leanprover/verso-blueprint"},
   "pull_request": {
-    "base": {"ref": "v4.29.0"},
+    "base": {"ref": "v4.30.0"},
     "draft": false,
-    "body": "Backport v4.28.0: exempt: docs-only change\\n"
+    "body": "Backport v4.29.0: exempt: docs-only change\\nBackport v4.28.0: exempt: docs-only change\\n"
   }
 }
 """.strip(),

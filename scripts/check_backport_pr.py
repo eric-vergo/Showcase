@@ -179,14 +179,15 @@ def validate_backport_entries(
     entries = parse_backport_entries(body)
     missing = [branch for branch in required_backports if branch not in entries]
     if missing:
+        example_branch = missing[0]
         if allow_pending:
-            example = "`Backport v4.28.0: pending`"
+            example = f"`Backport {example_branch}: pending`"
         else:
-            example = "`Backport v4.28.0: #123`"
+            example = f"`Backport {example_branch}: #123`"
         raise BackportCheckError(
             "missing paired backport metadata for "
             + ", ".join(missing)
-            + f". Add lines like {example} or `Backport v4.28.0: exempt: <reason>`"
+            + f". Add lines like {example} or `Backport {example_branch}: exempt: <reason>`"
         )
 
     if allow_pending:

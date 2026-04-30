@@ -51,13 +51,14 @@ subjects such as `Update files` or `misc cleanup`.
 
 ## Pull Request Conventions
 
-- PR titles should usually match the intended squash-merge commit title.
+- PR titles should usually match the intended final commit title.
 - Avoid generator/tool prefixes such as `[codex]`; the title should describe
   the change, not who or what drafted it.
 - For a draft default-development PR, generate the public-facing title/body
   scaffold with `python3 -m scripts.blueprint_harness prepare-pr`.
-- PR title and body are used as the squash-merge commit message, following the
-  upstream Lean convention. Keep the body suitable for permanent history.
+- PR title and body are used as the final public commit message when the PR is
+  squashed, and should still be suitable for permanent history when the PR is
+  merge-committed.
 - Start the PR body with a short paragraph beginning `This PR ...`; include the
   motivation and contrast with previous behavior there.
 - Use extra paragraphs or bullets only when they help explain the main
@@ -73,10 +74,17 @@ subjects such as `Update files` or `misc cleanup`.
 - When the work came from a local worktree, include the worktree name and write
   scope in local draft notes only when it helps coordination; do not require
   public reviewers to understand local worktree bookkeeping.
-- Draft PRs targeting `v4.29.0` must declare one backport plan line for each
-  required backport release branch listed in `branch-policy.json`.
-- Non-draft PRs targeting `v4.29.0` must replace each `pending` entry with a
-  paired backport PR number or an explicit exemption reason.
+- Draft PRs targeting the default-development branch must declare one backport
+  plan line for each required backport release branch listed in
+  `branch-policy.json`.
+- Non-draft PRs targeting the default-development branch must replace each
+  `pending` entry with a paired backport PR number or an explicit exemption
+  reason.
+- Backported default-development PRs should normally be landed with a merge
+  commit rather than squash or rebase, so the source commits recorded by
+  `git cherry-pick -x` remain present in default-dev history.
+- Squash merge remains appropriate for changes with no required paired
+  backports, or when every required backport is explicitly exempt.
 - The default-development PR is the primary review surface. Paired backport PRs
   exist mainly so CI and merge state are visible on the maintenance line.
 - Paired backport branches should be built with `git cherry-pick -x` so every
@@ -85,25 +93,29 @@ subjects such as `Update files` or `misc cleanup`.
   patch IDs for the commit series, so a paired backport PR should remain a
   one-to-one cherry-pick of the default-development series.
 - The expected workflow is:
-  - keep the `v4.29.0` PR in draft while the change is still converging
+  - keep the default-development PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted
     public title/body scaffold
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
-  - once it is ready for review, open the paired `v4.28.0` PR
-  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>` to scaffold the paired backport PR branch name, title, and body
-  - apply the scaffolded release label, for example `backport-v4.28.0`, to the
+  - once it is ready for review, open the paired backport PRs
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.29.0 --main-pr <pr>` to scaffold one paired backport PR branch name, title, and body
+  - apply the scaffolded release label, for example `backport-v4.29.0`, to the
     paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
     `Backport ...: exempt: <reason>`
-  - wait for CI on both PRs before merging the `v4.29.0` PR
+  - wait for CI on the default-development PR and required paired PRs before
+    merging the default-development PR
 - Keep review comments and design discussion on the default-dev PR unless the
   backport itself diverges materially, for example because of a conflict or a
   release-line-specific adaptation.
 - Record the pairing in the PR body using plain lines like:
 
 ```text
+Backport v4.29.0: pending
+Backport v4.29.0: #122
+Backport v4.29.0: exempt: release setup only
 Backport v4.28.0: pending
 Backport v4.28.0: #123
 Backport v4.28.0: exempt: docs-only change

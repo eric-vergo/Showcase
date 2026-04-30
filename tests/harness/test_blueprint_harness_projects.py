@@ -93,7 +93,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [project.project_id for project in projects],
             ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
         )
-        self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0"])
+        self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0", "v4.30.0"])
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
@@ -102,7 +102,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[0].generate_command,
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
-        self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0"])
+        self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0", "v4.30.0"])
+        release_430 = catalog.release_target("v4.30.0")
+        self.assertIsNotNone(release_430)
+        assert release_430 is not None
+        self.assertEqual(release_430.rc, "4.30-rc2")
+        self.assertEqual(release_430.release_toolchain, "v4.30.0")
+        self.assertEqual(release_430.toolchain, "v4.30.0-rc2")
+        self.assertEqual(release_430.verso_ref, "v4.30.0-rc2")
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
@@ -146,6 +153,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 expected_entries.append(
                     {
                         "release_id": release.release_id,
+                        "rc": release.rc,
                         "toolchain": release.toolchain,
                         "verso_ref": release.verso_ref,
                         "branch": release.branch,
