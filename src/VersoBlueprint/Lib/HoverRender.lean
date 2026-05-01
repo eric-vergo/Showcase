@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.HoverRender
 
@@ -75,8 +76,6 @@ def previewKey (s : String) : String :=
     else
       acc ++ s!"-{toHex c.toNat}"
 
-def inlinePreviewStoreDomain : Name := Name.mkSimple "Informal.inlinePreview.store"
-
 def inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
 
 def inlinePreviewMarkerBlock : Verso.Genre.Manual.Block := {
@@ -104,31 +103,6 @@ def withInlinePreviewRenderContext {m α}
         }
       })
     act
-
-def inlinePreviewStoreKey (path : Array String) (previewId : String) : String :=
-  s!"{String.intercalate "/" path.toList}::{previewId}"
-
-def registerInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) :
-    Verso.Genre.Manual.TraverseState :=
-  let key := inlinePreviewStoreKey path previewId
-  if (state.getDomainObject? inlinePreviewStoreDomain key).isSome then
-    state
-  else
-    state.saveDomainObject inlinePreviewStoreDomain key id
-
-def inlinePreviewOwnerId? (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) : Option Verso.Genre.Manual.InternalId :=
-  let key := inlinePreviewStoreKey path previewId
-  match state.getDomainObject? inlinePreviewStoreDomain key with
-  | some obj => obj.ids.toArray[0]?
-  | Option.none => Option.none
-
-def isInlinePreviewOwner (state : Verso.Genre.Manual.TraverseState)
-    (path : Array String) (previewId : String) (id : Verso.Genre.Manual.InternalId) : Bool :=
-  match inlinePreviewOwnerId? state path previewId with
-  | some owner => owner == id
-  | Option.none => true
 
 private def previewPanel
     (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
@@ -225,12 +199,6 @@ def summaryPreviewWrap
       </span>
     }}
 
-def inlinePreviewTemplate (previewId : String) (body : Verso.Output.Html) : Verso.Output.Html := {{
-  <template class="bp_inline_preview_tpl" "data-bp-preview-id"={{previewId}}>
-    {{body}}
-  </template>
-}}
-
 private def inlinePreviewRefAttrs
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
@@ -261,23 +229,18 @@ def inlinePreviewRef
     (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?)
     node
 
-def inlinePreviewEntry (node body : Verso.Output.Html)
-    (previewId previewTitle : String)
-    (previewLookupKey? : Option String := none)
-    (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none) : Verso.Output.Html := {{
-  {{inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?}}
-  {{inlinePreviewTemplate previewId body}}
-}}
+/--
+Render one inline preview trigger.
 
-def inlinePreviewNode (emitTemplate : Bool) (node body : Verso.Output.Html)
+`previewId` is the local UI identifier used to keep panel state stable, while
+`previewLookupKey?` is the shared-manifest key used to load the preview body.
+Blueprint no longer emits page-local inline preview templates.
+-/
+def inlinePreviewNode (node : Verso.Output.Html)
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
     (previewFallbackLabel? : Option String := none)
     (previewFallbackDetail? : Option String := none) : Verso.Output.Html :=
-  if emitTemplate then
-    inlinePreviewEntry node body previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
-  else
-    inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
+  inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
 
 end Informal.HoverRender

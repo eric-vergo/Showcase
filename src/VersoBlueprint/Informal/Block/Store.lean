@@ -4,7 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.TraversalIndex
 
 namespace Informal
 
@@ -30,13 +31,11 @@ def numberedPartPrefix? (ctxt : TraverseContext) : Option String := Id.run do
       return some (toString n)
   none
 
+def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option StoredBlockData :=
+  Informal.TraversalIndex.Nodes.storedData? st label
+
 def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
-  match st.getDomainObject? Resolve.informalDomainName label.toString with
-  | some obj =>
-    match fromJson? (α := BlockData) obj.data with
-    | .ok data => some data
-    | .error _ => none
-  | none => none
+  (resolveStoredNodeData? st label).map (·.toBlockData)
 
 private def mergeLabelArrays (xs ys : Array Data.Label) : Array Data.Label :=
   ys.foldl (init := xs) fun acc label =>
@@ -46,20 +45,14 @@ private def mergeStringArrays (xs ys : Array String) : Array String :=
   ys.foldl (init := xs) fun acc value =>
     if acc.contains value then acc else acc.push value
 
-def mergeStoredBlockData (existing incoming : BlockData) : BlockData :=
+def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData :=
   let kind :=
     match existing.kind, incoming.kind with
     | .statement _, _ => existing.kind
     | .proof, .statement _ => incoming.kind
     | .proof, .proof => existing.kind
-  let codeData :=
-    match existing.codeData, incoming.codeData with
-    | some existingData, _ => some existingData
-    | none, some incomingData => some incomingData
-    | none, none => none
   { existing with
       kind
-      codeData
       parent := existing.parent <|> incoming.parent
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount
@@ -83,17 +76,17 @@ private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
       (aNum == bNum && a.label.toString < b.label.toString)
 
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=
-  match state.domains.get? Resolve.informalDomainName with
+  match Informal.TraversalIndex.Nodes.domain? state with
   | none => #[]
   | some domain =>
     sortStoredBlocks <| domain.objects.foldl (init := #[]) fun acc _canonical obj =>
-      match fromJson? (α := BlockData) obj.data with
-      | .ok block => acc.push block
-      | .error _ => acc
+      match Informal.TraversalIndex.Nodes.storedObjectData? obj with
+      | some block => acc.push block.toBlockData
+      | none => acc
 
 def BlockData.withResolvedNumbering
     (data : BlockData) (st : TraverseState) (fallbackPrefix? : Option String := none) : BlockData :=
-  match resolveStoredBlockData? st data.label with
+  match resolveStoredNodeData? st data.label with
   | some stored =>
     { data with
         numberingMode := stored.numberingMode

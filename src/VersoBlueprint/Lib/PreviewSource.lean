@@ -12,6 +12,7 @@ import VersoBlueprint.Environment
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewSource
 
@@ -19,19 +20,19 @@ open Lean
 open Informal Data Environment
 
 /-!
-`PreviewSource` is the read-side API for preview consumers.
+`PreviewSource` is the shared read-side namespace for preview consumers.
 
-Its job is to answer "what preview should this caller use for this label?" while
-hiding whether the answer came from traversal-cached HTML blocks or
-environment-side elaboration syntax.
+Its job is to keep preview lookup details localized so callers do not decode
+traversal caches or environment-side preview payloads directly.
 
-The intended split is:
+The current split is intentionally phase-specific:
 
-- callers that need a preview for one label should come here first
-- traversal storage details (`PreviewCache.Entry`, preview domains, facet
-  fallback) stay behind this module
-- widget and traversal renderers may stay separate internally, but are exposed
-  through one retrieval surface
+- traversal-time callers use the traversal helpers in this module when they
+  need cached preview blocks or manifest lookup keys
+- environment-time callers use the environment helpers when they need semantic
+  preview content from `Informal.Environment.State`
+- callers that need preview data for one label should still come here first,
+  even though there is not yet one unified "best available preview" selector
 
 Known exception:
 
@@ -76,9 +77,8 @@ private def firstNonEmptyEntry?
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
   let traversalFacetEntry? (facet : PreviewCache.Facet) : Option PreviewCache.Entry := do
-    let key := PreviewCache.key label facet
-    let obj ← s.getDomainObject? Resolve.informalPreviewDomainName key
-    (fromJson? (α := PreviewCache.Entry) obj.data).toOption
+    let key := Informal.TraversalIndex.TraversalPreviews.key label facet
+    Informal.TraversalIndex.TraversalPreviews.entry? s key
   firstNonEmptyEntry? traversalFacetEntry?
 
 def traversalLookupKey?

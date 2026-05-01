@@ -29,6 +29,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
 set_option doc.verso true
@@ -53,19 +54,6 @@ open CodeSummary
 Elaboration, traversal, and rendering are standard, using {ref VersoManual} helpers for custom blocks and inlines.
 
 -/
-
-/-- Domain for informal-like objects; each informal object is
-  characterized by its canonical name declared by the user. -/
-def informalDomain : Name := Resolve.informalDomainName
-
-/-- Name used in {name}`TraverseState.domains` for informal Lean code blocks. -/
-def informalCodeDomain : Name := Resolve.informalCodeDomainName
-
-/-- Name used in {name}`TraverseState.domains` for informal preview payloads. -/
-def informalPreviewDomain : Name := Resolve.informalPreviewDomainName
-
-/-- Name used in {name}`TraverseState.domains` for rendered external declaration anchors. -/
-def informalExternalDeclDomain : Name := Resolve.externalRenderedDeclDomainName
 
 /-- Configuration for directives / code-blocks. Q: should we allow non-labelled informal objects? -/
 structure Config where
@@ -138,12 +126,7 @@ private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id :
 
 private def resolveStoredGroupData?
     (state : Verso.Genre.Manual.TraverseState) (label : Data.Label) : Option GroupBlockData :=
-  match state.getDomainObject? Resolve.informalGroupDomainName label.toString with
-  | none => none
-  | some obj =>
-    match fromJson? (α := GroupBlockData) obj.data with
-    | .ok groupData => some groupData
-    | .error _ => none
+  Informal.TraversalIndex.Groups.data? state label
 
 private structure GroupRenderInfo where
   label : Data.Label
@@ -175,7 +158,6 @@ private structure RelatedPanelEntry where
   previewKey : String
   previewTitle : String
   href : Option String := none
-  previewFallbackBody : Output.Html := .empty
   metaHtml : Output.Html := .empty
 
 private structure RelatedPanelConfig where
@@ -251,47 +233,31 @@ private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
       #[]
   .seq (statementBadge ++ proofBadge)
 
-private def usedByPreviewFallbackBody (entry : UsedByEntry) : Output.Html :=
-  let useSiteItems : Array Output.Html :=
-    (if entry.inStatement then #[codeHoverTextItem "statement"] else #[]) ++
-    (if entry.inProof then #[codeHoverTextItem "proof"] else #[])
-  .seq #[
-    codeHoverSection "Blueprint label" #[codeHoverCodeItem s!"{entry.source.label}"],
-    codeHoverSection "Uses target in" useSiteItems
-  ]
-
-private def groupPreviewFallbackBody (group : GroupRenderInfo) (entry : BlockData) : Output.Html :=
-  .seq #[
-    codeHoverSection "Blueprint label" #[codeHoverCodeItem s!"{entry.label}"],
-    codeHoverSection "Group" #[codeHoverTextItem group.title]
-  ]
-
-private def groupMissingNotice (group : GroupRenderInfo) : Output.Html :=
-  open Verso.Output.Html in
-  {{
-    <div class="bp_used_by_preview_notice">
-      "No matching " <code>":::group"</code> " declaration was found for parent "
-      <code>s!"{group.label}"</code> "."
-    </div>
-  }}
-
 private def mkRelatedPanelEntry {m}
     [Monad m]
     (ctx : RelatedPanelContext)
-    (source : BlockData) (previewId : String) (fallbackBody : Output.Html)
+    (source : BlockData) (previewId : String)
     (metaHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m RelatedPanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
-  let href := Resolve.resolveDomainHref? ctx.state Resolve.informalDomainName source.label.toString
+  let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
   pure {
     source
     previewId
     previewKey := usedByPreviewLookupKey source
     previewTitle
     href
-    previewFallbackBody := fallbackBody
     metaHtml
   }
+
+private def relatedPanelLoadingBody (detail : String) : Output.Html :=
+  open Verso.Output.Html in
+  {{
+    <div class="bp_used_by_preview_message" "data-bp-preview-message"="loading">
+      <div class="bp_used_by_preview_message_title">"Loading preview"</div>
+      <div class="bp_used_by_preview_message_detail">{{.text true detail}}</div>
+    </div>
+  }}
 
 private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array RelatedPanelEntry) :
     Output.Html :=
@@ -310,7 +276,7 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     Informal.HoverRender.inlinePreviewNode
-      false chipNode .empty entry.previewId entry.previewTitle
+      chipNode entry.previewId entry.previewTitle
       (previewLookupKey? := some entry.previewKey)
       (previewFallbackLabel? := some s!"{entry.source.label}")
   else
@@ -332,9 +298,6 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
             "data-bp-used-preview-key"={{entry.previewKey}}
             "data-bp-used-preview-title"={{entry.previewTitle}}>
           {{rowNode}}
-          <template class="bp_used_by_preview_fallback_tpl" "data-bp-used-preview-id"={{entry.previewId}}>
-            {{entry.previewFallbackBody}}
-          </template>
         </li>
       }}
     let (selectedEntry?, rows) :=
@@ -349,9 +312,7 @@ private def renderRelatedPanel (cfg : RelatedPanelConfig) (entries : Array Relat
       | some entry => entry.previewTitle
       | none => cfg.previewDefaultTitle
     let previewBody : Output.Html :=
-      match selectedEntry? with
-      | some entry => entry.previewFallbackBody
-      | none => {{<div class="bp_used_by_preview_empty">{{.text true cfg.previewEmptyText}}</div>}}
+      relatedPanelLoadingBody cfg.previewEmptyText
     {{
       <div class="bp_used_by_wrap">
         <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
@@ -392,7 +353,6 @@ private def renderUsedByEntry {m}
     let panelEntries ← entries.mapM fun entry =>
       mkRelatedPanelEntry ctx entry.source
         (usedByPreviewId data.label entry.source.label)
-        (usedByPreviewFallbackBody entry)
         (metaHtml := {{
           <code>s!"{entry.source.label}"</code>
           {{renderUsedByAxisBadges entry}}
@@ -425,14 +385,8 @@ private def renderGroupEntry {m}
     if group.declared && siblings.isEmpty then
       return none
     let panelEntries ← siblings.mapM fun source =>
-      let fallbackBody :=
-        if group.declared then
-          groupPreviewFallbackBody group source
-        else
-          .seq #[groupMissingNotice group, groupPreviewFallbackBody group source]
       mkRelatedPanelEntry ctx source
         (s!"bp-group-{Informal.HoverRender.previewKey (toString data.label)}-{Informal.HoverRender.previewKey (toString source.label)}")
-        fallbackBody
         (metaHtml := {{<code>s!"{source.label}"</code>}})
     let chipClass :=
       if group.declared then
@@ -709,13 +663,13 @@ private def registerBlockPreviewData
   let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
   let previewKey := PreviewCache.key blockData.label previewFacet
   let previewData := toJson (PreviewCache.Entry.ofBlocks blockData.label previewFacet contents)
-  let existingPreview? := (← get).getDomainObject? informalPreviewDomain previewKey
+  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
   if shouldWritePreviewData existingPreview? id then
-    modify λ s => s.saveDomainObjectData informalPreviewDomain previewKey previewData
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
   if existingPreview?.isNone then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-preview-{previewKey}"
-    modify λ s => s.saveDomainObject informalPreviewDomain previewKey id
+    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveId s previewKey id
 
 private def registerExternalCodePreview
     {m}
@@ -726,15 +680,15 @@ private def registerExternalCodePreview
     (id : Verso.Multi.InternalId)
     (decl : Data.ExternalRef) :
     m Unit := do
-  let codePreviewKey := LeanCodePreview.lookupKey decl.canonical
+  let codePreviewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
   let codePreviewData := toJson (LeanCodePreview.Entry.ofExternalDecl decl.canonical decl)
-  let existingCodePreview? := (← get).getDomainObject? LeanCodePreview.domainName codePreviewKey
+  let existingCodePreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) codePreviewKey
   if shouldWritePreviewData existingCodePreview? id then
-    modify λ s => s.saveDomainObjectData LeanCodePreview.domainName codePreviewKey codePreviewData
+    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveData s codePreviewKey codePreviewData
   if existingCodePreview?.isNone then
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--lean-code-preview-{codePreviewKey}"
-    modify λ s => s.saveDomainObject LeanCodePreview.domainName codePreviewKey id
+    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveId s codePreviewKey id
 
 private def registerExternalCodePreviews
     {m}
@@ -758,12 +712,12 @@ private def registerExternalDeclAnchor
     (decl : Data.ExternalRef) :
     m Unit := do
   let key := Resolve.externalRenderedDeclTargetKey label decl.canonical
-  if ((← get).getDomainObject? informalExternalDeclDomain key).isNone then
+  if (Informal.TraversalIndex.ExternalDeclAnchors.object? (← get) key).isNone then
     let declId ← Verso.Genre.Manual.freshId
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag declId path
       s!"--informal-external-decl-{label}-{decl.canonical}"
-    modify λ s => s.saveDomainObject informalExternalDeclDomain key declId
+    modify λ s => Informal.TraversalIndex.ExternalDeclAnchors.saveId s key declId
 
 private def registerExternalDeclAnchors
     {m}
@@ -787,22 +741,20 @@ private def storeTraversedBlockData
     (blockData : BlockData) :
     m Unit := do
   let label := blockData.label
-  match (← get).getDomainObject? informalDomain label.toString with
-  | some obj =>
-    let mergedData :=
-      match fromJson? (α := BlockData) obj.data with
-      | .ok existing => mergeStoredBlockData existing blockData
-      | .error _ => blockData
-    modify λ s => s.saveDomainObjectData informalDomain label.toString (toJson mergedData)
+  let storedBlockData := blockData.toStoredData
+  match Informal.TraversalIndex.Nodes.storedData? (← get) label with
+  | some existing =>
+    let mergedData := mergeStoredBlockData existing storedBlockData
+    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
   | none =>
     let path := (← read).path
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
     modify fun s =>
       let (globalCount, s) := reserveGlobalBlockNumber s
-      let blockData := { blockData with globalCount := blockData.globalCount <|> some globalCount }
+      let blockData := { storedBlockData with globalCount := storedBlockData.globalCount <|> some globalCount }
       s
-        |> (·.saveDomainObject informalDomain label.toString id)
-        |> (·.saveDomainObjectData informalDomain label.toString (toJson blockData))
+        |> (fun s => Informal.TraversalIndex.Nodes.saveId s label id)
+        |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData))
 
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where
@@ -842,18 +794,14 @@ block_extension Block.informal (data : BlockData) where
         let relatedPanelContext := mkRelatedPanelContext s
         let attrs := s.htmlId id
         let codeHref : Option String :=
-          match s.resolveDomainObject informalCodeDomain data.label.toString with
-          | .ok dest => some dest.relativeLink
-          | .error _ => none
-        let codeData? : Option InlineCodeData ←
-          match s.getDomainObject? informalCodeDomain data.label.toString with
-          | none => pure none
+          match Informal.TraversalIndex.InlineCode.object? s data.label with
           | some obj =>
-            match fromJson? (α := InlineCodeData) obj.data with
-            | .ok cdata => pure (some cdata)
-            | .error err =>
-                HtmlT.logError s!"Malformed informal code data for {data.label}: {err}"
-                pure none
+            match obj.ids.toArray[0]? with
+            | some codeId => s.externalTags[codeId]? |>.map (·.relativeLink)
+            | none => none
+          | none => none
+        let codeData? : Option InlineCodeData ←
+          pure <| Informal.TraversalIndex.InlineCode.data? s data.label
         let codeHint? :=
           match data.kind with
           | .proof => none
@@ -866,7 +814,7 @@ block_extension Block.informal (data : BlockData) where
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
           let attrsFor (declName : Name) : Array (String × String) :=
             let key := Resolve.externalRenderedDeclTargetKey data.label declName
-            match s.getDomainObject? informalExternalDeclDomain key with
+            match Informal.TraversalIndex.ExternalDeclAnchors.object? s key with
             | none => #[]
             | some obj =>
               match obj.ids.toArray[0]? with

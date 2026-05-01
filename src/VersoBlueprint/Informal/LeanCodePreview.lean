@@ -24,8 +24,7 @@ Dedicated traversal domain for manifest-backed Lean declaration previews.
 Unlike `PreviewCache`, this domain is only for previews attached to links that
 target Lean declarations/definitions.
 -/
-def domainName : Name := Name.mkSimple "Informal.LeanCodePreview"
-
+def domainName : Name := Informal.LeanDeclPreviewKey.domainName
 /--
 Canonical internal preview target for one Lean declaration.
 
@@ -41,7 +40,35 @@ def lookupKey (decl : Name) : String :=
 inductive Source where
   | inlineBlocks (blocks : Array ManualBlock)
   | externalDecl (decl : Informal.Data.ExternalRef)
-deriving Inhabited, Repr, ToJson, FromJson
+deriving Inhabited, Repr
+
+instance : Lean.ToJson Source where
+  toJson
+    | .inlineBlocks blocks => .arr #[.str "i", toJson blocks]
+    | .externalDecl decl => .arr #[.str "e", toJson decl]
+
+instance : Lean.FromJson Source where
+  fromJson? v := do
+    match v with
+    | .arr arr =>
+      let some tag := arr[0]? | throw "expected Lean-code preview source tag"
+      let some payload := arr[1]? | throw "expected Lean-code preview source payload"
+      match ← fromJson? tag with
+      | "i" => .inlineBlocks <$> fromJson? payload
+      | "e" => .externalDecl <$> fromJson? payload
+      | other => throw s!"unknown Lean-code preview source tag {other}"
+    | .obj obj =>
+      match obj.get? "inlineBlocks", obj.get? "externalDecl" with
+      | some blocks, none =>
+        match fromJson? (α := Array ManualBlock) blocks with
+        | .ok data => return .inlineBlocks data
+        | .error _ => .inlineBlocks <$> blocks.getObjValAs? (Array ManualBlock) "blocks"
+      | none, some decl =>
+        match fromJson? (α := Informal.Data.ExternalRef) decl with
+        | .ok data => return .externalDecl data
+        | .error _ => .externalDecl <$> decl.getObjValAs? Informal.Data.ExternalRef "decl"
+      | _, _ => throw "expected object with exactly one Lean-code preview source constructor"
+    | _ => throw "expected Lean-code preview source"
 
 /--
 Canonical declaration-preview payload.
@@ -52,7 +79,26 @@ block preview body, but each declaration keeps its own manifest key.
 structure Entry where
   target : Name
   source : Source
-deriving Inhabited, Repr, ToJson, FromJson
+deriving Inhabited, Repr
+
+instance : Lean.ToJson Entry where
+  toJson entry := .arr #[toJson entry.target, toJson entry.source]
+
+instance : Lean.FromJson Entry where
+  fromJson? v := do
+    match v with
+    | .arr arr =>
+      let some target := arr[0]? | throw "expected Lean-code preview target"
+      let some source := arr[1]? | throw "expected Lean-code preview source"
+      return {
+        target := ← fromJson? target
+        source := ← fromJson? source
+      }
+    | _ =>
+      return {
+        target := ← v.getObjValAs? Name "target"
+        source := ← v.getObjValAs? Source "source"
+      }
 
 def Entry.ofInlineBlocks (target : Name) (blocks : Array ManualBlock) : Entry :=
   { target := target.eraseMacroScopes, source := .inlineBlocks blocks }

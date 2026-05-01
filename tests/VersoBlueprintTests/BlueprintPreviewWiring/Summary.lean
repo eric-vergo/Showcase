@@ -55,7 +55,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
-        !appearsBefore inlineJs "previewUtils.loadSharedPreviewManifest();" "const store = ensureInlinePreviewStore();"
+        !hasSubstr inlineJs "ensureInlinePreviewStore" &&
+        !hasSubstr inlineJs "template.bp_inline_preview_tpl"
       | _, _, _, _ => false
     )
 
@@ -65,7 +66,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
     let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
-    let previewKey := Informal.LeanCodePreview.lookupKey `Nat.add
+    let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 1 &&
       !hasSubstr out s!"data-bp-preview-key=\"{previewKey}\" data-bp-preview-fallback-label=" &&
