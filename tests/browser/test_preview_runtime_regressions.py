@@ -178,7 +178,7 @@ class TestPreviewRuntimeRegressions:
 
         wrap = page.locator('.bp_wrapper[title="used_target"] .bp_used_by_wrap').first
         expect(wrap).to_have_count(1)
-        assert "bp_used_by_preview_tpl" not in page.content()
+        assert "bp_used_by_preview_fallback_tpl" not in page.content()
 
         chip = wrap.locator(".bp_used_by_chip").first
         chip.hover()
@@ -204,12 +204,15 @@ class TestPreviewRuntimeRegressions:
             '.bp_inline_preview_ref[data-bp-preview-title="Bibliography: preview.showcase.cite"]'
         ).first
         expect(trigger).to_have_count(1)
+        assert "bp_inline_preview_tpl" not in page.content()
 
         trigger.hover()
 
         panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_inline_preview_panel_body")).to_contain_text("preview.showcase.cite")
+        body = panel.locator(".bp_inline_preview_panel_body")
+        expect(body).to_contain_text("Preview showcase citation")
+        expect(body).to_contain_text("Locator")
 
         assert_no_runtime_errors(errors)
 
