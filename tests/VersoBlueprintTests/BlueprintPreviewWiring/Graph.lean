@@ -8,8 +8,22 @@ import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph
 
+open Verso
+open Verso.Genre.Manual
+open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
+
+set_option doc.verso true
+
+#docs (Genre.Manual) lrDirectionGraphDoc "Blueprint LR Direction Graph" :=
+:::::::
+:::definition "def:graph.lr.base"
+Base statement for an explicit left-to-right graph.
+:::
+
+{blueprint_graph (direction := LR) (pack := false)}
+:::::::
 
 /-- info: true -/
 #guard_msgs in
@@ -33,8 +47,14 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_group_hover_preview_graph bp_preview_panel_body\"" &&
       hasSubstr out "aria-label=\"Close group preview\"" &&
       hasSubstr out "class=\"bp-graph-variants\"" &&
+      hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
+      hasSubstr out "class=\"bp_graph_options_popover\"" &&
+      hasSubstr out "class=\"bp_graph_controls_select bp_graph_direction_select\"" &&
+      hasSubstr out "class=\"bp_graph_pack_input\"" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
-      hasSubstr out "\"direction\":\"TB\"" &&
+      hasSubstr out "data-bp-graph-pack=\"false\"" &&
+      hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
+      hasSubstr out "\"options\":{\"direction\":\"TB\",\"pack\":false}" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
@@ -57,17 +77,47 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
         hasSubstr graphJs "graphviz: null," &&
+        hasSubstr graphJs "renderedVariantKey: \"\"," &&
+        hasSubstr graphJs "renderedOptionsKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
+        hasSubstr graphJs "function dotWithGraphOptions(dot, options)" &&
+        hasSubstr graphJs "function dotForVariantOptions(variant, options)" &&
+        hasSubstr graphJs "return dotWithGraphOptions(variant.dot, options);" &&
+        hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
+        hasSubstr graphJs "function bindOptionsPopover(graphBlock)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
         hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
         hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
+        hasSubstr graphJs "const directionSelector = graphBlock.querySelector(\".bp_graph_direction_select\");" &&
+        hasSubstr graphJs "const packInput = graphBlock.querySelector(\".bp_graph_pack_input\");" &&
+        hasSubstr graphJs "let activeOptions = normalizeGraphOptions({" &&
+        hasSubstr graphJs "switchDirection(directionSelector.value);" &&
+        hasSubstr graphJs "switchPack(packInput.checked);" &&
         hasSubstr graphJs ".zoom(true)" &&
         hasSubstr graphJs "function normalizeGraphDirection(rawDirection)" &&
+        hasSubstr graphJs "function normalizeGraphPack(rawPack)" &&
         hasSubstr graphJs "layoutGraphCanvas(graphRoot, graphState)" &&
         hasSubstr graphJs "if (typeof ResizeObserver === \"function\")" &&
         hasSubstr graphJs ".fit(true)" &&
         hasSubstr graphJs "syncLegend(graphBlock, activeKey)"
       | none => false
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (out, _) ← renderManualDocHtmlStringAndState manualImpls lrDirectionGraphDoc
+    pure (
+      hasSubstr out "data-bp-graph-direction=\"LR\"" &&
+      hasSubstr out "data-bp-graph-pack=\"false\"" &&
+      hasSubstr out "data-bp-graph-default-direction=\"LR\"" &&
+      hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
+      (hasSubstr out "selected value=\"LR\"" || hasSubstr out "value=\"LR\" selected") &&
+      hasSubstr out "\"options\":{\"direction\":\"LR\",\"pack\":false}" &&
+      hasSubstr out "rankdir=LR;" &&
+      hasSubstr out "pack=false;" &&
+      !hasSubstr out "dotByDirection"
     )
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph
