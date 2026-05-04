@@ -35,6 +35,25 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := { htmlConfig with toHtmlAssets := htmlAssets }
   }
 
+private def highlightedDocstringInnerTextRead : String :=
+  "const str = d.innerText;"
+
+private def highlightedDocstringTextContentRead : String :=
+  "const str = d.textContent || \"\";"
+
+private def patchHighlightedDocstringStartupJs (js : JS) : JS :=
+  { js with js := js.js.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead }
+
+private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
+  { assets with
+    extraJs :=
+      Std.HashSet.ofArray <|
+        assets.extraJs.toArray.map patchHighlightedDocstringStartupJs
+  }
+
+private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
+  state.modifyHtmlAssets patchBlueprintHtmlAssets
+
 def manifestFilename : String := "blueprint-preview-manifest.json"
 
 inductive EntryKind where
@@ -217,8 +236,58 @@ def schemaJson : Json :=
 private def jsonPretty (json : Json) : String :=
   json.render.pretty 80
 
+private def outputDirNameForMode : Mode → String
+  | .single => "html-single"
+  | .multi => "html-multi"
+
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
-  cfg.destination / (match mode with | .single => "html-single" | .multi => "html-multi")
+  cfg.destination / outputDirNameForMode mode
+
+private def xrefExcludedDomainNames : Array Name :=
+  Informal.TraversalIndex.allSpecs.filterMap fun spec =>
+    match spec.kind with
+    | .semanticDomain => none
+    | .internalIndex | .runtimeCache | .accumulator => some spec.name
+
+private def isPublicXrefDomain (name : Name) : Bool :=
+  !xrefExcludedDomainNames.any (· == name)
+
+private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
+    Verso.NameMap Verso.Multi.Domain := Id.run do
+  let mut publicDomains : Verso.NameMap Verso.Multi.Domain := {}
+  for (name, domain) in domains do
+    if isPublicXrefDomain name then
+      publicDomains := publicDomains.insert! name domain
+  publicDomains
+
+def buildPublicXrefJson (state : TraverseState) : Json :=
+  Verso.Multi.xrefJson (publicXrefDomains state.domains) state.externalTags
+
+private def replaceFindPageXref (html xrefJson : String) : Option String :=
+  let marker := "window.xref = "
+  match html.splitOn marker with
+  | before :: afterMarkerPart :: afterMarkerParts =>
+      let afterMarker := String.intercalate marker (afterMarkerPart :: afterMarkerParts)
+      match afterMarker.splitOn Verso.Genre.Manual.find.js with
+      | _oldJson :: afterFindJsPart :: afterFindJsParts =>
+          some <|
+            before ++ marker ++ xrefJson ++ ";\n" ++
+            Verso.Genre.Manual.find.js ++
+            String.intercalate Verso.Genre.Manual.find.js (afterFindJsPart :: afterFindJsParts)
+      | _ => none
+  | _ => none
+
+def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
+    (state : TraverseState) : IO Unit := do
+  let outDir := outDirForMode cfg mode
+  let json := (buildPublicXrefJson state).compress
+  IO.FS.writeFile (outDir / "xref.json") json
+  let findIndex := outDir / "find" / "index.html"
+  if ← findIndex.pathExists then
+    let html ← IO.FS.readFile findIndex
+    match replaceFindPageXref html json with
+    | some html => IO.FS.writeFile findIndex html
+    | none => logError s!"Blueprint xref filter: could not find embedded xref payload in {findIndex}"
 
 private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
   match Informal.TraversalIndex.Nodes.data? state label with
@@ -443,6 +512,7 @@ def emitSharedPreviewManifest (extensionImpls : ExtensionImpls) : ExtraStep := f
   IO.FS.createDirAll dataDir
   let json := (toJson file).compress
   IO.FS.writeFile (dataDir / manifestFilename) json
+  emitPublicXref mode logError cfg state
 
 def dumpSchemaFlag : String := "--dump-schema"
 def dumpManifestFlag : String := "--dump-manifest"
@@ -491,6 +561,84 @@ def handleCliFlags
   else
     handleDumpSchemaFlag options
 
+private abbrev HtmlTraverse :=
+  (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState)
+
+private abbrev HtmlEmitter :=
+  (String → IO Unit) → RenderConfig → Part Manual → TraverseState → ReaderT ExtensionImpls IO Unit
+
+private def emitBlueprintHtml
+    (extraSteps : List ExtraStep)
+    (how : EmitHtml)
+    (mode : Mode)
+    (logError : String → IO Unit)
+    (cfg : RenderConfig)
+    (text : Part Manual)
+    (traverse : HtmlTraverse)
+    (emit : HtmlEmitter) :
+    ReaderT ExtensionImpls IO Unit := do
+  let outDir := outputDirNameForMode mode
+  match how with
+  | .no => pure ()
+  | .immediately =>
+      if cfg.verbose then
+        IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
+      let (text', traverseState) ← traverse logError cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      emit logError cfg text' traverseState
+      for step in extraSteps do
+        step mode logError cfg.toConfig traverseState text'
+  | .delay f =>
+      let (text', traverseState) ← traverse logError cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      SavedState.mk text' traverseState |>.save f
+  | .resumeFrom f =>
+      let { text, traverseState } ← SavedState.load f
+      let traverseState := patchBlueprintTraverseState traverseState
+      emit logError cfg text traverseState
+      for step in extraSteps do
+        step mode logError cfg.toConfig traverseState text
+
+def blueprintMain (text : Part Manual)
+    (extensionImpls : ExtensionImpls := by exact extension_impls%)
+    (options : List String)
+    (config : RenderConfig := {})
+    (extraSteps : List ExtraStep := []) : IO UInt32 :=
+  ReaderT.run go extensionImpls
+where
+  go : ReaderT ExtensionImpls IO UInt32 := do
+    let errorCount : IO.Ref Nat ← IO.mkRef 0
+    let logError msg := do
+      errorCount.modify (· + 1)
+      IO.eprintln msg
+    let cfg ← parseRenderConfigOptions config options
+
+    if cfg.emitTeX then
+      if cfg.verbose then
+        IO.println "Saving TeX"
+      emitTeX logError cfg.toConfig text
+
+    emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single logError cfg text
+      traverseHtmlSingle emitHtmlSingle
+    emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi logError cfg text
+      traverseHtmlMulti emitHtmlMulti
+
+    if let some wcFile := cfg.wordCount then
+      if cfg.verbose then
+        IO.println s!"Saving word counts to {wcFile}"
+      wordCount wcFile logError cfg.toConfig text
+
+    match ← errorCount.get with
+    | 0 => return 0
+    | 1 =>
+        IO.eprintln "An error was encountered!"
+        return 1
+    | n =>
+        IO.eprintln s!"{n} errors were encountered!"
+        return 1
+
 def blueprintMainWithSharedPreviewManifest
     (text : Part Manual)
     (options : List String)
@@ -501,7 +649,7 @@ def blueprintMainWithSharedPreviewManifest
   let (dumped?, options) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
-  manualMain text (extensionImpls := extensionImpls) (options := options) (config := config)
+  blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
     (extraSteps := emitSharedPreviewManifest extensionImpls :: extraSteps)
 
 def manualMainWithSharedPreviewManifest
