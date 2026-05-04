@@ -4,9 +4,21 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 
 ## Highest Priority
 
-- [ ] Upstream the `VersoManual` manual-rendering extension hook used by
-  `VersoBlueprint.PreviewManifest`, so downstream executables no longer need a
-  blueprint-local workaround for shared preview-manifest emission.
+- [ ] Upstream the `VersoManual` rendering hooks needed by
+  `VersoBlueprint.PreviewManifest`, so downstream executables no longer need to
+  own a local `manualMain`-style orchestration layer.
+  - current Blueprint workaround:
+    `PreviewManifest.blueprintMain` mirrors only Verso's top-level mode
+    dispatcher, still calls Verso's `traverseHtmlSingle`/`traverseHtmlMulti`
+    and `emitHtmlSingle`/`emitHtmlMulti`, and applies Blueprint adaptations
+    around those calls
+  - needed hook shape:
+    a post-traversal/pre-HTML-emission transform for `TraverseState` /
+    `HtmlAssets`, plus a way to customize the xref payload used for both
+    `xref.json` and the find page
+  - still-useful lower-priority hook:
+    a post-emit extra step for downstream files such as Blueprint's shared
+    preview manifest
   - preserved branch: `ejgallego/verso-manual-extra-step-upstream-20260313`
   - PR shortcut:
     `https://github.com/ejgallego/verso/pull/new/verso-manual-extra-step-upstream-20260313`
@@ -45,8 +57,32 @@ Items to upstream to `verso` once the blueprint split is stabilized.
 
 ## Hover and Rendering Follow-Ups
 
-- [ ] Upstream the `Verso.Code.Highlighted` docstring rerender needed for
-  dynamic hover content, then drop the local copy.
+- [ ] Upstream the `Verso.Code.Highlighted` docstring rerender performance fix,
+  then drop Blueprint's local highlighted-code asset compatibility rewrite.
+  - current Verso pressure points:
+    `src/verso/Verso/Code/Highlighted.lean` reads
+    `code.docstring, pre.docstring` with `innerText` in both the page-wide
+    startup render loop and the dynamic hover-content render loop
+  - desired upstream change:
+    use `textContent || ""` when reading generated docstring source before
+    passing it to `marked.parse`
+  - rationale:
+    these nodes contain raw markdown source and often live under hidden
+    `.hover-info` containers; `innerText` is both layout-sensitive and can
+    return empty text for hidden payloads, while `textContent` reads the stored
+    source directly
+  - observed local impact:
+    the Noperthedron `The-Local-Theorem` reference page dropped from a roughly
+    14 second highlighted-code startup task to under 0.5 seconds after the
+    generated highlighted-code asset's `innerText` reads were rewritten
+  - upstream code points at Verso commit
+    `7ae82ac2ae54ae5dcc9948a701669e9b596e5cae`:
+    - `src/verso/Verso/Code/Highlighted.lean#L1377-L1384`
+    - `src/verso/Verso/Code/Highlighted.lean#L1460-L1467`
+  - follow-up direction:
+    consider rendering docstrings server-side or keeping external-declaration
+    hover payloads deduplicated instead of inlining them repeatedly in generated
+    Blueprint declaration snippets
 
 - [ ] Upstream the separate hover robustness guards in
   `Verso.Code.Highlighted`, since those look like general hardening rather than
