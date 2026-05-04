@@ -11,6 +11,114 @@ def wait_for_graph(page: Page):
     )
 
 
+def wait_for_rendered_variant(page: Page, variant: str):
+    page.wait_for_function(
+        """(expectedVariant) => {
+            const block = document.querySelector(".bp_graph_fullwidth");
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const select = document.querySelector(".bp_graph_view_select");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const state = block ? block.__bpGraphState : null;
+            return (
+                !!select &&
+                !!svg &&
+                !!state &&
+                select.value === expectedVariant &&
+                state.renderedVariantKey === expectedVariant &&
+                state.renderFinalizedToken === state.renderToken
+            );
+        }""",
+        arg=variant,
+    )
+
+
+def graph_transform(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            return graph ? graph.getAttribute("transform") : null;
+        }"""
+    )
+
+
+def assert_graph_has_zoom_handlers(page: Page):
+    assert page.evaluate(
+        """() => {
+            const svg = document.querySelector(".bp_graph_canvas svg");
+            if (!svg || !Array.isArray(svg.__on) || !svg.__zoom) return false;
+            return svg.__on.some((entry) => entry.type === "mousedown" && entry.name === "zoom");
+        }"""
+    )
+
+
+def assert_graph_can_be_dragged(page: Page):
+    before = graph_transform(page)
+    assert before is not None
+    canvas_box = page.locator(".bp_graph_canvas").first.bounding_box()
+    assert canvas_box is not None
+    center_x = canvas_box["x"] + canvas_box["width"] / 2
+    center_y = canvas_box["y"] + canvas_box["height"] / 2
+    page.mouse.move(center_x, center_y)
+    page.mouse.down()
+    page.mouse.move(center_x + 90, center_y + 36, steps=6)
+    page.mouse.up()
+    page.wait_for_function(
+        """(previousTransform) => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            return !!graph && graph.getAttribute("transform") !== previousTransform;
+        }""",
+        arg=before,
+    )
+
+
+def graph_visibility_metrics(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            if (!canvas || !svg || !graph) return null;
+            const canvasRect = canvas.getBoundingClientRect();
+            const graphRect = graph.getBoundingClientRect();
+            return {
+                canvasTop: canvasRect.top,
+                canvasHeight: canvasRect.height,
+                graphTop: graphRect.top,
+                graphBottom: graphRect.bottom,
+            };
+        }"""
+    )
+
+
+def graph_dimensions(page: Page):
+    return page.evaluate(
+        """() => {
+            const canvas = document.querySelector(".bp_graph_canvas");
+            const svg = canvas ? canvas.querySelector("svg") : null;
+            const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
+            if (!canvas || !svg || !graph) return null;
+            const graphRect = graph.getBoundingClientRect();
+            return {
+                width: graphRect.width,
+                height: graphRect.height,
+                activeDirection: canvas.getAttribute("data-bp-active-direction") || "",
+                activePack: canvas.getAttribute("data-bp-active-pack") || "",
+            };
+        }"""
+    )
+
+
+def assert_graph_is_well_placed(page: Page):
+    metrics = graph_visibility_metrics(page)
+    assert metrics is not None
+    assert metrics["graphTop"] < metrics["canvasTop"] + 0.35 * metrics["canvasHeight"]
+    assert metrics["graphBottom"] > metrics["canvasTop"] + 0.5 * metrics["canvasHeight"]
+
+
 class TestGraphLayoutRuntime:
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
@@ -57,6 +165,108 @@ class TestGraphLayoutRuntime:
                 );
             }"""
         )
+
+    def test_graph_options_popover_switches_direction(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        options_button = page.locator(".bp_graph_options_button").first
+        options_panel = page.locator(".bp_graph_options_popover").first
+        direction_selector = page.locator(".bp_graph_direction_select").first
+        pack_input = page.locator(".bp_graph_pack_input").first
+
+        initial = graph_dimensions(page)
+        assert initial is not None
+        assert initial["activeDirection"] == "TB"
+        assert initial["activePack"] == "true"
+
+        options_button.click()
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector(".bp_graph_options_button");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                const select = document.querySelector(".bp_graph_direction_select");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                return (
+                    !!button &&
+                    !!panel &&
+                    !!select &&
+                    !!pack &&
+                    button.getAttribute("aria-expanded") === "true" &&
+                    !panel.hidden &&
+                    select.value === "TB" &&
+                    pack.checked
+                );
+            }"""
+        )
+
+        direction_selector.select_option("LR")
+        page.wait_for_function(
+            """() => {
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const select = document.querySelector(".bp_graph_direction_select");
+                const panel = document.querySelector(".bp_graph_options_popover");
+                return (
+                    !!canvas &&
+                    !!select &&
+                    !!panel &&
+                    select.value === "LR" &&
+                    canvas.getAttribute("data-bp-active-direction") === "LR" &&
+                    panel.hidden
+                );
+            }"""
+        )
+
+        options_button.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_options_popover");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                return !!panel && !!pack && !panel.hidden && pack.checked;
+            }"""
+        )
+        pack_input.uncheck()
+        page.wait_for_function(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                const state = block ? block.__bpGraphState : null;
+                return (
+                    !!canvas &&
+                    !!pack &&
+                    !!state &&
+                    !pack.checked &&
+                    canvas.getAttribute("data-bp-active-pack") === "false" &&
+                    state.renderFinalizedToken === state.renderToken
+                );
+            }"""
+        )
+        pack_input.check()
+        page.wait_for_function(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const pack = document.querySelector(".bp_graph_pack_input");
+                const state = block ? block.__bpGraphState : null;
+                return (
+                    !!canvas &&
+                    !!pack &&
+                    !!state &&
+                    pack.checked &&
+                    canvas.getAttribute("data-bp-active-pack") === "true" &&
+                    state.renderFinalizedToken === state.renderToken
+                );
+            }"""
+        )
+
+        switched = graph_dimensions(page)
+        assert switched is not None
+        assert switched["activeDirection"] == "LR"
+        assert switched["activePack"] == "true"
+        assert switched["width"] > switched["height"]
+        assert_graph_is_well_placed(page)
 
     def test_graph_page_does_not_force_extra_vertical_scroll(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
@@ -108,26 +318,45 @@ class TestGraphLayoutRuntime:
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
-        metrics = page.evaluate(
-            """() => {
-                const canvas = document.querySelector(".bp_graph_canvas");
-                const svg = canvas ? canvas.querySelector("svg") : null;
-                const graph = svg ? (svg.querySelector("g.graph") || svg.querySelector("g")) : null;
-                if (!canvas || !svg || !graph) return null;
-                const canvasRect = canvas.getBoundingClientRect();
-                const graphRect = graph.getBoundingClientRect();
-                return {
-                    canvasTop: canvasRect.top,
-                    canvasHeight: canvasRect.height,
-                    graphTop: graphRect.top,
-                    graphBottom: graphRect.bottom,
-                };
-            }"""
-        )
+        assert_graph_is_well_placed(page)
 
-        assert metrics is not None
-        assert metrics["graphTop"] < metrics["canvasTop"] + 0.35 * metrics["canvasHeight"]
-        assert metrics["graphBottom"] > metrics["canvasTop"] + 0.5 * metrics["canvasHeight"]
+    def test_graph_remains_well_placed_after_variant_switch(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        selector = page.locator(".bp_graph_view_select").first
+
+        assert_graph_is_well_placed(page)
+
+        for variant in ["group", "parent:preview_core", "parent:preview_group", "full"]:
+            selector.select_option(variant)
+            page.wait_for_function(
+                """(expectedValue) => {
+                    const select = document.querySelector(".bp_graph_view_select");
+                    const canvas = document.querySelector(".bp_graph_canvas");
+                    const svg = canvas ? canvas.querySelector("svg") : null;
+                    return !!select && !!svg && select.value === expectedValue;
+                }""",
+                arg=variant,
+            )
+            assert_graph_is_well_placed(page)
+
+    def test_graph_remains_interactive_after_variant_switch(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        selector = page.locator(".bp_graph_view_select").first
+
+        assert_graph_has_zoom_handlers(page)
+        assert_graph_can_be_dragged(page)
+
+        for variant in ["group", "parent:preview_core", "full"]:
+            selector.select_option(variant)
+            wait_for_rendered_variant(page, variant)
+            assert_graph_has_zoom_handlers(page)
+            assert_graph_can_be_dragged(page)
 
     def test_graph_width_is_css_driven_without_inline_offsets(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
