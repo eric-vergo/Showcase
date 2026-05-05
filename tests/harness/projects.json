@@ -65,7 +65,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "f3e5e6514a87323c4b1ae0ed2c8a21aedffbcef8"
+          "ref": "aa8a7538f7779fe5c3e37088e893665a66bdbf61"
         }
       ],
       "build_command": ["lake", "build"],
