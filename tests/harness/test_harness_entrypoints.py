@@ -42,6 +42,8 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("list-json", result.stdout)
         self.assertIn("generate", result.stdout)
+        self.assertIn("generate-all", result.stdout)
+        self.assertIn("validate", result.stdout)
 
     def test_blueprint_test_blueprints_list_json(self) -> None:
         result = self.run_command([sys.executable, "-m", "scripts.blueprint_test_blueprints", "list-json"])
@@ -76,6 +78,8 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         result = self.run_command(["bash", "scripts/validate-test-blueprints.sh", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("standalone", result.stdout)
+        self.assertIn("--skip-browser-tests", result.stdout)
+        self.assertIn("--pytest-arg", result.stdout)
 
     def test_validate_branch_wrapper_help(self) -> None:
         result = self.run_command(["bash", "scripts/validate-branch.sh", "--help"])
