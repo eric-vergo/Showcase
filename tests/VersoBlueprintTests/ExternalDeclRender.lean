@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.ExternalRefSnapshot
+import VersoBlueprint.Informal.ExternalCode
 
 namespace Verso.VersoBlueprintTests.ExternalDeclRender
 
@@ -154,6 +155,71 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         samePackage?.isSome &&
         samePackageExists?.isSome &&
         missing?.isNone)
+
+private def htmlTestContext :
+    Verso.Doc.Html.HtmlT.Context Verso.Genre.Manual Id := {
+  options := {
+    headerLevel := 1
+    logError := fun _ => pure ()
+  }
+  traverseContext := { logError := fun _ => pure () }
+  traverseState := Verso.Genre.Manual.TraverseState.initialize {}
+  definitionIds := {}
+  linkTargets := {}
+  codeOptions := {}
+}
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Lean.CoreM Bool from do
+    let env ← getEnv
+    let some cinfo := env.find? `Nat.add
+      | return false
+    match ← (Informal.renderDeclHtmlDirectFromInfoE `Nat.add cinfo).run' with
+    | .ok rendered =>
+      pure <|
+        rendered.hoverPayloads.size > 0 &&
+        rendered.hoverPayloads.any (fun payload => payload.html.contains "class=\"docstring\"") &&
+        rendered.html.contains "data-bp-external-hover-local=\"" &&
+        !rendered.html.contains "class=\"hover-info\"" &&
+        rendered.selfContained.contains "class=\"hover-info\"" &&
+        !rendered.selfContained.contains "data-bp-external-hover-local="
+    | .error _ => pure false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Lean.CoreM Bool from do
+    let opts ← Lean.getOptions
+    let ref ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
+    let some payloadCount :=
+      (match ref.render with
+      | .ok rendered =>
+        if rendered.hoverPayloads.any (fun payload => payload.html.contains "class=\"docstring\"") then
+          some rendered.hoverPayloads.size
+        else
+          none
+      | .error _ => none)
+      | return false
+    let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.asString
+    let renderPage :=
+      Informal.ExternalCode.renderPartsWithPageHovers
+        { caption := "Code for theorem", number? := some "1" }
+        "Lean declarations"
+        .empty
+        #[ref, ref]
+        (fun _ => none)
+    let (parts, hoverState) := (renderPage htmlTestContext).run {}
+    let pageHtml := parts.externalCodePanel.asString
+    pure <|
+      payloadCount > 0 &&
+      hoverState.dedup.contentId.size == payloadCount &&
+      pageHtml.contains "data-verso-hover=\"" &&
+      !pageHtml.contains "data-bp-external-hover-local=\"" &&
+      !pageHtml.contains "class=\"hover-info\"" &&
+      previewHtml.contains "class=\"hover-info\"" &&
+      !previewHtml.contains "data-bp-external-hover-local=\""
 
 /-- info: true -/
 #guard_msgs in

@@ -29,65 +29,143 @@ instance : Lean.Quote ExternalDeclRenderError where
     | .exception decl message =>
         Lean.Syntax.mkApp (Lean.mkCIdent ``ExternalDeclRenderError.exception) #[Lean.quote decl, Lean.quote message]
 
-abbrev ExternalDeclRenderResult := Except ExternalDeclRenderError ExternalDeclHtml
-
 def ExternalDeclRenderError.message : ExternalDeclRenderError → String
   | .moduleUnavailable decl => s!"module unavailable for {decl}"
   | .exception decl message => s!"{decl}: {message}"
 
-private def runHighlightedHtml
-    (html : Verso.Code.HighlightHtmlM Verso.Genre.Manual ExternalDeclHtml) : ExternalDeclHtml :=
-  let ctx : Verso.Code.HighlightHtmlM.Context Verso.Genre.Manual := {
-    linkTargets := {}
-    traverseContext := { logError := fun _ => pure () }
-    definitionIds := {}
-    options := {}
-  }
-  let (html, hoverState) := ((html.run ctx).run {})
-  inlineVersoHoverAttrs html hoverState.dedup
-where
-  /-
-  Direct external declaration rendering is isolated from the page-level Verso hover table,
-  so deduplicated hover ids would otherwise point at unrelated page content. Inline the
-  resolved hover payloads locally to keep the rendered snippet self-contained.
-  -/
-  inlineVersoHoverAttrs
-      (html : ExternalDeclHtml) (hoverDedup : Verso.Code.Hover.Dedup ExternalDeclHtml) :
-      ExternalDeclHtml :=
-    Id.run <|
-      html.visitM (tag := fun name attrs contents => do
-        let mut inlineHover? : Option ExternalDeclHtml := none
-        let mut attrs' : Array (String × String) := #[]
-        for (attr, value) in attrs do
-          if attr == "data-verso-hover" then
-            inlineHover? := value.toNat? >>= hoverDedup.get?
-          else
-            attrs' := attrs'.push (attr, value)
-        let contents :=
-          match inlineHover? with
-          | some hoverHtml => contents ++ .tag "span" #[("class", "hover-info")] hoverHtml
-          | none => contents
-        pure <| some <| .tag name attrs' contents)
+/--
+One hover payload captured while rendering an external declaration snippet.
 
-private def highlightedToHtml (h : SubVerso.Highlighting.Highlighted) : ExternalDeclHtml :=
+External declarations are rendered before the final page `Html.State` exists, so
+their highlighted-code hovers cannot be inserted into Verso's page hover table
+immediately. Each payload records the snippet-local id plus the hover body that
+the page renderer can later deduplicate against all other page hovers.
+-/
+structure ExternalDeclHoverPayload where
+  localId : Nat
+  html : String
+deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
+
+/--
+Rendered external declaration HTML in both forms needed by Blueprint.
+
+`html` is the compact page form: it uses Blueprint-local hover ids and carries
+hover bodies separately in `hoverPayloads`, allowing the final page renderer to
+deduplicate repeated declaration hovers. `selfContainedHtml` is the standalone
+form used by preview and manifest paths that are rendered without page state.
+
+The local ids in `html` are not stable semantic ids. They are only positions in
+the isolated highlighted-code hover table produced while rendering this snippet.
+The page renderer must therefore translate them before emitting normal
+`data-verso-hover` attributes.
+-/
+structure ExternalDeclRenderedHtml where
+  html : String
+  selfContainedHtml : String
+  hoverPayloads : Array ExternalDeclHoverPayload
+deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
+
+def ExternalDeclRenderedHtml.selfContained (rendered : ExternalDeclRenderedHtml) : String :=
+  rendered.selfContainedHtml
+
+abbrev ExternalDeclRenderResult := Except ExternalDeclRenderError ExternalDeclRenderedHtml
+
+private abbrev ExternalDeclHighlightRender :=
+  StateT (Verso.Code.Hover.State ExternalDeclHtml) Id
+
+private def highlightedHtmlContext : Verso.Code.HighlightHtmlM.Context Verso.Genre.Manual := {
+  linkTargets := {}
+  traverseContext := { logError := fun _ => pure () }
+  definitionIds := {}
+  options := {}
+}
+
+private def runHighlightedHtml
+    (html : Verso.Code.HighlightHtmlM Verso.Genre.Manual ExternalDeclHtml) :
+    ExternalDeclHighlightRender ExternalDeclHtml := do
+  let hoverState ← get
+  let (html, hoverState) := ((html.run highlightedHtmlContext).run hoverState)
+  set hoverState
+  pure html
+
+private def inlineVersoHoverAttrs
+    (html : ExternalDeclHtml) (hoverDedup : Verso.Code.Hover.Dedup ExternalDeclHtml) :
+    ExternalDeclHtml :=
+  Id.run <|
+    html.visitM (tag := fun name attrs contents => do
+      let mut inlineHover? : Option ExternalDeclHtml := none
+      let mut attrs' : Array (String × String) := #[]
+      for (attr, value) in attrs do
+        if attr == "data-verso-hover" then
+          inlineHover? := value.toNat? >>= hoverDedup.get?
+        else
+          attrs' := attrs'.push (attr, value)
+      let contents :=
+        match inlineHover? with
+        | some hoverHtml => contents ++ .tag "span" #[("class", "hover-info")] hoverHtml
+        | none => contents
+      pure <| some <| .tag name attrs' contents)
+
+private def localizeVersoHoverAttrs (html : ExternalDeclHtml) : ExternalDeclHtml :=
+  Id.run <|
+    html.visitM (tag := fun name attrs contents => do
+      let attrs' := attrs.map fun
+        | ("data-verso-hover", value) => ("data-bp-external-hover-local", value)
+        | attr => attr
+      pure <| some <| .tag name attrs' contents)
+
+private def hoverPayloads
+    (hoverDedup : Verso.Code.Hover.Dedup ExternalDeclHtml) : Array ExternalDeclHoverPayload :=
+  hoverDedup.contentId.fold (init := #[]) (fun out localId html =>
+    out.push { localId, html := html.asString })
+  |>.qsort (fun a b => a.localId < b.localId)
+
+/--
+Run isolated highlighted-code rendering and preserve both useful outcomes.
+
+The compact result is what normal pages should use: hover references are kept as
+local ids so repeated payloads can be registered once in the page hover table.
+The self-contained result is intentionally still available for snippet previews,
+where there is no surrounding page table to consult.
+
+We do not assign final Verso hover ids here because there is no final page
+`Html.State` yet. Assigning stable ids would require a separate Blueprint hover
+lookup scheme for every highlighted token payload, duplicating Verso's page
+dedup table instead of using it.
+-/
+private def renderWithHoverPayloads
+    (html : ExternalDeclHighlightRender ExternalDeclHtml) : ExternalDeclRenderedHtml :=
+  let (html, hoverState) := html.run {}
+  {
+    html := (localizeVersoHoverAttrs html).asString
+    selfContainedHtml := (inlineVersoHoverAttrs html hoverState.dedup).asString
+    hoverPayloads := hoverPayloads hoverState.dedup
+  }
+
+private def highlightedToHtml (h : SubVerso.Highlighting.Highlighted) :
+    ExternalDeclHighlightRender ExternalDeclHtml :=
   runHighlightedHtml (h.toHtml (g := Verso.Genre.Manual))
 
 private def renderExternalDeclSignatureVariant
-    (keywordText : String) (signature : SubVerso.Highlighting.Highlighted) : ExternalDeclHtml :=
-  open Verso.Output.Html in
-  {{
+    (keywordText : String) (signature : SubVerso.Highlighting.Highlighted) :
+    ExternalDeclHighlightRender ExternalDeclHtml :=
+  open Verso.Output.Html in do
+  let signatureHtml ← highlightedToHtml signature
+  pure {{
     <pre class="bp_external_decl_signature signature hl lean block">
-      <span class="keyword token">{{.text true keywordText}}</span> " " {{highlightedToHtml signature}}
+      <span class="keyword token">{{.text true keywordText}}</span> " " {{signatureHtml}}
     </pre>
   }}
 
 private def signatureToHtml (keywordText : String) (sig : Verso.Genre.Manual.Signature) :
-    ExternalDeclHtml :=
-  open Verso.Output.Html in
-  {{
+    ExternalDeclHighlightRender ExternalDeclHtml :=
+  open Verso.Output.Html in do
+  let wide ← renderExternalDeclSignatureVariant keywordText sig.wide
+  let narrow ← renderExternalDeclSignatureVariant keywordText sig.narrow
+  pure {{
     <div class="bp_external_decl_signature_wrap">
-      <div class="wide-only">{{renderExternalDeclSignatureVariant keywordText sig.wide}}</div>
-      <div class="narrow-only">{{renderExternalDeclSignatureVariant keywordText sig.narrow}}</div>
+      <div class="wide-only">{{wide}}</div>
+      <div class="narrow-only">{{narrow}}</div>
     </div>
   }}
 
@@ -230,18 +308,19 @@ private def visibilityHtml (v : Verso.Genre.Manual.Block.Docstring.Visibility) :
   | .protected => .empty
 
 private def renderDocNameCtor (docName : Verso.Genre.Manual.Block.Docstring.DocName) :
-    ExternalDeclHtml :=
-  open Verso.Output.Html in
-  {{
+    ExternalDeclHighlightRender ExternalDeclHtml :=
+  open Verso.Output.Html in do
+  let signatureHtml ← highlightedToHtml docName.signature
+  pure {{
     <div class="constructor">
-      <pre class="name-and-type hl lean">{{highlightedToHtml docName.signature}}</pre>
+      <pre class="name-and-type hl lean">{{signatureHtml}}</pre>
       {{docsHtml docName.docstring?}}
     </div>
   }}
 
 private def renderFieldSignature (field : Verso.Genre.Manual.Block.Docstring.FieldInfo) :
-    ExternalDeclHtml :=
-  open Verso.Output.Html in
+    ExternalDeclHighlightRender ExternalDeclHtml :=
+  open Verso.Output.Html in do
   let inheritedInfo : ExternalDeclHtml :=
     if field.fieldFrom.isEmpty then
       .empty
@@ -255,10 +334,12 @@ private def renderFieldSignature (field : Verso.Genre.Manual.Block.Docstring.Fie
           <ol>{{inheritedRows}}</ol>
         </div>
       }}
-  {{
+  let fieldNameHtml ← highlightedToHtml field.fieldName
+  let fieldTypeHtml ← highlightedToHtml field.type
+  pure {{
     <section class="subdocs">
       <pre class="name-and-type hl lean">
-        {{visibilityHtml field.visibility}}{{highlightedToHtml field.fieldName}} " : " {{highlightedToHtml field.type}}
+        {{visibilityHtml field.visibility}}{{fieldNameHtml}} " : " {{fieldTypeHtml}}
       </pre>
       {{inheritedInfo}}
       {{docsHtml field.docString?}}
@@ -267,15 +348,15 @@ private def renderFieldSignature (field : Verso.Genre.Manual.Block.Docstring.Fie
 
 private def renderParentsSection
     (parents : Array Verso.Genre.Manual.Block.Docstring.ParentInfo) :
-    Option ExternalDeclHtml :=
-  open Verso.Output.Html in
+    ExternalDeclHighlightRender (Option ExternalDeclHtml) :=
+  open Verso.Output.Html in do
   if parents.isEmpty then
-    none
+    pure none
   else
-    let rows :=
-      parents.map fun parent =>
-        {{<li><code class="hl lean inline">{{highlightedToHtml parent.parent}}</code></li>}}
-    some {{
+    let rows ← parents.mapM fun parent => do
+      let parentHtml ← highlightedToHtml parent.parent
+      pure {{<li><code class="hl lean inline">{{parentHtml}}</code></li>}}
+    pure <| some {{
       <h1>"Extends"</h1>
       <ul class="extends">{{rows}}</ul>
     }}
@@ -325,54 +406,60 @@ private def renderDeclHtmlDocstringFromInfoE
   let signature ← Verso.Genre.Manual.Signature.forName decl
   let docs? ← liftM <| findDocString? env decl
 
-  let ctorSection? : Option ExternalDeclHtml :=
-    match declType with
-    | .structure isClass ctor? _ _ _ _ =>
-      ctor?.bind fun ctor =>
-        let title := if isClass then "Instance Constructor" else "Constructor"
-        renderTitledSection? title #[renderDocNameCtor ctor]
-    | _ => none
+  let rendered := renderWithHoverPayloads <| do
+    let ctorSection? : Option ExternalDeclHtml ←
+      match declType with
+      | .structure isClass ctor? _ _ _ _ =>
+        match ctor? with
+        | some ctor =>
+          let title := if isClass then "Instance Constructor" else "Constructor"
+          let ctorHtml ← renderDocNameCtor ctor
+          pure <| renderTitledSection? title #[ctorHtml]
+        | none => pure none
+      | _ => pure none
 
-  let methodsOrFieldsSection? : Option ExternalDeclHtml :=
-    match declType with
-    | .structure isClass _ _ fieldInfo _ _ =>
-      let rows := fieldInfo.filter (fun f => f.subobject?.isNone) |>.map renderFieldSignature
-      renderTitledSection? (if isClass then "Methods" else "Fields") rows
-    | _ => none
+    let methodsOrFieldsSection? : Option ExternalDeclHtml ←
+      match declType with
+      | .structure isClass _ _ fieldInfo _ _ =>
+        let rows ← fieldInfo.filter (fun f => f.subobject?.isNone) |>.mapM renderFieldSignature
+        pure <| renderTitledSection? (if isClass then "Methods" else "Fields") rows
+      | _ => pure none
 
-  let parentsSection? : Option ExternalDeclHtml :=
-    match declType with
-    | .structure _ _ _ _ parents _ => renderParentsSection parents
-    | _ => none
+    let parentsSection? : Option ExternalDeclHtml ←
+      match declType with
+      | .structure _ _ _ _ parents _ => renderParentsSection parents
+      | _ => pure none
 
-  let inductiveCtorsSection? : Option ExternalDeclHtml :=
-    match declType with
-    | .inductive ctors _ _ =>
-      renderTitledSection? "Constructors" (ctors.map renderDocNameCtor)
-    | _ => none
+    let inductiveCtorsSection? : Option ExternalDeclHtml ←
+      match declType with
+      | .inductive ctors _ _ =>
+        let rows ← ctors.mapM renderDocNameCtor
+        pure <| renderTitledSection? "Constructors" rows
+      | _ => pure none
 
-  let mut sections : Array ExternalDeclHtml := #[]
-  if let some s := ctorSection? then
-    sections := sections.push s
-  if let some s := parentsSection? then
-    sections := sections.push s
-  if let some s := methodsOrFieldsSection? then
-    sections := sections.push s
-  if let some s := inductiveCtorsSection? then
-    sections := sections.push s
+    let mut sections : Array ExternalDeclHtml := #[]
+    if let some s := ctorSection? then
+      sections := sections.push s
+    if let some s := parentsSection? then
+      sections := sections.push s
+    if let some s := methodsOrFieldsSection? then
+      sections := sections.push s
+    if let some s := inductiveCtorsSection? then
+      sections := sections.push s
 
-  let presentation := externalDeclPresentation declType cinfo
-  let signatureHtml := signatureToHtml presentation.keywordText signature
-  let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
+    let presentation := externalDeclPresentation declType cinfo
+    let signatureHtml ← signatureToHtml presentation.keywordText signature
+    let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 
-  let body : ExternalDeclHtml :=
-    if sections.isEmpty then
-      plainDocstringHtml docs?
-    else
-      {{ {{plainDocstringHtml docs?}} {{sections}} }}
-  pure <| .ok <| renderExternalDeclWrapper
-    decl presentation.kindClass presentation.kindMarker signatureHtml body
-    (headerBadge? := headerBadge?) (headerMeta := headerMeta) (headerSource? := headerSource?)
+    let body : ExternalDeclHtml :=
+      if sections.isEmpty then
+        plainDocstringHtml docs?
+      else
+        {{ {{plainDocstringHtml docs?}} {{sections}} }}
+    pure <| renderExternalDeclWrapper
+      decl presentation.kindClass presentation.kindMarker signatureHtml body
+      (headerBadge? := headerBadge?) (headerMeta := headerMeta) (headerSource? := headerSource?)
+  pure <| .ok rendered
 
 /--
 Render one declaration directly from known declaration facts.
@@ -394,7 +481,7 @@ Core external-rendering dataflow should use typed HTML payloads.
 -/
 def renderDeclHtmlStringDirectFromInfoE
     (decl : Name) (cinfo : ConstantInfo) : MetaM (Except ExternalDeclRenderError String) := do
-  return (← renderDeclHtmlDirectFromInfoE decl cinfo).map (·.asString)
+  return (← renderDeclHtmlDirectFromInfoE decl cinfo).map (·.selfContained)
 
 /-- Render one declaration directly from the in-memory `Environment` (no database, no source parsing). -/
 def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) := do
@@ -404,7 +491,7 @@ def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) :=
     let some cinfo := env.find? decl
       | return none
     match ← renderDeclHtmlDirectFromInfoE decl cinfo with
-    | .ok html => return some html
+    | .ok html => return some (.text false html.selfContained)
     | .error err =>
       logError m!"External declaration rendering failed for {decl}: {err.message}"
       return none
