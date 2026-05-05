@@ -225,6 +225,48 @@ writes the corresponding Lean and `verso` tag ref, such as `v4.30.0-rc2`.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ.
 
+### Start a New Lean Release Line
+
+When Lean opens a new release line, create the new branch from the previous
+default-development branch, then let the harness do the branch-local release
+setup:
+
+```bash
+python3 -m scripts.blueprint_harness start-release-line 4.30-rc2
+```
+
+Run this from the new local branch, for example `v4.30.0`. The command:
+
+- rewrites the managed root, `project_template`, and preview-showcase
+  `lean-toolchain`, `verso` pins, and committed manifests
+- updates `branch-policy.json` so the new branch is the default-development
+  line and the previous default-development branch becomes a required backport
+  target
+- adds the new release target to `tests/harness/projects.json`
+- enables the in-repo reference projects, currently `project-template`, on the
+  new release target
+
+For release candidates, use the official short RC name such as `4.30-rc2`.
+The branch name remains the stable release branch, for example `v4.30.0`, while
+the harness records the RC metadata and pins `v4.30.0-rc2` internally.
+
+External reference projects are not auto-pinned for a new release line. Add
+their release-target refs only after those repositories have been updated and
+validated on the new Lean release.
+
+Do not backport the branch-start commit to older release lines: that commit
+changes the actual Lean toolchain. Instead, update only the tracked branch
+policy metadata on each older release branch so the harness recognizes them as
+backport-only:
+
+```bash
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.30.0
+```
+
+Commit that metadata-only change separately on each older branch that still
+carries `branch-policy.json`, such as `v4.29.0` and `v4.28.0`. Preserve their
+own Lean toolchain pins.
+
 To remove stale harness-managed reference caches and orphaned local clones:
 
 ```bash

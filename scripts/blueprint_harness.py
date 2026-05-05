@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import json
 import re
 import shutil
 import subprocess
@@ -20,8 +21,11 @@ from scripts.blueprint_harness_branches import (
     local_release_ref,
     normalize_lean_release_ref,
     preferred_release_ref,
+    release_branch_from_lean_ref,
+    release_candidate_name_or_none,
     require_checkout_role,
     root_checkout_namespace,
+    write_branch_policy,
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
 from scripts.blueprint_harness_paths import (
@@ -385,6 +389,166 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
     print(f"verso_ref={result.verso_ref}")
     print(f"verso_tag_oid={result.verso_tag_oid}")
     print(f"validated={str(not args.skip_validation).lower()}")
+    return 0
+
+
+def dedupe_release_branches(branches: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for branch in branches:
+        normalized = release_branch_from_lean_ref(branch)
+        if normalized not in seen:
+            result.append(normalized)
+            seen.add(normalized)
+    return tuple(result)
+
+
+def write_json(path: Path, data: object) -> None:
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def update_release_line_project_manifest(
+    manifest_path: Path,
+    *,
+    release_id: str,
+    release_toolchain: str,
+    release_verso_ref: str,
+    branch: str,
+    rc: str | None,
+    deploy_pages: bool,
+) -> None:
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected JSON object")
+
+    release_targets = raw.get("release_targets")
+    if not isinstance(release_targets, list):
+        raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected `release_targets` list")
+
+    entry = {
+        "id": release_id,
+        "toolchain": release_toolchain,
+        "verso_ref": release_verso_ref,
+    }
+    if rc is not None:
+        entry["rc"] = rc
+    entry.update(
+        {
+            "branch": branch,
+            "deploy_pages": deploy_pages,
+        }
+    )
+
+    replaced = False
+    for index, candidate in enumerate(release_targets):
+        if isinstance(candidate, dict) and release_branch_from_lean_ref(str(candidate.get("id", ""))) == release_id:
+            release_targets[index] = entry
+            replaced = True
+            break
+    if not replaced:
+        release_targets.append(entry)
+
+    projects = raw.get("projects")
+    if not isinstance(projects, list):
+        raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected `projects` list")
+
+    for project in projects:
+        if not isinstance(project, dict):
+            continue
+        source = project.get("source")
+        if not isinstance(source, dict) or source.get("kind") != "in_repo_project":
+            continue
+        targets = project.get("targets")
+        if not isinstance(targets, list):
+            raise SystemExit(
+                f"[blueprint-harness] invalid project manifest `{manifest_path}`: "
+                f"in-repo project `{project.get('id', '<unknown>')}` has no `targets` list"
+            )
+        if not any(
+            isinstance(target, dict) and release_branch_from_lean_ref(str(target.get("release", ""))) == release_id
+            for target in targets
+        ):
+            targets.append({"release": release_id})
+
+    write_json(manifest_path, raw)
+
+
+def command_start_release_line(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    release_id = release_branch_from_lean_ref(args.toolchain)
+    current_branch = current_branch_name(layout.package_root)
+    if current_branch != release_id:
+        raise SystemExit(
+            f"[blueprint-harness] start-release-line must run from local branch `{release_id}`; "
+            f"current branch is `{current_branch or '<detached>'}`"
+        )
+
+    old_policy = load_branch_policy(layout.package_root)
+    inherited_backports = dedupe_release_branches(
+        [old_policy.default_dev_branch, *old_policy.required_backport_branches]
+    )
+    required_backports = tuple(branch for branch in inherited_backports if branch != release_id)
+
+    result = bump_toolchain_checkout(
+        layout.package_root,
+        args.toolchain,
+        verso_ref=args.verso_ref,
+        validate=not args.skip_validation,
+    )
+    release_toolchain = release_branch_from_lean_ref(result.lean_ref)
+    release_verso_ref = release_branch_from_lean_ref(result.verso_ref)
+    rc = release_candidate_name_or_none(result.lean_ref)
+    if rc is not None and release_verso_ref != release_id:
+        raise SystemExit(
+            f"[blueprint-harness] release candidate `{result.lean_ref}` expects a matching `verso` release line; "
+            f"got `{result.verso_ref}`"
+        )
+
+    new_policy = write_branch_policy(
+        layout.package_root,
+        default_dev_branch=release_id,
+        required_backport_branches=required_backports,
+    )
+    manifest_path = resolve_manifest_path(None, layout.package_root)
+    update_release_line_project_manifest(
+        manifest_path,
+        release_id=release_id,
+        release_toolchain=release_toolchain,
+        release_verso_ref=release_verso_ref,
+        branch=release_id,
+        rc=rc,
+        deploy_pages=args.deploy_pages,
+    )
+
+    print(f"package_root={layout.package_root}")
+    print(f"release_branch={release_id}")
+    print(f"toolchain_ref={result.lean_ref}")
+    print(f"verso_ref={result.verso_ref}")
+    print(f"rc={rc or ''}")
+    print(f"branch_policy={new_policy.source_path}")
+    print(f"default_dev_branch={new_policy.default_dev_branch}")
+    print(f"required_backports={','.join(new_policy.required_backport_branches)}")
+    print(f"project_manifest={manifest_path}")
+    print(f"deploy_pages={str(args.deploy_pages).lower()}")
+    print("[blueprint-harness] next: commit this branch-start change, then update older branches with:")
+    print(f"python3 -m scripts.blueprint_harness set-default-dev-branch {release_id}")
+    return 0
+
+
+def command_set_default_dev_branch(args: argparse.Namespace) -> int:
+    layout = detect_harness_layout(Path(__file__))
+    old_policy = load_branch_policy(layout.package_root)
+    new_policy = write_branch_policy(
+        layout.package_root,
+        default_dev_branch=args.branch,
+        required_backport_branches=old_policy.required_backport_branches,
+        version=old_policy.version,
+    )
+    print(f"branch_policy={new_policy.source_path}")
+    print(f"default_dev_branch={new_policy.default_dev_branch}")
+    print(f"required_backports={','.join(new_policy.required_backport_branches)}")
+    print(f"active_release_branch={active_release_branch(layout.package_root)}")
+    print(f"checkout_role={checkout_branch_role(layout.package_root)}")
     return 0
 
 
@@ -1058,6 +1222,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refresh the pins and manifests but skip the follow-up build/test validation.",
     )
     bump_toolchain.set_defaults(func=command_bump_toolchain)
+
+    start_release_line = subparsers.add_parser(
+        "start-release-line",
+        help="Prepare the current branch as a new default-development Lean release line.",
+    )
+    start_release_line.add_argument(
+        "toolchain",
+        help="Lean toolchain ref for the new line, such as `v4.30.0` or official RC name `4.30-rc2`.",
+    )
+    start_release_line.add_argument(
+        "--verso-ref",
+        default=None,
+        help="Override the `verso` release tag. Defaults to the normalized Lean toolchain ref.",
+    )
+    start_release_line.add_argument(
+        "--deploy-pages",
+        action="store_true",
+        help="Enable Pages deployment for the new release target immediately. RC lines usually leave this unset.",
+    )
+    start_release_line.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Refresh release-line files but skip the follow-up build/test validation.",
+    )
+    start_release_line.set_defaults(func=command_start_release_line)
+
+    set_default_dev_branch = subparsers.add_parser(
+        "set-default-dev-branch",
+        help="Update only `branch-policy.json.default_dev_branch` in the current checkout.",
+    )
+    set_default_dev_branch.add_argument(
+        "branch",
+        help="New default development branch, such as `v4.30.0`.",
+    )
+    set_default_dev_branch.set_defaults(func=command_set_default_dev_branch)
 
     main_status = subparsers.add_parser(
         "release-status",

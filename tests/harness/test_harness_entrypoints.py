@@ -27,6 +27,8 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
         self.assertIn("prepare-pr", result.stdout)
         self.assertIn("prepare-backport-pr", result.stdout)
         self.assertIn("bump-toolchain", result.stdout)
+        self.assertIn("start-release-line", result.stdout)
+        self.assertIn("set-default-dev-branch", result.stdout)
         self.assertIn("land-release", result.stdout)
 
     def test_blueprint_reference_harness_help(self) -> None:

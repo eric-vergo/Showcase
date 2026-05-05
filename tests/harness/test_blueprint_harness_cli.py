@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import unittest
 
@@ -152,6 +154,18 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(args.toolchain, "4.29.0")
         self.assertEqual(args.verso_ref, "v4.29.0")
         self.assertTrue(args.skip_validation)
+
+    def test_start_release_line_parses_optional_flags(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["start-release-line", "4.30-rc2", "--deploy-pages", "--skip-validation"])
+        self.assertEqual(args.toolchain, "4.30-rc2")
+        self.assertTrue(args.deploy_pages)
+        self.assertTrue(args.skip_validation)
+
+    def test_set_default_dev_branch_parses_branch(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["set-default-dev-branch", "v4.30.0"])
+        self.assertEqual(args.branch, "v4.30.0")
 
     def test_create_worktree_parses_lock_flag(self) -> None:
         parser = build_parser()
@@ -847,6 +861,135 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
         self.assertTrue(seen["validate"])
+
+    def test_start_release_line_updates_policy_and_in_repo_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "branch-policy.json").write_text(
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
+                encoding="utf-8",
+            )
+            manifest_path = root / "tests" / "harness" / "projects.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "release_targets": [
+                            {
+                                "id": "v4.29.0",
+                                "toolchain": "v4.29.0",
+                                "verso_ref": "v4.29.0",
+                                "branch": "v4.29.0",
+                                "deploy_pages": True,
+                            }
+                        ],
+                        "projects": [
+                            {
+                                "id": "project-template",
+                                "source": {"kind": "in_repo_project", "project_root": "project_template"},
+                                "targets": [{"release": "v4.29.0"}],
+                            },
+                            {
+                                "id": "external",
+                                "source": {
+                                    "kind": "git_checkout",
+                                    "repository": "https://github.com/example/external.git",
+                                    "project_root": ".",
+                                },
+                                "targets": [{"release": "v4.29.0", "ref": "abc"}],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                toolchain="4.30-rc2",
+                verso_ref=None,
+                deploy_pages=False,
+                skip_validation=True,
+            )
+            layout = SimpleNamespace(package_root=root)
+            originals = {
+                "detect_harness_layout": harness_mod.detect_harness_layout,
+                "current_branch_name": harness_mod.current_branch_name,
+                "bump_toolchain_checkout": harness_mod.bump_toolchain_checkout,
+            }
+            seen: dict[str, object] = {}
+            try:
+                harness_mod.detect_harness_layout = lambda _start=None: layout
+                harness_mod.current_branch_name = lambda _checkout_root: "v4.30.0"
+
+                def fake_bump(package_root, toolchain, *, verso_ref, validate):
+                    seen["package_root"] = package_root
+                    seen["toolchain"] = toolchain
+                    seen["verso_ref"] = verso_ref
+                    seen["validate"] = validate
+                    return SimpleNamespace(
+                        lean_ref="v4.30.0-rc2",
+                        toolchain_spec="leanprover/lean4:v4.30.0-rc2",
+                        verso_ref="v4.30.0-rc2",
+                        verso_tag_oid="deadbeef",
+                    )
+
+                harness_mod.bump_toolchain_checkout = fake_bump
+
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    self.assertEqual(harness_mod.command_start_release_line(args), 0)
+            finally:
+                for name, value in originals.items():
+                    setattr(harness_mod, name, value)
+
+            self.assertEqual(seen["toolchain"], "4.30-rc2")
+            self.assertFalse(seen["validate"])
+            self.assertEqual(
+                (root / "branch-policy.json").read_text(encoding="utf-8"),
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.29.0", "v4.28.0"]\n}\n',
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["release_targets"][1]["id"], "v4.30.0")
+            self.assertEqual(manifest["release_targets"][1]["rc"], "4.30-rc2")
+            self.assertFalse(manifest["release_targets"][1]["deploy_pages"])
+            self.assertEqual(
+                [target["release"] for target in manifest["projects"][0]["targets"]],
+                ["v4.29.0", "v4.30.0"],
+            )
+            self.assertEqual(
+                [target["release"] for target in manifest["projects"][1]["targets"]],
+                ["v4.29.0"],
+            )
+            self.assertIn("set-default-dev-branch v4.30.0", out.getvalue())
+
+    def test_set_default_dev_branch_preserves_required_backports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+            (root / "branch-policy.json").write_text(
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(branch="v4.30.0")
+            layout = SimpleNamespace(package_root=root)
+            originals = {
+                "detect_harness_layout": harness_mod.detect_harness_layout,
+            }
+            try:
+                harness_mod.detect_harness_layout = lambda _start=None: layout
+
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    self.assertEqual(harness_mod.command_set_default_dev_branch(args), 0)
+            finally:
+                for name, value in originals.items():
+                    setattr(harness_mod, name, value)
+
+            self.assertEqual(
+                (root / "branch-policy.json").read_text(encoding="utf-8"),
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
+            )
+            self.assertIn("checkout_role=backport", out.getvalue())
 
     def test_paths_prints_current_release_project_sites_by_default(self) -> None:
         args = argparse.Namespace(all_projects=False)

@@ -27,6 +27,8 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
     def test_release_candidate_names_normalize_to_tags_and_branch_ids(self) -> None:
         self.assertEqual(branches_mod.normalize_release_candidate_name("4.30-rc2"), "4.30-rc2")
         self.assertEqual(branches_mod.normalize_release_candidate_name("v4.30.0-rc2"), "4.30-rc2")
+        self.assertEqual(branches_mod.release_candidate_name_or_none("v4.30.0-rc2"), "4.30-rc2")
+        self.assertIsNone(branches_mod.release_candidate_name_or_none("v4.30.0"))
         self.assertEqual(branches_mod.release_candidate_ref("4.30-rc2"), "v4.30.0-rc2")
         self.assertEqual(branches_mod.normalize_lean_release_ref("4.30-rc2"), "v4.30.0-rc2")
         self.assertEqual(branches_mod.release_branch_from_lean_ref("leanprover/lean4:v4.30.0-rc2"), "v4.30.0")
@@ -49,6 +51,23 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             policy = branches_mod.load_branch_policy(root)
 
             self.assertEqual(policy.required_backport_branches, ("v4.28.0",))
+
+    def test_write_branch_policy_normalizes_release_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            policy = branches_mod.write_branch_policy(
+                root,
+                default_dev_branch="4.30-rc2",
+                required_backport_branches=["4.29.0", "leanprover/lean4:v4.28.0"],
+            )
+
+            self.assertEqual(policy.default_dev_branch, "v4.30.0")
+            self.assertEqual(policy.required_backport_branches, ("v4.29.0", "v4.28.0"))
+            self.assertEqual(
+                (root / "branch-policy.json").read_text(encoding="utf-8"),
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.29.0", "v4.28.0"]\n}\n',
+            )
 
     def test_load_branch_policy_falls_back_to_active_release_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

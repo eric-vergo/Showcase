@@ -51,6 +51,13 @@ def normalize_release_candidate_name(raw_ref: str) -> str:
     return f"{major}.{minor}.{patch}-rc{rc}"
 
 
+def release_candidate_name_or_none(raw_ref: str) -> str | None:
+    ref = clean_lean_ref(raw_ref)
+    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is None:
+        return None
+    return normalize_release_candidate_name(ref)
+
+
 def release_candidate_ref(raw_ref: str) -> str:
     name = normalize_release_candidate_name(raw_ref)
     match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(name)
@@ -88,6 +95,39 @@ def active_release_branch(repo_root: Path) -> str:
 
 def branch_policy_path(checkout_root: Path) -> Path:
     return checkout_root / BRANCH_POLICY_FILENAME
+
+
+def format_branch_policy(
+    *,
+    default_dev_branch: str,
+    required_backport_branches: tuple[str, ...] | list[str],
+    version: int = 1,
+) -> str:
+    backports = ", ".join(f'"{release_branch_from_lean_ref(branch)}"' for branch in required_backport_branches)
+    return (
+        "{\n"
+        f'  "version": {version},\n'
+        f'  "default_dev_branch": "{release_branch_from_lean_ref(default_dev_branch)}",\n'
+        f'  "required_backport_branches": [{backports}]\n'
+        "}\n"
+    )
+
+
+def write_branch_policy(
+    checkout_root: Path,
+    *,
+    default_dev_branch: str,
+    required_backport_branches: tuple[str, ...] | list[str],
+    version: int = 1,
+) -> BranchPolicy:
+    path = branch_policy_path(checkout_root)
+    text = format_branch_policy(
+        default_dev_branch=default_dev_branch,
+        required_backport_branches=required_backport_branches,
+        version=version,
+    )
+    path.write_text(text, encoding="utf-8")
+    return load_branch_policy(checkout_root)
 
 
 def load_branch_policy(checkout_root: Path) -> BranchPolicy:
