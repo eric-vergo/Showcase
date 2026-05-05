@@ -223,6 +223,28 @@ def ref_exists(repo_root: Path, ref: str) -> bool:
     )
 
 
+def resolve_git_ref(repo_root: Path, ref: str) -> str:
+    if ref.startswith("refs/"):
+        return ref
+
+    candidates: list[str] = []
+    if ref.startswith("origin/"):
+        candidates.append(f"refs/remotes/{ref}")
+    else:
+        candidates.append(f"refs/heads/{ref}")
+        candidates.append(f"refs/remotes/{ref}")
+    candidates.append(ref)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if ref_exists(repo_root, candidate):
+            return candidate
+    return ref
+
+
 def remote_head_ref(repo_root: Path) -> str | None:
     result = subprocess.run(
         ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],

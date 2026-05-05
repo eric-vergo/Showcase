@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, preferred_release_ref
+from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, preferred_release_ref, resolve_git_ref
 
 
 ROOT_METADATA_FILENAME = "_root.json"
@@ -220,7 +220,7 @@ def save_registry(repo_root: Path, records: list[WorktreeRecord]) -> Path:
 
 def ref_oid(repo_root: Path, ref: str) -> str | None:
     result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", ref],
+        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
         cwd=repo_root,
         check=False,
         text=True,
@@ -235,7 +235,13 @@ def ref_oid(repo_root: Path, ref: str) -> str | None:
 def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     return (
         subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                resolve_git_ref(repo_root, ancestor),
+                resolve_git_ref(repo_root, descendant),
+            ],
             cwd=repo_root,
             check=False,
         ).returncode
@@ -253,7 +259,13 @@ def rev_list_counts(repo_root: Path, ref: str, base_ref: str) -> tuple[int | Non
     if ref_oid(repo_root, ref) is None or ref_oid(repo_root, base_ref) is None:
         return None, None
     result = subprocess.run(
-        ["git", "rev-list", "--left-right", "--count", f"{base_ref}...{ref}"],
+        [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            f"{resolve_git_ref(repo_root, base_ref)}...{resolve_git_ref(repo_root, ref)}",
+        ],
         cwd=repo_root,
         check=True,
         text=True,

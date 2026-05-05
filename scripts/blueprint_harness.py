@@ -24,6 +24,7 @@ from scripts.blueprint_harness_branches import (
     release_branch_from_lean_ref,
     release_candidate_name_or_none,
     require_checkout_role,
+    resolve_git_ref,
     root_checkout_namespace,
     write_branch_policy,
 )
@@ -182,7 +183,7 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
 
 def ref_oid(repo_root: Path, ref: str) -> str | None:
     result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", ref],
+        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
         cwd=repo_root,
         check=False,
         text=True,
@@ -197,6 +198,8 @@ def ref_oid(repo_root: Path, ref: str) -> str | None:
 def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSyncStatus:
     local_oid = ref_oid(repo_root, local_ref)
     upstream_oid = ref_oid(repo_root, upstream_ref)
+    local_git_ref = resolve_git_ref(repo_root, local_ref)
+    upstream_git_ref = resolve_git_ref(repo_root, upstream_ref)
 
     if local_oid is None:
         relationship = "missing_local"
@@ -206,7 +209,7 @@ def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSy
         relationship = "in_sync"
     elif (
         subprocess.run(
-            ["git", "merge-base", "--is-ancestor", local_ref, upstream_ref],
+            ["git", "merge-base", "--is-ancestor", local_git_ref, upstream_git_ref],
             cwd=repo_root,
             check=False,
         ).returncode
@@ -215,7 +218,7 @@ def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSy
         relationship = "behind"
     elif (
         subprocess.run(
-            ["git", "merge-base", "--is-ancestor", upstream_ref, local_ref],
+            ["git", "merge-base", "--is-ancestor", upstream_git_ref, local_git_ref],
             cwd=repo_root,
             check=False,
         ).returncode
@@ -242,7 +245,13 @@ def main_sync_status(repo_root: Path) -> RefSyncStatus:
 def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     return (
         subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                resolve_git_ref(repo_root, ancestor),
+                resolve_git_ref(repo_root, descendant),
+            ],
             cwd=repo_root,
             check=False,
         ).returncode

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -11,6 +12,15 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
     def write(self, path: Path, text: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+
+    def git(self, root: Path, *args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=root,
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
 
     def test_load_branch_policy_reads_default_dev_branch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -51,6 +61,25 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             policy = branches_mod.load_branch_policy(root)
 
             self.assertEqual(policy.required_backport_branches, ("v4.28.0",))
+
+    def test_resolve_git_ref_prefers_branch_over_same_named_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.git(root, "init")
+            self.git(root, "config", "user.name", "Test User")
+            self.git(root, "config", "user.email", "test@example.com")
+            self.git(root, "config", "commit.gpgsign", "false")
+            self.write(root / "file.txt", "base\n")
+            self.git(root, "add", "file.txt")
+            self.git(root, "commit", "-m", "base")
+            self.git(root, "tag", "v4.28.0")
+            self.write(root / "file.txt", "branch\n")
+            self.git(root, "commit", "-am", "branch")
+            self.git(root, "branch", "v4.28.0")
+            self.git(root, "update-ref", "refs/remotes/origin/v4.28.0", "HEAD")
+
+            self.assertEqual(branches_mod.resolve_git_ref(root, "v4.28.0"), "refs/heads/v4.28.0")
+            self.assertEqual(branches_mod.resolve_git_ref(root, "origin/v4.28.0"), "refs/remotes/origin/v4.28.0")
 
     def test_write_branch_policy_normalizes_release_refs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
