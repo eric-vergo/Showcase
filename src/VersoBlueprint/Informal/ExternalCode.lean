@@ -270,12 +270,54 @@ private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
   match item.decl.render with
   | .ok renderedHtml =>
     {{
-      <div class="bp_external_decl_rendered">{{.text false renderedHtml}}</div>
+      <div class="bp_external_decl_rendered">{{.text false renderedHtml.selfContained}}</div>
     }}
   | .error err =>
     {{
       <pre class="bp_external_decl_stmt bp_external_decl_render_error">{{.text true s!"Render failed: {err.message}"}}</pre>
     }}
+
+private def registerPageHoverPayload [Monad m]
+    (payload : ExternalDeclHoverPayload) :
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Nat :=
+  modifyGet fun st =>
+    let (id, dedup) := st.dedup.insert (.text false payload.html)
+    (id, { st with dedup })
+
+/--
+Convert compact external declaration HTML into normal page HTML.
+
+Each snippet-local hover payload is inserted into the real Verso page hover
+table. Identical payloads therefore share a page hover id, while preview-only
+HTML can still remain self-contained through `externalDeclRendered`.
+
+The string replacement is deliberately only an id-scope translation:
+`data-bp-external-hover-local` means "this id is valid only for the external
+declaration snapshot", and `data-verso-hover` means "this id is valid in the
+current page's Verso hover table". The payload body is registered through
+Verso's normal dedup table before the page id is emitted.
+-/
+private def renderedHtmlWithPageHovers [Monad m]
+    (renderedHtml : ExternalDeclRenderedHtml) :
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m String := do
+  let replacements ← renderedHtml.hoverPayloads.mapM fun payload => do
+    let pageId ← registerPageHoverPayload payload
+    pure (s!"data-bp-external-hover-local=\"{payload.localId}\"", s!"data-verso-hover=\"{pageId}\"")
+  return replacements.foldl
+    (fun html replacement => html.replace replacement.1 replacement.2)
+    renderedHtml.html
+
+private def externalDeclRenderedWithPageHovers [Monad m]
+    (item : LinkedExternalDecl) :
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
+  match item.decl.render with
+  | .ok renderedHtml =>
+    let renderedHtml ← renderedHtmlWithPageHovers renderedHtml
+    pure <| .tag "div" #[("class", "bp_external_decl_rendered")] (.text false renderedHtml)
+  | .error err =>
+    pure <| .tag "pre"
+      #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]
+      (.text true s!"Render failed: {err.message}")
 
 private def missingExternalDeclBody : Output.Html :=
   open Verso.Output.Html in
@@ -285,27 +327,31 @@ private def missingExternalDeclBody : Output.Html :=
     </pre>
   }}
 
-private def externalDeclRowData (item : LinkedExternalDecl) : ExternalDeclRowData :=
+private def externalDeclRowDataWith [Monad m]
+    (renderBody : LinkedExternalDecl → m Output.Html)
+    (item : LinkedExternalDecl) : m ExternalDeclRowData := do
   let statusTxt := externalDeclPanelStatusText item
   if !item.decl.present then
-    {
+    pure {
       liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
       head := externalDeclHead item statusTxt
       body := missingExternalDeclBody
     }
-  else if (externalRenderFailure? item.decl).isSome then
-    {
-      liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
-      head := externalDeclHead item statusTxt
-      body := externalDeclRendered item
-      footer := externalDeclRenderedMeta item statusTxt
-    }
   else
-    {
-      liAttrs := #[("class", "bp_external_decl_item bp_external_decl_item_rendered")] ++ item.anchorAttrs
-      body := externalDeclRendered item
-      footer := externalDeclRenderedMeta item statusTxt (includeStatus := false)
-    }
+    let body ← renderBody item
+    if (externalRenderFailure? item.decl).isSome then
+      pure {
+        liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
+        head := externalDeclHead item statusTxt
+        body
+        footer := externalDeclRenderedMeta item statusTxt
+      }
+    else
+      pure {
+        liAttrs := #[("class", "bp_external_decl_item bp_external_decl_item_rendered")] ++ item.anchorAttrs
+        body
+        footer := externalDeclRenderedMeta item statusTxt (includeStatus := false)
+      }
 
 private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=
   open Verso.Output.Html in
@@ -318,6 +364,28 @@ private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=
   }}
 
 /--
+Render external declaration rows while leaving the declaration body strategy
+abstract.
+
+Preview and manifest rendering pass the self-contained body renderer. Normal
+page rendering passes the page-hover body renderer, but both paths share the row
+status, anchors, and footer layout.
+-/
+private def renderExternalDeclRowsWith [Monad m]
+    (renderBody : LinkedExternalDecl → m Output.Html)
+    (linkedDecls : Array LinkedExternalDecl) : m (Array Output.Html) :=
+  linkedDecls.mapM fun item => do
+    let rowData ← externalDeclRowDataWith renderBody item
+    pure <| renderExternalDeclRow rowData
+
+private def renderExternalDeclRows (linkedDecls : Array LinkedExternalDecl) : Array Output.Html :=
+  Id.run <| renderExternalDeclRowsWith (fun item => pure <| externalDeclRendered item) linkedDecls
+
+private def renderExternalDeclList (rows : Array Output.Html) : Output.Html :=
+  open Verso.Output.Html in
+  {{<ul class="bp_code_hover_list bp_external_decl_list">{{.seq rows}}</ul>}}
+
+/--
 Rendered fragments produced by `ExternalCode.renderParts` for external panel content.
 -/
 structure RenderParts where
@@ -326,45 +394,64 @@ structure RenderParts where
 /--
 Render the canonical hover-preview body for external Lean code references.
 
-This is shared by the external code panel and the manifest-backed code-preview
-path used by explicit Lean-code links.
+This path deliberately uses self-contained declaration snippets because preview
+payloads may be consumed outside the page that originally generated them.
 -/
 def renderPreviewHtml
     (externalDecls : Array Data.ExternalRef)
     (getDeclHref : Name → Option String := fun _ => none) : Output.Html :=
-  open Verso.Output.Html in
   if externalDecls.isEmpty then
     .empty
   else
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref (fun _ => #[]))
-    {{
-      <ul class="bp_code_hover_list bp_external_decl_list">
-        {{.seq <| linkedDecls.map (renderExternalDeclRow ∘ externalDeclRowData)}}
-      </ul>
-    }}
+    renderExternalDeclList <| renderExternalDeclRows linkedDecls
 
 /--
 Render external-code UI fragments for an informal block.
 
-This function only renders optional external code panel body for `(lean := ...)` references.
+This self-contained variant is kept for callers that do not have access to the
+page `Html.State`, such as preview and manifest generation. Page rendering
+should use `renderPartsWithPageHovers` so repeated hover payloads deduplicate.
 -/
 def renderParts (panelHeader : CodePanelHeader)
     (summaryTitle : String) (indicator : Output.Html)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
     (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
     (folded : Bool := false) : RenderParts :=
-  open Verso.Output.Html in
   if externalDecls.isEmpty then
     {}
   else
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let externalCodePanel : Output.Html :=
       mkCodePanel panelHeader summaryTitle indicator
-        {{<ul class="bp_code_hover_list bp_external_decl_list">
-            {{.seq <| linkedDecls.map (renderExternalDeclRow ∘ externalDeclRowData)}}
-          </ul>}}
+        (renderExternalDeclList <| renderExternalDeclRows linkedDecls)
         (folded := folded)
     { externalCodePanel }
+
+/--
+Render external-code UI fragments into a real page `Html.State`.
+
+This is the normal page-rendering path for `(lean := ...)` references. It
+remaps declaration-local highlighted-code hover ids into Verso's page hover
+table, so repeated external declaration docstrings are emitted once per page
+instead of once per occurrence.
+-/
+def renderPartsWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
+    (summaryTitle : String) (indicator : Output.Html)
+    (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
+    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
+    (folded : Bool := false) :
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m RenderParts := do
+  if externalDecls.isEmpty then
+    pure {}
+  else
+    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
+    let rows ← renderExternalDeclRowsWith externalDeclRenderedWithPageHovers linkedDecls
+    let externalCodePanel : Output.Html :=
+      mkCodePanel panelHeader summaryTitle indicator
+        (renderExternalDeclList rows)
+        (folded := folded)
+    pure { externalCodePanel }
 
 end ExternalCode
 end Informal
