@@ -65,7 +65,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "aa8a7538f7779fe5c3e37088e893665a66bdbf61"
+          "ref": "f7051849b101f6bc1cc6e464aa12dd526be4a69b"
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],
