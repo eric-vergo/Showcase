@@ -759,8 +759,10 @@ def command_status(args: argparse.Namespace) -> int:
         package_root=layout.package_root,
     )
     require_checkout_release(layout, release_id, command_name="status")
-    release_branch = active_release_branch(layout.repo_root)
-    main_status = main_sync_status(layout.repo_root)
+    release_target = resolve_release_target(catalog, release_id, layout.package_root)
+    release_branch = release_target.branch
+    upstream_ref = f"origin/{release_branch}"
+    main_status = ref_sync_status(layout.package_root, release_branch, upstream_ref)
     print(f"project_manifest={manifest_path}")
     print(f"selected_release_target={release_id}")
     print(f"verso_blueprint_ref={release_branch}")
@@ -771,7 +773,7 @@ def command_status(args: argparse.Namespace) -> int:
 
     for project in projects:
         try:
-            status = collect_reference_project_status(layout, project)
+            status = collect_reference_project_status(layout, project, blueprint_base_ref=release_branch)
         except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
             status = ReferenceProjectStatus(
                 project=project,

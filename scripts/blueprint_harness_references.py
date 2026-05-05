@@ -397,9 +397,9 @@ def reference_update_command(package_root: Path, project_dir: Path) -> list[str]
     if manifest is not None:
         print(
             "[blueprint-harness] committed lake-manifest.json detected; "
-            "updating `VersoBlueprint` only to keep `verso` pinned"
+            "running full `lake update` from committed pins"
         )
-        return lean_low_priority_command(package_root, "lake", "update", "VersoBlueprint")
+        return lean_low_priority_command(package_root, "lake", "update")
 
     print(
         "[blueprint-harness] no committed lake-manifest.json detected; "
@@ -585,7 +585,7 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
     bootstrap_reference_checkout(project_dir=project_dir)
     cache_lakefile = project_dir / "lakefile.lean"
     original_text = cache_lakefile.read_text(encoding="utf-8")
-    rewrite_local_blueprint_dependency(project_dir, layout.repo_root)
+    rewrite_local_blueprint_dependency(project_dir, layout.package_root)
     try:
         run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
         if warm_build and project.build_command is not None:

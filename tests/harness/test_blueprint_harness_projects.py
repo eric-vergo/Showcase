@@ -112,7 +112,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(release_430.verso_ref, "v4.30.0-rc2")
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
-        self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
+        self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0", "v4.30.0"])
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
@@ -121,6 +121,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
+        self.assertEqual([target.release for target in projects[3].targets], ["v4.29.0", "v4.30.0"])
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
 
@@ -435,7 +436,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
             self.assertTrue(manifest.exists())
 
-    def test_reference_update_command_targets_blueprint_when_manifest_is_committed(self) -> None:
+    def test_reference_update_command_uses_full_update_when_manifest_is_committed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
             self.init_git_repo(project_dir)
@@ -451,7 +452,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
             command = reference_update_command(PACKAGE_ROOT, project_dir)
 
-            self.assertEqual(command[-3:], ["lake", "update", "VersoBlueprint"])
+            self.assertEqual(command[-2:], ["lake", "update"])
 
     def test_reference_update_command_falls_back_to_full_update_without_tracked_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -461,6 +462,66 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             command = reference_update_command(PACKAGE_ROOT, project_dir)
 
             self.assertEqual(command[-2:], ["lake", "update"])
+
+    def test_reference_cache_checkout_uses_current_package_root_override(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = HarnessProject(
+            project_id="external-blueprint",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/external-blueprint.git",
+            ref="main",
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache" / "external-blueprint"
+            cache_dir.mkdir(parents=True)
+            lakefile = cache_dir / "lakefile.lean"
+            lakefile.write_text(OFFICIAL_BLUEPRINT_REQUIRE + "\n", encoding="utf-8")
+            layout = SimpleNamespace(
+                package_root=root / "worktree",
+                repo_root=root / "root",
+                reference_project_cache_root=root / "cache",
+            )
+            layout.package_root.mkdir()
+            layout.repo_root.mkdir()
+
+            originals = {
+                "update_git_checkout": refs_mod.update_git_checkout,
+                "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
+                "rewrite_local_blueprint_dependency": refs_mod.rewrite_local_blueprint_dependency,
+                "reference_update_command": refs_mod.reference_update_command,
+                "run": refs_mod.run,
+            }
+            seen: dict[str, object] = {}
+            try:
+                refs_mod.update_git_checkout = lambda _project, _cache_dir: None
+                refs_mod.bootstrap_reference_checkout = lambda *, project_dir: None
+
+                def fake_rewrite(_project_dir, package_root):
+                    seen["package_root"] = package_root
+                    return lakefile
+
+                refs_mod.rewrite_local_blueprint_dependency = fake_rewrite
+                refs_mod.reference_update_command = lambda _package_root, _project_dir: ["lake", "update"]
+                refs_mod.run = lambda _command, *, cwd: None
+
+                refs_mod.sync_reference_cache_checkout(layout, project, warm_build=False)
+            finally:
+                for name, value in originals.items():
+                    setattr(refs_mod, name, value)
+
+            self.assertEqual(seen["package_root"], layout.package_root)
+            self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
 
     def test_project_template_manifest_keeps_verso_and_subverso_in_sync_with_root_without_mathlib(self) -> None:
         root_manifest = json.loads((PACKAGE_ROOT / "lake-manifest.json").read_text(encoding="utf-8"))

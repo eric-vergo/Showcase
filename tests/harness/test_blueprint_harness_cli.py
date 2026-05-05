@@ -1055,7 +1055,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "resolve_release_target": harness_mod.resolve_release_target,
             "resolve_projects_for_release": harness_mod.resolve_projects_for_release,
             "active_release_branch": harness_mod.active_release_branch,
-            "preferred_main_ref": harness_mod.preferred_main_ref,
+            "preferred_release_ref": harness_mod.preferred_release_ref,
             "canonical_test_blueprint_site_dir": harness_mod.canonical_test_blueprint_site_dir,
             "canonical_reference_project_site_dir": harness_mod.canonical_reference_project_site_dir,
         }
@@ -1066,7 +1066,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             harness_mod.resolve_release_target = lambda _catalog, _release, _package_root: release
             harness_mod.resolve_projects_for_release = lambda _catalog, _release, _selected_ids: [selected_project]
             harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
-            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.preferred_release_ref = lambda _repo_root: "origin/v4.29.0"
             harness_mod.canonical_test_blueprint_site_dir = (
                 lambda _name, _start=None: Path("/tmp/package/_out/test-blueprints/preview_runtime_showcase/html-multi")
             )
@@ -1643,9 +1643,10 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             "resolve_manifest_path": reference_harness_mod.resolve_manifest_path,
             "load_project_catalog": reference_harness_mod.load_project_catalog,
             "select_release_projects": reference_harness_mod.select_release_projects,
-            "main_sync_status": reference_harness_mod.main_sync_status,
+            "require_checkout_release": reference_harness_mod.require_checkout_release,
+            "resolve_release_target": reference_harness_mod.resolve_release_target,
+            "ref_sync_status": reference_harness_mod.ref_sync_status,
             "collect_reference_project_status": reference_harness_mod.collect_reference_project_status,
-            "active_release_branch": reference_harness_mod.active_release_branch,
         }
         out = io.StringIO()
         try:
@@ -1653,15 +1654,20 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             reference_harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
             reference_harness_mod.load_project_catalog = lambda _manifest_path: SimpleNamespace(projects=(project,), release_targets=())
             reference_harness_mod.select_release_projects = lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", [project])
-            reference_harness_mod.main_sync_status = lambda _repo_root: harness_mod.RefSyncStatus(
+            reference_harness_mod.require_checkout_release = lambda _layout, _release_id, *, command_name: None
+            reference_harness_mod.resolve_release_target = lambda _catalog, _release, _package_root: SimpleNamespace(
+                branch="v4.29.0"
+            )
+            reference_harness_mod.ref_sync_status = lambda _repo_root, _local_ref, _upstream_ref: harness_mod.RefSyncStatus(
                 local_ref="v4.29.0",
                 upstream_ref="origin/v4.29.0",
                 local_oid="111",
                 upstream_oid="111",
                 relationship="in_sync",
             )
-            reference_harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
-            reference_harness_mod.collect_reference_project_status = lambda _layout, _project: status
+            reference_harness_mod.collect_reference_project_status = (
+                lambda _layout, _project, *, blueprint_base_ref=None: status
+            )
 
             with redirect_stdout(out):
                 self.assertEqual(reference_harness_mod.command_status(args), 0)

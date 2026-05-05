@@ -952,7 +952,7 @@ def cleanup_source_branch(layout, branch: str, *, delete_remote: bool) -> None:
 
 def command_land_main(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    release_branch = active_release_branch(layout.repo_root)
+    release_branch = active_release_branch(layout.package_root)
     if layout.in_linked_worktree:
         raise SystemExit("[blueprint-harness] run `land-release` from the root checkout, not from a linked worktree")
     status = main_sync_status(layout.repo_root)
@@ -1014,7 +1014,7 @@ def command_paths(args: argparse.Namespace) -> int:
         projects = list(catalog.projects)
     else:
         projects = resolve_projects_for_release(catalog, release_target.release_id, None)
-    release_branch = active_release_branch(layout.repo_root)
+    release_branch = active_release_branch(layout.package_root)
     print(f"package_root={layout.package_root}")
     print(f"repo_root={layout.repo_root}")
     print(f"worktree_name={layout.worktree_name or ''}")
@@ -1024,7 +1024,7 @@ def command_paths(args: argparse.Namespace) -> int:
     print(f"project_path_scope={'all' if args.all_projects else 'selected_release'}")
     print("local_override_strategy=ephemeral_lakefile_rewrite")
     print(f"active_release_branch={release_branch}")
-    print(f"preferred_release_ref={preferred_main_ref(layout.repo_root)}")
+    print(f"preferred_release_ref={preferred_release_ref(layout.package_root)}")
     print(f"root_lake={layout.repo_root / '.lake'}")
     print(f"reference_output_root={layout.reference_output_root}")
     print(f"test_blueprint_output_root={layout.test_blueprint_output_root}")
