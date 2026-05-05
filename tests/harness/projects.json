@@ -47,7 +47,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "bfc572dcb1baaf290ce1df0b720f311faf75fa18"
+          "ref": "070e0c6d7bb205c89270cb1b60e5cf3cf431af28"
         }
       ],
       "build_command": ["lake", "build"],
@@ -65,7 +65,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "60dd8a796f251608d8b22352dd7631e060c70f7f"
+          "ref": "d261b6755ae05a085e1b3d90d730be96973112b7"
         }
       ],
       "build_command": ["lake", "build"],
@@ -83,7 +83,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "021cc32226a9e8d38f88ff5d7a49d5e3e9a0406d"
+          "ref": "ad4cffd681b6234e9ab30b19adb69c92b962ff34"
         }
       ],
       "build_command": ["lake", "build", "blueprint-gen"],
