@@ -5,10 +5,12 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.PreviewManifest
+import VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintMainWrapper
 
 open Verso.Genre.Manual
+open Verso.VersoBlueprintTests.Blueprint.Support
 
 /-- info: true -/
 #guard_msgs in
@@ -32,5 +34,59 @@ open Verso.Genre.Manual
   }
   let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
   cfg.toHtmlConfig.extraJs.toArray.any (·.js.contains "custom")
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let cfg : RenderConfig := {}
+  let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
+  cfg.toHtmlConfig.toHtmlAssets.extraCss.toArray.any fun css =>
+    hasSubstr css.css ".bp_build_metadata"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let metadata : Informal.PreviewManifest.BuildMetadata := {
+    compiledAt := "2026-05-05T00:00:00Z"
+    commit := "abc123"
+    subject := "escape <tag> & message"
+    projectRepositoryUrl := some "https://github.com/example/project"
+    projectCommitUrl := some "https://github.com/example/project/commit/abc123full"
+    leanToolchain := "leanprover/lean4:v4.30.0"
+    blueprintVersion := "def456"
+    blueprintRepositoryUrl := some "https://github.com/leanprover/verso-blueprint"
+    blueprintCommitUrl := some "https://github.com/leanprover/verso-blueprint/commit/def456full"
+    mathlibVersion := some "v4.30.0@789abc"
+    mathlibRepositoryUrl := some "https://github.com/leanprover-community/mathlib4"
+    mathlibCommitUrl := some "https://github.com/leanprover-community/mathlib4/commit/789abcfull"
+    upstreamBlueprint := some {
+      commit := "up987"
+      subject := "upstream <msg> & more"
+      repositoryUrl := some "https://github.com/example/upstream"
+      commitUrl := some "https://github.com/example/upstream/commit/up987full"
+    }
+  }
+  let input := "<html><body><div class=\"titlepage\"><h1>Example</h1><div class=\"authors\"></div></div></body></html>"
+  let metadataHtml := Informal.PreviewManifest.buildMetadataHtmlString metadata
+  match Informal.PreviewManifest.insertBuildMetadataHtml? input metadataHtml with
+  | some out =>
+      hasSubstr out "class=\"bp_build_metadata\"" &&
+        hasSubstr out "2026-05-05T00:00:00Z" &&
+        hasSubstr out "abc123" &&
+        hasSubstr out "https://github.com/example/project" &&
+        hasSubstr out "https://github.com/example/project/commit/abc123full" &&
+        hasSubstr out "escape &lt;tag&gt; &amp; message" &&
+        hasSubstr out "leanprover/lean4:v4.30.0" &&
+        hasSubstr out "def456" &&
+        hasSubstr out "https://github.com/leanprover/verso-blueprint/commit/def456full" &&
+        hasSubstr out "up987" &&
+        hasSubstr out "https://github.com/example/upstream" &&
+        hasSubstr out "https://github.com/example/upstream/commit/up987full" &&
+        hasSubstr out "upstream &lt;msg&gt; &amp; more" &&
+        hasSubstr out "v4.30.0@789abc" &&
+        hasSubstr out "https://github.com/leanprover-community/mathlib4/commit/789abcfull" &&
+        appearsBefore out "<h1>Example</h1>" "class=\"bp_build_metadata\"" &&
+        appearsBefore out "class=\"bp_build_metadata\"" "class=\"authors\""
+  | none => false
 
 end Verso.VersoBlueprintTests.BlueprintMainWrapper
