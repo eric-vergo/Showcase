@@ -18,6 +18,7 @@ from scripts.blueprint_harness_cli import (
     add_output_root_argument,
     add_project_selection_argument,
     add_serial_argument,
+    selected_output_root,
 )
 from scripts.blueprint_harness_paths import detect_harness_layout, resolve_output_root
 from scripts.blueprint_harness_projects import HarnessProject, resolve_manifest_path
@@ -41,14 +42,16 @@ from scripts.blueprint_harness_references import (
     site_dir_for,
     sync_reference_blueprints,
 )
-from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run
+from scripts.blueprint_harness_utils import (
+    StepFailure,
+    format_command,
+    lean_low_priority_command,
+    print_failure_summary,
+    run,
+    run_capturing_failure,
+)
+from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
 from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts
-
-
-@dataclass(frozen=True)
-class StepFailure:
-    step: str
-    detail: str
 
 
 @dataclass(frozen=True)
@@ -88,14 +91,7 @@ BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?',
     re.MULTILINE | re.DOTALL,
 )
-
-
-def run_capturing_failure(step: str, command: list[str], *, cwd: Path) -> StepFailure | None:
-    try:
-        run(command, cwd=cwd)
-        return None
-    except subprocess.CalledProcessError as err:
-        return StepFailure(step=step, detail=f"exit code {err.returncode}: {format_command(command)}")
+REFERENCE_HARNESS_PREFIX = "[blueprint-reference-harness]"
 
 
 def text_or_blank(value: object | None) -> str:
@@ -290,7 +286,7 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
             blueprint_relationship=None,
             blueprint_ahead=None,
             blueprint_behind=None,
-            skipped="in_repo_example",
+            skipped="in_repo_project",
         )
 
     checkout_root = ensure_reference_status_checkout(layout, project)
@@ -323,7 +319,7 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
 
 def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_example else f"git:{project.repository}@{project.ref}"
+    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         project.project_id,
         f"source={source}",
@@ -383,7 +379,7 @@ def print_release_target_summary(status: ReleaseTargetStatus) -> None:
 
 def print_release_target_project_status(release_id: str, status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_example else f"git:{project.repository}@{project.ref}"
+    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         f"release={release_id}",
         f"project={project.project_id}",
@@ -484,17 +480,6 @@ def require_safe_root_main(layout, *, allow_unsafe: bool, command_name: str) -> 
     )
 
 
-def print_failure_summary(failures: list[StepFailure]) -> int:
-    if not failures:
-        print("[blueprint-reference-harness] validation summary: all requested steps passed")
-        return 0
-
-    print("[blueprint-reference-harness] validation summary: failures detected", file=sys.stderr)
-    for failure in failures:
-        print(f"[blueprint-reference-harness]   {failure.step}: {failure.detail}", file=sys.stderr)
-    return 1
-
-
 def executable_path(package_root: Path, exe_name: str) -> Path:
     return package_root / ".lake" / "build" / "bin" / exe_name
 
@@ -519,13 +504,6 @@ def find_prebuilt_lean_test_artifact(package_root: Path) -> Path | None:
 
 def lean_test_runner(package_root: Path) -> list[str]:
     return [str(package_root / "scripts" / "run-lean-tests.sh")]
-
-
-def resolve_repo_relative_path(package_root: Path, path_text: str) -> Path:
-    path = Path(path_text)
-    if path.is_absolute():
-        return path
-    return package_root / path
 
 
 def build_in_repo_projects(package_root: Path, projects: list[HarnessProject]) -> None:
@@ -587,7 +565,7 @@ def generate_projects(
     serial: bool,
     allow_local_build: bool,
 ) -> None:
-    in_repo_projects = [project for project in projects if project.in_repo_example]
+    in_repo_projects = [project for project in projects if project.in_repo_project]
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
     in_repo_command_projects = [project for project in in_repo_projects if project.in_repo_command_project]
     git_projects = [project for project in projects if project.git_checkout]
@@ -627,49 +605,10 @@ def generate_projects(
         generate_git_project(layout, output_root, project, skip_build=skip_build)
 
 
-def panel_regression_command(package_root: Path, project: HarnessProject, site_dir: Path) -> list[str]:
-    return [
-        sys.executable,
-        str(resolve_repo_relative_path(package_root, project.panel_regression_script or "")),
-        "--site-dir",
-        str(site_dir),
-    ]
-
-
-def browser_test_command(package_root: Path, project: HarnessProject, site_dir: Path, pytest_args: list[str]) -> list[str]:
-    tests_path = resolve_repo_relative_path(package_root, project.browser_tests_path or "")
-    if shutil.which("uv"):
-        command = [
-            "env",
-            "UV_CACHE_DIR=/tmp/verso-blueprint-uv-cache",
-            "uv",
-            "run",
-            "--project",
-            str(tests_path),
-            "--extra",
-            "test",
-            "python",
-            "-m",
-            "pytest",
-        ]
-    else:
-        command = [sys.executable, "-m", "pytest"]
-    return [
-        *command,
-        str(tests_path),
-        "-q",
-        "--browser",
-        "chromium",
-        "--site-dir",
-        str(site_dir),
-        *pytest_args,
-    ]
-
-
 def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
-    output_root = resolve_output_root(args.output_root, Path(__file__))
+    output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     release_id, projects = select_release_projects(
@@ -700,7 +639,7 @@ def command_generate(args: argparse.Namespace) -> int:
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
-    output_root = resolve_output_root(args.output_root, Path(__file__))
+    output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     release_id, projects = select_release_projects(
@@ -725,7 +664,7 @@ def command_validate(args: argparse.Namespace) -> int:
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
         else:
             test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
             if test_artifact is None:
@@ -738,7 +677,7 @@ def command_validate(args: argparse.Namespace) -> int:
                     )
                 )
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
             else:
                 print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
 
@@ -753,33 +692,33 @@ def command_validate(args: argparse.Namespace) -> int:
         )
     except SystemExit as err:
         failures.append(StepFailure("generate projects", str(err)))
-        return print_failure_summary(failures)
+        return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
     for project in projects:
         site_dir = site_dir_for(project, output_root)
         if project.panel_regression_script is not None and not args.skip_panel_regression:
             failure = run_capturing_failure(
                 f"{project.project_id} panel regression",
-                panel_regression_command(layout.package_root, project, site_dir),
+                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
                 cwd=layout.package_root,
             )
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
         if project.browser_tests_path is not None and not args.skip_browser_tests:
             failure = run_capturing_failure(
                 f"{project.project_id} browser tests",
-                browser_test_command(layout.package_root, project, site_dir, args.pytest_arg),
+                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, args.pytest_arg),
                 cwd=layout.package_root,
             )
             if failure is not None:
                 failures.append(failure)
                 if args.stop_on_first_failure:
-                    return print_failure_summary(failures)
+                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
-    return print_failure_summary(failures)
+    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
 
 def command_projects(args: argparse.Namespace) -> int:
@@ -795,7 +734,7 @@ def command_projects(args: argparse.Namespace) -> int:
     print(f"project_manifest={manifest_path}")
     print(f"release_target={release_id}")
     for project in projects:
-        if project.in_repo_example:
+        if project.in_repo_project:
             source = f"in_repo:{project.project_root}"
         else:
             source = f"git:{project.repository}@{project.ref}"
@@ -1031,7 +970,7 @@ def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
         if result.pushed:
             print("[blueprint-reference-harness] pushed editable branch to origin")
 
-    return print_failure_summary(failures)
+    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
 
 def command_reference_prune(args: argparse.Namespace) -> int:
@@ -1075,7 +1014,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_root_argument(generate)
     add_project_selection_argument(generate, help_text="Render only the selected project. Repeat to render more than one.")
     add_manifest_argument(generate)
-    generate.add_argument("--release", default=None, help="Release target to validate. Defaults to the current checkout release line.")
+    generate.add_argument("--release", default=None, help="Release target to generate. Defaults to the current checkout release line.")
     generate.add_argument(
         "--skip-build",
         action="store_true",
@@ -1139,7 +1078,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         projects,
         help_text="Restrict output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     projects.add_argument("--release", default=None, help="Release target to list. Defaults to the current checkout release line.")
     projects.set_defaults(func=command_projects)
@@ -1152,7 +1090,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         status,
         help_text="Restrict status output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     status.add_argument("--release", default=None, help="Release target to inspect. Defaults to the current checkout release line.")
     status.set_defaults(func=command_status)
@@ -1165,7 +1102,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         release_status,
         help_text="Restrict output to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     release_status.add_argument(
         "--release",
@@ -1187,7 +1123,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         sync,
         help_text="Restrict sync to the selected project. Repeat to select more.",
-        include_example_alias=False,
     )
     sync.add_argument("--release", default=None, help="Release target to sync. Defaults to the current checkout release line.")
     sync.add_argument(
@@ -1229,7 +1164,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_project_selection_argument(
         bump,
         help_text="Restrict the bump to the selected external project. Repeat to select more.",
-        include_example_alias=False,
     )
     bump.add_argument(
         "--ref",

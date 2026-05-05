@@ -10,12 +10,14 @@ import unittest
 import scripts.blueprint_harness as harness_mod
 import scripts.blueprint_reference_harness as reference_harness_mod
 from scripts.blueprint_harness import build_parser, create_worktree_sync_policy
+from scripts.blueprint_harness_cli import selected_output_root
 from scripts.blueprint_reference_harness import generate_projects
 from scripts.blueprint_harness_projects import (
     HarnessProject,
     HarnessProjectCatalog,
     HarnessProjectTarget,
     HarnessReleaseTarget,
+    IN_REPO_PROJECT_SOURCE_KIND,
 )
 from scripts.blueprint_harness_worktrees import GitWorktree
 
@@ -29,12 +31,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = argparse.Namespace(skip_sync=True, skip_reference_sync=False, lightweight=False)
         self.assertEqual(create_worktree_sync_policy(args), (True, False))
 
-    def test_reference_sync_does_not_accept_example_alias(self) -> None:
+    def test_reference_sync_rejects_legacy_example_alias(self) -> None:
         parser = reference_harness_mod.build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["sync", "--example", "noperthedron"])
 
-    def test_reference_status_does_not_accept_example_alias(self) -> None:
+    def test_reference_status_rejects_legacy_example_alias(self) -> None:
         parser = reference_harness_mod.build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["status", "--example", "noperthedron"])
@@ -44,6 +46,20 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(["generate", "--allow-unsafe-root-release", "--release", "v4.29.0"])
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
+
+    def test_reference_generate_accepts_named_output_root(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["generate", "--output-root", "/tmp/out"])
+        self.assertIsNone(args.output_root)
+        self.assertEqual(args.output_root_option, "/tmp/out")
+        self.assertEqual(selected_output_root(args), "/tmp/out")
+
+    def test_reference_validate_named_output_root_overrides_positional_root(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        args = parser.parse_args(["validate", "/tmp/old", "--output-root", "/tmp/new"])
+        self.assertEqual(args.output_root, "/tmp/old")
+        self.assertEqual(args.output_root_option, "/tmp/new")
+        self.assertEqual(selected_output_root(args), "/tmp/new")
 
     def test_reference_validate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
@@ -72,6 +88,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["release-status", "--require-sync"])
         self.assertTrue(args.require_sync)
+
+    def test_paths_parses_all_projects_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["paths", "--all-projects"])
+        self.assertTrue(args.all_projects)
 
     def test_prepare_backports_parses_exemption_flag(self) -> None:
         parser = build_parser()
@@ -664,10 +685,15 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             ],
         )
 
-    def test_generate_keeps_example_alias(self) -> None:
+    def test_reference_generate_rejects_legacy_example_alias(self) -> None:
         parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(["generate", "--example", "noperthedron"])
-        self.assertEqual(args.project, ["noperthedron"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["generate", "--example", "noperthedron"])
+
+    def test_reference_validate_rejects_legacy_example_alias(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["validate", "--example", "noperthedron"])
 
     def test_reference_generate_rejects_unsafe_root_main_without_override(self) -> None:
         args = argparse.Namespace(
@@ -788,6 +814,101 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
         self.assertTrue(seen["validate"])
+
+    def test_paths_prints_current_release_project_sites_by_default(self) -> None:
+        args = argparse.Namespace(all_projects=False)
+        layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/package"),
+            worktree_name=None,
+            artifact_root=Path("/tmp/package/_out"),
+            reference_output_root=Path("/tmp/package/_out/reference-blueprints"),
+            test_blueprint_output_root=Path("/tmp/package/_out/test-blueprints"),
+            reference_project_cache_root=Path("/tmp/repo/.worktrees/_reference-blueprints/cache"),
+            reference_project_checkout_root=Path("/tmp/repo/.worktrees/_reference-blueprints/by-worktree/v4.29.0"),
+            reference_project_edit_root=Path("/tmp/repo/.worktrees/_reference-blueprints/edit/v4.29.0"),
+        )
+        release = HarnessReleaseTarget(
+            release_id="v4.29.0",
+            toolchain="v4.29.0",
+            verso_ref="v4.29.0",
+            branch="v4.29.0",
+            deploy_pages=True,
+        )
+        selected_project = HarnessProject(
+            project_id="noperthedron",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/noperthedron.git",
+            ref=None,
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            targets=(HarnessProjectTarget(release="v4.29.0", ref="abc123"),),
+        )
+        old_project = HarnessProject(
+            project_id="old-project",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/old.git",
+            ref=None,
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            targets=(HarnessProjectTarget(release="v4.28.0", ref="def456"),),
+        )
+        catalog = HarnessProjectCatalog(
+            version=2,
+            release_targets=(release,),
+            projects=(selected_project, old_project),
+        )
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "resolve_manifest_path": harness_mod.resolve_manifest_path,
+            "load_project_catalog_manifest": harness_mod.load_project_catalog_manifest,
+            "resolve_release_target": harness_mod.resolve_release_target,
+            "resolve_projects_for_release": harness_mod.resolve_projects_for_release,
+            "active_release_branch": harness_mod.active_release_branch,
+            "preferred_main_ref": harness_mod.preferred_main_ref,
+            "canonical_test_blueprint_site_dir": harness_mod.canonical_test_blueprint_site_dir,
+            "canonical_reference_project_site_dir": harness_mod.canonical_reference_project_site_dir,
+        }
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.resolve_manifest_path = lambda _path_text, _package_root: Path("/tmp/projects.json")
+            harness_mod.load_project_catalog_manifest = lambda _manifest_path: catalog
+            harness_mod.resolve_release_target = lambda _catalog, _release, _package_root: release
+            harness_mod.resolve_projects_for_release = lambda _catalog, _release, _selected_ids: [selected_project]
+            harness_mod.active_release_branch = lambda _repo_root: "v4.29.0"
+            harness_mod.preferred_main_ref = lambda _repo_root: "origin/v4.29.0"
+            harness_mod.canonical_test_blueprint_site_dir = (
+                lambda _name, _start=None: Path("/tmp/package/_out/test-blueprints/preview_runtime_showcase/html-multi")
+            )
+            harness_mod.canonical_reference_project_site_dir = (
+                lambda project_id, _start=None: Path(f"/tmp/package/_out/reference-blueprints/{project_id}/html-multi")
+            )
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                self.assertEqual(harness_mod.command_paths(args), 0)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
+        output = buffer.getvalue()
+        self.assertIn("selected_release_target=v4.29.0", output)
+        self.assertIn("project_path_scope=selected_release", output)
+        self.assertIn("noperthedron_site=/tmp/package/_out/reference-blueprints/noperthedron/html-multi", output)
+        self.assertNotIn("old-project_site=", output)
 
     def test_require_branch_role_parses_requested_role(self) -> None:
         parser = build_parser()
@@ -1137,7 +1258,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
     def test_generate_projects_does_not_auto_sync_root_lake(self) -> None:
         project = HarnessProject(
             project_id="demo",
-            source_kind="in_repo_example",
+            source_kind=IN_REPO_PROJECT_SOURCE_KIND,
             project_root=".",
             build_target="Demo",
             generator="demo",
@@ -1386,7 +1507,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
     def test_reference_release_status_summarizes_and_filters_outdated_targets(self) -> None:
         template = HarnessProject(
             project_id="project-template",
-            source_kind="in_repo_example",
+            source_kind=IN_REPO_PROJECT_SOURCE_KIND,
             project_root="project_template",
             build_target=None,
             generator=None,
@@ -1482,7 +1603,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     blueprint_relationship=None,
                     blueprint_ahead=None,
                     blueprint_behind=None,
-                    skipped="in_repo_example" if project.in_repo_example else None,
+                    skipped="in_repo_project" if project.in_repo_project else None,
                 )
 
             reference_harness_mod.collect_reference_project_status = fake_collect
