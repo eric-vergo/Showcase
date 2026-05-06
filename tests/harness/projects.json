@@ -27,7 +27,7 @@
   "reference_blueprints": [
     {
       "blueprint": "algebraic-combinatorics",
-      "hash": "6506b992702a6e47a29d90d504f9e55eb65e13e9",
+      "hash": "65cb99e4a6834b5bc078e64071e89551959ba0bc",
       "toolchain": "v4.28.0"
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "blueprint": "verso-flt",
-      "hash": "d3538f905f659cc1a96f1947536d7be32e337891",
+      "hash": "35adfa446d82625986fd9cb0248530012e3daea1",
       "toolchain": "v4.30.0-rc2"
     }
   ],
@@ -124,7 +124,7 @@
         },
         {
           "release": "v4.30.0",
-          "ref": "d3538f905f659cc1a96f1947536d7be32e337891"
+          "ref": "35adfa446d82625986fd9cb0248530012e3daea1"
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
@@ -142,7 +142,7 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "6506b992702a6e47a29d90d504f9e55eb65e13e9"
+          "ref": "65cb99e4a6834b5bc078e64071e89551959ba0bc"
         }
       ],
       "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],
