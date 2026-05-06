@@ -49,7 +49,8 @@ Examples:
 
 These identifiers are used by:
 
-- `{uses "addition_spec"}[]` references
+- `{uses "addition_spec"}[]` dependency references
+- `{bpref "addition_spec"}[]` link-only references
 - labeled inline Lean code blocks
 - labeled inline Rust code blocks
 - `tex` code blocks carrying raw TeX source
@@ -59,9 +60,13 @@ These identifiers are used by:
 
 Choose labels early and treat them as stable project identifiers.
 
-If a role such as `{uses "addition_spec"}[]` or a citation has an empty
-payload, Blueprint can generate the visible text automatically, for example
-`Theorem N`.
+Use `uses` when the current node depends on the target and should add an edge to
+the graph and dependency summaries. Use `bpref` when prose should link to a
+Blueprint node without registering that relationship as a dependency.
+
+If a role such as `{uses "addition_spec"}[]`, `{bpref "addition_spec"}[]`, or a
+citation has an empty payload, Blueprint can generate the visible text
+automatically, for example `Theorem N`.
 
 ## Minimal Project Shape
 
@@ -191,6 +196,7 @@ This example shows the core pattern:
 
 - define an informal mathematical object
 - attach later statements to it with `uses`
+- point to related entries without adding dependencies with `bpref`
 - keep informal proofs close to the statement
 - connect to Lean either locally or through an existing declaration
 
