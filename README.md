@@ -229,8 +229,8 @@ Read these in order:
 7. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
    boundaries
 8. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
-9. [doc/UPSTREAM_TODO.md](./doc/UPSTREAM_TODO.md): items intended to move back
-   into `verso`
+9. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
+   back into `verso`, Lake, or Lean
 
 ### Maintainer CLI Split
 

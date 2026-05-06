@@ -49,6 +49,24 @@ Examples:
 Keep the subject line tight enough for `git log --oneline`. Avoid generic
 subjects such as `Update files` or `misc cleanup`.
 
+## Verso Upstream Backlog
+
+This repository tracks eventual upstream work in
+[`doc/UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
+
+When a maintainer or agent says "add this to the Verso upstream backlog",
+"register this in the Verso upstream backlog", or similar, that means:
+
+- add or update an item in `doc/UPSTREAM_BACKLOG.md`
+
+It does not mean:
+
+- open an upstream GitHub issue
+- comment on an upstream pull request
+- otherwise mutate the upstream `leanprover/verso` repository
+
+Do those upstream write actions only when they are explicitly requested.
+
 ## Pull Request Conventions
 
 - PR titles should usually match the intended final commit title.

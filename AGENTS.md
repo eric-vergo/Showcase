@@ -189,7 +189,10 @@
 - `doc/MAINTAINER_GUIDE.md`: maintainer-oriented harness workflow
 - `doc/DESIGN_RATIONALE.md`: architecture rationale
 - `doc/ROADMAP.md`: planned cleanup and follow-up work
-- `doc/UPSTREAM_TODO.md`: items that should eventually be upstreamed to `verso`
+- `doc/UPSTREAM_BACKLOG.md`: the local backlog of items that should eventually
+  be upstreamed to `verso`, Lake, or Lean; requests to add something to the
+  "Verso upstream backlog" mean updating this file unless the user explicitly
+  asks to open or update an upstream GitHub issue
 
 ## General Recommendations
 

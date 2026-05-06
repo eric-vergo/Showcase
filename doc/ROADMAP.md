@@ -1,234 +1,193 @@
 # Blueprint Roadmap
 
-Last updated: 2026-04-10
+Last reviewed: 2026-05-06
 
-This document tracks active cleanup and follow-up work for Blueprint support in
-this repository.
+This document tracks repository-local engineering work for `verso-blueprint`.
+Requests that should eventually move into upstream `verso`, Lake, or Lean live
+in [`UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
 
-It is not the place for:
-
-- operational commands and workflow details
-- option and rendering reference material
-- architecture explanation
-
-Those live in
+This is not the place for operational commands, option reference material, or
+architecture narrative. Those live in
 [`MAINTAINER_GUIDE.md`](./MAINTAINER_GUIDE.md),
 [`MANUAL.md`](./MANUAL.md), and
 [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
 
-## Guiding Constraints
-
-The current cleanup work should preserve these constraints:
+## Working Principles
 
 1. keep one semantic source of truth for Blueprint data and status derivation
-2. keep command, traversal, and runtime paths aligned through shared library
-   APIs
-3. add regression coverage before large structural splits
+2. keep command, traversal, generated-data, and browser-runtime paths aligned
+   through shared library APIs
+3. broaden regression coverage before large structural splits
 4. keep the public maintainer harness small, explicit, and repository-local
+5. treat upstream workarounds as temporary and name the upstream API that would
+   remove them
 
 ## Active Workstreams
 
-### Embedded Asset Dependency Hygiene
+### Rendering and Preview Boundary
 
-Goal: make JS/CSS asset edits rebuild predictably instead of depending on
-adjacent Lean source edits to refresh embedded `include_str` payloads.
+Goal: keep Blueprint's render entry point thin while making preview delivery
+predictable across graph, summary, code, citation, and widget surfaces.
 
-Work:
+Current shape:
 
-1. replace the current fragile direct `include_str` embedding path for browser
-   assets with an explicit generated-or-staged Lean dependency edge
-2. apply the same fix across graph, summary, bibliography, and shared static
-   web assets instead of solving it one module at a time
-3. add one regression or build-level check that fails if emitted browser assets
-   drift from the source files they are supposed to embed
-
-Priority:
-
-1. treat this as high priority, because stale embedded assets make simple UI
-   fixes look much more complex than they really are
-2. prefer landing this cleanup before deeper browser-runtime refactors
-   accumulate on top of the current embedding model
-
-### Elaboration-Time Asset Resolution
-
-Goal: stop elaboration-time helper tools from depending on ad hoc package-path
-guessing across root checkouts, linked worktrees, and consumer dependency
-layouts.
+1. Blueprint generators call
+   `Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest`.
+2. Verso still owns traversal, TeX, word counts, search, page shell, and HTML
+   emission.
+3. Blueprint owns asset injection, public-xref filtering, shared-preview
+   manifest emission, and local compatibility rewrites.
 
 Work:
 
-1. replace the current Blueprint math-lint path heuristics with one Lean-side
-   resolver that computes the exact asset paths before spawning `node`
-2. pass explicit helper-script and KaTeX-library paths into the Node checker
-   instead of hard-coding `.lake/packages/...` assumptions inside JS modules
-3. add regression coverage for at least:
-   root checkout, linked worktree, consumer dependency checkout, and a
-   non-default Lake `packagesDir` layout
-4. audit whether other elaboration-time helpers rely on similar search-path or
-   package-name assumptions and consolidate them behind the same resolver
+1. finish consolidating callers around `PreviewSource` so graph, summary,
+   citation, code, and widget previews do not decode preview payloads directly
+2. merge the traversal preview cache and widget `elabStx` preview path behind a
+   phase-safe representation
+3. define one canonical API for preview labels and titles; avoid mixing raw
+   labels, resolved titles, and local fallbacks across renderers
+4. keep graph, summary, used-by/group panels, and inline references on the same
+   browser panel behavior where the interaction model is genuinely shared
+5. evaluate a lighter preview delivery path so a page does not always fetch and
+   decode the full shared manifest for a small number of previews
+6. remove temporary browser lifecycle workarounds, such as graph-preview
+   delayed handlers, after targeted browser tests prove the replacement path
 
-### Duplicate Identity Hardening
+### Data Model and Status Semantics
 
-Goal: make duplicate Blueprint identities fail clearly instead of being accepted
-locally or silently overwritten during imported-state aggregation.
-
-Work:
-
-1. reject invalid nested and duplicate block declarations before they mutate the
-   active environment stack
-2. make `Data.register` and block elaboration agree on whether a declaration was
-   accepted, ignored, or rejected
-3. detect imported collisions in
-   `Informal.Environment.informalExt.addImportedFn` instead of silently letting
-   later inserts overwrite earlier ones
-4. apply the same collision policy to node labels, group labels, and author ids
-
-Tests still needed:
-
-1. same-module duplicate label cases in `Tests.BlueprintInformal`
-2. nested invalid block cases in `Tests.BlueprintInformal`
-3. cross-module duplicate labels via sibling providers plus one importing test
-   module
-4. cross-module duplicate groups and duplicate authors via the same pattern
-5. transitive-import coverage so reexports cannot bypass collision detection
-
-### Shared Status Semantics
-
-Goal: remove the remaining duplicated status recomputation.
+Goal: make Blueprint state, traversal stores, and status rendering share one
+model instead of recomputing similar facts in several layers.
 
 Work:
 
-1. define a shared status record derived from `Data.Node` plus external
-   declaration checks
-2. route graph, summary, and local block status badges through that record
-3. keep the compact UI vocabulary stable while centralizing the semantics behind
+1. consolidate `Informal.Environment.InProgress` with `Data.Node` or document
+   the remaining phase-specific fields that require a separate elaboration
+   record
+2. consolidate `Informal.Environment.State` with traversal information so node,
+   group, and author data do not drift between environment state and rendered
+   traversal stores
+3. define a shared status record derived from `Data.Node` plus external
+   declaration checks, and route graph, summary, and local block badges through
    it
+4. encode the intended ownership rules for `CodeRef.external`, especially the
+   difference between Blueprint-owned labels and Lean-owned declaration names
+5. decide whether richer group metadata belongs in the core data model, then
+   either port the local `group-metadata-rendering` work or retire it
+6. reject invalid nested and duplicate declarations before they mutate the
+   active environment stack
+7. keep imported duplicate collision checks for node labels, group labels, and
+   author ids covered by sibling-import and transitive-import tests
+8. revisit external declaration footer/status semantics once out-of-workspace
+   declarations are represented precisely enough to distinguish declaration
+   completeness from dependency completeness
 
-### Preview API Consolidation
+### Asset and Build Reliability
 
-Goal: keep `PreviewSource` as the only retrieval abstraction visible to callers.
+Goal: make generated browser assets rebuild predictably without relying on
+manual source touches or stale cached owner modules.
 
-Work:
+Current state:
 
-1. audit call sites for direct preview decoding
-2. replace ad hoc decoding with shared APIs
-3. keep traversal and widget adapters separate internally, but behind the same
-   interface
-4. consolidate widget preview cache (`elabStx`) and traversal preview cache
-   (`PreviewCache.Entry`) behind one phase-safe representation
-5. unify preview labels and titles behind one canonical API so graph, summary,
-   and other surfaces stop mixing resolved titles, raw labels, and local
-   fallbacks
-6. reduce duplicated preview-domain decode logic across renderers
-7. unify preview UI behavior across graph panels and summary hovers where that
-   can be done without overcoupling the renderers
-8. remove temporary runtime workarounds such as the graph preview handler
-   `setTimeout` fallback once the underlying lifecycle is verified stable
-9. evaluate a lighter browser preview-delivery path so clients do not always
-   fetch and decode the full shared preview manifest when they only need a
-   small number of entries
-
-### Validation Hardening
-
-Goal: expand the regression surface before deeper refactors.
+1. the harness refreshes embedded asset owner mtimes and rebuilds targeted owner
+   modules before reference and test blueprint generation
+2. regression tests cover the mtime refresh and targeted rebuild behavior
+3. direct `include_str` ownership still remains the underlying Lean/Lake
+   dependency model
 
 Work:
 
-1. add targeted regression coverage for graph previews, summary previews,
-   bibliography citations/backrefs, and widget statement preview rendering
-2. keep generating reference blueprint sites after boundary changes
-3. prefer behavior-preserving refactors until the regression surface is broader
+1. keep the harness owner-module refresh path covered while it remains the
+   practical release mechanism
+2. replace the mtime workaround with a durable generated-or-staged Lean
+   dependency edge for browser assets
+3. keep graph, summary, bibliography, block, and shared static-web assets under
+   one inventory so asset ownership is not rediscovered per feature
+4. add a build-level or generated-output check that fails when emitted browser
+   assets drift from their source files
+
+### Validation and Reference Catalogs
+
+Goal: protect behavior before refactors and keep reference output useful as a
+release signal.
+
+Work:
+
+1. keep targeted Lean tests for traversal indexes, preview schema, duplicate
+   imports, status semantics, and rendering helpers
+2. keep browser coverage for graph previews, summary previews, bibliography
+   citations/backrefs, widget statement previews, and shared-manifest failure
+   diagnostics
+3. keep reference blueprint generation and validation distinct from small
+   browser-regression fixtures
 4. add direct regression coverage for preview-cache keying and JSON roundtrips
+5. add low-cost Python coverage for harness manifest, path, and worktree logic
+   so routine harness changes do not require full example rebuilds
+6. add PR preview deployment that reuses the assembled reference `_site`
+   artifact from CI instead of rebuilding the sites in a separate preview-only
+   workflow
 
-### Harness and External Project Support
+### Template and Client Delivery
 
-Goal: keep the maintainer harness direct and repository-local while expanding it
-carefully beyond the current baseline external reference blueprints.
-
-Work:
-
-1. keep the current shell wrappers thin and ergonomic
-2. keep the Python harness as the single source of truth for orchestration,
-   path logic, and project catalog loading
-3. keep the project catalog explicit and small, with baseline external
-   reference blueprints plus opt-in ephemeral GitHub checkout coverage
-4. validate both root-checkout and linked-worktree flows end to end
-5. stabilize output-path conventions for generation, static checks, and browser
-   checks
-6. add low-cost Python unit coverage for harness manifest and path logic so
-   every harness change does not require a full example rebuild
-7. add the minimum path and dependency override surface needed for testing a
-   local `verso` checkout
-8. add the minimum project override surface needed for Blueprint projects that
-   live outside this repository
-9. upstream a Lake improvement so updating one overridden dependency does not
-   rewrite unrelated pinned transitive dependencies or require harness-side
-   manifest cleanup to keep `verso` and `subverso` aligned with tracked
-   reference manifests
-10. add PR preview deployment that reuses the assembled reference `_site`
-    artifact from CI instead of rebuilding the sites through a separate
-    preview-only workflow
-
-### Template Delivery and Client CI
-
-Goal: provide a user-facing starter that can build and deploy a Blueprint site
-to GitHub Pages, while keeping documentation and regression coverage anchored in
-this repository.
+Goal: give users a stable starter project and deployment path without making
+client repositories depend on maintainer-only harness commands.
 
 Work:
 
 1. keep a local in-repo template/example as the documentation-facing source of
    truth for project shape, authoring patterns, and generator wiring
-2. add a root-level `.github/workflows/` Pages workflow plus one local CI
-   script to the in-repo template so the user-facing contract is explicit and
-   testable
-3. add main-repository CI coverage that materializes the local template as a
-   fresh standalone repository and runs that template-owned CI script end to
-   end
-4. keep the maintainer harness out of the user-facing template CI contract; the
-   harness should validate or materialize templates, not be required by client
-   repositories
-5. evaluate whether to publish a separate external template repository as a
-   generated or synchronized output of the local template source of truth,
-   rather than maintaining two hand-edited templates
-6. avoid Git submodules for template delivery unless a concrete synchronization
-   problem remains unsolved by one-way export or sync automation
-7. evaluate a dedicated `verso-blueprint` GitHub Action for the stable
-   build-and-deploy path once the template workflow contract has settled
+2. land the planned smaller starter example and reusable template
+3. land `lake exe bp new` as the user-facing project creation command
+4. keep `lake exe blueprint-gen` as the documented generation interface for
+   existing projects
+5. add a template-owned GitHub Pages workflow and local CI script, then test the
+   template as a fresh standalone repository
+6. keep the maintainer harness out of the user-facing template CI contract
+7. evaluate a dedicated `verso-blueprint` GitHub Action after the template
+   workflow contract settles
 8. keep local smoke coverage and one real GitHub-hosted canary deployment
-   separate, so routine PR validation does not depend on cross-repository Pages
-   deployment
+   separate from routine PR validation
 
-## UI Follow-Ups
+### Harness and Release-Line Maintenance
 
-These are secondary to semantic consolidation, but still worthwhile:
+Goal: keep repository maintenance flows reproducible while avoiding public
+workflow details in user-facing docs.
 
-The default summary page now leads with overview, blockers, and next ready
-work. The next summary follow-ups are about separating audiences rather than
-adding more material to that default surface.
+Work:
+
+1. keep `branch-policy.json` as the source of truth for default-development and
+   backport behavior
+2. keep linked worktree metadata local under `.worktrees/`
+3. keep shell wrappers thin; keep Python harness modules as the source of truth
+   for orchestration, path logic, release checks, and project catalogs
+4. keep the project catalog explicit and small, with reference blueprints plus
+   opt-in ephemeral GitHub checkout coverage
+5. validate both root-checkout and linked-worktree flows end to end
+6. stabilize output-path conventions for generation, static checks, browser
+   checks, and published reference catalogs
+7. add the minimum local override surface needed to test a local `verso`
+   checkout or an external Blueprint project without hand-editing manifests
+8. retire local workaround branches promptly once their content is either
+   landed, deliberately ported, or recorded in this roadmap
+
+## Design Candidates
+
+These are useful ideas, but they should not displace the active workstreams
+above until the semantics are clearer.
 
 1. split `blueprint_summary` into a user-facing overview/work-queue page and a
-   separate maintainer-oriented audit/dashboard page
-2. keep the overview page focused on overall progress, current blockers, and
-   next ready work items
-3. move metadata audit, owner/tag rollups, dependency insights, and
-   debt/structure analysis to the maintainer page so the default summary stays
-   small on large projects
-4. further reduce repeated list content after that split, so one primary list
-   answers each question by default
-5. use compact status chips where possible
-6. consider a compact-mode toggle once the semantics are stable
-7. revisit the graph page with a CSS-first layout architecture so canvas sizing
-   is less runtime-driven
-8. remove the graph-local TOC hide toggle and upstream any needed page-shell
-   TOC/layout behavior to `verso` instead of carrying Blueprint-specific CSS
-   and runtime hooks for it
-
-## Open Bugs
-
-No currently pinned graph-runtime bugs. Keep
-`tests/browser/test_graph_layout_runtime.py` visible as the regression surface
-for graph page behavior.
+   maintainer-oriented audit/dashboard page
+2. keep the default summary focused on progress, blockers, and next ready work;
+   move owner/tag rollups, dependency insights, and metadata audit to the
+   maintainer view
+3. use compact status chips after the status source of truth is centralized
+4. revisit graph layout with a CSS-first page architecture so canvas sizing is
+   less runtime-driven
+5. improve the default font family used by generated Blueprint output
+6. add Blueprint-specific search affordances only if Verso's generated search
+   cannot cover the needed workflow
+7. support per-chapter commands if real projects need chapter-local generated
+   pages or diagnostics
+8. attach source metadata to nodes where it improves navigation or maintenance
 
 ## Risks to Watch
 
@@ -236,6 +195,6 @@ for graph page behavior.
 2. preview regressions that compile-only checks will not catch
 3. imported duplicate collisions for labels, groups, or authors
 4. workflow drift across long-lived worktrees and branches
-5. tracked local-worktree bookkeeping leaking into the public repository surface
-6. drift between the local documented template, any exported external template,
-   and the eventual GitHub Action contract
+5. tracked local-worktree bookkeeping leaking into public repository files
+6. drift between the documented template, any exported external template, and
+   the eventual GitHub Action contract
