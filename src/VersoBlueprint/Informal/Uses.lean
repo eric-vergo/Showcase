@@ -117,19 +117,26 @@ private def Data.Node.toBlockInfo (node : Data.Node) (label : Data.Label) : Bloc
     prUrl := node.prUrl
   }
 
-private def usesImpl : RoleExpanderOf Config
+private def nodeRefImpl (registerDependency : Bool) : RoleExpanderOf Config
   | cfg, contents => do
     let contents ← contents.mapM elabInline
     let label := cfg.label
     let node ← Environment.getNode? label
-    let useRef ← getRef
-    Environment.addDep useRef label
+    if registerDependency then
+      let useRef ← getRef
+      Environment.addDep useRef label
     let data : InlineData := { label, block := node.map (fun n => n.toBlockInfo label) }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
 
 @[role]
 def uses : RoleExpanderOf Config
   | cfg, contents => do
-    Profile.withDocElab "role" "uses" <| usesImpl cfg contents
+    Profile.withDocElab "role" "uses" <| nodeRefImpl true cfg contents
+
+/-- Reference a Blueprint node without registering a dependency edge. -/
+@[role]
+def bpref : RoleExpanderOf Config
+  | cfg, contents => do
+    Profile.withDocElab "role" "bpref" <| nodeRefImpl false cfg contents
 
 end Informal

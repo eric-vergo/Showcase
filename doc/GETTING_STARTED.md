@@ -31,7 +31,8 @@ Examples:
 Those labels are the key to the whole system. They are used to:
 
 - identify nodes in the summary and graph views
-- connect `{uses "addition_spec"}[]` references
+- connect dependency references with `{uses "addition_spec"}[]`
+- point at a node without adding a dependency edge with `{bpref "addition_spec"}[]`
 - attach inline Lean code with a labeled `lean` code block
 - attach raw TeX source for porting with a `tex` code block
 - tag compiled declarations with `@[blueprint "label"]`
@@ -43,8 +44,13 @@ Unlike Lean code references, `{uses "addition_spec"}[]` can refer to a label
 before its final use sites are elaborated. Blueprint resolves those forward
 references when building the document.
 
-If the payload of `{uses "addition_spec"}[]` is empty, Blueprint can generate
-the visible text automatically, for example `Theorem N`.
+Use `uses` when the current Blueprint node mathematically depends on the target
+node. Use `bpref` for prose references that should render as Blueprint links but
+should not affect the graph or dependency summaries.
+
+If the payload of `{uses "addition_spec"}[]` or `{bpref "addition_spec"}[]` is
+empty, Blueprint can generate the visible text automatically, for example
+`Theorem N`.
 
 ## Start from the template
 
@@ -88,6 +94,7 @@ show the most important authoring patterns:
 - definition, theorem, and proof blocks
 - labels that identify nodes
 - a `uses` link to another Blueprint entry
+- a `bpref` link when prose should reference a node without adding a dependency
 - a local Lean code block
 - a statement linked to an existing Lean declaration
 - optional metadata such as `parent`, `owner`, `tags`, `effort`, and `priority`
