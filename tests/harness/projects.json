@@ -21,7 +21,29 @@
       "verso_ref": "v4.30.0",
       "rc": "4.30-rc2",
       "branch": "v4.30.0",
-      "deploy_pages": false
+      "deploy_pages": true
+    }
+  ],
+  "reference_blueprints": [
+    {
+      "blueprint": "algebraic-combinatorics",
+      "hash": "6506b992702a6e47a29d90d504f9e55eb65e13e9",
+      "toolchain": "v4.28.0"
+    },
+    {
+      "blueprint": "spherepackingblueprint",
+      "hash": "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184",
+      "toolchain": "v4.29.0"
+    },
+    {
+      "blueprint": "noperthedron",
+      "hash": "e1527f664e346038b9bbeb071c418a3a1c9eeed0",
+      "toolchain": "v4.30.0-rc2"
+    },
+    {
+      "blueprint": "verso-flt",
+      "hash": "d3538f905f659cc1a96f1947536d7be32e337891",
+      "toolchain": "v4.30.0-rc2"
     }
   ],
   "projects": [
@@ -80,7 +102,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "aa8a7538f7779fe5c3e37088e893665a66bdbf61"
+          "ref": "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184"
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],
@@ -120,7 +142,7 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "1fda7a4581e55dca27209f060a90179b0a1a2f32"
+          "ref": "6506b992702a6e47a29d90d504f9e55eb65e13e9"
         }
       ],
       "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],

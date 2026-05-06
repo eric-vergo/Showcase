@@ -42,10 +42,18 @@ class HarnessProjectTarget:
 
 
 @dataclass(frozen=True)
+class HarnessReferenceBlueprint:
+    blueprint: str
+    hash: str
+    toolchain: str
+
+
+@dataclass(frozen=True)
 class HarnessProjectCatalog:
     version: int
     release_targets: tuple[HarnessReleaseTarget, ...]
     projects: tuple["HarnessProject", ...]
+    reference_blueprints: tuple[HarnessReferenceBlueprint, ...] = ()
 
     def release_target(self, release_id: str) -> HarnessReleaseTarget | None:
         for target in self.release_targets:
@@ -141,7 +149,7 @@ def _optional_bool(data: dict, key: str, *, default: bool, context: str) -> bool
     return value
 
 
-def _load_release_targets(raw: dict, manifest_path: Path) -> tuple[HarnessReleaseTarget, ...]:
+def _load_release_targets(raw: dict, manifest_path: Path | str) -> tuple[HarnessReleaseTarget, ...]:
     entries = raw.get("release_targets")
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{manifest_path}: expected non-empty top-level `release_targets` list")
@@ -176,6 +184,30 @@ def _load_release_targets(raw: dict, manifest_path: Path) -> tuple[HarnessReleas
             )
         )
     return tuple(targets)
+
+
+def _load_reference_blueprints(raw: dict, manifest_path: Path | str) -> tuple[HarnessReferenceBlueprint, ...]:
+    entries = raw.get("reference_blueprints")
+    if entries is None:
+        return ()
+    if not isinstance(entries, list):
+        raise ValueError(f"{manifest_path}: expected top-level `reference_blueprints` list")
+
+    blueprints: list[HarnessReferenceBlueprint] = []
+    seen: set[tuple[str, str]] = set()
+    for index, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{manifest_path}: reference blueprint #{index} must be an object")
+        context = f"{manifest_path}: reference blueprint #{index}"
+        blueprint = _require_string(entry, "blueprint", context=context)
+        commit_hash = _require_string(entry, "hash", context=context)
+        toolchain = normalize_lean_release_ref(_require_string(entry, "toolchain", context=context))
+        key = (blueprint, toolchain)
+        if key in seen:
+            raise ValueError(f"{context}: duplicate reference blueprint `{blueprint}` for toolchain `{toolchain}`")
+        seen.add(key)
+        blueprints.append(HarnessReferenceBlueprint(blueprint=blueprint, hash=commit_hash, toolchain=toolchain))
+    return tuple(blueprints)
 
 
 def _load_project_targets(
@@ -215,11 +247,11 @@ def _load_project_targets(
     return tuple(targets)
 
 
-def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+def load_project_catalog_data(raw: dict, manifest_path: Path | str) -> HarnessProjectCatalog:
     if raw.get("version") != 2:
         raise ValueError(f"{manifest_path}: unsupported manifest version {raw.get('version')!r}")
     release_targets = _load_release_targets(raw, manifest_path)
+    reference_blueprints = _load_reference_blueprints(raw, manifest_path)
     release_ids = {target.release_id for target in release_targets}
 
     entries = raw.get("projects")
@@ -328,7 +360,48 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
             )
         )
 
-    return HarnessProjectCatalog(version=2, release_targets=release_targets, projects=tuple(projects))
+    project_by_id = {project.project_id: project for project in projects}
+    for blueprint in reference_blueprints:
+        project = project_by_id.get(blueprint.blueprint)
+        if project is None:
+            known = ", ".join(sorted(project_by_id))
+            raise ValueError(
+                f"{manifest_path}: reference blueprint `{blueprint.blueprint}` is not a known project; "
+                f"known projects: {known}"
+            )
+        if not project.git_checkout:
+            raise ValueError(f"{manifest_path}: reference blueprint `{blueprint.blueprint}` must be a git checkout project")
+        release = release_branch_from_lean_ref(blueprint.toolchain)
+        target = project.target_for_release(release)
+        if target is None:
+            raise ValueError(
+                f"{manifest_path}: reference blueprint `{blueprint.blueprint}` for toolchain "
+                f"`{blueprint.toolchain}` has no project target for release `{release}`"
+            )
+        if target.ref is not None and target.ref != blueprint.hash:
+            raise ValueError(
+                f"{manifest_path}: reference blueprint `{blueprint.blueprint}` hash `{blueprint.hash}` "
+                f"does not match target ref `{target.ref}` for release `{release}`"
+            )
+
+    return HarnessProjectCatalog(
+        version=2,
+        release_targets=release_targets,
+        projects=tuple(projects),
+        reference_blueprints=reference_blueprints,
+    )
+
+
+def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return load_project_catalog_data(raw, manifest_path)
+
+
+def load_project_catalog_text(text: str, manifest_path: Path | str) -> HarnessProjectCatalog:
+    raw = json.loads(text)
+    if not isinstance(raw, dict):
+        raise ValueError(f"{manifest_path}: expected JSON object")
+    return load_project_catalog_data(raw, manifest_path)
 
 
 def load_projects_manifest(manifest_path: Path) -> list[HarnessProject]:
@@ -350,6 +423,28 @@ def resolve_projects_for_release(
     selected_ids: list[str] | None,
 ) -> list[HarnessProject]:
     by_id = {project.project_id: project for project in catalog.projects}
+    release_target = catalog.release_target(release)
+    if catalog.reference_blueprints and release_target is not None and selected_ids is None:
+        matching = [
+            blueprint
+            for blueprint in catalog.reference_blueprints
+            if blueprint.toolchain == release_target.toolchain
+        ]
+        resolved_from_blueprints: list[HarnessProject] = []
+        for blueprint in matching:
+            project = by_id[blueprint.blueprint]
+            target = project.target_for_release(release)
+            if target is None:
+                raise ValueError(f"project `{project.project_id}` has no target for release `{release}`")
+            resolved_from_blueprints.append(
+                replace(
+                    project,
+                    ref=blueprint.hash,
+                    selected_release=release,
+                )
+            )
+        return resolved_from_blueprints
+
     if selected_ids is None:
         candidates = list(catalog.projects)
     else:
@@ -388,11 +483,12 @@ def reference_artifact_path(project: HarnessProject) -> str:
     return f"_out/reference-blueprints/{project.project_id}"
 
 
-def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dict[str, str]]]:
+def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dict[str, object]]]:
     return {
         "include": [
             {
                 "project_id": project.project_id,
+                "hash": project.ref,
                 "artifact_name": reference_artifact_name(project),
                 "artifact_path": reference_artifact_path(project),
             }
@@ -419,11 +515,20 @@ def deploy_project_artifact_path(project: HarnessProject) -> str:
     return f"_out/reference-blueprints/{project.selected_release}/{project.project_id}"
 
 
+def reference_blueprint_ids_for_toolchain(catalog: HarnessProjectCatalog, toolchain: str) -> list[str]:
+    normalized_toolchain = normalize_lean_release_ref(toolchain)
+    return [
+        blueprint.blueprint
+        for blueprint in catalog.reference_blueprints
+        if blueprint.toolchain == normalized_toolchain
+    ]
+
+
 def deploy_project_matrix(
     release_targets: tuple[HarnessReleaseTarget, ...],
     catalog: HarnessProjectCatalog,
-) -> dict[str, list[dict[str, str]]]:
-    include: list[dict[str, str]] = []
+) -> dict[str, list[dict[str, object]]]:
+    include: list[dict[str, object]] = []
     for target in release_targets:
         if not target.deploy_pages:
             continue
@@ -436,6 +541,7 @@ def deploy_project_matrix(
                     "verso_ref": target.verso_ref,
                     "branch": target.branch,
                     "project_id": project.project_id,
+                    "hash": project.ref,
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
                 }
