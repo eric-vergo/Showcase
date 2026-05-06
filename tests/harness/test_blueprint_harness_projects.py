@@ -123,10 +123,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             [(entry.blueprint, entry.hash, entry.toolchain) for entry in catalog.reference_blueprints],
             [
-                ("algebraic-combinatorics", "65cb99e4a6834b5bc078e64071e89551959ba0bc", "v4.28.0"),
-                ("spherepackingblueprint", "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184", "v4.29.0"),
-                ("noperthedron", "6a2f61d577c9d94789aa2082628fdde3a8b53efe", "v4.30.0-rc2"),
-                ("verso-flt", "35adfa446d82625986fd9cb0248530012e3daea1", "v4.30.0-rc2"),
+                ("algebraic-combinatorics", "5c43f61cc2843257ebe00171302aeced069b15cc", "v4.28.0"),
+                ("spherepackingblueprint", "f442422857652f0041e654fa3255b456eb8336db", "v4.29.0"),
+                ("noperthedron", "ef73cb5512f6698a100039ce1905ded25a63666a", "v4.30.0-rc2"),
+                ("verso-flt", "e2dd6abb63dc8646088ad5c699231f41c17e84c9", "v4.30.0-rc2"),
             ],
         )
         self.assertTrue(projects[1].git_checkout)
