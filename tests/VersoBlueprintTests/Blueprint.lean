@@ -14,6 +14,7 @@ import VersoBlueprintTests.BlueprintGraph
 import VersoBlueprintTests.BlueprintInformal
 import VersoBlueprintTests.BlueprintInlinePrecision
 import VersoBlueprintTests.BlueprintLinkHover
+import VersoBlueprintTests.BlueprintMainWrapper
 import VersoBlueprintTests.BlueprintMathLint
 import VersoBlueprintTests.BlueprintMetadataPanel
 import VersoBlueprintTests.BlueprintNumbering
