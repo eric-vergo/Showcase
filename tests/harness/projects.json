@@ -16,6 +16,18 @@
       "deploy_pages": true
     }
   ],
+  "reference_blueprints": [
+    {
+      "blueprint": "algebraic-combinatorics",
+      "hash": "6506b992702a6e47a29d90d504f9e55eb65e13e9",
+      "toolchain": "v4.28.0"
+    },
+    {
+      "blueprint": "spherepackingblueprint",
+      "hash": "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184",
+      "toolchain": "v4.29.0"
+    }
+  ],
   "projects": [
     {
       "id": "project-template",
@@ -64,8 +76,8 @@
       },
       "targets": [
         {
-          "release": "v4.28.0",
-          "ref": "4346c148b91c3a0d1060a0413176e8290a3e0839"
+          "release": "v4.29.0",
+          "ref": "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184"
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],

@@ -107,6 +107,50 @@ def write_reference_index(reference_root: Path, release_projects: dict[str | Non
     (reference_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
 
 
+def write_redirect_alias(alias_root: Path, target_href: str, *, label: str) -> None:
+    alias_root.mkdir(parents=True, exist_ok=True)
+    escaped_target = html.escape(target_href, quote=True)
+    escaped_label = html.escape(label)
+    body = [
+        "<!doctype html>",
+        "<html lang=\"en\">",
+        "<meta charset=\"utf-8\">",
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+        f"<meta http-equiv=\"refresh\" content=\"0; url={escaped_target}\">",
+        f"<link rel=\"canonical\" href=\"{escaped_target}\">",
+        f"<title>{escaped_label}</title>",
+        "<body>",
+        f"<p><a href=\"{escaped_target}\">Open {escaped_label}</a></p>",
+        "</body>",
+        "</html>",
+    ]
+    (alias_root / "index.html").write_text("\n".join(body) + "\n", encoding="utf-8")
+
+
+def write_unique_project_aliases(reference_root: Path, release_projects: dict[str | None, list[str]]) -> None:
+    if None in release_projects:
+        return
+
+    releases_by_project: dict[str, list[str]] = {}
+    for release, projects in release_projects.items():
+        assert release is not None
+        for project in projects:
+            releases_by_project.setdefault(project, []).append(release)
+
+    for project, releases in releases_by_project.items():
+        if len(releases) != 1:
+            continue
+        alias_root = reference_root / project
+        if alias_root.exists():
+            continue
+        release = releases[0]
+        write_redirect_alias(
+            alias_root,
+            f"../{release}/{project}/",
+            label=project,
+        )
+
+
 def copy_reference_sites(reference_root: Path, publish_reference_root: Path) -> dict[str | None, list[str]]:
     release_projects: dict[str | None, list[str]] = {}
     children = sorted(path for path in reference_root.iterdir() if path.is_dir())
@@ -151,6 +195,7 @@ def main() -> int:
 
     release_projects = copy_reference_sites(reference_root, publish_reference_root)
     write_reference_index(publish_reference_root, release_projects)
+    write_unique_project_aliases(publish_reference_root, release_projects)
 
     test_blueprints: list[str] = []
     for test_dir in sorted(path for path in test_root.iterdir() if path.is_dir()):
