@@ -27,22 +27,27 @@
   "reference_blueprints": [
     {
       "blueprint": "algebraic-combinatorics",
-      "hash": "5c43f61cc2843257ebe00171302aeced069b15cc",
+      "hash": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726",
       "toolchain": "v4.28.0"
     },
     {
       "blueprint": "spherepackingblueprint",
-      "hash": "f442422857652f0041e654fa3255b456eb8336db",
+      "hash": "5efe6e8414889b42329b659eb29de6e1f0641c8d",
       "toolchain": "v4.29.0"
     },
     {
       "blueprint": "noperthedron",
-      "hash": "ef73cb5512f6698a100039ce1905ded25a63666a",
+      "hash": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6",
       "toolchain": "v4.30.0-rc2"
     },
     {
       "blueprint": "verso-flt",
-      "hash": "e2dd6abb63dc8646088ad5c699231f41c17e84c9",
+      "hash": "abacaae392d78a655cf8ddfffa442313709784a2",
+      "toolchain": "v4.30.0-rc2"
+    },
+    {
+      "blueprint": "verso-carleson",
+      "hash": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b",
       "toolchain": "v4.30.0-rc2"
     }
   ],
@@ -84,7 +89,7 @@
         },
         {
           "release": "v4.30.0",
-          "ref": "ef73cb5512f6698a100039ce1905ded25a63666a"
+          "ref": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6"
         }
       ],
       "build_command": ["lake", "build", "Contents"],
@@ -102,7 +107,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "f442422857652f0041e654fa3255b456eb8336db"
+          "ref": "5efe6e8414889b42329b659eb29de6e1f0641c8d"
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],
@@ -124,11 +129,29 @@
         },
         {
           "release": "v4.30.0",
-          "ref": "e2dd6abb63dc8646088ad5c699231f41c17e84c9"
+          "ref": "abacaae392d78a655cf8ddfffa442313709784a2"
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
       "generate_command": ["lake", "env", "lean", "--run", "FLTBlueprintMain.lean", "--output", "{output_dir}"],
+      "site_subdir": "html-multi"
+    },
+    {
+      "id": "verso-carleson",
+      "description": "External Carleson blueprint integration layer with a Carleson submodule checkout.",
+      "source": {
+        "kind": "git_checkout",
+        "repository": "https://github.com/ejgallego/verso-carleson.git",
+        "project_root": "."
+      },
+      "targets": [
+        {
+          "release": "v4.30.0",
+          "ref": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b"
+        }
+      ],
+      "build_command": ["lake", "build", "CarlesonBlueprint"],
+      "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -142,7 +165,7 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "5c43f61cc2843257ebe00171302aeced069b15cc"
+          "ref": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726"
         }
       ],
       "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],

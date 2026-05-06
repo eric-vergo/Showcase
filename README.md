@@ -186,6 +186,8 @@ The repository also tracks larger reference blueprints.
   [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
   [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-flt/)
+- [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-carleson/)
 
 ## Rendered Test Blueprints
 

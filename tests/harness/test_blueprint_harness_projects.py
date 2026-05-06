@@ -100,7 +100,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         self.assertEqual(
             [project.project_id for project in projects],
-            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "algebraic-combinatorics"],
+            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "verso-carleson", "algebraic-combinatorics"],
         )
         self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0", "v4.30.0"])
         self.assertTrue(projects[0].in_repo_project)
@@ -123,10 +123,11 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             [(entry.blueprint, entry.hash, entry.toolchain) for entry in catalog.reference_blueprints],
             [
-                ("algebraic-combinatorics", "5c43f61cc2843257ebe00171302aeced069b15cc", "v4.28.0"),
-                ("spherepackingblueprint", "f442422857652f0041e654fa3255b456eb8336db", "v4.29.0"),
-                ("noperthedron", "ef73cb5512f6698a100039ce1905ded25a63666a", "v4.30.0-rc2"),
-                ("verso-flt", "e2dd6abb63dc8646088ad5c699231f41c17e84c9", "v4.30.0-rc2"),
+                ("algebraic-combinatorics", "6d4c38c71801f2dbd44cb11e84ee1a19ae964726", "v4.28.0"),
+                ("spherepackingblueprint", "5efe6e8414889b42329b659eb29de6e1f0641c8d", "v4.29.0"),
+                ("noperthedron", "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6", "v4.30.0-rc2"),
+                ("verso-flt", "abacaae392d78a655cf8ddfffa442313709784a2", "v4.30.0-rc2"),
+                ("verso-carleson", "4fc4d7be735816d14c8cf0a10ba630ad73ef857b", "v4.30.0-rc2"),
             ],
         )
         self.assertTrue(projects[1].git_checkout)
@@ -141,8 +142,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual([target.release for target in projects[3].targets], ["v4.29.0", "v4.30.0"])
-        self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
-        self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
+        self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
+        self.assertEqual([target.release for target in projects[4].targets], ["v4.30.0"])
+        self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
+        self.assertEqual(
+            projects[4].generate_command,
+            ("lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
+        )
+        self.assertEqual(projects[5].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
+        self.assertEqual([target.release for target in projects[5].targets], ["v4.28.0"])
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
