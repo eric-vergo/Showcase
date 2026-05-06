@@ -141,10 +141,29 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             release_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
             self.assertIn("reference-blueprints/v4.28.0/", release_index)
             self.assertIn("reference-blueprints/v4.29.0/", release_index)
+            self.assertFalse((output_root / "reference-blueprints" / "project-template").exists())
+
+            alias_index = (output_root / "reference-blueprints" / "noperthedron" / "index.html").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("../v4.29.0/noperthedron/", alias_index)
 
             landing_index = (output_root / "index.html").read_text(encoding="utf-8")
             self.assertIn("reference-blueprints/v4.28.0/", landing_index)
             self.assertIn("reference-blueprints/v4.29.0/", landing_index)
+
+    def test_readme_uses_release_namespaced_reference_links(self) -> None:
+        readme = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertNotIn("reference-blueprints/project-template/", readme)
+        self.assertNotIn("reference-blueprints/noperthedron/", readme)
+        self.assertNotIn("reference-blueprints/spherepackingblueprint/", readme)
+        self.assertNotIn("reference-blueprints/verso-flt/", readme)
+
+        self.assertIn("reference-blueprints/v4.28.0/algebraic-combinatorics/", readme)
+        self.assertIn("reference-blueprints/v4.29.0/spherepackingblueprint/", readme)
+        self.assertIn("reference-blueprints/v4.30.0/noperthedron/", readme)
+        self.assertIn("reference-blueprints/v4.30.0/verso-flt/", readme)
 
 
 if __name__ == "__main__":

@@ -590,8 +590,8 @@ template-owned CI path.
 pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
 - resolves the current branch's release target from `tests/harness/projects.json`
-- builds only the reference projects that declare compatibility with that
-  release target
+- filters the flat `reference_blueprints` list by that release target's
+  toolchain and builds only the matching reference blueprints
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
 - stages a branch-local site artifact under `_site/` only when the selected
@@ -604,13 +604,18 @@ pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 successful `reference-blueprints.yml` run on a release branch named like
 `v4.29.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with
-`deploy_pages: true`, rebuilds each deployable reference slice in isolation,
-and assembles one combined GitHub Pages artifact.
+`deploy_pages: true`, filters the flat `reference_blueprints` list by that
+release target's toolchain, rebuilds those selected blueprints in isolation,
+and assembles one combined GitHub Pages artifact. Each `reference_blueprints`
+entry is the simple published-reference tuple: `blueprint`, `hash`, and
+`toolchain`; the detailed `projects` entries only describe how to build the
+selected blueprint.
 
 At the moment that means:
 
-- `v4.29.0` deploys Pages for its selected reference targets
-- `v4.28.0` also deploys Pages for its selected reference targets
+- `v4.30.0` deploys Pages for `noperthedron` and `verso-flt`
+- `v4.29.0` deploys Pages for `spherepackingblueprint`
+- `v4.28.0` also deploys Pages for `algebraic-combinatorics`
 
 The branch-local site artifact produced by `reference-blueprints.yml` for one
 release includes:
@@ -626,7 +631,7 @@ The combined Pages artifact produced by `reference-blueprints-deploy.yml`
 includes:
 
 - `_site/index.html`
-- `_site/reference-blueprints/<release-id>/<project-id>/` for each deployable
+- `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release slices
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
@@ -649,8 +654,11 @@ The harness is now project-driven rather than hardcoded to one project.
 - the default catalog is declared in `tests/harness/projects.json`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
-- external entries should declare release-specific refs under `targets` plus
-  the build and generation commands needed after checkout
+- the flat top-level `reference_blueprints` list selects the release-facing
+  validation set with one `(blueprint, hash, toolchain)` entry per published
+  reference blueprint
+- external `projects` entries declare the repository plus the build and
+  generation commands needed after checkout
 - prefer a build command that targets only the Lean library or formalization
   artifacts needed by the document, followed by a `lake env lean --run ...`
   generation command; do not build the generator executable unless that native
@@ -668,21 +676,32 @@ Minimal external catalog entry shape:
 
 ```json
 {
-  "id": "some-user-project",
-  "source": {
-    "kind": "git_checkout",
-    "repository": "https://github.com/org/some-user-project.git",
-    "project_root": "."
-  },
-  "targets": [
+  "reference_blueprints": [
     {
-      "release": "v4.29.0",
-      "ref": "0123456789abcdef0123456789abcdef01234567"
+      "blueprint": "some-user-project",
+      "hash": "0123456789abcdef0123456789abcdef01234567",
+      "toolchain": "v4.29.0"
     }
   ],
-  "build_command": ["lake", "build", "SomeUserProject"],
-  "generate_command": ["lake", "env", "lean", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
-  "site_subdir": "html-multi"
+  "projects": [
+    {
+      "id": "some-user-project",
+      "source": {
+        "kind": "git_checkout",
+        "repository": "https://github.com/org/some-user-project.git",
+        "project_root": "."
+      },
+      "targets": [
+        {
+          "release": "v4.29.0",
+          "ref": "0123456789abcdef0123456789abcdef01234567"
+        }
+      ],
+      "build_command": ["lake", "build", "SomeUserProject"],
+      "generate_command": ["lake", "env", "lean", "--run", "SomeUserProjectMain.lean", "--output", "{output_dir}"],
+      "site_subdir": "html-multi"
+    }
+  ]
 }
 ```
 
