@@ -9,6 +9,7 @@ import VersoManual.Bibliography
 
 namespace Verso.VersoBlueprintTests.BlueprintLinkHover
 
+open Lean
 open Verso
 open Verso.Genre.Manual
 open Informal
@@ -55,6 +56,17 @@ Using {uses "lem:hover.base"}[] and again {uses "lem:hover.base"}[].
 :::
 :::::::
 
+#docs (Genre.Manual) hoverBprefDoc "Hover Bpref Doc" :=
+:::::::
+:::lemma_ "lem:hover.bpref.target"
+Target lemma for reference-only links.
+:::
+
+:::lemma_ "lem:hover.bpref.source"
+Mention {bpref "lem:hover.bpref.target"}[] without declaring a dependency.
+:::
+:::::::
+
 #docs (Genre.Manual) hoverCiteOnlyDoc "Hover Cite Only Doc" :=
 :::::::
 Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite twice
@@ -90,6 +102,30 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
           "data-bp-preview-key=\"«lem:hover.base»--statement\"" >= 2 &&
       countSubstr out
           "data-bp-preview-fallback-label=\"«lem:hover.base»\"" >= 2 &&
+      !hasSubstr out "class=\"bp_inline_preview_tpl\""
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let state := Informal.Environment.informalExt.getState (← getEnv)
+    match state.data.get? (Name.mkSimple "lem:hover.bpref.source") with
+    | some node =>
+      pure <| node.statement.map (·.deps.isEmpty) |>.getD false
+    | none => pure false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let out ← renderManualDocHtmlString manualImpls hoverBprefDoc
+    pure (
+      countSubstr out "class=\"bp_inline_preview_ref\"" >= 1 &&
+      countSubstr out
+          "data-bp-preview-key=\"«lem:hover.bpref.target»--statement\"" >= 1 &&
+      countSubstr out
+          "data-bp-preview-fallback-label=\"«lem:hover.bpref.target»\"" >= 1 &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\""
     )
 
