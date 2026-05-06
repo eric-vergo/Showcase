@@ -14,11 +14,13 @@ from scripts.blueprint_harness_projects import (
     IN_REPO_PROJECT_SOURCE_KIND,
     default_project_manifest,
     load_project_catalog,
+    load_project_catalog_text,
     load_projects_manifest,
     reference_build_matrix,
     resolve_projects_for_release,
     resolve_release_target,
 )
+from scripts.emit_reference_deploy_matrix import deploy_matrix_from_release_catalogs
 from scripts.blueprint_harness_references import (
     OFFICIAL_BLUEPRINT_REQUIRE,
     bootstrap_reference_checkout,
@@ -70,12 +72,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         expected_projects: list[str] = []
         expected_refs: dict[str, str | None] = {}
-        for project in catalog.projects:
-            target = next((target for target in project.targets if target.release == release.release_id), None)
-            if target is None:
-                continue
-            expected_projects.append(project.project_id)
-            expected_refs[project.project_id] = target.ref
+        if catalog.reference_blueprints:
+            for blueprint in catalog.reference_blueprints:
+                if blueprint.toolchain != release.toolchain:
+                    continue
+                expected_projects.append(blueprint.blueprint)
+                expected_refs[blueprint.blueprint] = blueprint.hash
+        else:
+            for project in catalog.projects:
+                target = next((target for target in project.targets if target.release == release.release_id), None)
+                if target is None:
+                    continue
+                expected_projects.append(project.project_id)
+                expected_refs[project.project_id] = target.ref
 
         self.assertEqual([project.project_id for project in projects], expected_projects)
         for project in projects:
@@ -103,6 +112,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
         self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0"])
+        self.assertEqual(
+            [(entry.blueprint, entry.hash, entry.toolchain) for entry in catalog.reference_blueprints],
+            [
+                ("algebraic-combinatorics", "6506b992702a6e47a29d90d504f9e55eb65e13e9", "v4.28.0"),
+                ("spherepackingblueprint", "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184", "v4.29.0"),
+            ],
+        )
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0"])
@@ -150,6 +166,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         "verso_ref": release.verso_ref,
                         "branch": release.branch,
                         "project_id": project.project_id,
+                        "hash": project.ref,
                         "artifact_name": f"reference-blueprints-release-{release.release_id}__project__{project.project_id}",
                         "artifact_path": f"_out/reference-blueprints/{release.release_id}/{project.project_id}",
                     }
@@ -158,6 +175,201 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(
             matrix,
             {"include": expected_entries},
+        )
+
+    def test_deploy_matrix_uses_controller_reference_blueprints_with_release_branch_catalogs(self) -> None:
+        controller_catalog = load_project_catalog_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "release_targets": [
+                        {
+                            "id": "v4.28.0",
+                            "toolchain": "v4.28.0",
+                            "verso_ref": "v4.28.0",
+                            "branch": "v4.28.0",
+                            "deploy_pages": True,
+                        },
+                        {
+                            "id": "v4.29.0",
+                            "toolchain": "v4.29.0",
+                            "verso_ref": "v4.29.0",
+                            "branch": "v4.29.0",
+                            "deploy_pages": True,
+                        },
+                    ],
+                    "reference_blueprints": [
+                        {
+                            "blueprint": "old-release-project",
+                            "hash": "old-controller-ref",
+                            "toolchain": "v4.28.0",
+                        },
+                        {
+                            "blueprint": "new-release-project",
+                            "hash": "new-controller-ref",
+                            "toolchain": "v4.29.0",
+                        },
+                        {
+                            "blueprint": "new-release-second-project",
+                            "hash": "new-second-controller-ref",
+                            "toolchain": "v4.29.0",
+                        },
+                    ],
+                    "projects": [
+                        {
+                            "id": "old-release-project",
+                            "source": {
+                                "kind": "git_checkout",
+                                "repository": "https://example.com/old-release-project.git",
+                                "project_root": "old-controller",
+                            },
+                            "targets": [{"release": "v4.28.0", "ref": "old-controller-ref"}],
+                            "build_command": ["lake", "build"],
+                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                        },
+                        {
+                            "id": "new-release-older-project",
+                            "source": {
+                                "kind": "git_checkout",
+                                "repository": "https://example.com/new-release-older-project.git",
+                                "project_root": "new-controller-older",
+                            },
+                            "targets": [{"release": "v4.29.0", "ref": "new-older-controller-ref"}],
+                            "build_command": ["lake", "build"],
+                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                        },
+                        {
+                            "id": "new-release-project",
+                            "source": {
+                                "kind": "git_checkout",
+                                "repository": "https://example.com/new-release-project.git",
+                                "project_root": "new-controller",
+                            },
+                            "targets": [{"release": "v4.29.0", "ref": "new-controller-ref"}],
+                            "build_command": ["lake", "build"],
+                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                        },
+                        {
+                            "id": "new-release-second-project",
+                            "source": {
+                                "kind": "git_checkout",
+                                "repository": "https://example.com/new-release-second-project.git",
+                                "project_root": "new-controller-second",
+                            },
+                            "targets": [{"release": "v4.29.0", "ref": "new-second-controller-ref"}],
+                            "build_command": ["lake", "build"],
+                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                        }
+                    ],
+                }
+            ),
+            "controller-projects.json",
+        )
+        release_catalogs = {
+            "v4.28.0": load_project_catalog_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "release_targets": [
+                            {
+                                "id": "v4.28.0",
+                                "toolchain": "v4.28.0",
+                                "verso_ref": "v4.28.0",
+                                "branch": "v4.28.0",
+                                "deploy_pages": True,
+                            }
+                        ],
+                        "projects": [
+                            {
+                                "id": "old-release-older-project",
+                                "source": {
+                                    "kind": IN_REPO_PROJECT_SOURCE_KIND,
+                                    "project_root": "old-older",
+                                },
+                                "targets": [{"release": "v4.28.0"}],
+                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                            },
+                            {
+                                "id": "old-release-project",
+                                "source": {
+                                    "kind": "git_checkout",
+                                    "repository": "https://example.com/old-release-project.git",
+                                    "project_root": "old",
+                                },
+                                "targets": [{"release": "v4.28.0", "ref": "old-controller-ref"}],
+                                "build_command": ["lake", "build"],
+                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                            }
+                        ],
+                    }
+                ),
+                "v4.28.0:projects.json",
+            ),
+            "v4.29.0": load_project_catalog_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "release_targets": [
+                            {
+                                "id": "v4.29.0",
+                                "toolchain": "v4.29.0",
+                                "verso_ref": "v4.29.0",
+                                "branch": "v4.29.0",
+                                "deploy_pages": True,
+                            }
+                        ],
+                        "projects": [
+                            {
+                                "id": "new-release-older-project",
+                                "source": {
+                                    "kind": IN_REPO_PROJECT_SOURCE_KIND,
+                                    "project_root": "new-older",
+                                },
+                                "targets": [{"release": "v4.29.0"}],
+                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                            },
+                            {
+                                "id": "new-release-project",
+                                "source": {
+                                    "kind": "git_checkout",
+                                    "repository": "https://example.com/new-release-project.git",
+                                    "project_root": "new",
+                                },
+                                "targets": [{"release": "v4.29.0", "ref": "new-controller-ref"}],
+                                "build_command": ["lake", "build"],
+                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                            },
+                            {
+                                "id": "new-release-second-project",
+                                "source": {
+                                    "kind": "git_checkout",
+                                    "repository": "https://example.com/new-release-second-project.git",
+                                    "project_root": "new-second",
+                                },
+                                "targets": [{"release": "v4.29.0", "ref": "new-second-controller-ref"}],
+                                "build_command": ["lake", "build"],
+                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                            }
+                        ],
+                    }
+                ),
+                "v4.29.0:projects.json",
+            ),
+        }
+
+        matrix = deploy_matrix_from_release_catalogs(
+            controller_catalog,
+            controller_catalog.release_targets,
+            lambda target: release_catalogs[target.release_id],
+        )
+
+        self.assertEqual(
+            [(entry["release_id"], entry["project_id"]) for entry in matrix["include"]],
+            [
+                ("v4.28.0", "old-release-project"),
+                ("v4.29.0", "new-release-project"),
+                ("v4.29.0", "new-release-second-project"),
+            ],
         )
 
     def test_git_checkout_project_is_supported(self) -> None:

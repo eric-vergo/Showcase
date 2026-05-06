@@ -34,9 +34,8 @@ Today a Blueprint project usually owns three things:
 `verso-blueprint` provides the Blueprint directives, rendering commands, preview
 runtime, and support library code. The starter layout in
 [project_template/](./project_template/) shows the recommended shape.
-If you want to inspect that starter as a generated site before copying it, see
-the [rendered project template](https://leanprover.github.io/verso-blueprint/reference-blueprints/project-template/).
-For the broader rendered artifact index, including local test fixtures, see the
+For the broader rendered artifact index, including published reference
+blueprints and local test fixtures, see the
 [published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
 
 ## Core Features
@@ -178,14 +177,15 @@ you want to enable it.
 
 The repository also tracks larger reference blueprints.
 
-- [project_template/](./project_template/),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/project-template/)
-- [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/noperthedron/)
+- [project_template/](./project_template/), the in-repo starter template
+- [`ejgallego/verso-algebraic-combinatorics`](https://github.com/ejgallego/verso-algebraic-combinatorics),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.28.0/algebraic-combinatorics/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/spherepackingblueprint/)
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.29.0/spherepackingblueprint/)
+- [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/noperthedron/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/verso-flt/)
+  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-flt/)
 
 ## Rendered Test Blueprints
 
