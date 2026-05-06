@@ -25,8 +25,82 @@ open Lean Elab Command Term Meta
 open Verso Doc
 open Verso.Genre Manual
 
+private def buildMetadataCss : String := r##"
+.bp_build_metadata {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem 0.75rem;
+  margin: 0.45rem 0 1.1rem;
+  color: var(--bp-color-text-muted, #475569);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.bp_build_metadata_item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.bp_build_metadata_label {
+  color: var(--bp-color-text-subtle, #475569);
+  font-weight: 600;
+}
+
+.bp_build_metadata_link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.12em;
+}
+
+.bp_build_metadata_link:hover {
+  text-decoration-style: solid;
+}
+
+.bp_build_metadata_commit {
+  padding: 0.02rem 0.22rem;
+  border: 1px solid var(--bp-color-border-soft, #e2e8f0);
+  border-radius: 0.25rem;
+  background: var(--bp-color-surface-muted, #f8fafc);
+  color: var(--bp-color-text-strong, #0f172a);
+  font-size: 0.86em;
+}
+
+.bp_build_metadata_commit_link {
+  text-decoration: none;
+}
+
+.bp_build_metadata_commit_link:hover .bp_build_metadata_commit {
+  border-color: var(--bp-color-link, #2563eb);
+}
+
+.bp_build_metadata_subject {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .bp_build_metadata {
+    justify-content: flex-start;
+  }
+}
+"##
+
+def buildMetadataHtmlAssets : HtmlAssets :=
+  { extraCss := [buildMetadataCss] }
+
 def blueprintHtmlAssets : HtmlAssets :=
-  Verso.Genre.Manual.highlightAssets
+  Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets
+
+def withBuildMetadataAssets (config : RenderConfig := {}) : RenderConfig :=
+  let htmlConfig := config.toHtmlConfig
+  let htmlAssets := htmlConfig.toHtmlAssets.combine buildMetadataHtmlAssets
+  { config with
+    toHtmlConfig := { htmlConfig with toHtmlAssets := htmlAssets }
+  }
 
 def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
@@ -34,6 +108,388 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
   { config with
     toHtmlConfig := { htmlConfig with toHtmlAssets := htmlAssets }
   }
+
+structure GitCommitMetadata where
+  commit : String
+  subject : String
+  repositoryUrl : Option String := none
+  commitUrl : Option String := none
+deriving Inhabited, Repr
+
+structure PackageMetadata where
+  version : String
+  repositoryUrl : Option String := none
+  commitUrl : Option String := none
+deriving Inhabited, Repr
+
+structure BuildMetadata where
+  compiledAt : String
+  commit : String
+  subject : String
+  projectRepositoryUrl : Option String := none
+  projectCommitUrl : Option String := none
+  leanToolchain : String
+  blueprintVersion : String
+  blueprintRepositoryUrl : Option String := none
+  blueprintCommitUrl : Option String := none
+  mathlibVersion : Option String := none
+  mathlibRepositoryUrl : Option String := none
+  mathlibCommitUrl : Option String := none
+  upstreamBlueprint : Option GitCommitMetadata := none
+deriving Inhabited, Repr
+
+private def unknownMetadataValue : String := "unknown"
+
+private def outputDirNameForMode : Mode → String
+  | .single => "html-single"
+  | .multi => "html-multi"
+
+private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
+  cfg.destination / outputDirNameForMode mode
+
+private def runTrimmedCommand? (cmd : String) (args : Array String) : IO (Option String) := do
+  try
+    let out ← IO.Process.output { cmd, args }
+    if out.exitCode == 0 then
+      let text := out.stdout.trimAscii.toString
+      if text.isEmpty then
+        pure none
+      else
+        pure (some text)
+    else
+      pure none
+  catch _ =>
+    pure none
+
+private def readTrimmedFile? (path : System.FilePath) : IO (Option String) := do
+  try
+    unless ← path.pathExists do
+      return none
+    let text := (← IO.FS.readFile path).trimAscii.toString
+    if text.isEmpty then
+      pure none
+    else
+      pure (some text)
+  catch _ =>
+    pure none
+
+private def gitVersionAt? (dir : System.FilePath) : IO (Option String) :=
+  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "--short", "HEAD"]
+
+private def gitFullVersionAt? (dir : System.FilePath) : IO (Option String) :=
+  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "HEAD"]
+
+private def gitSubjectAt? (dir : System.FilePath) : IO (Option String) :=
+  runTrimmedCommand? "git" #["-C", dir.toString, "log", "-1", "--pretty=%s"]
+
+private def gitToplevelAt? (dir : System.FilePath) : IO (Option String) :=
+  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "--show-toplevel"]
+
+private def stripGitSuffix (url : String) : String :=
+  if url.endsWith ".git" then
+    match url.splitOn ".git" with
+    | stem :: _ => stem
+    | [] => url
+  else
+    url
+
+private def githubRepositoryUrl? (url : String) : Option String :=
+  let url := stripGitSuffix url.trimAscii.toString
+  if url.startsWith "https://github.com/" then
+    some url
+  else if url.startsWith "http://github.com/" then
+    some <| "https://github.com/" ++ (url.drop "http://github.com/".length).toString
+  else if url.startsWith "git@github.com:" then
+    some <| "https://github.com/" ++ (url.drop "git@github.com:".length).toString
+  else if url.startsWith "ssh://git@github.com/" then
+    some <| "https://github.com/" ++ (url.drop "ssh://git@github.com/".length).toString
+  else
+    none
+
+private def gitRepositoryUrlAt? (dir : System.FilePath) : IO (Option String) := do
+  match ← runTrimmedCommand? "git" #["-C", dir.toString, "remote", "get-url", "origin"] with
+  | some url => pure <| githubRepositoryUrl? url
+  | none => pure none
+
+private def gitCommitUrl? (repositoryUrl? commit? : Option String) : Option String :=
+  match repositoryUrl?, commit? with
+  | some repositoryUrl, some commit => some s!"{repositoryUrl}/commit/{commit}"
+  | _, _ => none
+
+private def gitCommitMetadataAt? (dir : System.FilePath) : IO (Option GitCommitMetadata) := do
+  let some commit ← gitVersionAt? dir
+    | return none
+  let subject ← gitSubjectAt? dir
+  let repositoryUrl ← gitRepositoryUrlAt? dir
+  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? dir)
+  pure <| some {
+    commit
+    subject := subject.getD unknownMetadataValue
+    repositoryUrl
+    commitUrl
+  }
+
+private def readLeanToolchain : IO String := do
+  let cwd ← IO.currentDir
+  match ← readTrimmedFile? (cwd / "lean-toolchain") with
+  | some toolchain => pure toolchain
+  | none =>
+      pure <| (← runTrimmedCommand? "lean" #["--version"]).getD unknownMetadataValue
+
+private def readLakeManifestJson? : IO (Option Json) := do
+  let cwd ← IO.currentDir
+  try
+    unless ← (cwd / "lake-manifest.json").pathExists do
+      return none
+    match Json.parse (← IO.FS.readFile (cwd / "lake-manifest.json")) with
+    | .ok json => pure (some json)
+    | .error _ => pure none
+  catch _ =>
+    pure none
+
+private def jsonStringField? (json : Json) (field : String) : Option String :=
+  match json.getObjValAs? String field with
+  | .ok value => some value
+  | .error _ => none
+
+private def manifestPackages? (json : Json) : Option (Array Json) :=
+  match json.getObjVal? "packages" with
+  | .ok (.arr packages) => some packages
+  | _ => none
+
+private def manifestPackageByName? (manifest : Json) (names : Array String) : Option Json := do
+  let packages ← manifestPackages? manifest
+  packages.find? fun pkg =>
+    match jsonStringField? pkg "name" with
+    | some name => names.any (· == name)
+    | none => false
+
+private def shortRev (rev : String) : String :=
+  if rev.length <= 12 then rev else (rev.take 12).copy
+
+private def versionFromManifestPackage? (pkg : Json) : Option String :=
+  match jsonStringField? pkg "rev" with
+  | some rev =>
+      let rev := shortRev rev
+      match jsonStringField? pkg "inputRev" with
+      | some inputRev =>
+          if inputRev == rev then
+            some rev
+          else
+            some s!"{inputRev}@{rev}"
+      | none => some rev
+  | none => none
+
+private def packageMetadataFromPathPackage? (pkg : Json) : IO (Option PackageMetadata) := do
+  let some dir := jsonStringField? pkg "dir"
+    | return none
+  let cwd ← IO.currentDir
+  let packageDir := (cwd / dir).normalize
+  let some version ← gitVersionAt? packageDir
+    | return none
+  let repositoryUrl ← gitRepositoryUrlAt? packageDir
+  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? packageDir)
+  pure <| some { version, repositoryUrl, commitUrl }
+
+private def packageMetadataFromGitPackage? (pkg : Json) : Option PackageMetadata := do
+  let version ← versionFromManifestPackage? pkg
+  let repositoryUrl :=
+    match jsonStringField? pkg "url" with
+    | some url => githubRepositoryUrl? url
+    | none => none
+  let commitUrl := gitCommitUrl? repositoryUrl (jsonStringField? pkg "rev")
+  some { version, repositoryUrl, commitUrl }
+
+private def packageMetadata? (manifest : Json) (names : Array String) : IO (Option PackageMetadata) := do
+  let some pkg := manifestPackageByName? manifest names
+    | return none
+  match packageMetadataFromGitPackage? pkg with
+  | some metadata => pure (some metadata)
+  | none => packageMetadataFromPathPackage? pkg
+
+private def gitPackageMetadataAt (dir : System.FilePath) : IO PackageMetadata := do
+  let version ← gitVersionAt? dir
+  let repositoryUrl ← gitRepositoryUrlAt? dir
+  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? dir)
+  pure {
+    version := version.getD unknownMetadataValue
+    repositoryUrl
+    commitUrl
+  }
+
+private def readBlueprintPackage (manifest? : Option Json) : IO PackageMetadata := do
+  match manifest? with
+  | some manifest =>
+      match ← packageMetadata? manifest #["VersoBlueprint", "verso-blueprint"] with
+      | some metadata => pure metadata
+      | none => gitPackageMetadataAt (← IO.currentDir)
+  | none => gitPackageMetadataAt (← IO.currentDir)
+
+private def readMathlibPackage? (manifest? : Option Json) : IO (Option PackageMetadata) := do
+  match manifest? with
+  | some manifest => packageMetadata? manifest #["mathlib", "Mathlib"]
+  | none => pure none
+
+private def tomlQuotedValue? (line key : String) : Option String :=
+  let line := line.trimAscii.toString
+  match line.splitOn "=" with
+  | lhs :: rhsParts =>
+      if lhs.trimAscii.toString != key then
+        none
+      else
+        let rhs := (String.intercalate "=" rhsParts).trimAscii.toString
+        match rhs.splitOn "\"" with
+        | "" :: value :: _ => some value
+        | _ => none
+  | _ => none
+
+private def firstTomlQuotedValue? (lines : List String) (key : String) : Option String :=
+  match lines with
+  | [] => none
+  | line :: lines =>
+      match tomlQuotedValue? line key with
+      | some value => some value
+      | none => firstTomlQuotedValue? lines key
+
+private def readHarnessFormalizationPath? : IO (Option String) := do
+  let cwd ← IO.currentDir
+  match ← readTrimmedFile? (cwd / "verso-harness.toml") with
+  | some text => pure <| firstTomlQuotedValue? (text.splitOn "\n") "formalization_path"
+  | none => pure none
+
+private def readUpstreamBlueprint? : IO (Option GitCommitMetadata) := do
+  let cwd ← IO.currentDir
+  let some upstreamPath ← readHarnessFormalizationPath?
+    | return none
+  let upstreamDir := (cwd / upstreamPath).normalize
+  unless ← upstreamDir.pathExists do
+    return none
+  match (← gitToplevelAt? cwd), (← gitToplevelAt? upstreamDir) with
+  | some projectRoot, some upstreamRoot =>
+      if projectRoot == upstreamRoot then
+        return none
+  | _, _ => pure ()
+  gitCommitMetadataAt? upstreamDir
+
+def readBuildMetadata : IO BuildMetadata := do
+  let cwd ← IO.currentDir
+  let manifest? ← readLakeManifestJson?
+  let compiledAt ← runTrimmedCommand? "date" #["-u", "+%Y-%m-%dT%H:%M:%SZ"]
+  let commit ← runTrimmedCommand? "git" #["rev-parse", "--short", "HEAD"]
+  let subject ← runTrimmedCommand? "git" #["log", "-1", "--pretty=%s"]
+  let projectRepositoryUrl ← gitRepositoryUrlAt? cwd
+  let projectCommitUrl := gitCommitUrl? projectRepositoryUrl (← gitFullVersionAt? cwd)
+  let leanToolchain ← readLeanToolchain
+  let blueprintPackage ← readBlueprintPackage manifest?
+  let mathlibPackage? ← readMathlibPackage? manifest?
+  let upstreamBlueprint ← readUpstreamBlueprint?
+  pure {
+    compiledAt := compiledAt.getD unknownMetadataValue
+    commit := commit.getD unknownMetadataValue
+    subject := subject.getD unknownMetadataValue
+    projectRepositoryUrl
+    projectCommitUrl
+    leanToolchain
+    blueprintVersion := blueprintPackage.version
+    blueprintRepositoryUrl := blueprintPackage.repositoryUrl
+    blueprintCommitUrl := blueprintPackage.commitUrl
+    mathlibVersion := mathlibPackage?.map (·.version)
+    mathlibRepositoryUrl := mathlibPackage?.bind (·.repositoryUrl)
+    mathlibCommitUrl := mathlibPackage?.bind (·.commitUrl)
+    upstreamBlueprint
+  }
+
+private def escapedHtmlText (text : String) : Output.Html :=
+  Output.Html.text false <|
+    ((text.replace "&" "&amp;").replace "<" "&lt;").replace ">" "&gt;"
+
+private def buildMetadataLabelHtml (label : String) (href? : Option String) : Output.Html :=
+  match href? with
+  | some href =>
+      Output.Html.tag "a"
+        #[("class", "bp_build_metadata_label bp_build_metadata_link"), ("href", href)]
+        (escapedHtmlText label)
+  | none =>
+      Output.Html.tag "span" #[("class", "bp_build_metadata_label")] (escapedHtmlText label)
+
+private def buildMetadataCodeHtml (value : String) (href? : Option String) : Output.Html :=
+  let code := Output.Html.tag "code" #[("class", "bp_build_metadata_commit")] (escapedHtmlText value)
+  match href? with
+  | some href =>
+      Output.Html.tag "a" #[("class", "bp_build_metadata_commit_link"), ("href", href)] code
+  | none => code
+
+def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
+  open Verso.Output.Html in
+  {{
+    <div class="bp_build_metadata" aria-label="Build metadata">
+      <span class="bp_build_metadata_item">
+        <span class="bp_build_metadata_label">"Compiled"</span>
+        <span class="bp_build_metadata_value">{{escapedHtmlText metadata.compiledAt}}</span>
+      </span>
+      <span class="bp_build_metadata_item">
+        {{buildMetadataLabelHtml "Project" metadata.projectRepositoryUrl}}
+        {{buildMetadataCodeHtml metadata.commit metadata.projectCommitUrl}}
+        <span class="bp_build_metadata_subject">{{escapedHtmlText metadata.subject}}</span>
+      </span>
+      <span class="bp_build_metadata_item">
+        <span class="bp_build_metadata_label">"Lean"</span>
+        <span class="bp_build_metadata_value">{{escapedHtmlText metadata.leanToolchain}}</span>
+      </span>
+      <span class="bp_build_metadata_item">
+        {{buildMetadataLabelHtml "VersoBlueprint" metadata.blueprintRepositoryUrl}}
+        {{buildMetadataCodeHtml metadata.blueprintVersion metadata.blueprintCommitUrl}}
+      </span>
+      {{if let some upstream := metadata.upstreamBlueprint then
+        {{<span class="bp_build_metadata_item">
+            {{buildMetadataLabelHtml "Upstream" upstream.repositoryUrl}}
+            {{buildMetadataCodeHtml upstream.commit upstream.commitUrl}}
+            <span class="bp_build_metadata_subject">{{escapedHtmlText upstream.subject}}</span>
+          </span>}}
+        else .empty}}
+      {{if let some mathlibVersion := metadata.mathlibVersion then
+        {{<span class="bp_build_metadata_item">
+            {{buildMetadataLabelHtml "Mathlib" metadata.mathlibRepositoryUrl}}
+            {{buildMetadataCodeHtml mathlibVersion metadata.mathlibCommitUrl}}
+          </span>}}
+        else .empty}}
+    </div>
+  }}
+
+def buildMetadataHtmlString (metadata : BuildMetadata) : String :=
+  Output.Html.asString <| buildMetadataHtml metadata
+
+def insertBuildMetadataHtml? (html metadataHtml : String) : Option String :=
+  if html.contains "class=\"bp_build_metadata\"" then
+    some html
+  else
+    let titlePageMarker := "<div class=\"titlepage\">"
+    let h1CloseMarker := "</h1>"
+    match html.splitOn titlePageMarker with
+    | before :: titlePagePart :: titlePageRest =>
+        let afterTitlePage := String.intercalate titlePageMarker (titlePagePart :: titlePageRest)
+        match afterTitlePage.splitOn h1CloseMarker with
+        | titleHtml :: afterTitle :: afterTitleRest =>
+            some <|
+              before ++ titlePageMarker ++ titleHtml ++ h1CloseMarker ++ "\n" ++ metadataHtml ++
+                String.intercalate h1CloseMarker (afterTitle :: afterTitleRest)
+        | _ => none
+    | _ => none
+
+private def writeBuildMetadataHtml
+    (metadata : BuildMetadata)
+    (logError : String → IO Unit)
+    (path : System.FilePath) : IO Unit := do
+  unless ← path.pathExists do
+    logError s!"Blueprint build metadata: missing root page {path}"
+    return
+  let html ← IO.FS.readFile path
+  match insertBuildMetadataHtml? html (buildMetadataHtmlString metadata) with
+  | some html => IO.FS.writeFile path html
+  | none => logError s!"Blueprint build metadata: could not find title page heading in {path}"
+
+def emitBuildMetadata (metadata : BuildMetadata) : ExtraStep := fun mode logError cfg _state _text => do
+  writeBuildMetadataHtml metadata logError (outDirForMode cfg mode / "index.html")
 
 private def highlightedDocstringInnerTextRead : String :=
   "const str = d.innerText;"
@@ -235,13 +691,6 @@ def schemaJson : Json :=
 
 private def jsonPretty (json : Json) : String :=
   json.render.pretty 80
-
-private def outputDirNameForMode : Mode → String
-  | .single => "html-single"
-  | .multi => "html-multi"
-
-private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
-  cfg.destination / outputDirNameForMode mode
 
 private def xrefExcludedDomainNames : Array Name :=
   Informal.TraversalIndex.allSpecs.filterMap fun spec =>
@@ -613,7 +1062,9 @@ where
     let logError msg := do
       errorCount.modify (· + 1)
       IO.eprintln msg
-    let cfg ← parseRenderConfigOptions config options
+    let cfg ← parseRenderConfigOptions (withBuildMetadataAssets config) options
+    let buildMetadata ← readBuildMetadata
+    let extraSteps := emitBuildMetadata buildMetadata :: extraSteps
 
     if cfg.emitTeX then
       if cfg.verbose then
