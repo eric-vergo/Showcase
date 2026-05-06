@@ -84,6 +84,11 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             self.assertIn("test-blueprints/", landing_index)
             self.assertIn("test-blueprints/preview_runtime_showcase/html-multi/", landing_index)
 
+            reference_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
+            self.assertIn('href="project-template/"', reference_index)
+            self.assertIn('href="noperthedron/"', reference_index)
+            self.assertNotIn("reference-blueprints/project-template/", reference_index)
+
     def test_prepare_pages_stages_release_namespaced_reference_blueprints(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -139,9 +144,17 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             )
 
             release_index = (output_root / "reference-blueprints" / "index.html").read_text(encoding="utf-8")
-            self.assertIn("reference-blueprints/v4.28.0/", release_index)
-            self.assertIn("reference-blueprints/v4.29.0/", release_index)
+            self.assertIn('href="v4.28.0/"', release_index)
+            self.assertIn('href="v4.29.0/"', release_index)
+            self.assertNotIn("reference-blueprints/v4.28.0/", release_index)
             self.assertFalse((output_root / "reference-blueprints" / "project-template").exists())
+
+            release_project_index = (
+                output_root / "reference-blueprints" / "v4.29.0" / "index.html"
+            ).read_text(encoding="utf-8")
+            self.assertIn('href="project-template/"', release_project_index)
+            self.assertIn('href="noperthedron/"', release_project_index)
+            self.assertNotIn("reference-blueprints/v4.29.0/noperthedron/", release_project_index)
 
             alias_index = (output_root / "reference-blueprints" / "noperthedron" / "index.html").read_text(
                 encoding="utf-8"

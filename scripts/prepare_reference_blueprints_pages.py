@@ -29,12 +29,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def html_link(project_id: str, *, release: str | None = None) -> str:
+def html_link(project_id: str, *, release: str | None = None, prefix: str = "reference-blueprints/") -> str:
     label = html.escape(project_id)
     if release is None:
-        href = f"reference-blueprints/{label}/"
+        href = f"{prefix}{label}/"
     else:
-        href = f"reference-blueprints/{html.escape(release)}/{label}/"
+        href = f"{prefix}{html.escape(release)}/{label}/"
     return f'<li><a href="{href}">{label}</a></li>'
 
 
@@ -44,15 +44,15 @@ def html_test_link(slug: str) -> str:
     return f'<li><a href="{href}">{label}</a></li>'
 
 
-def html_release_link(release: str) -> str:
+def html_release_link(release: str, *, prefix: str = "reference-blueprints/") -> str:
     label = html.escape(release)
-    href = f"reference-blueprints/{label}/"
+    href = f"{prefix}{label}/"
     return f'<li><a href="{href}">{label}</a></li>'
 
 
 def write_reference_index(reference_root: Path, release_projects: dict[str | None, list[str]]) -> None:
     if None in release_projects:
-        items = [html_link(project_id) for project_id in release_projects[None]]
+        items = [html_link(project_id, prefix="") for project_id in release_projects[None]]
         body = [
             "<!doctype html>",
             "<html lang=\"en\">",
@@ -83,7 +83,7 @@ def write_reference_index(reference_root: Path, release_projects: dict[str | Non
             "<body>",
             f"<h1>Reference Blueprints {html.escape(release)}</h1>",
             "<ul>",
-            *[html_link(project_id, release=release) for project_id in projects],
+            *[html_link(project_id, prefix="") for project_id in projects],
             "</ul>",
             "</body>",
             "</html>",
@@ -99,7 +99,7 @@ def write_reference_index(reference_root: Path, release_projects: dict[str | Non
         "<body>",
         "<h1>Reference Blueprint Releases</h1>",
         "<ul>",
-        *[html_release_link(release) for release in sorted(release_projects)],
+        *[html_release_link(release, prefix="") for release in sorted(release_projects)],
         "</ul>",
         "</body>",
         "</html>",
