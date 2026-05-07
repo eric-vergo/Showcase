@@ -316,8 +316,6 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_code_summary_preview_panel .bp_code_hover_list {
-  margin: 0.24rem 0 0;
-  padding-left: 0;
   list-style: none;
 }
 
@@ -906,13 +904,11 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_external_decl_item_rendered {
-  padding: 0;
+  padding: 0 0 0.1rem;
 }
 
 .bp_external_decl_list > .bp_external_decl_item + .bp_external_decl_item {
-  margin-top: 0.85rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--bp-color-border-soft);
+  margin-top: 0.8rem;
 }
 
 .bp_external_decl_head {
@@ -983,17 +979,140 @@ span[class$="_thmlabel"]::after {
   background: transparent;
   box-shadow: none;
   padding: 0;
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 .bp_external_decl_rendered .declaration {
   margin: 0;
   padding: 0;
+  border: 1px solid var(--bp-color-border-soft);
+  border-left: 0.15rem solid var(--bp-color-border-strong);
+  border-radius: 6px;
+  background: var(--bp-color-surface-muted);
+  background: color-mix(in srgb, var(--bp-color-surface-muted) 54%, transparent);
   min-width: 100%;
+  overflow: hidden;
 }
 
-.bp_external_decl_rendered .bp_external_decl_body {
-  margin-top: 0.6rem;
+.bp_external_decl_kicker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin: 0;
+  padding: 0.32rem 0.35rem;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.bp_external_decl_kicker_main {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  gap: 0.12rem 0.32rem;
+  min-width: 0;
+}
+
+.bp_external_decl_kicker_status {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.bp_external_decl_header_status {
+  padding: 0.05rem 0.42rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.bp_external_decl_kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  color: var(--bp-color-text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.bp_external_decl_header_meta {
+  color: var(--bp-color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.bp_external_decl_source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.22rem;
+  min-width: 0;
+  color: var(--bp-color-text-muted);
+  font-size: 0.67rem;
+  line-height: 1.25;
+}
+
+.bp_external_decl_source::before {
+  content: "·";
+  color: var(--bp-color-text-faint);
+}
+
+.bp_external_decl_source_path {
+  min-width: 0;
+  max-width: min(34rem, 72vw);
+  overflow: hidden;
+  color: var(--bp-color-text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.66rem;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+a.bp_external_decl_source_path:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.12rem;
+}
+
+.bp_external_decl_rendered .bp_external_decl_signature {
+  margin: 0;
+  padding: 0.4rem 0.35rem;
+  max-width: 100%;
+  overflow-x: auto;
+  background: transparent;
+  border: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bp_external_decl_rendered .bp_external_decl_signature.hl.lean,
+.bp_external_decl_rendered .name-and-type.hl.lean {
+  white-space: pre-wrap;
+}
+
+.bp_external_decl_rendered .bp_external_decl_signature .token,
+.bp_external_decl_rendered .name-and-type .token {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bp_external_decl_rendered .bp_external_decl_body:empty {
+  display: none;
+}
+
+.bp_external_decl_rendered .bp_external_decl_body:not(:empty) {
+  margin-top: 0;
+  padding: 0.4rem 0.35rem;
+  border-top: 1px solid var(--bp-color-border-soft);
+  background: var(--bp-color-surface);
 }
 
 .bp_external_decl_rendered .bp_external_decl_body > :first-child {
@@ -1005,9 +1124,11 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_external_decl_rendered .bp_external_decl_body h1 {
-  margin: 0.85rem 0 0.35rem;
-  color: inherit;
-  font-size: 0.82rem;
+  margin: 0.75rem 0 0.4rem;
+  padding-bottom: 0.18rem;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  color: var(--bp-color-text-muted);
+  font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -1019,15 +1140,26 @@ span[class$="_thmlabel"]::after {
 
 .bp_external_decl_rendered .constructor + .constructor,
 .bp_external_decl_rendered .subdocs + .subdocs {
-  margin-top: 0.6rem;
+  margin-top: 0.45rem;
+}
+
+.bp_external_decl_rendered .constructor,
+.bp_external_decl_rendered .subdocs {
+  padding: 0.35rem 0 0.35rem 0.35rem;
+  border-left: 0.1rem solid var(--bp-color-border-soft);
 }
 
 .bp_external_decl_rendered .name-and-type {
   margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .bp_external_decl_rendered .docs {
-  margin-top: 0.35rem;
+  margin: 0.28rem 0 0 0.35rem;
+  color: var(--bp-color-text-muted);
 }
 
 .bp_external_decl_rendered .inheritance {
@@ -1052,7 +1184,7 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_external_decl_rendered .docstring {
-  margin-top: 0.6rem;
+  margin-top: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1060,9 +1192,26 @@ span[class$="_thmlabel"]::after {
   font-family: var(--verso-text-font-family, inherit);
   font-size: 0.98em;
   line-height: 1.6;
-  white-space: pre-wrap;
   overflow: visible;
   max-height: none;
+  max-width: none;
+  width: auto;
+}
+
+.bp_external_decl_rendered pre.docstring {
+  white-space: pre-wrap;
+}
+
+.bp_external_decl_rendered div.docstring {
+  white-space: normal;
+}
+
+.bp_external_decl_rendered div.docstring > :first-child {
+  margin-top: 0;
+}
+
+.bp_external_decl_rendered div.docstring > :last-child {
+  margin-bottom: 0;
 }
 
 .bp_external_decl_rendered details {
@@ -1109,9 +1258,12 @@ span[class$="_thmlabel"]::after {
     margin-left: 0;
   }
 
+  .bp_external_decl_rendered .declaration {
+    border-left-width: 0.12rem;
+  }
+
   .bp_external_decl_list > .bp_external_decl_item + .bp_external_decl_item {
     margin-top: 0.7rem;
-    padding-top: 0.7rem;
   }
 }
 

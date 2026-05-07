@@ -15,6 +15,9 @@ import VersoManual
 
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
+import VersoBlueprint.Process
+import VersoBlueprint.Git
+import VersoBlueprint.RuntimeCache
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros
 import VersoBlueprint.Math
@@ -37,7 +40,7 @@ import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.Author
 import VersoBlueprint.Informal.Uses
-import VersoBlueprint.DocGenNameRender
+import VersoBlueprint.ExternalDeclRender
 import VersoBlueprint.Lean
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.LeanNameParsing

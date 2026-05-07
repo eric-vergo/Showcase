@@ -606,10 +606,14 @@ def sync_reference_local_checkout(layout, project: HarnessProject, cache_dir: Pa
 
     cache_lake = cache_dir / ".lake"
     if cache_lake.exists():
-        # The shared cache checkout is the source of truth for project-specific
-        # dependency state, including warmed Mathlib builds when the reference
-        # cache has been prepared ahead of time.
-        run(["rsync", "-a", "--delete", f"{cache_lake}/", f"{local_dir / '.lake'}/"], cwd=layout.package_root)
+        # Seed dependency state from the shared cache, but preserve the
+        # worktree-local project's own build products. Those artifacts are
+        # produced after rewriting the reference project to depend on the local
+        # VersoBlueprint checkout, so deleting them defeats the local cache.
+        run(
+            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / '.lake'}/"],
+            cwd=layout.package_root,
+        )
     return local_dir
 
 
