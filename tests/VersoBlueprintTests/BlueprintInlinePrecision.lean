@@ -55,4 +55,70 @@ theorem inline_main_complete : True := by
         !nodeLocalProofFormalized external node &&
         helperProofGapOnly
 
+#docs (Manual) inlineGeneratedDeclsDoc "Inline Generated Decls" :=
+:::::::
+:::definition "inline.generated.filtered"
+Inline Lean code should report only source-backed declarations.
+:::
+
+```lean "inline.generated.filtered"
+structure SourceFilteredStructure where
+  alpha : Nat
+  beta : alpha = alpha
+
+inductive SourceFilteredStage where
+  | initial
+  | followup (_ : Nat)
+```
+:::::::
+
+private def literateDeclNamesFor? (label : Name) : CoreM (Option (Array String)) := do
+  let state := Informal.Environment.informalExt.getState (← getEnv)
+  match state.data.get? label with
+  | none => pure none
+  | some node =>
+    match node.code with
+    | some (.literate code) =>
+      pure <| some <|
+        (code.definedDefs.map (·.name.toString)) ++
+        (code.definedTheorems.map (·.name.toString))
+    | _ => pure none
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let some names ← literateDeclNamesFor? (Name.mkSimple "inline.generated.filtered")
+      | pure false
+    let expectedSuffixes := #[
+      "SourceFilteredStructure",
+      "SourceFilteredStructure.alpha",
+      "SourceFilteredStructure.beta",
+      "SourceFilteredStage",
+      "SourceFilteredStage.initial",
+      "SourceFilteredStage.followup"
+    ]
+    let hasExactlySourceDecls :=
+      names.size == expectedSuffixes.size &&
+        expectedSuffixes.all (fun suffix => names.any (fun name => name.endsWith suffix))
+    let generatedFragments := #[
+      ".casesOn",
+      ".ctorElim",
+      ".ctorElimType",
+      ".ctorIdx",
+      ".elim",
+      ".inj",
+      ".injEq",
+      ".mk",
+      ".noConfusion",
+      ".noConfusionType",
+      ".rec",
+      ".recOn",
+      ".sizeOf_spec"
+    ]
+    let noGeneratedDecls :=
+      names.all fun name =>
+        !generatedFragments.any (fun fragment => name.contains fragment)
+    pure (hasExactlySourceDecls && noGeneratedDecls)
+
 end Verso.VersoBlueprintTests.BlueprintInlinePrecision
