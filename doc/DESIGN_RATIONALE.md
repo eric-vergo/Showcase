@@ -152,8 +152,8 @@ This is the path for an informal block that points at a Lean-owned declaration:
 2. `ExternalRefSnapshot.lean` enriches each resolved declaration with:
    presence, proved status, provenance, source link, and direct declaration
    render result.
-3. `DocGenNameRender.lean` produces the direct external declaration HTML used by
-   that snapshot.
+3. `ExternalDeclRender.lean` produces the direct external declaration HTML used
+   by that snapshot from Verso Manual declaration/signature APIs.
 4. `Informal/Block.lean` and `Informal/ExternalCode.lean` render the local
    external declaration panel from the enriched snapshot.
 5. `Informal/CodeSummary.lean` renders the heading badge and panel indicator
@@ -342,6 +342,26 @@ That mix is intentional, but the roles should stay explicit:
 `TraversalIndex` is the local module that names and classifies those stores.
 Callers should prefer its typed APIs over reaching into raw domain names and
 ad hoc JSON payloads directly.
+
+### Process-Local Runtime Cache
+
+`RuntimeCache` owns process-local facts that are expensive enough to avoid
+recomputing but should not be serialized into `Informal.Environment.State` or
+Verso traversal domains.
+
+Current examples are source-link support data:
+
+- module source path lookups, keyed by workspace root and module name
+- Git root lookups, keyed by source directory
+- GitHub repository URL and commit metadata, keyed by Git root
+
+The cached values are only elaboration accelerators. Rendered declarations still
+store concrete source links in their `ExternalRef` snapshots, so generated
+artifacts do not depend on live cache state.
+
+The API accepts fallback resolver actions instead of exposing the backing store.
+That keeps callers independent of the storage strategy and leaves a narrow
+future migration path to a Lake-integrated build-local file cache or daemon.
 
 Functionally, the traversal indexes used by Blueprint have this shape. The
 code-side inventory is `Informal.TraversalIndex.allSpecs`; the table below adds

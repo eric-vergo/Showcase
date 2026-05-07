@@ -7,7 +7,9 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
-import VersoBlueprint.DocGenNameRender
+import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.Git
+import VersoBlueprint.RuntimeCache
 
 namespace Informal
 
@@ -15,13 +17,14 @@ open Lean
 
 /--
 Template used to build source links for external declarations.
-Supported placeholders are: path, relpath, module, line, column.
+Supported placeholders are: path, relpath, module, line, column, endLine, endColumn.
 
-Empty template disables source link generation.
+Empty template uses automatic GitHub source link generation when the source file
+belongs to a Git checkout with a GitHub `origin` remote.
 -/
 register_option verso.blueprint.externalCode.sourceLinkTemplate : String := {
   defValue := ""
-  descr := "Template for external declaration source links ({path},{relpath},{module},{line},{column})"
+  descr := "Template for external declaration source links ({path},{relpath},{module},{line},{column},{endLine},{endColumn}); empty uses automatic GitHub links when available"
 }
 
 private def externalSourceLinkTemplate (opts : Lean.Options) : String :=
@@ -43,35 +46,168 @@ private def instantiateSourceLinkTemplate (template : String) (vars : Array (Str
   vars.foldl (init := template) fun acc kv =>
     acc.replace ("{" ++ kv.1 ++ "}") kv.2
 
+private def sourceLineFragment? (range? : Option Lean.DeclarationRange) : Option String := do
+  let range ← range?
+  let startLine := range.pos.line
+  let endLine := range.endPos.line
+  if startLine == 0 then
+    none
+  else if endLine > startLine then
+    some s!"#L{startLine}-L{endLine}"
+  else
+    some s!"#L{startLine}"
+
+private def absoluteSourcePath (workspaceRoot sourcePath : System.FilePath) : System.FilePath :=
+  if sourcePath.isAbsolute then
+    sourcePath
+  else
+    workspaceRoot / sourcePath.toString
+
+private def normalizeSourcePath? (workspaceRoot sourcePath : System.FilePath) :
+    IO (Option System.FilePath) := do
+  let sourcePath := absoluteSourcePath workspaceRoot sourcePath
+  try
+    some <$> IO.FS.realPath sourcePath
+  catch _ =>
+    pure (some sourcePath)
+
+private def gitHubSourceHref? (workspaceRoot sourcePath : System.FilePath)
+    (range? : Option Lean.DeclarationRange) : IO (Option String) := do
+  let sourcePath := absoluteSourcePath workspaceRoot sourcePath
+  let sourceDir := sourcePath.parent.getD sourcePath
+  let some gitRoot ← RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
+    | return none
+  let some repoInfo ← RuntimeCache.cachedGitRepoInfo? gitRoot (Git.repositoryInfoAtRoot? gitRoot)
+    | return none
+  let relPath := (workspaceRelativeSourcePath? repoInfo.root sourcePath).getD sourcePath.toString
+  let fragment := sourceLineFragment? range? |>.getD ""
+  pure <| some s!"{repoInfo.githubUrl}/blob/{repoInfo.commit}/{relPath}{fragment}"
+
 private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePath)
     (moduleName? : Option Lean.Name) (sourcePath? : Option System.FilePath)
-    (range? : Option Lean.DeclarationRange) : Option String := do
+    (range? : Option Lean.DeclarationRange) : IO (Option String) := do
   let template := (externalSourceLinkTemplate opts).trimAscii.toString
   if template.isEmpty then
-    none
+    match sourcePath? with
+    | some sourcePath => gitHubSourceHref? workspaceRoot sourcePath range?
+    | none => pure none
   else
-    let sourcePath ← sourcePath?
-    let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
-    let line := (range?.map (fun r => toString r.pos.line)).getD ""
-    let column := (range?.map (fun r => toString r.pos.column)).getD ""
-    let href :=
-      instantiateSourceLinkTemplate template #[
-        ("path", sourcePath.toString),
-        ("relpath", relPath),
-        ("module", (moduleName?.map toString).getD ""),
-        ("line", line),
-        ("column", column)
-      ]
-    let href := href.trimAscii.toString
-    if href.isEmpty then none else some href
+    match sourcePath? with
+    | none => pure none
+    | some sourcePath =>
+      let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
+      let line := (range?.map (fun r => toString r.pos.line)).getD ""
+      let column := (range?.map (fun r => toString r.pos.column)).getD ""
+      let endLine := (range?.map (fun r => toString r.endPos.line)).getD ""
+      let endColumn := (range?.map (fun r => toString r.endPos.column)).getD ""
+      let href :=
+        instantiateSourceLinkTemplate template #[
+          ("path", sourcePath.toString),
+          ("relpath", relPath),
+          ("module", (moduleName?.map toString).getD ""),
+          ("line", line),
+          ("column", column),
+          ("endLine", endLine),
+          ("endColumn", endColumn)
+        ]
+      let href := href.trimAscii.toString
+      if href.isEmpty then pure none else pure (some href)
+
+private def moduleSourcePathText (moduleName : Lean.Name) : String :=
+  (toString moduleName).replace "." "/" ++ ".lean"
+
+private def dropFirstPathComponent? (pathText : String) : Option String :=
+  match pathText.splitOn "/" with
+  | _pkg :: next :: rest => some (String.intercalate "/" (next :: rest))
+  | _ => none
+
+private def dropLakePackagesPrefix? (pathText : String) : Option String :=
+  match pathText.splitOn ".lake/packages/" with
+  | _ :: rest :: _ => dropFirstPathComponent? rest
+  | _ => none
+
+private def elegantSourcePath (workspaceRoot : System.FilePath)
+    (moduleName? : Option Lean.Name) (sourcePath : System.FilePath) : String :=
+  let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
+  match dropLakePackagesPrefix? relPath with
+  | some path => path
+  | none =>
+    match moduleName? with
+    | some moduleName =>
+      let modulePath := moduleSourcePathText moduleName
+      if relPath.endsWith modulePath then
+        modulePath
+      else
+        modulePath
+    | none => relPath
+
+private def externalDeclHeaderSource?
+    (workspaceRoot : System.FilePath) (moduleName? : Option Lean.Name)
+    (sourcePath? : Option System.FilePath) (sourceHref? : Option String) :
+    Option ExternalDeclHeaderSource := do
+  match sourcePath? with
+  | some sourcePath =>
+    some {
+      text := elegantSourcePath workspaceRoot moduleName? sourcePath
+      href? := sourceHref?
+    }
+  | none =>
+    let moduleName ← moduleName?
+    some {
+      text := moduleSourcePathText moduleName
+      href? := sourceHref?
+    }
 
 private def moduleNameForDecl? (env : Lean.Environment) (decl : Lean.Name) : Option Lean.Name := do
-  let moduleIdx ← env.getModuleIdxFor? decl
-  env.header.moduleNames[moduleIdx.toNat]?
+  match env.getModuleIdxFor? decl with
+  | some moduleIdx => env.header.moduleNames[moduleIdx.toNat]?
+  | none =>
+    if env.mainModule.isAnonymous then
+      none
+    else
+      some env.mainModule
 
-private def sourcePathForModule? (moduleName : Lean.Name) : IO (Option System.FilePath) := do
-  let srcSearchPath ← Lean.getSrcSearchPath
-  srcSearchPath.findModuleWithExt "lean" moduleName
+private def currentSourcePath? (workspaceRoot : System.FilePath) : Lean.CoreM (Option System.FilePath) := do
+  let fileName ← Lean.getFileName
+  if fileName.isEmpty || fileName.startsWith "<" then
+    pure none
+  else
+    liftM <| normalizeSourcePath? workspaceRoot (System.FilePath.mk fileName)
+
+private def existingSourcePath? (workspaceRoot path : System.FilePath) :
+    IO (Option System.FilePath) := do
+  let path := absoluteSourcePath workspaceRoot path
+  if ← path.pathExists then
+    normalizeSourcePath? workspaceRoot path
+  else
+    pure none
+
+private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
+    (moduleName : Lean.Name) : IO (Option System.FilePath) := do
+  let modulePath := moduleSourcePathText moduleName
+  if let some path ← existingSourcePath? workspaceRoot (System.FilePath.mk modulePath) then
+    return some path
+  try
+    for entry in ← workspaceRoot.readDir do
+      if ← entry.path.isDir then
+        if let some path ← existingSourcePath? workspaceRoot (entry.path / modulePath) then
+          return some path
+    pure none
+  catch _ =>
+    pure none
+
+private def sourcePathForModule? (workspaceRoot : System.FilePath)
+    (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
+  RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
+    let srcSearchPath ← Lean.getSrcSearchPath
+    match ← srcSearchPath.findModuleWithExt "lean" moduleName with
+    | some path =>
+      liftM <| normalizeSourcePath? workspaceRoot path
+    | none =>
+      if moduleName == (← getEnv).mainModule then
+        currentSourcePath? workspaceRoot
+      else
+        liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
 
 private def workspacePathPrefix (workspaceRoot : System.FilePath) : String :=
   let root := workspaceRoot.toString
@@ -97,6 +233,17 @@ private def mkProvenance (workspaceRoot : System.FilePath)
         .outWorkspace moduleName (some sourcePath.toString)
     | none =>
       .outWorkspace moduleName none
+
+private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclHeaderBadge :=
+  match status with
+  | .proved =>
+    { className := "bp_external_decl_ok", text := "complete" }
+  | .missing =>
+    { className := "bp_external_decl_missing", text := "missing" }
+  | .axiomLike =>
+    { className := "bp_external_decl_sorry", text := "axiom-like" }
+  | .containsSorry _ =>
+    { className := "bp_external_decl_sorry", text := "contains sorry" }
 
 /--
 Build a full snapshot for one external declaration reference using the environment
@@ -136,12 +283,17 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
     let moduleName? := moduleNameForDecl? env canonical
     let sourcePath? ←
       match moduleName? with
-      | some moduleName => liftM <| sourcePathForModule? moduleName
+      | some moduleName => sourcePathForModule? workspaceRoot moduleName
       | none => pure none
     let provenance := mkProvenance workspaceRoot moduleName? sourcePath?
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
-    let sourceHref? := sourceLinkHref? opts workspaceRoot moduleName? sourcePath? selectionRange?
-    let renderResult ← (renderDeclHtmlDirectFromInfoE canonical cinfo).run'
+    let sourceHref? ←
+      liftM <| sourceLinkHref? opts workspaceRoot moduleName? sourcePath? (ranges?.map (fun r => r.range))
+    let headerSource? := externalDeclHeaderSource? workspaceRoot moduleName? sourcePath? sourceHref?
+    let renderResult ←
+      (renderDeclHtmlDirectFromInfoE canonical cinfo
+        (headerBadge? := some (externalDeclStatusBadge ref.provedStatus))
+        (headerSource? := headerSource?)).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
       | .ok html => .ok html.asString

@@ -1,6 +1,7 @@
 import VersoBlueprintTests.Blueprint
 import VersoBlueprintTests.BlueprintMainWrapper
-import VersoBlueprintTests.DocGenNameRender
+import VersoBlueprintTests.ExternalDeclRender
+import VersoBlueprintTests.RuntimeCache
 import VersoBlueprintTests.TestBlueprintRegistry
 import VersoBlueprintTests.TestBlueprintRegistryChecks
 import VersoBlueprintTests.TestBlueprintRegistryCoverage

@@ -41,6 +41,111 @@ class TestPreviewRuntimeRegressions:
         assert "const str = d.innerText;" not in html
         assert 'const str = d.textContent || "";' in html
 
+    def test_external_declaration_docstrings_render_markdown(self, server: str, page: Page):
+        page.goto(f"{server}/Code-Panels/")
+
+        doc_def = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewDocstringedDefinition"]'
+        ).first
+        expect(doc_def).to_have_count(1)
+        expect(doc_def).to_have_attribute("data-kind", "def")
+        expect(doc_def.locator(".bp_external_decl_header_status").first).to_contain_text("complete")
+        doc_def_header = doc_def.locator(".bp_external_decl_kicker").first
+        expect(doc_def_header.locator(".bp_external_decl_kind").first).to_contain_text("def")
+        expect(doc_def_header.locator("code")).to_have_count(0)
+        expect(doc_def_header.locator(".bp_external_decl_header_meta")).to_have_count(0)
+        expect(doc_def.locator(".bp_external_decl_body > div.docstring").first).to_contain_text(
+            "The first documented preview definition"
+        )
+
+        unsafe_def = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewExternalUnsafeDefinition"]'
+        ).first
+        expect(unsafe_def).to_have_attribute("data-kind", "def")
+        unsafe_header = unsafe_def.locator(".bp_external_decl_kicker").first
+        expect(unsafe_header.locator(".bp_external_decl_kind").first).to_contain_text("def")
+        expect(unsafe_header.locator(".bp_external_decl_header_meta").first).to_contain_text(
+            "unsafe"
+        )
+        expect(unsafe_header.locator("code")).to_have_count(0)
+
+        doc_fun = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.previewDocstringedFunction"]'
+        ).first
+        expect(doc_fun).to_have_count(1)
+        fun_doc = doc_fun.locator(".bp_external_decl_body > div.docstring").first
+        expect(fun_doc).to_contain_text("Adds a small preview offset")
+        expect(fun_doc.locator("code").first).to_contain_text("n")
+
+        decl = page.locator(
+            '[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewFreyPackage.ofCounterexample"]'
+        ).first
+        expect(decl).to_have_count(1)
+
+        doc = decl.locator(".bp_external_decl_body > div.docstring").first
+        expect(doc).to_be_visible()
+        expect(doc).to_contain_text("Given a counterexample")
+        expect(doc.locator("code").first).to_contain_text("a^p + b^p = c^p")
+        expect(decl.locator(".bp_external_decl_body > pre.docstring")).to_have_count(0)
+
+        stage = page.locator('[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewStage"]').first
+        expect(stage).to_have_attribute("data-kind", "inductive")
+        expect(stage.locator(".bp_external_decl_header_status").first).to_contain_text("complete")
+        expect(stage.locator(".bp_external_decl_kind").first).to_contain_text("inductive")
+        expect(stage.locator(".bp_external_decl_kicker").first).to_contain_text("2 constructors")
+        expect(stage.locator(".bp_external_decl_body").first).to_contain_text("Constructors")
+        expect(stage.locator(".bp_external_decl_body").first).to_contain_text("The initial stage")
+        expect(stage.locator(".bp_external_decl_source_path").first).to_have_attribute(
+            "href",
+            re.compile(
+                r"https://github\.com/leanprover/verso-blueprint/blob/[0-9a-f]{40}/tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/CodePanels\.lean#L\d+-L\d+$"
+            ),
+        )
+
+        cls = page.locator('[data-decl="PreviewRuntimeShowcase.CodePanelDecls.PreviewFold"]').first
+        expect(cls).to_have_attribute("data-kind", "class")
+        expect(cls.locator(".bp_external_decl_header_status").first).to_contain_text("complete")
+        expect(cls.locator(".bp_external_decl_kind").first).to_contain_text("class")
+        expect(cls.locator(".bp_external_decl_kicker").first).to_contain_text("2 methods")
+        expect(cls.locator(".bp_external_decl_body").first).to_contain_text("Methods")
+        expect(cls.locator(".bp_external_decl_body").first).to_contain_text("The neutral preview value")
+
+    def test_inline_docstringed_constructs_showcase(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Code-Panels/")
+
+        body = page.locator("body")
+        expect(body).to_contain_text("PanelInlineDocstringedStructure")
+        expect(body).to_contain_text("Inline package docstring used to compare literate Lean")
+        expect(body).to_contain_text("dependent-looking field")
+        expect(body).to_contain_text("PanelInlineDocstringedStage")
+        expect(body).to_contain_text("Inline workflow stage docstring used to compare")
+        expect(body).to_contain_text("A follow-up inline stage carrying a counter.")
+        expect(body).to_contain_text("PanelInlineMixedConfig")
+        expect(body).to_contain_text("PanelInlineMixedState")
+        expect(body).to_contain_text("PanelInlineMixedFold")
+        expect(body).to_contain_text("Inline mixed fold class docstring.")
+
+        structure_name = page.locator("#PanelInlineDocstringedStructure").first
+        expect(structure_name).to_have_count(1)
+        page.wait_for_function(
+            """() => !!document.querySelector("#PanelInlineDocstringedStructure")?._tippy"""
+        )
+        assert page.evaluate("(el) => !!el._tippy", structure_name.element_handle())
+
+        inline_code = structure_name.locator("xpath=ancestor::code[1]")
+        expect(inline_code.locator(".doc-comment.token").first).to_contain_text("/--")
+        expect(inline_code.locator("div.docstring")).to_have_count(0)
+        expect(inline_code.locator("pre.docstring")).to_have_count(0)
+
+        structure_name.hover()
+        hover = page.locator(".tippy-box").last
+        expect(hover).to_contain_text("PanelInlineDocstringedStructure")
+        expect(hover.locator("li").first).to_contain_text("The field")
+        expect(hover.locator("code").filter(has_text="left").first).to_be_visible()
+        expect(hover.locator("strong").filter(has_text="Bold text").first).to_be_visible()
+        assert not any("cloneNode" in err for err in errors), "\n".join(errors)
+
     def test_used_by_panel_loads_manifest_only_when_opened(self, server: str, page: Page):
         attempts = {"count": 0}
 
