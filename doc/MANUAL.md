@@ -670,9 +670,10 @@ Current options:
   - default: `false`
   - upgrades unresolved or ambiguous external Lean names from warnings to errors
 - `verso.blueprint.externalCode.sourceLinkTemplate`
-  - default: `""` (disabled)
+  - default: `""` (automatic GitHub links when the source file belongs to a
+    Git checkout with a GitHub `origin` remote)
   - builds source links for external declarations using `{path}`, `{relpath}`,
-    `{module}`, `{line}`, and `{column}`
+    `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
 - `verso.blueprint.summary.debugDiagnostics`
   - default: `false`
   - adds maintainer diagnostics such as external declaration render failures to
