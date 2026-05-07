@@ -148,15 +148,21 @@ private def findDeclCommand? (fileMap : FileMap) (cmdAnalyses : Array CmdAnalysi
   let declPos := fileMap.ofPosition declRanges.selectionRange.pos
   return cmdAnalyses.findRev? (fun cmd => commandOwnsPos cmd declPos)
 
-private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment) (cmdAnalyses : Array CmdAnalysis) :
+/- `sourceBackedDeclNames` comes from `Highlighted.definedNames`. SubVerso marks those tokens
+using Lean's declaration ranges for source syntax, so generated constants that only inherit a
+command range but have no definition token in the source are excluded here. -/
+private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
+    (cmdAnalyses : Array CmdAnalysis) (sourceBackedDeclNames : NameSet) :
     DocElabM (Array LiterateDef × Array LiterateThm) := do
   let mut defs := #[]
   let mut theorems := #[]
-  for (name, info) in after.constants do
+  for name in sourceBackedDeclNames.toArray do
     if (before.find? name).isSome then
       continue
     if name.isInternalOrNum || name.hasMacroScopes then
       continue
+    let some info := after.find? name
+      | continue
     let baseStatus := Data.ConstantInfo.blueprintProvedStatus info (allowOpaque := true)
     let hasTypeGap := baseStatus.hasTypeGap
     let hasProofGap := baseStatus.hasProofGap
@@ -219,9 +225,10 @@ private def getDefinedDeclsImpl (fileMap : FileMap) (before after : Environment)
     (a.commandIndex == b.commandIndex && a.name.toString < b.name.toString)
   pure (defs.qsort cmpDef, theorems.qsort cmpThm)
 
-private def getDefinedDecls (fileMap : FileMap) (before after : Environment) (cmdAnalyses : Array CmdAnalysis) :=
+private def getDefinedDecls (fileMap : FileMap) (before after : Environment)
+    (cmdAnalyses : Array CmdAnalysis) (sourceBackedDeclNames : NameSet) :=
   Profile.withDocElab "lean" "getDefinedDecls" <|
-    getDefinedDeclsImpl fileMap before after cmdAnalyses
+    getDefinedDeclsImpl fileMap before after cmdAnalyses sourceBackedDeclNames
 
 -- Needs to improve
 private partial def collectSorryRefs (stx : Syntax) : Array Syntax :=
@@ -370,7 +377,7 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
     let block ← toHighlightedLeanBlock config.show hls str
     let (definedDefs, definedTheorems) ←
       if shouldAnalyze then
-        getDefinedDecls cctx.fileMap envBefore cmdState.env cmdAnalyses
+        getDefinedDecls cctx.fileMap envBefore cmdState.env cmdAnalyses hls.definedNames
       else
         pure (#[], #[])
     pure { block, definedDefs, definedTheorems }
