@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.ExternalRefSnapshot
 
-namespace Verso.VersoBlueprintTests.DocGenNameRender
+namespace Verso.VersoBlueprintTests.ExternalDeclRender
 
 open Lean
 
@@ -21,17 +21,40 @@ unsafe abbrev sameModuleRenderUnsafeAbbrev : Nat := sameModuleRenderUnsafeDef
 theorem sameModuleRenderThm : True := by
   trivial
 
+/--
+A package-shaped structure whose constructor is intentionally much less useful
+than its field list in compact external declaration panels.
+-/
+structure sameModuleRenderPackage where
+  /-- The first value in the package. -/
+  x : Nat
+  /-- The second value in the package. -/
+  y : Nat
+  /-- The ordering witness carried by the package. -/
+  hxy : x <= y
+  /-- A deliberately dependent equality field. -/
+  hsum : x + y = y + x
+
+/--
+Given a counterexample-shaped input `x + y = y + x`, produce a package.
+-/
+theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
+    Nonempty sameModuleRenderPackage := by
+  exact Nonempty.intro { x := x, y := y, hxy := hxy, hsum := Nat.add_comm x y }
+
 /-- info: true -/
 #guard_msgs in
 #eval
   show Lean.CoreM Bool from do
     let natAdd? ← (Informal.renderDeclHtmlNodeDirect? `Nat.add).run'
     let prod? ← (Informal.renderDeclHtmlNodeDirect? `Prod).run'
-    let sameDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderDef).run'
-    let sameAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderAbbrev).run'
-    let sameUnsafeDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeDef).run'
-    let sameUnsafeAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeAbbrev).run'
-    let sameThm? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderThm).run'
+    let sameDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderDef).run'
+    let sameAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderAbbrev).run'
+    let sameUnsafeDef? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeDef).run'
+    let sameUnsafeAbbrev? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeAbbrev).run'
+    let sameThm? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderThm).run'
+    let samePackage? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderPackage).run'
+    let samePackageExists? ← (Informal.renderDeclHtmlNodeDirect? `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderPackageExists).run'
     let missing? ← (Informal.renderDeclHtmlNodeDirect? `No.Such.Declaration).run'
     let natAddHasPayload :=
       match natAdd? with
@@ -65,6 +88,7 @@ theorem sameModuleRenderThm : True := by
         out.contains "sameModuleRenderAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
+          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
           out.contains "<span class=\"keyword token\">abbrev</span>" &&
           !out.contains "data-kind=\"def\""
       | none => false
@@ -75,6 +99,8 @@ theorem sameModuleRenderThm : True := by
         out.contains "sameModuleRenderUnsafeDef" &&
           out.contains "class=\"declaration decl def\"" &&
           out.contains "data-kind=\"def\"" &&
+          out.contains "<span class=\"bp_external_decl_kind\">def</span>" &&
+          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
           out.contains "<span class=\"keyword token\">unsafe def</span>"
       | none => false
     let unsafeAbbrevUsesUniformAbbrevRendering :=
@@ -84,8 +110,31 @@ theorem sameModuleRenderThm : True := by
         out.contains "sameModuleRenderUnsafeAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
+          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
+          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
           out.contains "<span class=\"keyword token\">unsafe abbrev</span>" &&
           !out.contains "data-kind=\"unsafe abbrev\""
+      | none => false
+    let structureUsesFieldFirstRendering :=
+      match samePackage? with
+      | some samePackage =>
+        let out := samePackage.asString
+        out.contains "class=\"declaration decl structure\"" &&
+          out.contains "data-kind=\"structure\"" &&
+          out.contains "<span class=\"bp_external_decl_kind\">structure</span>" &&
+          out.contains "<span class=\"bp_external_decl_header_meta\">(4 fields)</span>" &&
+          out.contains "sameModuleRenderPackage.x" &&
+          out.contains "The first value in the package." &&
+          !out.contains "sameModuleRenderPackage.mk" &&
+          !out.contains "Constructor"
+      | none => false
+    let theoremDocstringAvailableForRuntimeMarkdown :=
+      match samePackageExists? with
+      | some samePackageExists =>
+        let out := samePackageExists.asString
+        out.contains "<pre class=\"docstring\">Given a counterexample-shaped input `x + y = y + x`" &&
+          out.contains "produce a package." &&
+          !out.contains "<span class=\"bp_external_decl_header_meta\">(docstring)</span>"
       | none => false
     pure
       (natAddHasPayload &&
@@ -94,12 +143,16 @@ theorem sameModuleRenderThm : True := by
         abbrevUsesAbbrevRendering &&
         unsafeDefUsesUniformDefinitionRendering &&
         unsafeAbbrevUsesUniformAbbrevRendering &&
+        structureUsesFieldFirstRendering &&
+        theoremDocstringAvailableForRuntimeMarkdown &&
         prod?.isSome &&
         sameDef?.isSome &&
         sameAbbrev?.isSome &&
         sameUnsafeDef?.isSome &&
         sameUnsafeAbbrev?.isSome &&
         sameThm?.isSome &&
+        samePackage?.isSome &&
+        samePackageExists?.isSome &&
         missing?.isNone)
 
 /-- info: true -/
@@ -108,13 +161,13 @@ theorem sameModuleRenderThm : True := by
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
     let sameDef ← Informal.externalRefSnapshotAtCurrentDir opts
-      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderDef)
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderDef)
     let sameAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
-      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderAbbrev)
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderAbbrev)
     let sameUnsafeDef ← Informal.externalRefSnapshotAtCurrentDir opts
-      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeDef)
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeDef)
     let sameUnsafeAbbrev ← Informal.externalRefSnapshotAtCurrentDir opts
-      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.DocGenNameRender.sameModuleRenderUnsafeAbbrev)
+      (Informal.Data.ExternalRef.ofName `Verso.VersoBlueprintTests.ExternalDeclRender.sameModuleRenderUnsafeAbbrev)
     let importedDef ← Informal.externalRefSnapshotAtCurrentDir opts
       (Informal.Data.ExternalRef.ofName `Nat.add)
     let importedThm ← Informal.externalRefSnapshotAtCurrentDir opts
@@ -142,4 +195,4 @@ theorem sameModuleRenderThm : True := by
       | .error _ => true
       | .ok _ => false)
 
-end Verso.VersoBlueprintTests.DocGenNameRender
+end Verso.VersoBlueprintTests.ExternalDeclRender

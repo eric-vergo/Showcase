@@ -1015,11 +1015,6 @@ def inlinePreviewCss : String := r##"
   color: var(--bp-color-text-muted);
 }
 
-.bp_code_hover_list {
-  margin: 0.12rem 0 0;
-  padding-left: 1.1rem;
-}
-
 .bp_code_hover_list code {
   font-size: 0.76rem;
 }

@@ -207,16 +207,23 @@ private def externalDeclRenderedMetaText (_item : LinkedExternalDecl) (statusTxt
   String.intercalate " · " parts.toList
 
 private def externalDeclRenderedMeta
-    (item : LinkedExternalDecl) (statusTxt : String) : Output.Html :=
+    (item : LinkedExternalDecl) (statusTxt : String) (includeStatus : Bool := true) : Output.Html :=
   open Verso.Output.Html in
+  if !includeStatus then
+    .empty
+  else
   let metaText := externalDeclRenderedMetaText item statusTxt
   let statusClass := externalDeclStatusClass item
+  let statusBadge : Output.Html :=
+    if !metaText.isEmpty then
+      {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {statusClass}"}}>{{.text true metaText}}</span>}}
+    else
+      .empty
+  let sourceRef? := externalDeclSourceRef? item
   {{
     <div class="bp_external_decl_meta bp_external_decl_rendered_meta">
-      {{if !metaText.isEmpty then
-        {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {statusClass}"}}>{{.text true metaText}}</span>}}
-       else .empty}}
-      {{if let some sourceRef := externalDeclSourceRef? item then
+      {{statusBadge}}
+      {{if let some sourceRef := sourceRef? then
         {{<span class="bp_external_decl_rendered_source">{{sourceRef}}</span>}}
        else .empty}}
     </div>
@@ -261,7 +268,7 @@ private def externalDeclRowData (item : LinkedExternalDecl) : ExternalDeclRowDat
     {
       liAttrs := #[("class", "bp_external_decl_item bp_external_decl_item_rendered")] ++ item.anchorAttrs
       body := externalDeclRendered item
-      footer := externalDeclRenderedMeta item statusTxt
+      footer := externalDeclRenderedMeta item statusTxt (includeStatus := false)
     }
 
 private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=

@@ -7,7 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Lean.Data.Json
 import VersoManual
-import VersoBlueprint.DocGenNameRender
+import VersoBlueprint.ExternalDeclRender
 
 namespace Informal.Data
 
@@ -248,7 +248,7 @@ instance [Quote ε] [Quote α] : Quote (Except ε α) where
     | .ok value => Syntax.mkApp (mkCIdent ``Except.ok) #[quote value]
     | .error error => Syntax.mkApp (mkCIdent ``Except.error) #[quote error]
 
-abbrev ExternalDeclRender := Except Informal.DocGenRenderError String
+abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError String
 
 /--
 Reference to an external declaration mentioned by a blueprint node.
