@@ -16,6 +16,8 @@ import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
+import VersoBlueprint.Git
+import VersoBlueprint.Process
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 
@@ -147,20 +149,6 @@ private def outputDirNameForMode : Mode → String
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / outputDirNameForMode mode
 
-private def runTrimmedCommand? (cmd : String) (args : Array String) : IO (Option String) := do
-  try
-    let out ← IO.Process.output { cmd, args }
-    if out.exitCode == 0 then
-      let text := out.stdout.trimAscii.toString
-      if text.isEmpty then
-        pure none
-      else
-        pure (some text)
-    else
-      pure none
-  catch _ =>
-    pure none
-
 private def readTrimmedFile? (path : System.FilePath) : IO (Option String) := do
   try
     unless ← path.pathExists do
@@ -173,55 +161,12 @@ private def readTrimmedFile? (path : System.FilePath) : IO (Option String) := do
   catch _ =>
     pure none
 
-private def gitVersionAt? (dir : System.FilePath) : IO (Option String) :=
-  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "--short", "HEAD"]
-
-private def gitFullVersionAt? (dir : System.FilePath) : IO (Option String) :=
-  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "HEAD"]
-
-private def gitSubjectAt? (dir : System.FilePath) : IO (Option String) :=
-  runTrimmedCommand? "git" #["-C", dir.toString, "log", "-1", "--pretty=%s"]
-
-private def gitToplevelAt? (dir : System.FilePath) : IO (Option String) :=
-  runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "--show-toplevel"]
-
-private def stripGitSuffix (url : String) : String :=
-  if url.endsWith ".git" then
-    match url.splitOn ".git" with
-    | stem :: _ => stem
-    | [] => url
-  else
-    url
-
-private def githubRepositoryUrl? (url : String) : Option String :=
-  let url := stripGitSuffix url.trimAscii.toString
-  if url.startsWith "https://github.com/" then
-    some url
-  else if url.startsWith "http://github.com/" then
-    some <| "https://github.com/" ++ (url.drop "http://github.com/".length).toString
-  else if url.startsWith "git@github.com:" then
-    some <| "https://github.com/" ++ (url.drop "git@github.com:".length).toString
-  else if url.startsWith "ssh://git@github.com/" then
-    some <| "https://github.com/" ++ (url.drop "ssh://git@github.com/".length).toString
-  else
-    none
-
-private def gitRepositoryUrlAt? (dir : System.FilePath) : IO (Option String) := do
-  match ← runTrimmedCommand? "git" #["-C", dir.toString, "remote", "get-url", "origin"] with
-  | some url => pure <| githubRepositoryUrl? url
-  | none => pure none
-
-private def gitCommitUrl? (repositoryUrl? commit? : Option String) : Option String :=
-  match repositoryUrl?, commit? with
-  | some repositoryUrl, some commit => some s!"{repositoryUrl}/commit/{commit}"
-  | _, _ => none
-
 private def gitCommitMetadataAt? (dir : System.FilePath) : IO (Option GitCommitMetadata) := do
-  let some commit ← gitVersionAt? dir
+  let some commit ← Git.shortCommitAt? dir
     | return none
-  let subject ← gitSubjectAt? dir
-  let repositoryUrl ← gitRepositoryUrlAt? dir
-  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? dir)
+  let subject ← Git.subjectAt? dir
+  let repositoryUrl ← Git.repositoryUrlAt? dir
+  let commitUrl := Git.commitUrl? repositoryUrl (← Git.fullCommitAt? dir)
   pure <| some {
     commit
     subject := subject.getD unknownMetadataValue
@@ -234,7 +179,7 @@ private def readLeanToolchain : IO String := do
   match ← readTrimmedFile? (cwd / "lean-toolchain") with
   | some toolchain => pure toolchain
   | none =>
-      pure <| (← runTrimmedCommand? "lean" #["--version"]).getD unknownMetadataValue
+      pure <| (← Process.runTrimmedCommand? "lean" #["--version"]).getD unknownMetadataValue
 
 private def readLakeManifestJson? : IO (Option Json) := do
   let cwd ← IO.currentDir
@@ -285,19 +230,19 @@ private def packageMetadataFromPathPackage? (pkg : Json) : IO (Option PackageMet
     | return none
   let cwd ← IO.currentDir
   let packageDir := (cwd / dir).normalize
-  let some version ← gitVersionAt? packageDir
+  let some version ← Git.shortCommitAt? packageDir
     | return none
-  let repositoryUrl ← gitRepositoryUrlAt? packageDir
-  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? packageDir)
+  let repositoryUrl ← Git.repositoryUrlAt? packageDir
+  let commitUrl := Git.commitUrl? repositoryUrl (← Git.fullCommitAt? packageDir)
   pure <| some { version, repositoryUrl, commitUrl }
 
 private def packageMetadataFromGitPackage? (pkg : Json) : Option PackageMetadata := do
   let version ← versionFromManifestPackage? pkg
   let repositoryUrl :=
     match jsonStringField? pkg "url" with
-    | some url => githubRepositoryUrl? url
+    | some url => Git.githubRepositoryUrl? url
     | none => none
-  let commitUrl := gitCommitUrl? repositoryUrl (jsonStringField? pkg "rev")
+  let commitUrl := Git.commitUrl? repositoryUrl (jsonStringField? pkg "rev")
   some { version, repositoryUrl, commitUrl }
 
 private def packageMetadata? (manifest : Json) (names : Array String) : IO (Option PackageMetadata) := do
@@ -308,9 +253,9 @@ private def packageMetadata? (manifest : Json) (names : Array String) : IO (Opti
   | none => packageMetadataFromPathPackage? pkg
 
 private def gitPackageMetadataAt (dir : System.FilePath) : IO PackageMetadata := do
-  let version ← gitVersionAt? dir
-  let repositoryUrl ← gitRepositoryUrlAt? dir
-  let commitUrl := gitCommitUrl? repositoryUrl (← gitFullVersionAt? dir)
+  let version ← Git.shortCommitAt? dir
+  let repositoryUrl ← Git.repositoryUrlAt? dir
+  let commitUrl := Git.commitUrl? repositoryUrl (← Git.fullCommitAt? dir)
   pure {
     version := version.getD unknownMetadataValue
     repositoryUrl
@@ -364,7 +309,7 @@ private def readUpstreamBlueprint? : IO (Option GitCommitMetadata) := do
   let upstreamDir := (cwd / upstreamPath).normalize
   unless ← upstreamDir.pathExists do
     return none
-  match (← gitToplevelAt? cwd), (← gitToplevelAt? upstreamDir) with
+  match (← Git.toplevelAt? cwd), (← Git.toplevelAt? upstreamDir) with
   | some projectRoot, some upstreamRoot =>
       if projectRoot == upstreamRoot then
         return none
@@ -374,11 +319,11 @@ private def readUpstreamBlueprint? : IO (Option GitCommitMetadata) := do
 def readBuildMetadata : IO BuildMetadata := do
   let cwd ← IO.currentDir
   let manifest? ← readLakeManifestJson?
-  let compiledAt ← runTrimmedCommand? "date" #["-u", "+%Y-%m-%dT%H:%M:%SZ"]
-  let commit ← runTrimmedCommand? "git" #["rev-parse", "--short", "HEAD"]
-  let subject ← runTrimmedCommand? "git" #["log", "-1", "--pretty=%s"]
-  let projectRepositoryUrl ← gitRepositoryUrlAt? cwd
-  let projectCommitUrl := gitCommitUrl? projectRepositoryUrl (← gitFullVersionAt? cwd)
+  let compiledAt ← Process.runTrimmedCommand? "date" #["-u", "+%Y-%m-%dT%H:%M:%SZ"]
+  let commit ← Git.shortCommitAt? cwd
+  let subject ← Git.subjectAt? cwd
+  let projectRepositoryUrl ← Git.repositoryUrlAt? cwd
+  let projectCommitUrl := Git.commitUrl? projectRepositoryUrl (← Git.fullCommitAt? cwd)
   let leanToolchain ← readLeanToolchain
   let blueprintPackage ← readBlueprintPackage manifest?
   let mathlibPackage? ← readMathlibPackage? manifest?
@@ -497,14 +442,42 @@ private def highlightedDocstringInnerTextRead : String :=
 private def highlightedDocstringTextContentRead : String :=
   "const str = d.textContent || \"\";"
 
-private def patchHighlightedDocstringStartupJs (js : JS) : JS :=
-  { js with js := js.js.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead }
+private def highlightedTacticShowGuardBefore : String :=
+  "if (inst.reference.className == 'tactic') {
+            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+
+private def highlightedTacticShowGuardAfter : String :=
+  "if (inst.reference.className == 'tactic') {
+            if (!inst.reference.querySelector(\".tactic-state\")) {
+              return false;
+            }
+            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+
+private def highlightedTacticContentBefore : String :=
+  "if (tgt.className == 'tactic') {
+            const state = tgt.querySelector(\".tactic-state\").cloneNode(true);"
+
+private def highlightedTacticContentAfter : String :=
+  "if (tgt.className == 'tactic') {
+            const stateSource = tgt.querySelector(\".tactic-state\");
+            if (!stateSource) {
+              return content;
+            }
+            const state = stateSource.cloneNode(true);"
+
+private def patchHighlightedStartupJs (js : JS) : JS :=
+  let patched :=
+    js.js
+      |>.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead
+      |>.replace highlightedTacticShowGuardBefore highlightedTacticShowGuardAfter
+      |>.replace highlightedTacticContentBefore highlightedTacticContentAfter
+  { js with js := patched }
 
 private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
   { assets with
     extraJs :=
       Std.HashSet.ofArray <|
-        assets.extraJs.toArray.map patchHighlightedDocstringStartupJs
+        assets.extraJs.toArray.map patchHighlightedStartupJs
   }
 
 private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=

@@ -1319,7 +1319,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             [
                 "rsync",
                 "-a",
-                "--delete",
+                "--exclude",
+                "/build/",
                 f"{cache_dir / '.lake'}/",
                 f"{local_dir / '.lake'}/",
             ],
