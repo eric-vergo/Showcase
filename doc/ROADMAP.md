@@ -159,8 +159,8 @@ Work:
 2. keep linked worktree metadata local under `.worktrees/`
 3. keep shell wrappers thin; keep Python harness modules as the source of truth
    for orchestration, path logic, release checks, and project catalogs
-4. keep the project catalog explicit and small, with reference blueprints plus
-   opt-in ephemeral GitHub checkout coverage
+4. keep the project catalog explicit and small, with published reference
+   targets plus opt-in ephemeral GitHub checkout coverage
 5. validate both root-checkout and linked-worktree flows end to end
 6. stabilize output-path conventions for generation, static checks, browser
    checks, and published reference catalogs

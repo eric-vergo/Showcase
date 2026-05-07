@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import re
 import shutil
@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 import tomllib
 
-from scripts.blueprint_harness_projects import HarnessProject
+from scripts.blueprint_harness_projects import HarnessProject, reference_dependency_cache_key
 from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners, run
 
 
@@ -55,20 +55,66 @@ def site_dir_for(project: HarnessProject, output_root: Path) -> Path:
     return output_dir_for(project, output_root) / project.site_subdir
 
 
-def reference_cache_checkout_dir(layout, project: HarnessProject) -> Path:
-    return layout.reference_project_cache_root / project.project_id
+def reference_source_cache_checkout_dir(layout, project: HarnessProject) -> Path:
+    return layout.reference_source_cache_root / reference_dependency_cache_key(project)
+
+
+def reference_dependency_cache_dir(layout, project: HarnessProject) -> Path:
+    return layout.reference_dependency_cache_root / reference_dependency_cache_key(project)
+
+
+def reference_dependency_packages_dir(layout, project: HarnessProject) -> Path:
+    return reference_dependency_cache_dir(layout, project) / "packages"
 
 
 def reference_local_checkout_dir(layout, project: HarnessProject) -> Path:
-    return layout.reference_project_checkout_root / project.project_id
+    return layout.reference_project_checkout_root / reference_dependency_cache_key(project)
 
 
 def reference_edit_checkout_dir(layout, project: HarnessProject) -> Path:
     return layout.reference_project_edit_root / project.project_id
 
 
-def use_shared_reference_checkout() -> bool:
-    return os.getenv("BP_REFERENCE_CHECKOUT_MODE") == "shared"
+def reference_dependency_cache_keys(projects: tuple[HarnessProject, ...] | list[HarnessProject]) -> set[str]:
+    keys: set[str] = set()
+    for project in projects:
+        if not project.git_checkout:
+            continue
+        if project.ref is not None:
+            keys.add(reference_dependency_cache_key(project))
+        for target in project.targets:
+            if target.ref is None:
+                continue
+            keys.add(
+                reference_dependency_cache_key(
+                    replace(project, ref=target.ref, selected_release=target.release)
+                )
+            )
+    return keys
+
+
+def lake_packages_dir(project_dir: Path) -> Path:
+    return project_dir / ".lake" / "packages"
+
+
+def seed_lake_packages_from_dependency_cache(layout, project: HarnessProject, project_dir: Path) -> Path | None:
+    source_packages = reference_dependency_packages_dir(layout, project)
+    if not source_packages.exists():
+        return None
+    destination_packages = lake_packages_dir(project_dir)
+    destination_packages.mkdir(parents=True, exist_ok=True)
+    run(["rsync", "-a", f"{source_packages}/", f"{destination_packages}/"], cwd=layout.package_root)
+    return source_packages
+
+
+def store_lake_packages_in_dependency_cache(layout, project: HarnessProject, project_dir: Path) -> Path | None:
+    source_packages = lake_packages_dir(project_dir)
+    if not source_packages.exists():
+        return None
+    destination_packages = reference_dependency_packages_dir(layout, project)
+    destination_packages.mkdir(parents=True, exist_ok=True)
+    run(["rsync", "-a", "--delete", f"{source_packages}/", f"{destination_packages}/"], cwd=layout.package_root)
+    return destination_packages
 
 
 def short_git_ref(ref: str) -> str:
@@ -466,14 +512,40 @@ def seed_reference_edit_checkout_lake(layout, project: HarnessProject, edit_dir:
     if shutil.which("rsync") is None:
         return None
 
+    local_lake = reference_local_checkout_dir(layout, project) / project.project_root / ".lake"
+    if local_lake.exists():
+        run(
+            ["rsync", "-a", "--delete", f"{local_lake}/", f"{edit_dir / project.project_root / '.lake'}/"],
+            cwd=layout.package_root,
+        )
+        return local_lake
+
+    dependency_packages = reference_dependency_packages_dir(layout, project)
+    if dependency_packages.exists():
+        edit_packages = edit_dir / project.project_root / ".lake" / "packages"
+        edit_packages.mkdir(parents=True, exist_ok=True)
+        run(
+            [
+                "rsync",
+                "-a",
+                "--delete",
+                f"{dependency_packages}/",
+                f"{edit_packages}/",
+            ],
+            cwd=layout.package_root,
+        )
+        return dependency_packages
+
     for source_dir in (
-        reference_local_checkout_dir(layout, project),
-        reference_cache_checkout_dir(layout, project),
+        reference_source_cache_checkout_dir(layout, project),
     ):
-        source_lake = source_dir / ".lake"
+        source_lake = source_dir / project.project_root / ".lake"
         if source_lake.exists():
-            run(["rsync", "-a", "--delete", f"{source_lake}/", f"{edit_dir / '.lake'}/"], cwd=layout.package_root)
-            return source_dir
+            run(
+                ["rsync", "-a", "--delete", f"{source_lake}/", f"{edit_dir / project.project_root / '.lake'}/"],
+                cwd=layout.package_root,
+            )
+            return source_lake
     return None
 
 
@@ -574,15 +646,19 @@ def bump_reference_project(
 
 
 def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build: bool) -> Path:
-    cache_dir = reference_cache_checkout_dir(layout, project)
+    cache_dir = reference_source_cache_checkout_dir(layout, project)
     cache_dir.parent.mkdir(parents=True, exist_ok=True)
     if not cache_dir.exists():
+        clone_git_project(project, cache_dir, cwd=layout.package_root)
+    elif not (cache_dir / ".git").exists():
+        shutil.rmtree(cache_dir)
         clone_git_project(project, cache_dir, cwd=layout.package_root)
     else:
         update_git_checkout(project, cache_dir)
     project_dir = cache_dir / project.project_root
     discard_untracked_project_manifest(project_dir)
     bootstrap_reference_checkout(project_dir=project_dir)
+    seed_lake_packages_from_dependency_cache(layout, project, project_dir)
     cache_lakefile = project_dir / "lakefile.lean"
     original_text = cache_lakefile.read_text(encoding="utf-8")
     rewrite_local_blueprint_dependency(project_dir, layout.package_root)
@@ -590,6 +666,7 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
         run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
         if warm_build and project.build_command is not None:
             run(lean_low_priority_command(layout.package_root, *project.build_command), cwd=project_dir)
+        store_lake_packages_in_dependency_cache(layout, project, project_dir)
     finally:
         cache_lakefile.write_text(original_text, encoding="utf-8")
     return cache_dir
@@ -604,14 +681,31 @@ def sync_reference_local_checkout(layout, project: HarnessProject, cache_dir: Pa
         update_git_checkout(project, local_dir)
     bootstrap_reference_checkout(project_dir=local_dir / project.project_root)
 
-    cache_lake = cache_dir / ".lake"
-    if cache_lake.exists():
-        # Seed dependency state from the shared cache, but preserve the
-        # worktree-local project's own build products. Those artifacts are
-        # produced after rewriting the reference project to depend on the local
-        # VersoBlueprint checkout, so deleting them defeats the local cache.
+    dependency_packages = reference_dependency_packages_dir(layout, project)
+    if dependency_packages.exists():
+        local_packages = local_dir / project.project_root / ".lake" / "packages"
+        local_packages.mkdir(parents=True, exist_ok=True)
         run(
-            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / '.lake'}/"],
+            [
+                "rsync",
+                "-a",
+                f"{dependency_packages}/",
+                f"{local_packages}/",
+            ],
+            cwd=layout.package_root,
+        )
+    else:
+        cache_lake = cache_dir / project.project_root / ".lake"
+        if not cache_lake.exists():
+            return local_dir
+        # Fallback for caches produced before the dedicated dependency-package
+        # cache existed: seed dependency state from the shared checkout, but
+        # preserve the worktree-local project's own build products. Those
+        # artifacts are produced after rewriting the reference project to depend
+        # on the local VersoBlueprint checkout, so deleting them defeats the
+        # local cache.
+        run(
+            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / project.project_root / '.lake'}/"],
             cwd=layout.package_root,
         )
     return local_dir
@@ -670,45 +764,25 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
 
 
 def generate_git_project(layout, output_root: Path, project: HarnessProject, *, skip_build: bool) -> None:
-    # Shared cache warm builds run against `layout.repo_root` so linked worktree
-    # validations must skip them here and build only after rewriting the local
-    # checkout dependency to `layout.package_root`.
-    cache_warm_build = (not skip_build) and use_shared_reference_checkout()
     rebuilt = rebuild_embedded_asset_owners(layout.package_root)
     for target in rebuilt:
         print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
-    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=cache_warm_build)
-    checkout_root = cache_dir if use_shared_reference_checkout() else sync_reference_local_checkout(layout, project, cache_dir)
+    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False)
+    checkout_root = sync_reference_local_checkout(layout, project, cache_dir)
     project_dir = checkout_root / project.project_root
     discard_untracked_project_manifest(project_dir)
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
-    original_text = (project_dir / "lakefile.lean").read_text(encoding="utf-8") if use_shared_reference_checkout() else None
-    try:
-        bootstrap_reference_checkout(project_dir=project_dir)
-        rewritten_lakefile = rewrite_local_blueprint_dependency(project_dir, layout.package_root)
-        print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
-        run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
-        if not skip_build and project.build_command is not None:
-            run(
-                lean_low_priority_command(
-                    layout.package_root,
-                    *format_external_command(
-                        project.build_command,
-                        project=project,
-                        package_root=layout.package_root,
-                        checkout_root=checkout_root,
-                        project_dir=project_dir,
-                        output_dir=output_dir,
-                    ),
-                ),
-                cwd=project_dir,
-            )
+    bootstrap_reference_checkout(project_dir=project_dir)
+    rewritten_lakefile = rewrite_local_blueprint_dependency(project_dir, layout.package_root)
+    print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
+    run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
+    if not skip_build and project.build_command is not None:
         run(
             lean_low_priority_command(
                 layout.package_root,
                 *format_external_command(
-                    project.generate_command or (),
+                    project.build_command,
                     project=project,
                     package_root=layout.package_root,
                     checkout_root=checkout_root,
@@ -718,9 +792,20 @@ def generate_git_project(layout, output_root: Path, project: HarnessProject, *, 
             ),
             cwd=project_dir,
         )
-    finally:
-        if original_text is not None:
-            (project_dir / "lakefile.lean").write_text(original_text, encoding="utf-8")
+    run(
+        lean_low_priority_command(
+            layout.package_root,
+            *format_external_command(
+                project.generate_command or (),
+                project=project,
+                package_root=layout.package_root,
+                checkout_root=checkout_root,
+                project_dir=project_dir,
+                output_dir=output_dir,
+            ),
+        ),
+        cwd=project_dir,
+    )
 
 
 def sync_reference_blueprints(layout, projects: list[HarnessProject], *, warm_build: bool, prepare_local_checkout: bool) -> None:
@@ -728,7 +813,7 @@ def sync_reference_blueprints(layout, projects: list[HarnessProject], *, warm_bu
     if not git_projects:
         return
     if shutil.which("rsync") is None:
-        raise SystemExit("[blueprint-harness] `rsync` is required for reference blueprint cache sync.")
+        raise SystemExit("[blueprint-harness] `rsync` is required for reference dependency cache sync.")
     for project in git_projects:
         cache_dir = sync_reference_cache_checkout(layout, project, warm_build=warm_build)
         if prepare_local_checkout:
@@ -736,11 +821,21 @@ def sync_reference_blueprints(layout, projects: list[HarnessProject], *, warm_bu
             print(f"[blueprint-harness] prepared local reference checkout: {local_dir}")
 
 
-def reference_prune_plan(active_worktree_names: set[str], project_ids: set[str], cache_root: Path, checkout_root: Path) -> list[Path]:
+def reference_prune_plan(
+    active_worktree_names: set[str],
+    active_cache_keys: set[str],
+    cache_root: Path,
+    checkout_root: Path,
+    dependency_cache_root: Path | None = None,
+) -> list[Path]:
     removals: list[Path] = []
     if cache_root.exists():
         for path in sorted(child for child in cache_root.iterdir() if child.is_dir()):
-            if path.name not in project_ids:
+            if path.name not in active_cache_keys:
+                removals.append(path)
+    if dependency_cache_root is not None and dependency_cache_root.exists():
+        for path in sorted(child for child in dependency_cache_root.iterdir() if child.is_dir()):
+            if path.name not in active_cache_keys:
                 removals.append(path)
     if checkout_root.exists():
         for namespace_dir in sorted(child for child in checkout_root.iterdir() if child.is_dir()):
@@ -748,6 +843,6 @@ def reference_prune_plan(active_worktree_names: set[str], project_ids: set[str],
                 removals.append(namespace_dir)
                 continue
             for project_dir in sorted(child for child in namespace_dir.iterdir() if child.is_dir()):
-                if project_dir.name not in project_ids:
+                if project_dir.name not in active_cache_keys:
                     removals.append(project_dir)
     return removals

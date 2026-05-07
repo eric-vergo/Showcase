@@ -61,6 +61,7 @@ python3 -m scripts.blueprint_test_blueprints list-json
 Reference blueprints and test blueprints are distinct artifact families:
 
 - reference blueprints are the release-facing validation catalog selected from
+  `publish_reference: true` project targets in
   [`tests/harness/projects.json`](../tests/harness/projects.json)
 - test blueprints are local rendering/browser fixtures selected from
   [`tests/VersoBlueprintTests/TestBlueprintRegistry.lean`](../tests/VersoBlueprintTests/TestBlueprintRegistry.lean)
@@ -98,10 +99,12 @@ script map, not a second command reference.
   Shared argparse helper functions used by the harness CLIs.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
-  [`tests/harness/projects.json`](../tests/harness/projects.json).
+  [`tests/harness/projects.json`](../tests/harness/projects.json), including
+  the external reference dependency-cache key.
 - `blueprint_harness_references.py`
-  Reference-blueprint checkout, editable-clone setup, local override, cache
-  warm-up, and prune helpers shared by the reference CLI.
+  Reference-blueprint checkout, editable-clone setup, local override,
+  dependency-package cache warm-up, and prune helpers shared by the reference
+  CLI.
 - `blueprint_harness_utils.py`
   Shared process-launch helpers used by the harness modules.
 - `blueprint_harness_validation.py`

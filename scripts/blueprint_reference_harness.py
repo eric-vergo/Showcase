@@ -26,6 +26,7 @@ from scripts.blueprint_harness_projects import (
     HarnessProjectCatalog,
     load_project_catalog as load_project_catalog_manifest,
     resolve_projects_for_release,
+    resolve_release_projects,
     resolve_release_target,
 )
 from scripts.blueprint_harness_references import (
@@ -37,8 +38,9 @@ from scripts.blueprint_harness_references import (
     output_dir_for,
     prepare_reference_edit_checkout,
     ref_is_commit_hash,
-    reference_cache_checkout_dir,
+    reference_dependency_cache_keys,
     reference_prune_plan,
+    reference_source_cache_checkout_dir,
     site_dir_for,
     sync_reference_blueprints,
 )
@@ -212,7 +214,7 @@ def refresh_reference_status_checkout(checkout_root: Path, project: HarnessProje
 
 
 def ensure_reference_status_checkout(layout, project: HarnessProject) -> Path:
-    checkout_root = reference_cache_checkout_dir(layout, project)
+    checkout_root = reference_source_cache_checkout_dir(layout, project)
     checkout_root.parent.mkdir(parents=True, exist_ok=True)
     if not checkout_root.exists():
         clone_git_project(project, checkout_root, cwd=layout.package_root, shallow=False)
@@ -413,10 +415,21 @@ def select_release_projects(
     release: str | None,
     project_ids: list[str] | None,
     package_root: Path,
+    default_to_published_catalog: bool = True,
 ) -> tuple[str, list[HarnessProject]]:
+    selected_ids = project_ids
+    require_selected_targets = True
+    if project_ids is None and not default_to_published_catalog:
+        selected_ids = [project.project_id for project in catalog.projects]
+        require_selected_targets = False
     try:
-        selected_release = resolve_release_target(catalog, release, package_root)
-        projects = resolve_projects_for_release(catalog, selected_release.release_id, project_ids)
+        selected_release, projects = resolve_release_projects(
+            catalog,
+            release,
+            package_root,
+            selected_ids,
+            require_selected_targets=require_selected_targets,
+        )
     except ValueError as err:
         raise SystemExit(f"[blueprint-reference-harness] {err}") from err
     return selected_release.release_id, projects
@@ -808,10 +821,17 @@ def command_release_status(args: argparse.Namespace) -> int:
 
     print(f"project_manifest={manifest_path}")
     for release_target in releases:
-        projects = resolve_projects_for_release(catalog, release_target.release_id, None)
-        if args.project is not None:
-            allowed = set(args.project)
-            projects = [project for project in projects if project.project_id in allowed]
+        try:
+            projects = resolve_projects_for_release(
+                catalog,
+                release_target.release_id,
+                args.project,
+                require_selected_targets=args.release is not None,
+            )
+        except ValueError as err:
+            raise SystemExit(f"[blueprint-reference-harness] {err}") from err
+        if args.project is not None and not projects:
+            continue
 
         statuses: list[ReferenceProjectStatus] = []
         for project in projects:
@@ -875,7 +895,8 @@ def command_reference_sync(args: argparse.Namespace) -> int:
         prepare_local_checkout=not args.skip_local_checkout,
     )
     print(f"[blueprint-reference-harness] release target: {release_id}")
-    print(f"[blueprint-reference-harness] reference cache root: {layout.reference_project_cache_root}")
+    print(f"[blueprint-reference-harness] reference source cache root: {layout.reference_source_cache_root}")
+    print(f"[blueprint-reference-harness] reference dependency cache root: {layout.reference_dependency_cache_root}")
     print(f"[blueprint-reference-harness] reference checkout root: {layout.reference_project_checkout_root}")
     return 0
 
@@ -884,17 +905,22 @@ def command_reference_edit(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
-    project_map = {project.project_id: project for project in catalog.projects}
-    if args.project not in project_map:
-        known = ", ".join(sorted(project_map))
-        raise SystemExit(f"[blueprint-reference-harness] unknown project `{args.project}`; known projects: {known}")
-    project = project_map[args.project]
+    release_id, projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=[args.project],
+        package_root=layout.package_root,
+    )
+    project = projects[0]
+    if not project.git_checkout:
+        raise SystemExit(f"[blueprint-reference-harness] project `{project.project_id}` is not an external git checkout project")
     edit_dir, branch, base_ref = prepare_reference_edit_checkout(
         layout,
         project,
         branch=args.branch,
         base_ref=args.base,
     )
+    print(f"[blueprint-reference-harness] release target: {release_id}")
     print(f"[blueprint-reference-harness] editable reference checkout: {edit_dir}")
     print(f"[blueprint-reference-harness] branch: {branch}")
     print(f"[blueprint-reference-harness] base ref: {base_ref}")
@@ -909,24 +935,29 @@ def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
-    project_map = {project.project_id: project for project in catalog.projects if project.git_checkout}
-    if args.project:
-        seen: set[str] = set()
-        projects: list[HarnessProject] = []
-        for value in args.project:
-            if value not in project_map:
-                known = ", ".join(sorted(project_map))
-                raise SystemExit(f"[blueprint-reference-harness] unknown project `{value}`; known projects: {known}")
-            if value not in seen:
-                projects.append(project_map[value])
-                seen.add(value)
-    else:
-        projects = list(project_map.values())
+    release_id, selected_projects = select_release_projects(
+        catalog,
+        release=args.release,
+        project_ids=args.project,
+        package_root=layout.package_root,
+        default_to_published_catalog=False,
+    )
+    projects: list[HarnessProject] = []
+    for project in selected_projects:
+        if not project.git_checkout:
+            if args.project is not None:
+                raise SystemExit(
+                    f"[blueprint-reference-harness] project `{project.project_id}` is not an external git checkout project"
+                )
+            continue
+        projects.append(project)
+    if not projects:
+        raise SystemExit(f"[blueprint-reference-harness] release target `{release_id}` has no external git checkout projects")
     failures: list[StepFailure] = []
     output_root = layout.artifact_root / "reference-blueprints-edit"
 
     for project in projects:
-        print(f"[blueprint-reference-harness] bumping {project.project_id} to {args.ref}")
+        print(f"[blueprint-reference-harness] bumping {project.project_id} on {release_id} to {args.ref}")
         try:
             result = bump_reference_project(
                 layout,
@@ -983,12 +1014,13 @@ def command_reference_prune(args: argparse.Namespace) -> int:
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
     }
-    project_ids = {project.project_id for project in projects if project.git_checkout}
+    cache_keys = reference_dependency_cache_keys(projects)
     removals = reference_prune_plan(
         active_names,
-        project_ids,
-        layout.reference_project_cache_root,
+        cache_keys,
+        layout.reference_source_cache_root,
         layout.reference_project_root / "by-worktree",
+        layout.reference_dependency_cache_root,
     )
     if not removals:
         print("[blueprint-reference-harness] reference prune: no stale cached checkouts found")
@@ -1119,7 +1151,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync = subparsers.add_parser(
         "sync",
-        help="Warm shared reference blueprint caches and prepare local clones for the current checkout.",
+        help="Warm shared reference dependency caches and prepare local clones for the current checkout.",
     )
     add_manifest_argument(sync)
     add_project_selection_argument(
@@ -1146,6 +1178,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_manifest_argument(edit)
     edit.add_argument("project", help="External git-checkout project id to open for editing.")
+    edit.add_argument("--release", default=None, help="Release target to edit. Defaults to the current checkout release line.")
     edit.add_argument(
         "--branch",
         default=None,
@@ -1167,6 +1200,7 @@ def build_parser() -> argparse.ArgumentParser:
         bump,
         help_text="Restrict the bump to the selected external project. Repeat to select more.",
     )
+    bump.add_argument("--release", default=None, help="Release target to bump. Defaults to the current checkout release line.")
     bump.add_argument(
         "--ref",
         required=True,
@@ -1211,7 +1245,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     prune = subparsers.add_parser(
         "prune",
-        help="Remove stale harness-managed reference blueprint caches and checkout clones.",
+        help="Remove stale harness-managed reference dependency caches and checkout clones.",
     )
     add_manifest_argument(prune)
     prune.add_argument(

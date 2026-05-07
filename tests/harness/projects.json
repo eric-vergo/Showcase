@@ -24,33 +24,6 @@
       "deploy_pages": true
     }
   ],
-  "reference_blueprints": [
-    {
-      "blueprint": "algebraic-combinatorics",
-      "hash": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726",
-      "toolchain": "v4.28.0"
-    },
-    {
-      "blueprint": "spherepackingblueprint",
-      "hash": "5efe6e8414889b42329b659eb29de6e1f0641c8d",
-      "toolchain": "v4.29.0"
-    },
-    {
-      "blueprint": "noperthedron",
-      "hash": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6",
-      "toolchain": "v4.30.0-rc2"
-    },
-    {
-      "blueprint": "verso-flt",
-      "hash": "abacaae392d78a655cf8ddfffa442313709784a2",
-      "toolchain": "v4.30.0-rc2"
-    },
-    {
-      "blueprint": "verso-carleson",
-      "hash": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b",
-      "toolchain": "v4.30.0-rc2"
-    }
-  ],
   "projects": [
     {
       "id": "project-template",
@@ -89,7 +62,8 @@
         },
         {
           "release": "v4.30.0",
-          "ref": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6"
+          "ref": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "Contents"],
@@ -107,7 +81,8 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "5efe6e8414889b42329b659eb29de6e1f0641c8d"
+          "ref": "5efe6e8414889b42329b659eb29de6e1f0641c8d",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],
@@ -129,7 +104,8 @@
         },
         {
           "release": "v4.30.0",
-          "ref": "abacaae392d78a655cf8ddfffa442313709784a2"
+          "ref": "abacaae392d78a655cf8ddfffa442313709784a2",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
@@ -147,7 +123,8 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b"
+          "ref": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "CarlesonBlueprint"],
@@ -165,7 +142,8 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726"
+          "ref": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],

@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 if __package__ in {None, ""}:
@@ -13,14 +11,14 @@ if __package__ in {None, ""}:
 
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
+    HarnessProject,
     HarnessProjectCatalog,
     HarnessReleaseTarget,
-    default_project_manifest,
     deploy_project_artifact_name,
     deploy_project_artifact_path,
     load_project_catalog,
-    load_project_catalog_text,
-    reference_blueprint_ids_for_toolchain,
+    reference_dependency_cache_key,
+    resolve_manifest_path,
     resolve_projects_for_release,
 )
 
@@ -42,103 +40,95 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_manifest_path(layout, path_text: str | None) -> Path:
-    if path_text is None:
-        return default_project_manifest(layout.package_root)
-    path = Path(path_text)
-    if path.is_absolute():
-        return path.resolve()
-    return (Path.cwd() / path).resolve()
+def release_target_manifest_entry(target: HarnessReleaseTarget) -> dict[str, object]:
+    entry: dict[str, object] = {
+        "id": target.release_id,
+        "toolchain": target.release_toolchain,
+        "verso_ref": target.release_verso_ref,
+        "branch": target.branch,
+        "deploy_pages": target.deploy_pages,
+    }
+    if target.rc is not None:
+        entry["rc"] = target.rc
+    return entry
 
 
-def manifest_relative_to_package(manifest_path: Path, package_root: Path) -> Path | None:
-    try:
-        return manifest_path.relative_to(package_root)
-    except ValueError:
-        return None
+def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
+    if project.selected_release is None:
+        raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
+
+    source: dict[str, object] = {
+        "kind": project.source_kind,
+        "project_root": project.project_root,
+    }
+    if project.repository is not None:
+        source["repository"] = project.repository
+
+    target: dict[str, object] = {"release": project.selected_release}
+    if project.ref is not None:
+        target["ref"] = project.ref
+
+    entry: dict[str, object] = {
+        "id": project.project_id,
+        "source": source,
+        "targets": [target],
+        "site_subdir": project.site_subdir,
+    }
+    if project.description is not None:
+        entry["description"] = project.description
+    if project.build_target is not None:
+        entry["build_target"] = project.build_target
+    if project.generator is not None:
+        entry["generator"] = project.generator
+    if project.build_command is not None:
+        entry["build_command"] = list(project.build_command)
+    if project.generate_command is not None:
+        entry["generate_command"] = list(project.generate_command)
+    validation: dict[str, object] = {}
+    if project.panel_regression_script is not None:
+        validation["panel_regression_script"] = project.panel_regression_script
+    if project.browser_tests_path is not None:
+        validation["browser_tests_path"] = project.browser_tests_path
+    if validation:
+        entry["validation"] = validation
+    return entry
 
 
-def release_branch_ref_candidates(branch: str) -> tuple[str, ...]:
-    return (f"origin/{branch}", f"refs/remotes/origin/{branch}", branch)
+def deploy_project_manifest(target: HarnessReleaseTarget, project: HarnessProject) -> dict[str, object]:
+    return {
+        "version": 2,
+        "release_targets": [release_target_manifest_entry(target)],
+        "projects": [project_manifest_entry(project)],
+    }
 
 
-def load_branch_project_catalog(
-    *,
-    branch: str,
-    manifest_path: Path,
-    package_root: Path,
-) -> HarnessProjectCatalog:
-    manifest_relpath = manifest_relative_to_package(manifest_path, package_root)
-    if manifest_relpath is None:
-        return load_project_catalog(manifest_path)
-
-    errors: list[str] = []
-    for ref in release_branch_ref_candidates(branch):
-        result = subprocess.run(
-            ["git", "show", f"{ref}:{manifest_relpath.as_posix()}"],
-            cwd=package_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode == 0:
-            return load_project_catalog_text(result.stdout, f"{ref}:{manifest_relpath.as_posix()}")
-        errors.append(result.stderr.strip() or result.stdout.strip())
-
-    raise ValueError(
-        f"could not load reference project catalog for release branch `{branch}` from `{manifest_relpath}`; "
-        + "; ".join(error for error in errors if error)
-    )
-
-
-def deploy_matrix_from_release_catalogs(
+def deploy_matrix_from_controller_catalog(
     controller_catalog: HarnessProjectCatalog,
     deployable_targets: tuple[HarnessReleaseTarget, ...],
-    catalog_for_target: Callable[[HarnessReleaseTarget], HarnessProjectCatalog],
 ) -> dict[str, list[dict[str, object]]]:
     include: list[dict[str, object]] = []
     for target in deployable_targets:
-        selected_blueprints = [
-            blueprint
-            for blueprint in controller_catalog.reference_blueprints
-            if blueprint.toolchain == target.toolchain
-        ]
-        selected_project_ids = reference_blueprint_ids_for_toolchain(controller_catalog, target.toolchain)
-        expected_hash_by_project = {blueprint.blueprint: blueprint.hash for blueprint in selected_blueprints}
-        if controller_catalog.reference_blueprints and not selected_blueprints:
+        controller_projects = resolve_projects_for_release(controller_catalog, target.release_id, None)
+        if not controller_projects:
             raise ValueError(
-                f"release target `{target.release_id}` has `deploy_pages: true` but no reference "
-                f"blueprints for toolchain `{target.toolchain}`"
+                f"release target `{target.release_id}` has `deploy_pages: true` but no published "
+                "reference project targets"
             )
-        release_catalog = catalog_for_target(target)
-        release_target = release_catalog.release_target(target.release_id)
-        if release_target is None:
-            raise ValueError(
-                f"catalog for branch `{target.branch}` does not define release target `{target.release_id}`"
-            )
-        projects = resolve_projects_for_release(
-            release_catalog,
-            release_target.release_id,
-            selected_project_ids or None,
-        )
-        for project in projects:
-            expected_hash = expected_hash_by_project.get(project.project_id)
-            if expected_hash is not None and project.ref != expected_hash:
-                raise ValueError(
-                    f"reference blueprint `{project.project_id}` for toolchain `{target.toolchain}` resolves "
-                    f"to `{project.ref}` on branch `{target.branch}`, but the deploy catalog declares `{expected_hash}`"
-                )
+        for project in controller_projects:
             include.append(
                 {
-                    "release_id": release_target.release_id,
-                    "rc": release_target.rc,
-                    "toolchain": release_target.toolchain,
-                    "verso_ref": release_target.verso_ref,
-                    "branch": release_target.branch,
+                    "release_id": target.release_id,
+                    "rc": target.rc,
+                    "toolchain": target.toolchain,
+                    "verso_ref": target.verso_ref,
+                    "branch": target.branch,
                     "project_id": project.project_id,
+                    "project_root": project.project_root,
                     "hash": project.ref,
+                    "reference_cache_key": reference_dependency_cache_key(project) if project.git_checkout else "",
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
+                    "project_manifest": deploy_project_manifest(target, project),
                 }
             )
     return {"include": include}
@@ -146,22 +136,14 @@ def deploy_matrix_from_release_catalogs(
 
 def payload(args: argparse.Namespace) -> dict[str, object]:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(layout, args.manifest)
+    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     deployable_targets = tuple(
         target
         for target in catalog.release_targets
         if target.deploy_pages
     )
-    matrix = deploy_matrix_from_release_catalogs(
-        catalog,
-        deployable_targets,
-        lambda target: load_branch_project_catalog(
-            branch=target.branch,
-            manifest_path=manifest_path,
-            package_root=layout.package_root,
-        ),
-    )
+    matrix = deploy_matrix_from_controller_catalog(catalog, deployable_targets)
     deployable_release_count = len({entry["release_id"] for entry in matrix["include"]})
     return {
         "manifest_path": str(manifest_path),

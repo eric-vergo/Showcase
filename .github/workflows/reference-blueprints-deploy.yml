@@ -51,8 +51,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_matrix) }}
-    env:
-      BP_REFERENCE_CHECKOUT_MODE: shared
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,6 +64,22 @@ jobs:
           echo "branch=${{ matrix.branch }}"
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
+          echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+      - name: Write deploy project manifest
+        env:
+          BP_PROJECT_ID: ${{ matrix.project_id }}
+          BP_DEPLOY_PROJECT_MANIFEST: ${{ toJSON(matrix.project_manifest) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("_out/deploy-projects") / (os.environ["BP_PROJECT_ID"] + ".json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          manifest = json.loads(os.environ["BP_DEPLOY_PROJECT_MANIFEST"])
+          path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -88,6 +102,15 @@ jobs:
           key: ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-${{ matrix.release_id }}
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
+      - name: Restore external reference dependency cache
+        if: ${{ matrix.reference_cache_key != '' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages
+          key: ${{ runner.os }}-reference-deploy-deps-v1-${{ matrix.reference_cache_key }}
+          restore-keys: |
+            ${{ runner.os }}-reference-deploy-deps-v1-${{ matrix.project_id }}-
       - name: Show tool versions
         run: |
           lean --version
@@ -96,6 +119,7 @@ jobs:
       - name: Generate release reference blueprints
         run: |
           python3 -m scripts.blueprint_reference_harness generate \
+            --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
             --release ${{ matrix.release_id }} \
             --project ${{ matrix.project_id }} \
             --allow-local-build \
