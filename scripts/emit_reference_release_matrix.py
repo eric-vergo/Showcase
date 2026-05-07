@@ -11,9 +11,9 @@ if __package__ in {None, ""}:
 
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
-    default_project_manifest,
     load_project_catalog,
     reference_build_matrix,
+    resolve_manifest_path,
     resolve_projects_for_release,
     resolve_release_target,
 )
@@ -41,18 +41,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_manifest_path(layout, path_text: str | None) -> Path:
-    if path_text is None:
-        return default_project_manifest(layout.package_root)
-    path = Path(path_text)
-    if path.is_absolute():
-        return path.resolve()
-    return (Path.cwd() / path).resolve()
-
-
 def payload(args: argparse.Namespace) -> dict[str, object]:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(layout, args.manifest)
+    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
     release_target = resolve_release_target(catalog, args.release, layout.package_root)
     projects = resolve_projects_for_release(catalog, release_target.release_id, None)

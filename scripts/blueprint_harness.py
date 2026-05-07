@@ -35,14 +35,14 @@ from scripts.blueprint_harness_paths import (
     detect_harness_layout,
 )
 from scripts.blueprint_harness_projects import (
-    HarnessProject,
     load_project_catalog as load_project_catalog_manifest,
-    load_projects_manifest,
     resolve_manifest_path,
     resolve_projects_for_release,
+    resolve_release_projects,
     resolve_release_target,
 )
 from scripts.blueprint_harness_references import (
+    reference_dependency_cache_keys,
     reference_prune_plan,
     sync_reference_blueprints,
 )
@@ -69,12 +69,6 @@ class RefSyncStatus:
     upstream_oid: str | None
     relationship: str
 
-
-def load_project_catalog(manifest_path: Path) -> list[HarnessProject]:
-    try:
-        return load_projects_manifest(manifest_path)
-    except (FileNotFoundError, ValueError) as err:
-        raise SystemExit(f"[blueprint-harness] {err}") from err
 
 def sync_root_worktree_lake(layout) -> None:
     if not layout.in_linked_worktree:
@@ -274,10 +268,6 @@ def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
                 f"`--base {status.upstream_ref}` explicitly."
             )
     return requested_base
-
-
-def ref_merged_into_main(repo_root: Path, ref: str) -> bool:
-    return is_ancestor(repo_root, ref, preferred_main_ref(repo_root))
 
 
 def preferred_worktree_base_ref(path: Path) -> str:
@@ -601,7 +591,11 @@ def command_create_worktree(args: argparse.Namespace) -> int:
         sync_root_worktree_lake(new_layout)
     if not skip_reference_sync:
         manifest_path = resolve_manifest_path(None, new_layout.package_root)
-        projects = load_project_catalog(manifest_path)
+        try:
+            catalog = load_project_catalog_manifest(manifest_path)
+            _release_target, projects = resolve_release_projects(catalog, None, new_layout.package_root, None)
+        except (FileNotFoundError, ValueError) as err:
+            raise SystemExit(f"[blueprint-harness] {err}") from err
         sync_reference_blueprints(new_layout, projects, warm_build=True, prepare_local_checkout=True)
     if any(value is not None for value in (args.owner, args.priority, args.summary, args.status, args.scope)) or args.lock:
         update_worktree_record(
@@ -1029,7 +1023,8 @@ def command_paths(args: argparse.Namespace) -> int:
     print(f"reference_output_root={layout.reference_output_root}")
     print(f"test_blueprint_output_root={layout.test_blueprint_output_root}")
     print(f"preview_runtime_showcase_test_site={canonical_test_blueprint_site_dir('preview_runtime_showcase', Path(__file__))}")
-    print(f"reference_cache_root={layout.reference_project_cache_root}")
+    print(f"reference_source_cache_root={layout.reference_source_cache_root}")
+    print(f"reference_dependency_cache_root={layout.reference_dependency_cache_root}")
     print(f"reference_checkout_root={layout.reference_project_checkout_root}")
     print(f"reference_edit_root={layout.reference_project_edit_root}")
     for project in projects:
@@ -1095,17 +1090,21 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         run(["git", "branch", "-d", branch], cwd=layout.repo_root)
 
     manifest_path = resolve_manifest_path(None, layout.package_root)
-    projects = load_project_catalog(manifest_path)
+    try:
+        projects = load_project_catalog_manifest(manifest_path).projects
+    except (FileNotFoundError, ValueError) as err:
+        raise SystemExit(f"[blueprint-harness] {err}") from err
     active_names = {
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
     }
-    project_ids = {project.project_id for project in projects if project.git_checkout}
+    cache_keys = reference_dependency_cache_keys(projects)
     removals = reference_prune_plan(
         active_names,
-        project_ids,
-        layout.reference_project_cache_root,
+        cache_keys,
+        layout.reference_source_cache_root,
         layout.reference_project_root / "by-worktree",
+        layout.reference_dependency_cache_root,
     )
     for stale_path in removals:
         shutil.rmtree(stale_path)

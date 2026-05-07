@@ -296,8 +296,8 @@ python3 -m scripts.blueprint_harness paths
 `paths` prints the canonical worktree-aware output, cache, and checkout
 locations used by the harness.
 
-It also prints the shared reference blueprint cache root and the current
-checkout's local clone root.
+It also prints the shared reference checkout cache root, dependency package
+cache root, and the current checkout's local clone root.
 
 To generate local test-blueprint fixtures, run:
 
@@ -442,13 +442,15 @@ The harness is worktree-aware:
 - in a linked worktree it writes artifacts to `_out/<worktree>/...`
 - by default it prefers reusing the root checkout's prepared package `.lake`
   artifacts and binaries
-- it also keeps shared warmed reference blueprint caches under
-  `.worktrees/_reference-blueprints/cache/`
-- those shared reference caches are the source of project-specific dependency
-  state, including warmed Mathlib builds for external projects that pin their
-  own Mathlib versions
+- it also keeps shared warmed reference dependency package caches under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages`
+- those shared caches are keyed by external repository, project root, and
+  selected project ref; they preserve expensive pinned dependency state such as
+  Mathlib package builds, not generated Blueprint site artifacts
+- disposable source checkouts for those refs live separately under
+  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
 - each checkout uses its own local reference blueprint clones under
-  `.worktrees/_reference-blueprints/by-worktree/<checkout>/`
+  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`
 - the reference CLI avoids local `lake build` and `lake test` in a linked
   worktree by default to avoid unnecessary dependency rebuilds
 
@@ -459,7 +461,7 @@ python3 -m scripts.blueprint_harness create-worktree <name> --lightweight
 ```
 
 When you do want to refresh a linked worktree from the root checkout and shared
-reference cache, prefer:
+reference dependency cache, prefer:
 
 ```bash
 python3 -m scripts.blueprint_harness sync-root-lake
@@ -527,11 +529,17 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --dry-run
 - the default validation catalog mixes in-repo projects with external reference
   blueprints; the larger published reference blueprints live in external
   repositories
-- the harness warms shared reference blueprint checkouts once under
-  `.worktrees/_reference-blueprints/cache/`
+- the harness warms shared reference dependency packages under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/packages`
+- the cache key is derived from the external repository URL, project root, and
+  selected project ref, so one project can keep separate caches for different
+  Lean/mathlib release pins
+- disposable source checkouts for those keyed refs live under
+  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
 - each checkout gets its own local clone under
-  `.worktrees/_reference-blueprints/by-worktree/<checkout>/`, seeded from the
-  shared cache so transitive build artifacts stay warm across worktrees
+  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`,
+  seeded from the dependency package cache so transitive build artifacts stay
+  warm across worktrees
 - editable reference-project clones live separately under
   `.worktrees/_reference-blueprints/edit/<checkout>/` and are not touched by
   `sync`, `generate`, or `prune`
@@ -590,30 +598,37 @@ template-owned CI path.
 pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
 - resolves the current branch's release target from `tests/harness/projects.json`
-- filters the flat `reference_blueprints` list by that release target's
-  toolchain and builds only the matching reference blueprints
+- builds only project targets for that release that set
+  `publish_reference: true`
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
 - stages a branch-local site artifact under `_site/` only when the selected
   release target has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
-- uses the shared reference-checkout mode in CI to avoid duplicating warmed
-  `.lake/` trees on the GitHub runner
+- generates external references from per-job local clones seeded by the keyed
+  dependency cache
+- restores and saves external reference dependency caches by the same
+  repository/project-root/ref key used locally, caching only the external
+  project's `.lake/packages/` tree rather than the source checkout or generated
+  Blueprint site's own build output
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
 `v4.29.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with
-`deploy_pages: true`, filters the flat `reference_blueprints` list by that
-release target's toolchain, rebuilds those selected blueprints in isolation,
-and assembles one combined GitHub Pages artifact. Each `reference_blueprints`
-entry is the simple published-reference tuple: `blueprint`, `hash`, and
-`toolchain`; the detailed `projects` entries only describe how to build the
-selected blueprint.
+`deploy_pages: true`, selects project targets marked `publish_reference: true`,
+rebuilds those selected blueprints in isolation, and assembles one combined
+GitHub Pages artifact. The per-project target entry is the source of truth for
+the project id, release, pinned ref, and publication flag. For each deploy
+matrix entry, the workflow writes a small one-project manifest from that
+default-development catalog and passes it to the release-branch harness with
+`--manifest`; the deploy job therefore does not rely on stale branch-local
+`projects.json` refs.
 
 At the moment that means:
 
-- `v4.30.0` deploys Pages for `noperthedron` and `verso-flt`
+- `v4.30.0` deploys Pages for `noperthedron`, `verso-flt`, and
+  `verso-carleson`
 - `v4.29.0` deploys Pages for `spherepackingblueprint`
 - `v4.28.0` also deploys Pages for `algebraic-combinatorics`
 
@@ -654,11 +669,10 @@ The harness is now project-driven rather than hardcoded to one project.
 - the default catalog is declared in `tests/harness/projects.json`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
-- the flat top-level `reference_blueprints` list selects the release-facing
-  validation set with one `(blueprint, hash, toolchain)` entry per published
-  reference blueprint
 - external `projects` entries declare the repository plus the build and
   generation commands needed after checkout
+- each project target owns its release ref, and `publish_reference: true` marks
+  the target as part of the release-facing published catalog
 - prefer a build command that targets only the Lean library or formalization
   artifacts needed by the document, followed by a `lake env lean --run ...`
   generation command; do not build the generator executable unless that native
@@ -676,13 +690,6 @@ Minimal external catalog entry shape:
 
 ```json
 {
-  "reference_blueprints": [
-    {
-      "blueprint": "some-user-project",
-      "hash": "0123456789abcdef0123456789abcdef01234567",
-      "toolchain": "v4.29.0"
-    }
-  ],
   "projects": [
     {
       "id": "some-user-project",
@@ -694,7 +701,8 @@ Minimal external catalog entry shape:
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "0123456789abcdef0123456789abcdef01234567"
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "SomeUserProject"],

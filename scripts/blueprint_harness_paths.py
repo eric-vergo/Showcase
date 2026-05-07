@@ -30,8 +30,12 @@ class HarnessLayout:
         return self.repo_root / ".worktrees" / "_reference-blueprints"
 
     @property
-    def reference_project_cache_root(self) -> Path:
+    def reference_source_cache_root(self) -> Path:
         return self.reference_project_root / "cache"
+
+    @property
+    def reference_dependency_cache_root(self) -> Path:
+        return self.reference_project_root / "deps"
 
     @property
     def reference_project_checkout_namespace(self) -> str:
