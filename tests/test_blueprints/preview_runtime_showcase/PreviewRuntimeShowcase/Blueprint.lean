@@ -5,6 +5,7 @@ import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
 import PreviewRuntimeShowcase.Chapters.CodePanels
 import PreviewRuntimeShowcase.Chapters.CorePreviews
+import PreviewRuntimeShowcase.Chapters.ForeignRust
 import PreviewRuntimeShowcase.Chapters.GroupPreviews
 import PreviewRuntimeShowcase.Chapters.InlineHoverPreviews
 import PreviewRuntimeShowcase.Chapters.PreviewRelationships
@@ -21,6 +22,7 @@ generator checks can run against a focused, synthetic site.
 
 {include 0 PreviewRuntimeShowcase.Chapters.CorePreviews}
 {include 0 PreviewRuntimeShowcase.Chapters.CodePanels}
+{include 0 PreviewRuntimeShowcase.Chapters.ForeignRust}
 {include 0 PreviewRuntimeShowcase.Chapters.GroupPreviews}
 {include 0 PreviewRuntimeShowcase.Chapters.PreviewRelationships}
 {include 0 PreviewRuntimeShowcase.Chapters.InlineHoverPreviews}

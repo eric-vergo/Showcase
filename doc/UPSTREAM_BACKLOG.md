@@ -105,6 +105,17 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Elaboration and Directive APIs
 
+- [ ] Factor foreign-language LSP process/session support with Beam.
+  - current Blueprint workaround:
+    `ForeignLsp.lean` owns a small in-process stdio LSP client for v1 Rocq/Rust
+    definition lookup, with separate per-process server and result caches
+  - desired upstream/shared behavior:
+    expose a stable Lean API from Beam or a shared package for cached
+    backend-neutral LSP sessions and `textDocument/definition` requests
+  - removable Blueprint code:
+    the local stdio JSON-RPC client and per-process server/result caches once
+    the shared API can be used without crossing through the Beam CLI
+
 - [ ] Provide an upstream way to resolve package-owned runtime assets during
   elaboration.
   - current Blueprint workaround:

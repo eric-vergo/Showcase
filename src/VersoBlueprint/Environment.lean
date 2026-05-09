@@ -25,6 +25,7 @@ structure InProgress where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  foreignRefs : Array ForeignAttachment := #[]
   deps : Array Label := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
   elabStx : Array Syntax := #[]
@@ -191,13 +192,13 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
 def push (label : Label) (kind : Data.InProgressKind)
     (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
     (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) : m Bool := do
+    (prUrl : Option String := none) (foreignRefs : Array ForeignAttachment := #[]) : m Bool := do
   reportImportedConflicts
   let ok ← checkLabelAndNesting label kind
   if !ok then
     return false
   modify fun data =>
-    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl }
+    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl, foreignRefs }
     { data with stack := pdata :: data.stack }
   return true
 
@@ -231,7 +232,7 @@ def pop (ref : Syntax) : m Nat := do
           elabStx := cur.elabStx
         }
         let data ← state.data.register
-          cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
+          cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl cur.foreignRefs
         let localData :=
           match data.get? cur.label with
           | some node => state.localData.insert cur.label node

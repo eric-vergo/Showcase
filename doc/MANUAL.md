@@ -301,8 +301,47 @@ Current behavior:
 - Rust rendering currently uses a small built-in syntax highlighter
 - Rust attachments do not currently participate in Blueprint progress or proof
   status computation
-- Rust diagnostics, hover information, and external Rust refs are not currently
-  part of the supported surface
+- Rust code-block diagnostics and hover information are not currently part of
+  the supported surface
+
+## Foreign LSP References
+
+Statement blocks can also carry best-effort foreign-language references:
+
+```md
+:::definition "ffi_helper" (rust := "ffi_helper")
+Helper routine mirrored in Rust.
+:::
+
+:::definition "rocq_fact" (rocq := "def1, def2")
+Rocq-side definitions related to this node.
+:::
+```
+
+Current behavior:
+
+- v1 supports Rocq and Rust references on statement blocks
+- empty strings such as `(rust := "")` are rejected
+- Blueprint writes a synthetic lookup file under `.verso-blueprint-foreign/`
+  from a stable prelude prefix plus generated identifier uses, then asks the
+  language server for `textDocument/definition`
+- the project root is the directory containing the current package `lakefile`
+- language servers are cached per Lean process by language, command, and
+  package root; lookup results are cached separately by synthetic document text
+  and reference list
+- an idle timeout shuts down cached language servers after the last lookup, so
+  one-shot generators do not keep foreign servers alive indefinitely
+- language-specific project files still matter; for example, `rust-analyzer`
+  resolves best when the package root also gives it a Rust crate or linked
+  project that includes the synthetic file
+- missing tools, startup failures, prelude diagnostics, and unresolved names
+  warn while allowing the document to continue elaborating
+- resolved references render as compact language badges with links to the
+  returned source location
+- resolved Rust references additionally fetch the returned source and render
+  grouped Rust code panels using the same renderer as labeled Rust code blocks
+- richer source mapping, Subverso rendering for other foreign languages, and
+  progress/status integration are deferred
 
 ## Math and TeX
 
@@ -674,6 +713,20 @@ Current options:
     Git checkout with a GitHub `origin` remote)
   - builds source links for external declarations using `{path}`, `{relpath}`,
     `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
+- `verso.blueprint.foreignLsp.timeoutMs`
+  - default: `5000`
+  - timeout for best-effort foreign language-server definition requests
+- `verso.blueprint.foreignLsp.idleShutdownMs`
+  - default: `1000`
+  - idle time before cached foreign language-server processes are shut down
+- `verso.blueprint.foreignLsp.rocq.command`
+  - default: `coq-lsp`
+- `verso.blueprint.foreignLsp.rust.command`
+  - default: `rust-analyzer`
+- `verso.blueprint.foreignLsp.rocq.prelude`
+  - default: `""`
+- `verso.blueprint.foreignLsp.rust.prelude`
+  - default: `""`
 - `verso.blueprint.summary.debugDiagnostics`
   - default: `false`
   - adds maintainer diagnostics such as external declaration render failures to

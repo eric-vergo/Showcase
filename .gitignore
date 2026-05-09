@@ -5,8 +5,11 @@ __pycache__/
 .lake
 .runat/
 .beam/
+.verso-blueprint-foreign/
 .worktrees/
 _out/
 _site/
+tests/test_blueprints/preview_runtime_showcase/Cargo.lock
+tests/test_blueprints/preview_runtime_showcase/target/
 tests/browser/.venv/
 tests/browser/uv.lock

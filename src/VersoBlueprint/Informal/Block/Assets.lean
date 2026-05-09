@@ -73,6 +73,16 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "group used code";
 }
 
+.bp_extras_with_foreign {
+  grid-template-columns: minmax(7.2rem, max-content) max-content max-content;
+  grid-template-areas: "used foreign code";
+}
+
+.bp_extras_with_group.bp_extras_with_foreign {
+  grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content max-content;
+  grid-template-areas: "group used foreign code";
+}
+
 .bp_extra_slot {
   display: inline-flex;
   align-items: center;
@@ -93,6 +103,11 @@ span[class$="_thmlabel"]::after {
 .bp_extra_slot_used_by {
   grid-area: used;
   justify-content: flex-start;
+}
+
+.bp_extra_slot_foreign {
+  grid-area: foreign;
+  justify-content: flex-end;
 }
 
 .bp_metadata_panel {
@@ -227,6 +242,165 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_render_warning_badge {
   margin-right: 0.32rem;
+}
+
+.bp_foreign_lsp_badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+}
+
+.bp_foreign_lsp_badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  min-height: 1.1rem;
+  padding: 0;
+  border: 0;
+  color: var(--bp-color-text-muted);
+  background: transparent;
+  font-size: 0.7rem;
+  font-family: inherit;
+  font-weight: 650;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bp_foreign_lsp_badge::before {
+  content: "";
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--bp-color-text-faint);
+}
+
+.bp_foreign_lsp_badge_resolved::before {
+  background: #16a34a;
+}
+
+.bp_foreign_lsp_badge_partial::before {
+  background: #d97706;
+}
+
+.bp_foreign_lsp_badge_warning {
+  color: var(--bp-color-status-error-text);
+}
+
+.bp_foreign_lsp_badge_warning::before {
+  background: #b91c1c;
+}
+
+.bp_foreign_lsp_badge:hover {
+  text-decoration: underline;
+}
+
+.bp_foreign_lsp_badge:focus-visible {
+  outline: 2px solid var(--bp-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.bp_foreign_rust_lookup_body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.bp_foreign_rust_status_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bp_foreign_rust_status_row {
+  display: grid;
+  grid-template-columns: minmax(5.4rem, max-content) 1fr;
+  gap: 0.55rem;
+  align-items: baseline;
+  padding: 0.38rem 0.45rem;
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: 6px;
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.bp_foreign_rust_status_label {
+  color: var(--bp-color-text-strong);
+  font-weight: 750;
+}
+
+.bp_foreign_rust_status_refs {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bp_foreign_rust_status_resolved {
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.bp_foreign_rust_status_unresolved {
+  border-color: rgba(217, 119, 6, 0.32);
+}
+
+.bp_foreign_rust_status_unavailable,
+.bp_foreign_rust_status_failed {
+  border-color: rgba(185, 28, 28, 0.24);
+}
+
+.bp_foreign_rust_snippet_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.bp_foreign_rust_snippet {
+  display: block;
+  padding: 0;
+}
+
+.bp_foreign_rust_snippet_head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.32rem 0.4rem;
+  border: 1px solid var(--bp-color-border-soft);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.bp_foreign_rust_ref {
+  color: var(--bp-color-text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-weight: 700;
+}
+
+.bp_foreign_rust_source_link {
+  color: var(--bp-color-link);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bp_foreign_rust_source_link:hover {
+  text-decoration: underline;
+}
+
+.bp_foreign_rust_snippet .bp_rust_code {
+  margin-top: 0;
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: 0 0 6px 6px;
 }
 
 .bp_code_summary_preview_root {
@@ -1714,9 +1888,57 @@ def usedByPanelJs : String := r##"(function () {
   }
 })();"##
 
+def foreignRustPanelJs : String := r##"(function () {
+  "use strict";
+
+  function bindForeignRustPanelButtons(root) {
+    if (!(root instanceof Element || root instanceof Document)) return;
+    root.querySelectorAll("[data-bp-foreign-rust-target]").forEach(function (button) {
+      if (!(button instanceof HTMLElement)) return;
+      if (button.dataset.bpForeignRustBound === "true") return;
+      button.dataset.bpForeignRustBound = "true";
+      button.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        const targetId = button.getAttribute("data-bp-foreign-rust-target");
+        if (!targetId) return;
+        const target = document.getElementById(targetId);
+        if (!(target instanceof HTMLElement)) return;
+        if (target instanceof HTMLDetailsElement) {
+          target.open = true;
+        }
+        const prefersReducedMotion = window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        target.scrollIntoView({
+          block: "start",
+          behavior: prefersReducedMotion ? "auto" : "smooth"
+        });
+        const summary = target.querySelector("summary");
+        if (summary instanceof HTMLElement) {
+          summary.focus({ preventScroll: true });
+        }
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${targetId}`);
+        }
+      });
+    });
+  }
+
+  if (window.bpPreviewUtils && typeof window.bpPreviewUtils.registerPreviewHydrator === "function") {
+    window.bpPreviewUtils.registerPreviewHydrator("foreignRustPanelButtons", bindForeignRustPanelButtons);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      bindForeignRustPanelButtons(document);
+    });
+  } else {
+    bindForeignRustPanelButtons(document);
+  }
+})();"##
+
 def blockJsAssets : List String :=
   Informal.Commands.withInlinePreviewJsAssets
     []
-    [codeSummaryPreviewJs, usedByPanelJs, Informal.StyleSwitcher.jsInteractive]
+    [codeSummaryPreviewJs, usedByPanelJs, foreignRustPanelJs, Informal.StyleSwitcher.jsInteractive]
 
 end Informal.Block.Assets

@@ -66,6 +66,7 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
       effort := existing.effort <|> incoming.effort
       priority := existing.priority <|> incoming.priority
       prUrl := existing.prUrl <|> incoming.prUrl
+      foreignRefs := if existing.foreignRefs.isEmpty then incoming.foreignRefs else existing.foreignRefs
   }
 
 private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=

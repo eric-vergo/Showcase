@@ -16,6 +16,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
+import VersoBlueprint.ForeignLsp
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
@@ -29,6 +30,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.Informal.RustPanel
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
@@ -60,6 +62,8 @@ structure Config where
   label : Data.Label
   labelSyntax : Syntax := Syntax.missing
   lean : Option String := none
+  rocq : Option String := none
+  rust : Option String := none
   parent : Option Data.Parent := none
   priority : Option String := none
   owner : Option Data.AuthorId := none
@@ -94,13 +98,56 @@ private def normalizeTags (raw : String) : Array String :=
     |>.filter (fun tag => !tag.isEmpty)
     |>.foldl (init := #[]) fun acc tag => if acc.contains tag then acc else acc.push tag
 
+private def parseForeignReferenceOption [MonadOptions m] [MonadLog m] [AddMessageContext m]
+    (label : Name) (labelSyntax : Syntax)
+    (language : Data.ForeignLanguage) (raw? : Option String) :
+    m (Option (Data.ForeignLanguage × Array String)) := do
+  match raw? with
+  | none => pure none
+  | some raw =>
+    match ForeignLsp.parseReferenceList language raw with
+    | .ok refs => pure (some (language, refs))
+    | .error err =>
+      logErrorAt labelSyntax m!"Label {label}: {err}"
+      pure none
+
+private def foreignReferenceRequests [MonadOptions m] [MonadLog m] [AddMessageContext m]
+    (label : Name) (labelSyntax : Syntax) (rocq rust : Option String) :
+    m (Array (Data.ForeignLanguage × Array String)) := do
+  let rocq? ← parseForeignReferenceOption label labelSyntax .rocq rocq
+  let rust? ← parseForeignReferenceOption label labelSyntax .rust rust
+  pure <| #[rocq?, rust?].filterMap (fun x => x)
+
+private def logForeignAttachmentWarnings [MonadOptions m] [MonadLog m] [AddMessageContext m]
+    (label : Name) (labelSyntax : Syntax) (attachment : Data.ForeignAttachment) : m Unit := do
+  for diagnostic in attachment.preludeDiagnostics do
+    logWarningAt labelSyntax
+      m!"Label {label}: {attachment.language.displayName} prelude diagnostic: {diagnostic.message}"
+  for ref in attachment.refs do
+    if ref.hasWarning then
+      logWarningAt labelSyntax
+        m!"Label {label}: {attachment.language.displayName} reference '{ref.written}' {ref.status.label}: {ref.message?.getD "no definition location returned"}"
+
+private def resolveForeignReferenceRequests
+    [MonadOptions m] [MonadLiftT CoreM m] [MonadLog m] [AddMessageContext m]
+    (label : Name) (labelSyntax : Syntax)
+    (requests : Array (Data.ForeignLanguage × Array String)) :
+    m (Array Data.ForeignAttachment) := do
+  let opts ← getOptions
+  requests.mapM fun (language, refs) => do
+    let attachment ← liftM <| ForeignLsp.lookupAtCurrentFile opts language refs
+    logForeignAttachmentWarnings label labelSyntax attachment
+    pure attachment
+
 def Config.parse  : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl =>
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean rocq rust parent priority owner tags effort prUrl =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
     {
       label := LabelNameParsing.parse labelArg.val
       labelSyntax := labelArg.syntax
       lean := lean
+      rocq := rocq
+      rust := rust
       parent := parent.map LabelNameParsing.parse
       priority := priority
       owner := owner.map LabelNameParsing.parse
@@ -110,6 +157,7 @@ def Config.parse  : ArgParse m Config :=
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
+        <*> .named `rocq .string true <*> .named `rust .string true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
 
@@ -512,15 +560,240 @@ private def renderBlockTitleRow (style : BlockKindRenderStyle) (labelText number
     </div>
   }}
 
+private def htmlIdFragment (s : String) : String :=
+  let chars := s.toList.map fun c => if c.isAlphanum then c else '-'
+  let chars := chars.dropWhile (· == '-')
+  let chars := chars.reverse.dropWhile (· == '-') |>.reverse
+  let text := String.ofList chars
+  if text.isEmpty then "node" else text
+
+private def foreignRustPanelId (data : BlockData) : String :=
+  s!"bp-foreign-rust-{htmlIdFragment data.label.toString}"
+
+private def hasRustForeignLookup (data : BlockData) : Bool :=
+  data.foreignRefs.any fun attachment =>
+    attachment.language == .rust &&
+      (!attachment.refs.isEmpty || !attachment.preludeDiagnostics.isEmpty)
+
+private def foreignAttachmentHref? (attachment : Data.ForeignAttachment) : Option String := do
+  let ref ← attachment.refs.find? (fun ref => ref.status == .resolved && ref.sourceHref?.isSome)
+  ref.sourceHref?
+
+private def foreignAttachmentResolvedCount (attachment : Data.ForeignAttachment) : Nat :=
+  attachment.refs.filter (fun ref => ref.status == .resolved) |>.size
+
+private def foreignAttachmentHasHardWarning (attachment : Data.ForeignAttachment) : Bool :=
+  !attachment.preludeDiagnostics.isEmpty ||
+    attachment.refs.any fun ref => ref.status == .unavailable || ref.status == .failed
+
+private def foreignAttachmentStatusClass (attachment : Data.ForeignAttachment) : String :=
+  let resolved := foreignAttachmentResolvedCount attachment
+  let total := attachment.refs.size
+  if foreignAttachmentHasHardWarning attachment then
+    "bp_foreign_lsp_badge_warning"
+  else if total > 0 && resolved == total then
+    "bp_foreign_lsp_badge_resolved"
+  else
+    "bp_foreign_lsp_badge_partial"
+
+private def foreignAttachmentBadgeLabel (attachment : Data.ForeignAttachment) : String :=
+  let resolved := foreignAttachmentResolvedCount attachment
+  let total := attachment.refs.size
+  if total == 0 then
+    attachment.language.displayName
+  else
+    s!"{attachment.language.displayName} {resolved}/{total}"
+
+private def foreignAttachmentTitle (attachment : Data.ForeignAttachment) : String :=
+  let refParts := attachment.refs.map fun ref =>
+    let detail := ref.message?.map (fun msg => s!": {msg}") |>.getD ""
+    s!"{ref.written} {ref.status.label}{detail}"
+  let preludeParts := attachment.preludeDiagnostics.map fun diagnostic =>
+    s!"prelude: {diagnostic.message}"
+  String.intercalate "; " (preludeParts ++ refParts).toList
+
+private def renderForeignAttachmentBadge
+    (rustPanelId? : Option String) (attachment : Data.ForeignAttachment) : Output.Html :=
+  open Verso.Output.Html in
+  let statusClass := foreignAttachmentStatusClass attachment
+  let cls := s!"bp_foreign_lsp_badge {statusClass} bp_foreign_lsp_badge_{attachment.language.key}"
+  let title := foreignAttachmentTitle attachment
+  let label := foreignAttachmentBadgeLabel attachment
+  if attachment.language == .rust then
+    match rustPanelId? with
+    | some panelId =>
+      {{<button type="button" class={{cls}} title={{title}} "data-bp-foreign-rust-target"={{panelId}}>{{.text true label}}</button>}}
+    | none =>
+      {{<span class={{cls}} title={{title}}>{{.text true label}}</span>}}
+  else
+    match foreignAttachmentHref? attachment with
+    | some href =>
+      {{<a class={{cls}} href={{href}} title={{title}}>{{.text true label}}</a>}}
+    | none =>
+      {{<span class={{cls}} title={{title}}>{{.text true label}}</span>}}
+
+private def renderForeignAttachmentBadges
+    (attachments : Array Data.ForeignAttachment) (rustPanelId? : Option String) : Output.Html :=
+  open Verso.Output.Html in
+  if attachments.isEmpty then
+    .empty
+  else
+    {{<span class="bp_foreign_lsp_badges">
+        {{attachments.map (renderForeignAttachmentBadge rustPanelId?)}}
+      </span>}}
+
+private structure ForeignRustSnippet where
+  ref : Data.ForeignRef
+  source : String
+
+private def collectForeignRustRefs (data : BlockData) : Array Data.ForeignRef :=
+  data.foreignRefs.foldl (init := #[]) fun refs attachment =>
+    if attachment.language == .rust then
+      refs ++ attachment.refs
+    else
+      refs
+
+private def collectForeignRustPreludeDiagnostics (data : BlockData) : Array Data.ForeignDiagnostic :=
+  data.foreignRefs.foldl (init := #[]) fun diagnostics attachment =>
+    if attachment.language == .rust then
+      diagnostics ++ attachment.preludeDiagnostics
+    else
+      diagnostics
+
+private def hasForeignRustWarnings (data : BlockData) : Bool :=
+  data.foreignRefs.any fun attachment =>
+    attachment.language == .rust && attachment.hasWarning
+
+private def foreignRustStatusText (ref : Data.ForeignRef) : String :=
+  match ref.message? with
+  | some message => s!"{ref.written}: {message}"
+  | none => ref.written
+
+private def renderForeignRustStatusRow
+    (classSuffix label : String) (refs : Array Data.ForeignRef) : Output.Html :=
+  open Verso.Output.Html in
+  if refs.isEmpty then
+    .empty
+  else
+    let text := String.intercalate "; " <| refs.map foreignRustStatusText |>.toList
+    let cls := s!"bp_foreign_rust_status_row bp_foreign_rust_status_{classSuffix}"
+    {{
+      <li class={{cls}}>
+        <span class="bp_foreign_rust_status_label">{{.text true label}}</span>
+        <span class="bp_foreign_rust_status_refs">{{.text true text}}</span>
+      </li>
+    }}
+
+private def renderForeignRustPreludeStatusRow (diagnostics : Array Data.ForeignDiagnostic) :
+    Output.Html :=
+  open Verso.Output.Html in
+  if diagnostics.isEmpty then
+    .empty
+  else
+    let text := String.intercalate "; " <| diagnostics.map (·.message) |>.toList
+    {{
+      <li class="bp_foreign_rust_status_row bp_foreign_rust_status_failed">
+        <span class="bp_foreign_rust_status_label">{{.text true "Prelude"}}</span>
+        <span class="bp_foreign_rust_status_refs">{{.text true text}}</span>
+      </li>
+    }}
+
+private def renderForeignRustStatusRows (data : BlockData) (showResolved : Bool) : Output.Html :=
+  open Verso.Output.Html in
+  let refs := collectForeignRustRefs data
+  let resolved := refs.filter (fun ref => ref.status == .resolved)
+  let unresolved := refs.filter (fun ref => ref.status == .unresolved)
+  let unavailable := refs.filter (fun ref => ref.status == .unavailable)
+  let failed := refs.filter (fun ref => ref.status == .failed)
+  let diagnostics := collectForeignRustPreludeDiagnostics data
+  let rows := #[
+    if showResolved then renderForeignRustStatusRow "resolved" "Resolved" resolved else .empty,
+    renderForeignRustStatusRow "unresolved" "Unresolved" unresolved,
+    renderForeignRustStatusRow "unavailable" "Unavailable" unavailable,
+    renderForeignRustStatusRow "failed" "Failed" failed,
+    renderForeignRustPreludeStatusRow diagnostics
+  ]
+  {{
+    <ul class="bp_foreign_rust_status_list">
+      {{.seq rows}}
+    </ul>
+  }}
+
+private def collectForeignRustSnippets (data : BlockData) : Array ForeignRustSnippet :=
+  Id.run do
+    let mut snippets : Array ForeignRustSnippet := #[]
+    for attachment in data.foreignRefs do
+      if attachment.language == .rust then
+        for ref in attachment.refs do
+          if ref.status == .resolved then
+            if let some source := ref.sourceSnippet? then
+              snippets := snippets.push { ref, source }
+    return snippets
+
+private def renderForeignRustSnippetHead (ref : Data.ForeignRef) : Output.Html :=
+  open Verso.Output.Html in
+  let sourceLink : Output.Html :=
+    match ref.sourceHref? with
+    | some href =>
+      {{<a class="bp_foreign_rust_source_link" href={{href}}>{{.text true "source"}}</a>}}
+    | none => .empty
+  {{
+    <div class="bp_foreign_rust_snippet_head">
+      <span class="bp_foreign_rust_ref">{{.text true ref.written}}</span>
+      {{sourceLink}}
+    </div>
+  }}
+
+private def renderForeignRustSnippet (snippet : ForeignRustSnippet) : Output.Html :=
+  open Verso.Output.Html in
+  {{
+    <li class="bp_foreign_rust_snippet" "data-bp-foreign-rust-ref"={{snippet.ref.written}}>
+      {{renderForeignRustSnippetHead snippet.ref}}
+      {{Informal.Rust.highlightHtml snippet.source}}
+    </li>
+  }}
+
+private def renderForeignRustSnippetPanel (data : BlockData) (numberText : String) : Output.Html :=
+  open Verso.Output.Html in
+  let snippets := collectForeignRustSnippets data
+  if !hasRustForeignLookup data then
+    .empty
+  else
+    let header := Informal.Rust.codePanelHeader data numberText
+    let refs := collectForeignRustRefs data
+    let resolved := refs.filter (fun ref => ref.status == .resolved) |>.size
+    let total := refs.size
+    let summaryTitle := s!"Rust lookup for {data.label}: {resolved}/{total} resolved"
+    let showStatusRows := snippets.isEmpty || hasForeignRustWarnings data
+    let statusRows :=
+      if showStatusRows then renderForeignRustStatusRows data (showResolved := true) else .empty
+    let snippetList :=
+      if snippets.isEmpty then
+        .empty
+      else
+        {{
+          <ul class="bp_code_hover_list bp_external_decl_list bp_foreign_rust_snippet_list">
+            {{.seq <| snippets.map renderForeignRustSnippet}}
+          </ul>
+        }}
+    let body :=
+      {{
+        <div class="bp_foreign_rust_lookup_body">
+          {{statusRows}}
+          {{snippetList}}
+        </div>
+      }}
+    Informal.Rust.renderCodePanel header summaryTitle body (attrs := #[("id", foreignRustPanelId data)])
+
 private def renderStatementHeaderExtras
     (groupEntry? : Option Output.Html)
-    (codeEntry usedByEntry : Output.Html) : Output.Html :=
+    (codeEntry : Output.Html) (foreignEntry? : Option Output.Html) (usedByEntry : Output.Html) : Output.Html :=
   open Verso.Output.Html in
-  let extrasClass :=
-    if groupEntry?.isSome then
-      "bp_extras bp_extras_with_group thm_header_extras"
-    else
-      "bp_extras thm_header_extras"
+  let extrasClassParts :=
+    #["bp_extras", "thm_header_extras"] ++
+      (if groupEntry?.isSome then #["bp_extras_with_group"] else #[]) ++
+      (if foreignEntry?.isSome then #["bp_extras_with_foreign"] else #[])
+  let extrasClass := String.intercalate " " extrasClassParts.toList
   {{
     <div class={{extrasClass}}>
       {{match groupEntry? with
@@ -529,6 +802,9 @@ private def renderStatementHeaderExtras
       <span class="bp_extra_slot bp_extra_slot_code">
         {{codeEntry}}
       </span>
+      {{match foreignEntry? with
+        | some foreignEntry => {{<span class="bp_extra_slot bp_extra_slot_foreign">{{foreignEntry}}</span>}}
+        | none => .empty}}
       <span class="bp_extra_slot bp_extra_slot_used_by">
         {{usedByEntry}}
       </span>
@@ -629,33 +905,43 @@ private def renderInformalBlock (data : BlockData) (numberText : String) (attrs 
   let extras : Output.Html :=
     match data.kind with
     | .proof => .empty
-    | .statement _ => renderStatementHeaderExtras groupEntry? codeEntry usedByEntry
+    | .statement _ =>
+      let rustPanelId? := if hasRustForeignLookup data then some (foreignRustPanelId data) else none
+      let foreignEntry? :=
+        if data.foreignRefs.isEmpty then none else some (renderForeignAttachmentBadges data.foreignRefs rustPanelId?)
+      renderStatementHeaderExtras groupEntry? codeEntry foreignEntry? usedByEntry
   let metadataPanel : Output.Html :=
     match data.kind with
     | .proof => .empty
     | .statement _ => renderStatementMetadataPanel data
-  if folded then
-    {{
-      <details class={{wrapperClass}} title={{labelText}} {{attrs}}>
-        <summary class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </summary>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </details>
-    }}
-  else
-    {{
-      <div class={{wrapperClass}} title={{labelText}} {{attrs}}>
-        <div class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
+  let foreignRustPanels : Output.Html :=
+    match data.kind with
+    | .proof => .empty
+    | .statement _ => renderForeignRustSnippetPanel data numberText
+  let blockHtml : Output.Html :=
+    if folded then
+      {{
+        <details class={{wrapperClass}} title={{labelText}} {{attrs}}>
+          <summary class={{headingClass}}>
+            {{titleRow}}
+            {{extras}}
+          </summary>
+          {{metadataPanel}}
+          <div class={{contentClass}}> {{ content }} </div>
+        </details>
+      }}
+    else
+      {{
+        <div class={{wrapperClass}} title={{labelText}} {{attrs}}>
+          <div class={{headingClass}}>
+            {{titleRow}}
+            {{extras}}
+          </div>
+          {{metadataPanel}}
+          <div class={{contentClass}}> {{ content }} </div>
         </div>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </div>
-    }}
+      }}
+  .seq #[blockHtml, foreignRustPanels]
 
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
   match blockData.kind, blockData.codeData with
@@ -789,7 +1075,7 @@ block_extension Block.informal (data : BlockData) where
       storeTraversedBlockData id blockData
       return none
   toTeX := none
-  extraCss := Informal.Block.Assets.blockCssAssets
+  extraCss := Informal.Block.Assets.blockCssAssets ++ [Informal.Rust.css]
   extraJs := Informal.Block.Assets.blockJsAssets
   toHtml :=
     open Verso.Doc.Html in
@@ -882,6 +1168,14 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let envKind : Data.InProgressKind :=
       if isProof then .proof else .statement kind
     let resolvedExternalCode ← ExternalCode.resolveExternalCodeList label cfg.labelSyntax kind cfg.externalCode
+    let foreignRequests ← foreignReferenceRequests label cfg.labelSyntax cfg.rocq cfg.rust
+    let foreignRefs ←
+      if isProof then
+        for (language, _) in foreignRequests do
+          logErrorAt cfg.labelSyntax m!"Label {label} cannot use '({language.key} := ...)' in a proof block"
+        pure #[]
+      else
+        resolveForeignReferenceRequests label cfg.labelSyntax foreignRequests
     let hasExternalRaw := !resolvedExternalCode.isEmpty
     if !cfg.invalidExternalCode.isEmpty then
       logWarningAt cfg.labelSyntax m!"Label {label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
@@ -963,7 +1257,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         some (.external resolvedExternalCode)
       else
         none
-    let accepted ← Environment.push label envKind codeHint cfg.parent priority owner tags effort prUrl
+    let accepted ← Environment.push label envKind codeHint cfg.parent priority owner tags effort prUrl foreignRefs
     let contents ← contents.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
@@ -1014,6 +1308,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       effort := node?.bind (·.effort)
       priority := node?.bind (·.priority)
       prUrl := node?.bind (·.prUrl)
+      foreignRefs := node?.map (·.foreignRefs) |>.getD #[]
     }
     ``(Block.other (Block.informal $(quote data)) #[$contents,*])
 

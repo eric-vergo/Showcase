@@ -114,7 +114,29 @@ Current behavior:
 - the rendered page shows an associated Rust code panel
 - rendering uses a small built-in syntax highlighter
 - Rust blocks do not currently affect Blueprint progress/status semantics
-- Rust diagnostics and external Rust references are not part of the current surface
+
+### Foreign LSP references
+
+Statement nodes can carry best-effort Rocq or Rust references:
+
+```md
+:::definition "ffi_helper" (rust := "ffi_helper")
+Helper routine mirrored in Rust.
+:::
+
+:::definition "rocq_fact" (rocq := "def1, def2")
+Rocq-side definitions related to this node.
+:::
+```
+
+Blueprint writes a synthetic lookup file under `.verso-blueprint-foreign/`
+from a stable prelude prefix plus generated identifier uses, starts or reuses a
+per-process language server from the package `lakefile` directory, and asks for
+`textDocument/definition`. Resolved references render as compact language
+badges with source links. Resolved Rust references also fetch the target source
+and render grouped Rust code panels using the same renderer as labeled Rust
+code blocks. Missing tools, prelude diagnostics, and unresolved names warn
+without stopping the document.
 
 ### Math and TeX
 
@@ -152,6 +174,7 @@ Blueprint can render:
 - a bibliography page with `blueprint_bibliography`
 - math-enabled previews and cross-links
 - associated Rust code panels for labeled inline Rust blocks
+- grouped Rust code panels for resolved Rust foreign LSP references
 
 The graph page is interactive rather than static: it can expose a view switcher
 for grouped graphs, a legend popover, a `Graph options` control for direction

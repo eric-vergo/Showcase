@@ -134,6 +134,7 @@ structure BlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  foreignRefs : Array Data.ForeignAttachment := #[]
 deriving FromJson, ToJson, Quote
 
 /--
@@ -161,6 +162,7 @@ structure StoredBlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  foreignRefs : Array Data.ForeignAttachment := #[]
 deriving FromJson, ToJson, Quote
 
 def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
@@ -181,6 +183,7 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  foreignRefs := data.foreignRefs
 }
 
 def StoredBlockData.toBlockData (data : StoredBlockData)
@@ -203,6 +206,7 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  foreignRefs := data.foreignRefs
 }
 
 end Informal

@@ -1,0 +1,39 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+
+import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Rust
+
+namespace Informal.Rust
+
+open Verso.Output.Html
+
+def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
+  match data.kind with
+  | .proof => { caption := "Rust code for proof" }
+  | .statement nodeKind =>
+    {
+      caption := s!"Rust code for {nodeKind}"
+      number? := some numberText
+    }
+
+def fallbackCodePanelHeader : CodePanelHeader := {
+  caption := "Rust code"
+}
+
+def renderCodePanel
+    (header : CodePanelHeader) (summaryTitle : String) (body : Verso.Output.Html)
+    (attrs : Array (String × String) := #[]) (folded : Bool := false) :
+    Verso.Output.Html :=
+  mkCodePanel header summaryTitle .empty body attrs (folded := folded)
+
+def renderRawCodePanel
+    (header : CodePanelHeader) (summaryTitle raw : String)
+    (attrs : Array (String × String) := #[]) (folded : Bool := false) :
+    Verso.Output.Html :=
+  renderCodePanel header summaryTitle (highlightHtml raw) attrs (folded := folded)
+
+end Informal.Rust

@@ -18,6 +18,7 @@ import VersoBlueprint.ProvedStatus
 import VersoBlueprint.Process
 import VersoBlueprint.Git
 import VersoBlueprint.RuntimeCache
+import VersoBlueprint.ForeignLsp
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros
 import VersoBlueprint.Math
@@ -30,6 +31,7 @@ import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Code
+import VersoBlueprint.Informal.RustPanel
 import VersoBlueprint.Informal.RustBlock
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
