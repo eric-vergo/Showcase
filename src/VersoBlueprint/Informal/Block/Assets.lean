@@ -307,6 +307,31 @@ span[class$="_thmlabel"]::after {
   gap: 0.55rem;
 }
 
+.bp_foreign_rust_badge_preview {
+  position: fixed;
+  z-index: 38;
+  width: min(36rem, calc(100vw - 1.25rem));
+  max-height: min(28rem, 78vh);
+  overflow: hidden;
+}
+
+.bp_foreign_rust_badge_preview_header {
+  padding: 0.42rem 0.55rem;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
+  color: var(--bp-color-text-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.bp_foreign_rust_badge_preview_body {
+  padding: 0.55rem 0.6rem 0.6rem;
+  max-height: min(24rem, 68vh);
+  overflow: auto;
+}
+
 .bp_foreign_rust_status_list {
   display: flex;
   flex-direction: column;
@@ -1891,12 +1916,122 @@ def usedByPanelJs : String := r##"(function () {
 def foreignRustPanelJs : String := r##"(function () {
   "use strict";
 
+  let previewPanel = null;
+  let previewCloseTimer = null;
+  let activeButton = null;
+
+  function ensurePreviewPanel() {
+    if (previewPanel instanceof HTMLElement) return previewPanel;
+    const panel = document.createElement("aside");
+    panel.className = "bp_foreign_rust_badge_preview bp_preview_panel";
+    panel.hidden = true;
+    panel.innerHTML =
+      '<div class="bp_foreign_rust_badge_preview_header"></div>' +
+      '<div class="bp_foreign_rust_badge_preview_body"></div>';
+    document.body.appendChild(panel);
+    panel.addEventListener("mouseenter", function () {
+      cancelPreviewClose();
+    });
+    panel.addEventListener("mouseleave", function (ev) {
+      schedulePreviewClose(ev.relatedTarget);
+    });
+    panel.addEventListener("focusin", function () {
+      cancelPreviewClose();
+    });
+    panel.addEventListener("focusout", function (ev) {
+      schedulePreviewClose(ev.relatedTarget);
+    });
+    previewPanel = panel;
+    return panel;
+  }
+
+  function cancelPreviewClose() {
+    if (previewCloseTimer !== null) {
+      clearTimeout(previewCloseTimer);
+      previewCloseTimer = null;
+    }
+  }
+
+  function targetKeepsPreviewOpen(target) {
+    if (!(target instanceof Node)) return false;
+    if (activeButton instanceof HTMLElement && activeButton.contains(target)) return true;
+    if (previewPanel instanceof HTMLElement && previewPanel.contains(target)) return true;
+    return false;
+  }
+
+  function schedulePreviewClose(relatedTarget) {
+    if (targetKeepsPreviewOpen(relatedTarget)) return;
+    cancelPreviewClose();
+    previewCloseTimer = window.setTimeout(closePreview, 120);
+  }
+
+  function closePreview() {
+    cancelPreviewClose();
+    activeButton = null;
+    if (previewPanel instanceof HTMLElement) {
+      previewPanel.hidden = true;
+    }
+  }
+
+  function positionPreviewPanel(button, panel) {
+    const margin = 8;
+    const rect = button.getBoundingClientRect();
+    panel.style.visibility = "hidden";
+    panel.hidden = false;
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    let left = Math.min(Math.max(margin, rect.left), maxLeft);
+    let top = rect.bottom + margin;
+    if (top + height > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - height - margin);
+    }
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = "";
+  }
+
+  function openPreview(button) {
+    const targetId = button.getAttribute("data-bp-foreign-rust-target");
+    if (!targetId) return;
+    const target = document.getElementById(targetId);
+    if (!(target instanceof HTMLElement)) return;
+    const sourceBody = target.querySelector(".bp_foreign_rust_lookup_body");
+    if (!(sourceBody instanceof HTMLElement)) return;
+    const summary = target.querySelector("summary");
+    const title =
+      summary instanceof HTMLElement
+        ? (summary.getAttribute("title") || summary.textContent || "Rust lookup").trim()
+        : "Rust lookup";
+    const panel = ensurePreviewPanel();
+    const header = panel.querySelector(".bp_foreign_rust_badge_preview_header");
+    const body = panel.querySelector(".bp_foreign_rust_badge_preview_body");
+    if (!(header instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+    cancelPreviewClose();
+    activeButton = button;
+    header.textContent = title;
+    body.replaceChildren(sourceBody.cloneNode(true));
+    positionPreviewPanel(button, panel);
+  }
+
   function bindForeignRustPanelButtons(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
     root.querySelectorAll("[data-bp-foreign-rust-target]").forEach(function (button) {
       if (!(button instanceof HTMLElement)) return;
       if (button.dataset.bpForeignRustBound === "true") return;
       button.dataset.bpForeignRustBound = "true";
+      button.addEventListener("mouseenter", function () {
+        openPreview(button);
+      });
+      button.addEventListener("focusin", function () {
+        openPreview(button);
+      });
+      button.addEventListener("mouseleave", function (ev) {
+        schedulePreviewClose(ev.relatedTarget);
+      });
+      button.addEventListener("focusout", function (ev) {
+        schedulePreviewClose(ev.relatedTarget);
+      });
       button.addEventListener("click", function (ev) {
         ev.preventDefault();
         const targetId = button.getAttribute("data-bp-foreign-rust-target");

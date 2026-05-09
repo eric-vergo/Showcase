@@ -196,6 +196,8 @@ The missing server path still records a graceful warning snapshot.
   let (out, st) ← renderSyntheticRenderedRustBlock
   pure <|
     hasExtraCss st ".bp_rust_kw" &&
+    hasExtraCss st ".bp_foreign_rust_badge_preview" &&
+    hasExtraJs st "bp_foreign_rust_badge_preview" &&
     hasSubstr out "bp_rust_kw" &&
     hasSubstr out "bp_rust_ty" &&
     hasSubstr out "foreign_step" &&
