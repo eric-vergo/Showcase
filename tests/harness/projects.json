@@ -57,13 +57,8 @@
       },
       "targets": [
         {
-          "release": "v4.29.0",
-          "ref": "070e0c6d7bb205c89270cb1b60e5cf3cf431af28"
-        },
-        {
           "release": "v4.30.0",
-          "ref": "5ebd8b0c6a53f2f34c8f1335c21f919509074bb6",
-          "publish_reference": true
+          "ref": "b0c1aa30450775a7416c5bcaa50734f024c31121"
         }
       ],
       "build_command": ["lake", "build", "Contents"],
@@ -81,8 +76,7 @@
       "targets": [
         {
           "release": "v4.29.0",
-          "ref": "5efe6e8414889b42329b659eb29de6e1f0641c8d",
-          "publish_reference": true
+          "ref": "e296047e207699f3ba3c22cca5e0e2aa5c77dc7e"
         }
       ],
       "build_command": ["lake", "build", "SpherePackingBlueprint"],
@@ -99,13 +93,8 @@
       },
       "targets": [
         {
-          "release": "v4.29.0",
-          "ref": "ad4cffd681b6234e9ab30b19adb69c92b962ff34"
-        },
-        {
           "release": "v4.30.0",
-          "ref": "abacaae392d78a655cf8ddfffa442313709784a2",
-          "publish_reference": true
+          "ref": "6e98f72d192a6b4f9f20f6f680ab32c42b1587cf"
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
@@ -123,8 +112,7 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "4fc4d7be735816d14c8cf0a10ba630ad73ef857b",
-          "publish_reference": true
+          "ref": "aaaf26f7d62d35e65b58aafdc60ba04994359175"
         }
       ],
       "build_command": ["lake", "build", "CarlesonBlueprint"],
@@ -142,8 +130,7 @@
       "targets": [
         {
           "release": "v4.28.0",
-          "ref": "6d4c38c71801f2dbd44cb11e84ee1a19ae964726",
-          "publish_reference": true
+          "ref": "f2d8278f8ccc5e4185ed7fed4b90db0ef012f024"
         }
       ],
       "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],
