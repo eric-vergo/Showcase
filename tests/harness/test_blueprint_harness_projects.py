@@ -666,20 +666,30 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
             self.assertEqual(command[-2:], ["lake", "update"])
 
-    def test_project_template_manifest_keeps_verso_and_subverso_in_sync_with_root_without_mathlib(self) -> None:
-        root_manifest = json.loads((PACKAGE_ROOT / "lake-manifest.json").read_text(encoding="utf-8"))
-        template_manifest = json.loads((PACKAGE_ROOT / "project_template" / "lake-manifest.json").read_text(encoding="utf-8"))
+    def test_child_manifests_inherit_verso_and_subverso_from_root_without_mathlib(self) -> None:
+        root_manifest_path = PACKAGE_ROOT / "lake-manifest.json"
+        child_manifest_paths = [
+            PACKAGE_ROOT / "project_template" / "lake-manifest.json",
+            PACKAGE_ROOT / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lake-manifest.json",
+        ]
+        root_manifest = json.loads(root_manifest_path.read_text(encoding="utf-8"))
+        child_manifests = [json.loads(path.read_text(encoding="utf-8")) for path in child_manifest_paths]
 
-        def package_rev(manifest_data: dict, package_name: str) -> str:
-            package = next(entry for entry in manifest_data["packages"] if entry["name"] == package_name)
-            rev = package.get("rev")
-            self.assertIsInstance(rev, str)
-            return rev
+        def package_entry(manifest_data: dict, package_name: str) -> dict:
+            return next(entry for entry in manifest_data["packages"] if entry["name"] == package_name)
 
-        self.assertEqual(package_rev(template_manifest, "verso"), package_rev(root_manifest, "verso"))
-        self.assertEqual(package_rev(template_manifest, "subverso"), package_rev(root_manifest, "subverso"))
+        root_verso = package_entry(root_manifest, "verso")
+        for child_manifest in child_manifests:
+            child_verso = package_entry(child_manifest, "verso")
+            self.assertTrue(child_verso["inherited"])
+            if root_verso.get("rev") is not None:
+                self.assertEqual(child_verso.get("rev"), root_verso.get("rev"))
+            self.assertEqual(
+                package_entry(child_manifest, "subverso").get("rev"),
+                package_entry(root_manifest, "subverso").get("rev"),
+            )
+            self.assertNotIn("mathlib", {entry["name"] for entry in child_manifest["packages"]})
         self.assertNotIn("mathlib", {entry["name"] for entry in root_manifest["packages"]})
-        self.assertNotIn("mathlib", {entry["name"] for entry in template_manifest["packages"]})
 
     def test_clone_git_project_checks_out_commit_ref_without_branch_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

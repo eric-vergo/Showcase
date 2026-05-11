@@ -108,12 +108,6 @@ It also includes `.github/workflows/blueprint-pages.yml`.
 Depending on your repository or organization settings, you may still need to
 enable GitHub Pages with GitHub Actions as the publishing source once.
 
-## About dependencies
-
-The template currently pins `verso` and `verso-blueprint` from Git. Replace
-those refs with release tags when you move to a released version. The template
-does not need a direct Mathlib dependency.
-
 ## Next step
 
 Continue with [doc/GETTING_STARTED.md](../doc/GETTING_STARTED.md).
