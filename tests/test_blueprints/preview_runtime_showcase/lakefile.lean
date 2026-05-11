@@ -1,7 +1,6 @@
 import Lake
 open Lake DSL
 
-require verso from git "https://github.com/leanprover/verso"@"v4.28.0"
 require VersoBlueprint from "../../../"
 
 package PreviewRuntimeShowcase where
