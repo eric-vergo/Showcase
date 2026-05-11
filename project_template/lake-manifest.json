@@ -16,7 +16,7 @@
    "name": "verso",
    "manifestFile": "lake-manifest.json",
    "inputRev": "v4.30.0-rc2",
-   "inherited": false,
+   "inherited": true,
    "configFile": "lakefile.lean"},
   {"url": "https://github.com/leanprover-community/ProofWidgets4",
    "type": "git",

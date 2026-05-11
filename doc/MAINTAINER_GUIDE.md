@@ -208,16 +208,18 @@ python3 -m scripts.blueprint_harness sync-root-lake
 python3 -m scripts.blueprint_reference_harness sync
 ```
 
-To bump the package Lean toolchain and pin the matching `verso` release or
-release candidate in the root package plus the tracked in-repo fixtures:
+To bump the Lean toolchain for the root package plus the tracked in-repo
+fixtures, and pin the matching `verso` release or release candidate in the root
+package:
 
 ```bash
 python3 -m scripts.blueprint_harness bump-toolchain 4.30-rc2
 python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --skip-validation
 ```
 
-That command rewrites the managed `lean-toolchain` and `require verso` pins,
-refreshes the committed manifests for the root package, `project_template`, and
+That command rewrites the managed `lean-toolchain` files, rewrites the root
+package's direct `require verso` pin, refreshes the committed manifests for the
+root package, `project_template`, and
 `tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
 build/test validation pass that maintainers would otherwise do manually. Release
 candidates use the official short RC name, for example `4.30-rc2`; the harness
@@ -237,8 +239,9 @@ python3 -m scripts.blueprint_harness start-release-line 4.30-rc2
 
 Run this from the new local branch, for example `v4.30.0`. The command:
 
-- rewrites the managed root, `project_template`, and preview-showcase
-  `lean-toolchain`, `verso` pins, and committed manifests
+- rewrites the managed `lean-toolchain` files, the root `verso` pin, and the
+  committed manifests for the root package, `project_template`, and the
+  preview showcase
 - updates `branch-policy.json` so the new branch is the default-development
   line and the previous default-development branch becomes a required backport
   target
