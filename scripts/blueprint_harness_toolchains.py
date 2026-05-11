@@ -140,7 +140,8 @@ def bump_toolchain_checkout(
 
     for project_dir in managed_toolchain_project_dirs(package_root):
         rewrite_lean_toolchain(project_dir / "lean-toolchain", lean_ref)
-        rewrite_pinned_verso_dependency(project_dir, selected_verso_ref)
+
+    rewrite_pinned_verso_dependency(package_root, selected_verso_ref)
 
     for project_dir in managed_toolchain_project_dirs(package_root):
         refresh_managed_manifest(package_root, project_dir)

@@ -208,12 +208,20 @@ python3 -m scripts.blueprint_harness sync-root-lake
 python3 -m scripts.blueprint_reference_harness sync
 ```
 
-Bump the Lean toolchain and matching `verso` pin through the harness:
+Bump the Lean toolchain and matching root `verso` pin through the harness:
 
 ```bash
 python3 -m scripts.blueprint_harness bump-toolchain v4.29.0
 python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --verso-ref v4.29.0
 ```
+
+That command rewrites the managed `lean-toolchain` files, rewrites the root
+package's direct `require verso` pin, refreshes the committed manifests for the
+root package, `project_template`, and
+`tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
+build/test validation pass that maintainers would otherwise do manually. Release
+Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
+release tag need to differ.
 
 Prune stale harness-managed reference caches and clones:
 
