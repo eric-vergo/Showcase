@@ -38,7 +38,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.assertEqual(previous_ref, "main")
             self.assertIn('require verso from git "https://github.com/leanprover/verso"@"v4.29.0"', lakefile.read_text(encoding="utf-8"))
 
-    def test_bump_toolchain_checkout_updates_managed_files_and_restores_template_dependency(self) -> None:
+    def test_bump_toolchain_checkout_updates_managed_files_and_preserves_inherited_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package_root = Path(tmp)
             root_lakefile = "\n".join(
@@ -54,7 +54,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                 [
                     "import Lake",
                     "open Lake DSL",
-                    'require verso from git "https://github.com/leanprover/verso"@"main"',
                     'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"',
                     "",
                 ]
@@ -63,7 +62,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                 [
                     "import Lake",
                     "open Lake DSL",
-                    'require verso from git "https://github.com/leanprover/verso"@"main"',
                     'require VersoBlueprint from "../../../"',
                     "",
                 ]
@@ -111,16 +109,21 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             )
             self.assertIn('require verso from git "https://github.com/leanprover/verso"@"v4.29.0"', (package_root / "lakefile.lean").read_text(encoding="utf-8"))
             template_text = (package_root / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
-            self.assertIn('require verso from git "https://github.com/leanprover/verso"@"v4.29.0"', template_text)
+            self.assertNotIn("require verso", template_text)
             self.assertIn(
                 'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"',
                 template_text,
             )
+            preview_text = (
+                package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lakefile.lean"
+            ).read_text(encoding="utf-8")
             self.assertIn(
-                'require verso from git "https://github.com/leanprover/verso"@"v4.29.0"',
-                (package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lakefile.lean").read_text(
-                    encoding="utf-8"
-                ),
+                'require VersoBlueprint from "../../../"',
+                preview_text,
+            )
+            self.assertNotIn(
+                "require verso",
+                preview_text,
             )
             expected_script = str(package_root / "scripts" / "lean-low-priority")
             self.assertEqual(
@@ -146,7 +149,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.write(package_root / "project_template" / "lean-toolchain", "leanprover/lean4:v4.29.0-rc6\n")
             self.write(
                 package_root / "project_template" / "lakefile.lean",
-                'require verso from git "https://github.com/leanprover/verso"@"main"\n'
                 'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"\n',
             )
             self.write(
@@ -155,7 +157,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             )
             self.write(
                 package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lakefile.lean",
-                'require verso from git "https://github.com/leanprover/verso"@"main"\n'
                 'require VersoBlueprint from "../../../"\n',
             )
 
