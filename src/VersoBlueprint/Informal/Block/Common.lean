@@ -104,18 +104,25 @@ structure CodePanelHeader where
   number? : Option String := none
 deriving Repr, Inhabited
 
-def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
+def codePanelHeaderFor (languageName : String) (data : BlockData) (numberText : String) :
+    CodePanelHeader :=
   match data.kind with
-  | .proof => { caption := "Lean code for proof" }
+  | .proof => { caption := s!"{languageName} code for proof" }
   | .statement nodeKind =>
     {
-      caption := s!"Lean code for {nodeKind}"
+      caption := s!"{languageName} code for {nodeKind}"
       number? := some numberText
     }
 
-def fallbackCodePanelHeader : CodePanelHeader := {
-  caption := "Lean code"
+def fallbackCodePanelHeaderFor (languageName : String) : CodePanelHeader := {
+  caption := s!"{languageName} code"
 }
+
+def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :=
+  codePanelHeaderFor "Lean" data numberText
+
+def fallbackCodePanelHeader : CodePanelHeader :=
+  fallbackCodePanelHeaderFor "Lean"
 
 register_option verso.blueprint.foldProofs : Bool := {
   defValue := true
