@@ -60,6 +60,14 @@
 - Before opening a paired backport PR, run
   `python3 -m scripts.blueprint_harness prepare-backport-pr <release> --main-pr <pr>`
   and use the emitted paired title/body scaffold.
+- `Backport <release>: pending` placeholders from `prepare-pr` are only
+  acceptable while the default-development PR is draft. Before marking a
+  default-development PR ready for review, replace every pending backport line
+  with either `Backport <release>: #<pr>` or
+  `Backport <release>: exempt: <reason>`.
+- For changes that need paired backports, open the paired backport PRs before
+  the default-development PR leaves draft, then wait for the paired-backport CI
+  check to pass before merging.
 - Do not hand-roll PR descriptions from local status notes or validation
   transcripts. Keep routine validation details in local/final reports unless
   they change review risk or CI cannot show them.
