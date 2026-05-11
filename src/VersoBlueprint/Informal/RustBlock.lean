@@ -11,7 +11,7 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Code
 import VersoBlueprint.Profiling
-import VersoBlueprint.Rust
+import VersoBlueprint.Informal.RustPanel
 import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
@@ -51,15 +51,10 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
         match Informal.TraversalIndex.Nodes.data? s cdata.label with
         | some b =>
           let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
-          let caption :=
-            match b.kind with
-            | .proof => "Rust code for proof"
-            | .statement nodeKind => s!"Rust code for {nodeKind}"
-          { (codePanelHeader b (b.displayNumber s)) with caption }
-        | none => { fallbackCodePanelHeader with caption := "Rust code" }
-      let body := Informal.Rust.highlightHtml cdata.raw
-      pure <| mkCodePanel panelHeader s!"Rust code for {cdata.label}" .empty body attrs
-        (folded := cdata.foldCodeBlock)
+          Informal.Rust.codePanelHeader b (b.displayNumber s)
+        | none => Informal.Rust.fallbackCodePanelHeader
+      pure <| Informal.Rust.renderRawCodePanel panelHeader s!"Rust code for {cdata.label}" cdata.raw
+        attrs (folded := cdata.foldCodeBlock)
 
 private def rustImpl : CodeBlockExpanderOf Informal.CodeConfig
   | cfg, contents => do
