@@ -6,7 +6,7 @@ open Lake DSL
 -- require verso from "../verso"
 -- TODO: return to a release tag after leanprover/verso#854 lands.
 require verso from git "https://github.com/ejgallego/verso"@"174b98fb21622a1701cdf3e1ed6261c4830f8f13"
-require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.92"
+require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
 package VersoBlueprint where
   precompileModules := false
