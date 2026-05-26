@@ -165,6 +165,12 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
         self.assertIn("reference-blueprints/v4.30.0/noperthedron/", readme)
         self.assertIn("reference-blueprints/v4.30.0/verso-flt/", readme)
 
+    def test_project_template_readme_does_not_link_unpublished_render(self) -> None:
+        readme = (PACKAGE_ROOT / "project_template" / "README.md").read_text(encoding="utf-8")
+
+        self.assertNotIn("reference-blueprints/project-template/", readme)
+        self.assertIn("_out/site/html-multi/", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
