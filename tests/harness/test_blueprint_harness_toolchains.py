@@ -4,7 +4,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from scripts.blueprint_harness_branches import active_release_branch
+from scripts.blueprint_harness_references import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
 import scripts.blueprint_harness_toolchains as toolchains_mod
+
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class BlueprintHarnessToolchainTests(unittest.TestCase):
@@ -54,7 +59,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                 [
                     "import Lake",
                     "open Lake DSL",
-                    'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"',
+                    'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"v4.28.0"',
                     "",
                 ]
             )
@@ -111,7 +116,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             template_text = (package_root / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
             self.assertNotIn("require verso", template_text)
             self.assertIn(
-                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"',
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"v4.29.0"',
                 template_text,
             )
             preview_text = (
@@ -149,7 +154,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.write(package_root / "project_template" / "lean-toolchain", "leanprover/lean4:v4.29.0-rc6\n")
             self.write(
                 package_root / "project_template" / "lakefile.lean",
-                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"main"\n',
+                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"v4.28.0"\n',
             )
             self.write(
                 package_root / "tests" / "test_blueprints" / "preview_runtime_showcase" / "lean-toolchain",
@@ -167,6 +172,14 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                     toolchains_mod.bump_toolchain_checkout(package_root, "v4.29.0", validate=False)
             finally:
                 toolchains_mod.resolve_remote_verso_tag_oid = original
+
+    def test_project_template_blueprint_dependency_tracks_active_release_branch(self) -> None:
+        text = (PACKAGE_ROOT / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
+        match = next(OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text), None)
+
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertEqual(match.group("ref"), active_release_branch(PACKAGE_ROOT))
 
 
 if __name__ == "__main__":

@@ -5,8 +5,14 @@ import re
 import subprocess
 from pathlib import Path
 
-from scripts.blueprint_harness_branches import LEAN_TOOLCHAIN_PREFIX, normalize_lean_release_ref
-from scripts.blueprint_harness_references import maybe_rewrite_in_repo_blueprint_dependency
+from scripts.blueprint_harness_branches import (
+    LEAN_TOOLCHAIN_PREFIX,
+    normalize_lean_release_ref,
+)
+from scripts.blueprint_harness_references import (
+    maybe_rewrite_in_repo_blueprint_dependency,
+    rewrite_pinned_blueprint_dependency,
+)
 from scripts.blueprint_harness_utils import lean_low_priority_command, run
 
 
@@ -142,6 +148,10 @@ def bump_toolchain_checkout(
         rewrite_lean_toolchain(project_dir / "lean-toolchain", lean_ref)
 
     rewrite_pinned_verso_dependency(package_root, selected_verso_ref)
+    rewrite_pinned_blueprint_dependency(
+        package_root / "project_template",
+        normalize_lean_release_ref(lean_ref),
+    )
 
     for project_dir in managed_toolchain_project_dirs(package_root):
         refresh_managed_manifest(package_root, project_dir)
