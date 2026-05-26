@@ -240,11 +240,17 @@ def groupGraphLegendGroups : Array LegendGroup :=
     }
   ]
 
+def statementUses (node : Data.Node) : Array Data.UseRef :=
+  (node.statement.map (·.deps)).getD #[]
+
+def proofUses (node : Data.Node) : Array Data.UseRef :=
+  (node.proof.map (·.deps)).getD #[]
+
 def statementDeps (node : Data.Node) : Array Name :=
-  ((node.statement.map (·.deps)).getD #[]).map (fun d => (d : Name))
+  (statementUses node).map (fun useRef => (useRef.label : Name))
 
 def proofDeps (node : Data.Node) : Array Name :=
-  ((node.proof.map (·.deps)).getD #[]).map (fun d => (d : Name))
+  (proofUses node).map (fun useRef => (useRef.label : Name))
 
 def allDeps (node : Data.Node) : Array Name :=
   statementDeps node ++ proofDeps node

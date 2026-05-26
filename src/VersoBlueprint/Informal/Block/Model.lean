@@ -171,10 +171,10 @@ structure BlockData where
   partPrefix : Option String := none
   /-- Document-order global index assigned during traversal. -/
   globalCount : Option Nat := none
-  /-- Statement-side `{uses ...}` dependencies declared for this labeled block. -/
-  statementDeps : Array Data.Label := #[]
-  /-- Proof-side `{uses ...}` dependencies declared for this labeled block. -/
-  proofDeps : Array Data.Label := #[]
+  /-- Structured statement-side use metadata for this labeled block. -/
+  statementUses : Array Data.UseRef := #[]
+  /-- Structured proof-side use metadata for this labeled block. -/
+  proofUses : Array Data.UseRef := #[]
   owner : Option Data.AuthorId := none
   ownerDisplayName : Option String := none
   ownerUrl : Option String := none
@@ -204,8 +204,8 @@ structure StoredBlockData where
   subNumberingCounter : SubNumberingCounter := .prefix
   partPrefix : Option String := none
   globalCount : Option Nat := none
-  statementDeps : Array Data.Label := #[]
-  proofDeps : Array Data.Label := #[]
+  statementUses : Array Data.UseRef := #[]
+  proofUses : Array Data.UseRef := #[]
   owner : Option Data.AuthorId := none
   ownerDisplayName : Option String := none
   ownerUrl : Option String := none
@@ -226,8 +226,8 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
-  statementDeps := data.statementDeps
-  proofDeps := data.proofDeps
+  statementUses := data.statementUses
+  proofUses := data.proofUses
   owner := data.owner
   ownerDisplayName := data.ownerDisplayName
   ownerUrl := data.ownerUrl
@@ -250,8 +250,8 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
-  statementDeps := data.statementDeps
-  proofDeps := data.proofDeps
+  statementUses := data.statementUses
+  proofUses := data.proofUses
   owner := data.owner
   ownerDisplayName := data.ownerDisplayName
   ownerUrl := data.ownerUrl
@@ -261,5 +261,17 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   priority := data.priority
   prUrl := data.prUrl
 }
+
+def BlockData.statementDeps (data : BlockData) : Array Data.Label :=
+  Data.UseRef.labels data.statementUses
+
+def BlockData.proofDeps (data : BlockData) : Array Data.Label :=
+  Data.UseRef.labels data.proofUses
+
+def StoredBlockData.statementDeps (data : StoredBlockData) : Array Data.Label :=
+  Data.UseRef.labels data.statementUses
+
+def StoredBlockData.proofDeps (data : StoredBlockData) : Array Data.Label :=
+  Data.UseRef.labels data.proofUses
 
 end Informal

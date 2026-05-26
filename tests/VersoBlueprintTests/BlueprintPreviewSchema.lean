@@ -24,17 +24,22 @@ open Informal.PreviewManifest
       let Except.ok entryPropsJson := Json.getObjVal? entrySchema "properties" | return false
       let Except.ok entryProps := entryPropsJson.getObj? | return false
       let schemaText := schema.compress
-      let proofDepsDesc? := do
-        let proofDepsJson ← entryProps.get? "proofDeps"
-        proofDepsJson.getObjValAs? String "description" |>.toOption
+      let proofUsesDesc? := do
+        let proofUsesJson ← entryProps.get? "proofUses"
+        proofUsesJson.getObjValAs? String "description" |>.toOption
+      let useRefProps? := do
+        let useRefJson ← defs.get? "Informal.Data.UseRef"
+        let useRefPropsJson ← useRefJson.getObjVal? "properties" |>.toOption
+        useRefPropsJson.getObj? |>.toOption
       let kindDesc? := do
         let kindJson ← entryProps.get? "kind"
         kindJson.getObjValAs? String "description" |>.toOption
       let labelDesc? := do
         let labelJson ← entryProps.get? "label"
         labelJson.getObjValAs? String "description" |>.toOption
+      let some useRefProps := useRefProps? | return false
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
-        defs.size == 5 &&
+        defs.size == 8 &&
         !fileProps.contains "version" &&
         fileProps.contains "previews" &&
         entryProps.contains "key" &&
@@ -46,18 +51,27 @@ open Informal.PreviewManifest
         entryProps.contains "href" &&
         entryProps.contains "parent" &&
         entryProps.contains "parentTitle" &&
-        entryProps.contains "statementDeps" &&
-        entryProps.contains "proofDeps" &&
+        entryProps.contains "statementUses" &&
+        entryProps.contains "proofUses" &&
+        !entryProps.contains "statementDeps" &&
+        !entryProps.contains "proofDeps" &&
+        useRefProps.contains "label" &&
+        useRefProps.contains "origin" &&
+        useRefProps.contains "intent" &&
+        !useRefProps.contains "intents" &&
         entryProps.contains "ownerDisplayName" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&
         entryProps.contains "effort" &&
         entryProps.contains "html" &&
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, or citation label." &&
-        proofDepsDesc? == some "Informal nodes used by the proof." &&
-        kindDesc? == some "Kind (definition, lemma, theorem, corollary)." &&
+        proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
+        kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
+        defs.contains "Informal.Data.UseRef" &&
+        defs.contains "Informal.Data.UseOrigin" &&
+        defs.contains "Informal.Data.UseIntent" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 

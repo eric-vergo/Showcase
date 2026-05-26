@@ -43,6 +43,68 @@ abbrev Parent := Label
 @[expose]
 abbrev AuthorId := Label
 
+/-- Where a declared dependency edge came from. -/
+inductive UseOrigin where
+  /-- The edge was written explicitly by a Blueprint author. -/
+  | manual
+  /-- The edge was inserted by tooling or another automatic process. -/
+  | automatic
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Parse the documented dependency-origin strings accepted by Blueprint syntax. -/
+def UseOrigin.parse? (raw : String) : Option UseOrigin :=
+  match raw.trimAscii.toString.toLower with
+  | "manual" => some .manual
+  | "automatic" => some .automatic
+  | _ => none
+
+instance : ToString UseOrigin where
+  toString
+    | .manual => "manual"
+    | .automatic => "automatic"
+
+/-- The semantic role of a declared dependency edge. -/
+inductive UseIntent where
+  /-- An ordinary dependency edge. This is the default intent. -/
+  | regular
+  /-- A supporting edge that is useful but not part of the main logical path. -/
+  | auxiliary
+  /-- A dependency on a technical lemma or implementation detail. -/
+  | technical
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Parse the documented dependency-intent strings accepted by Blueprint syntax. -/
+def UseIntent.parse? (raw : String) : Option UseIntent :=
+  match raw.trimAscii.toString.toLower with
+  | "regular" => some .regular
+  | "auxiliary" => some .auxiliary
+  | "technical" => some .technical
+  | _ => none
+
+instance : ToString UseIntent where
+  toString
+    | .regular => "regular"
+    | .auxiliary => "auxiliary"
+    | .technical => "technical"
+
+/--
+Structured metadata for one declared dependency edge between informal nodes.
+
+{lit}`origin` records whether the edge was user-authored or introduced by automation.
+{lit}`intent` classifies regular, auxiliary, and technical dependency edges.
+-/
+structure UseRef where
+  /-- Target informal node label. -/
+  label : Label
+  /-- Whether the edge was user-authored or introduced by automation. -/
+  origin : UseOrigin := .manual
+  /-- Semantic classification for this dependency edge. -/
+  intent : UseIntent := .regular
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+def UseRef.labels (uses : Array UseRef) : Array Label :=
+  uses.map (·.label)
+
 structure AuthorInfo where
   displayName : String
   url : Option String := none
@@ -336,10 +398,14 @@ deriving Repr, Inhabited
 
 structure InformalData where
   stx : Syntax
-  deps : Array Label := #[]
+  /-- Structured dependency edges declared from this informal payload. -/
+  deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
   elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
 deriving Repr, Inhabited
+
+def InformalData.dependencyLabels (data : InformalData) : Array Label :=
+  data.deps.map (·.label)
 
 structure Node where
   kind : NodeKind := .lemma
