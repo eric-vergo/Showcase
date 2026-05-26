@@ -129,9 +129,9 @@ def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option St
 def resolveStoredBlockData? (st : TraverseState) (label : Data.Label) : Option BlockData :=
   (resolveStoredNodeData? st label).map (·.toBlockData)
 
-private def mergeLabelArrays (xs ys : Array Data.Label) : Array Data.Label :=
-  ys.foldl (init := xs) fun acc label =>
-    if acc.contains label then acc else acc.push label
+private def mergeUseRefs (xs ys : Array Data.UseRef) : Array Data.UseRef :=
+  ys.foldl (init := xs) fun acc useRef =>
+    if acc.contains useRef then acc else acc.push useRef
 
 private def mergeStringArrays (xs ys : Array String) : Array String :=
   ys.foldl (init := xs) fun acc value =>
@@ -155,8 +155,8 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
       parent := existing.parent <|> incoming.parent
       partPrefix := existing.partPrefix <|> incoming.partPrefix
       globalCount := existing.globalCount <|> incoming.globalCount
-      statementDeps := mergeLabelArrays existing.statementDeps incoming.statementDeps
-      proofDeps := mergeLabelArrays existing.proofDeps incoming.proofDeps
+      statementUses := mergeUseRefs existing.statementUses incoming.statementUses
+      proofUses := mergeUseRefs existing.proofUses incoming.proofUses
       owner := existing.owner <|> incoming.owner
       ownerDisplayName := existing.ownerDisplayName <|> incoming.ownerDisplayName
       ownerUrl := existing.ownerUrl <|> incoming.ownerUrl

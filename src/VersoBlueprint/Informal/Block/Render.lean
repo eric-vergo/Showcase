@@ -118,8 +118,8 @@ deriving Repr, Inhabited, BEq
 def HeaderExtraKind.defaultOrder : HeaderExtraKind → Nat
   | .group => 10
   | .uses => 20
-  | .code => 30
-  | .usedBy => 40
+  | .usedBy => 30
+  | .code => 40
   | .custom _ => 100
 
 private def headerExtraCssSegment (raw : String) : String :=
@@ -193,8 +193,8 @@ private def HeaderExtras.renderable (extras : HeaderExtras) : Array HeaderExtra 
     #[
       extras.group?.map (·.asStandard .group),
       extras.uses?.map (·.asStandard .uses),
-      extras.code?.map (·.asStandard .code),
-      extras.usedBy?.map (·.asStandard .usedBy)
+      extras.usedBy?.map (·.asStandard .usedBy),
+      extras.code?.map (·.asStandard .code)
     ].filterMap id
   (standard ++ extras.custom).qsort fun a b =>
     a.order < b.order || (a.order == b.order && a.kind.slotKey < b.kind.slotKey)

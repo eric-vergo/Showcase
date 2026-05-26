@@ -121,11 +121,12 @@ pull requests unless that upstream write action is explicitly requested.
 
 - [ ] Support list-valued directive arguments in Verso.
   - current Blueprint workaround:
-    `LeanNameParsing.splitCommaSeparatedList` splits `(lean := "...")`
-    directive strings by comma
+    `DirectiveArgParsing.splitCommaSeparatedList` splits directive-string
+    options such as `(lean := "...")`, `(uses := "...")`, and
+    `(tags := "...")` by comma
   - desired upstream behavior:
-    directive parsers can accept a real list of Lean declaration names without
-    downstream packages inventing ad hoc string splitting
+    directive parsers can accept real list-valued arguments without downstream
+    packages inventing ad hoc string splitting
 
 ## Lake and Package Management
 

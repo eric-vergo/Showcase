@@ -46,7 +46,7 @@ Work:
    phase-safe representation
 3. define one canonical API for preview labels and titles; avoid mixing raw
    labels, resolved titles, and local fallbacks across renderers
-4. keep graph, summary, used-by/group panels, and inline references on the same
+4. keep graph, summary, relation panels, and inline references on the same
    browser panel behavior where the interaction model is genuinely shared
 5. evaluate a lighter preview delivery path so a page does not always fetch and
    decode the full shared manifest for a small number of previews

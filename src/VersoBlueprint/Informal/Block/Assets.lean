@@ -68,9 +68,23 @@ span[class$="_thmlabel"]::after {
   margin-left: auto;
 }
 
+.bp_extras_with_uses {
+  grid-template-columns: minmax(4.2rem, max-content) minmax(7.2rem, max-content) max-content;
+  grid-template-areas: "uses used code";
+}
+
 .bp_extras_with_group {
   grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
   grid-template-areas: "group used code";
+}
+
+.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    minmax(5rem, max-content)
+    minmax(4.2rem, max-content)
+    minmax(7.2rem, max-content)
+    max-content;
+  grid-template-areas: "group uses used code";
 }
 
 .bp_extra_slot {
@@ -87,6 +101,11 @@ span[class$="_thmlabel"]::after {
 
 .bp_extra_slot_group {
   grid-area: group;
+  justify-content: flex-start;
+}
+
+.bp_extra_slot_uses {
+  grid-area: uses;
   justify-content: flex-start;
 }
 
@@ -539,7 +558,7 @@ span[class$="_thmlabel"]::after {
   text-decoration: none;
 }
 
-.bp_used_by_wrap {
+.bp_relation_wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -547,7 +566,7 @@ span[class$="_thmlabel"]::after {
   margin-bottom: -0.45rem;
 }
 
-.bp_used_by_wrap::after {
+.bp_relation_wrap::after {
   content: "";
   position: absolute;
   left: -0.25rem;
@@ -556,7 +575,7 @@ span[class$="_thmlabel"]::after {
   height: 0.45rem;
 }
 
-.bp_used_by_chip {
+.bp_relation_chip {
   display: inline-flex;
   align-items: center;
   appearance: none;
@@ -574,16 +593,16 @@ span[class$="_thmlabel"]::after {
   cursor: default;
 }
 
-.bp_used_by_chip_empty {
+.bp_relation_chip_empty {
   color: var(--bp-color-text-faint);
   font-weight: 500;
 }
 
-.bp_used_by_chip_warn {
+.bp_relation_chip_warn {
   color: var(--bp-color-status-warning-text);
 }
 
-.bp_used_by_panel {
+.bp_relation_panel {
   position: absolute;
   top: 100%;
   right: 0;
@@ -599,15 +618,15 @@ span[class$="_thmlabel"]::after {
   font-weight: 400;
 }
 
-.bp_used_by_wrap:is(:hover, :focus-within) > .bp_used_by_panel {
+.bp_relation_wrap:is(:hover, :focus-within) > .bp_relation_panel {
   display: block;
 }
 
-.bp_used_by_wrap.bp_used_by_wrap_open > .bp_used_by_panel {
+.bp_relation_wrap.bp_relation_wrap_open > .bp_relation_panel {
   display: block;
 }
 
-.bp_used_by_panel_header {
+.bp_relation_panel_header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -617,18 +636,18 @@ span[class$="_thmlabel"]::after {
   background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
 }
 
-.bp_used_by_panel_title {
+.bp_relation_panel_title {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
 }
 
-.bp_used_by_panel_meta {
+.bp_relation_panel_meta {
   font-size: 0.72rem;
   color: var(--bp-color-text-faint);
 }
 
-.bp_used_by_panel_body {
+.bp_relation_panel_body {
   display: grid;
   grid-template-columns: minmax(14rem, 18rem) minmax(18rem, 1fr);
   gap: 0.75rem;
@@ -636,7 +655,7 @@ span[class$="_thmlabel"]::after {
   padding: 0.7rem;
 }
 
-.bp_used_by_list {
+.bp_relation_list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -647,40 +666,40 @@ span[class$="_thmlabel"]::after {
   overflow: auto;
 }
 
-.bp_used_by_item {
+.bp_relation_item {
   border: 1px solid var(--bp-color-border-panel);
   border-radius: var(--bp-radius-md);
   background: var(--bp-color-surface-muted);
   transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
-.bp_used_by_item:hover,
-.bp_used_by_item:focus-within,
-.bp_used_by_item.bp_used_by_item_active {
+.bp_relation_item:hover,
+.bp_relation_item:focus-within,
+.bp_relation_item.bp_relation_item_active {
   border-color: var(--bp-color-focus-border);
   background: var(--bp-color-focus-surface);
   box-shadow: inset 0 0 0 1px var(--bp-color-focus-ring);
 }
 
-.bp_used_by_target {
+.bp_relation_target {
   display: block;
   padding: 0.5rem 0.58rem;
   color: inherit;
   text-decoration: none;
 }
 
-.bp_used_by_target:hover {
+.bp_relation_target:hover {
   text-decoration: none;
 }
 
-.bp_used_by_target_title {
+.bp_relation_target_title {
   display: block;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
 }
 
-.bp_used_by_target_meta {
+.bp_relation_target_meta {
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -690,11 +709,11 @@ span[class$="_thmlabel"]::after {
   font-size: 0.72rem;
 }
 
-.bp_used_by_target_meta code {
+.bp_relation_target_meta code {
   font-size: 0.72rem;
 }
 
-.bp_used_by_axis_badge {
+.bp_relation_axis_badge {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--bp-color-border);
@@ -708,7 +727,7 @@ span[class$="_thmlabel"]::after {
   padding: 0.08rem 0.34rem;
 }
 
-.bp_used_by_preview_surface {
+.bp_relation_preview_surface {
   min-height: 14rem;
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-lg);
@@ -716,13 +735,13 @@ span[class$="_thmlabel"]::after {
   overflow: hidden;
 }
 
-.bp_used_by_preview_header {
+.bp_relation_preview_header {
   padding: 0.5rem 0.62rem 0.44rem;
   border-bottom: 1px solid var(--bp-color-border-soft);
   background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-surface));
 }
 
-.bp_used_by_preview_label {
+.bp_relation_preview_label {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -730,21 +749,21 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-text-faint);
 }
 
-.bp_used_by_preview_title {
+.bp_relation_preview_title {
   margin-top: 0.16rem;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
 }
 
-.bp_used_by_preview_body {
+.bp_relation_preview_body {
   max-height: min(20rem, 62vh);
   overflow: auto;
   padding: 0.62rem 0.68rem 0.72rem;
   background: var(--bp-color-surface);
 }
 
-.bp_used_by_preview_message {
+.bp_relation_preview_message {
   display: grid;
   gap: 0.18rem;
   padding: 0.56rem 0.62rem;
@@ -756,38 +775,38 @@ span[class$="_thmlabel"]::after {
   line-height: 1.38;
 }
 
-.bp_used_by_preview_message[data-bp-preview-message="loading"] {
+.bp_relation_preview_message[data-bp-preview-message="loading"] {
   color: var(--bp-color-text-faint);
 }
 
-.bp_used_by_preview_message[data-bp-preview-message="error"] {
+.bp_relation_preview_message[data-bp-preview-message="error"] {
   border-color: var(--bp-color-status-error-border-soft);
   background: var(--bp-color-surface-warn);
   color: var(--bp-color-status-error-text);
 }
 
-.bp_used_by_preview_message_title {
+.bp_relation_preview_message_title {
   font-weight: 700;
   color: inherit;
 }
 
-.bp_used_by_preview_message_detail {
+.bp_relation_preview_message_detail {
   color: inherit;
 }
 
 @media (max-width: 900px) {
-  .bp_used_by_panel {
+  .bp_relation_panel {
     right: auto;
     left: 0;
     width: min(34rem, calc(100vw - 1.4rem));
   }
 
-  .bp_used_by_panel_body {
+  .bp_relation_panel_body {
     grid-template-columns: 1fr;
   }
 
-  .bp_used_by_list,
-  .bp_used_by_preview_body {
+  .bp_relation_list,
+  .bp_relation_preview_body {
     max-height: min(12rem, 36vh);
   }
 }
@@ -1415,7 +1434,7 @@ def codeSummaryPreviewJs : String := r##"(function () {
   }
 })();"##
 
-def usedByPanelJs : String := r##"(function () {
+def relationPanelJs : String := r##"(function () {
   function escapeHtml(text) {
     return String(text || "")
       .replaceAll("&", "&amp;")
@@ -1428,16 +1447,16 @@ def usedByPanelJs : String := r##"(function () {
   function previewMessageHtml(kind, title, detail) {
     const safeKind = String(kind || "info").trim() || "info";
     let html =
-      '<div class="bp_used_by_preview_message" data-bp-preview-message="' +
+      '<div class="bp_relation_preview_message" data-bp-preview-message="' +
       escapeHtml(safeKind) +
       '">';
     html +=
-      '<div class="bp_used_by_preview_message_title">' +
+      '<div class="bp_relation_preview_message_title">' +
       escapeHtml(title || "Preview unavailable") +
       "</div>";
     if (detail) {
       html +=
-        '<div class="bp_used_by_preview_message_detail">' +
+        '<div class="bp_relation_preview_message_detail">' +
         escapeHtml(detail) +
         "</div>";
     }
@@ -1501,20 +1520,20 @@ def usedByPanelJs : String := r##"(function () {
     );
   }
 
-  function bindUsedByPanel(panel) {
+  function bindRelationPanel(panel) {
     if (!(panel instanceof Element)) return;
     if (panel.getAttribute("data-bp-bound") === "1") return;
     panel.setAttribute("data-bp-bound", "1");
 
     const previewUtils = window.bpPreviewUtils;
-    const wrap = panel.closest(".bp_used_by_wrap");
-    const chip = wrap instanceof Element ? wrap.querySelector(".bp_used_by_chip") : null;
-    const title = panel.querySelector(".bp_used_by_preview_title");
-    const body = panel.querySelector(".bp_used_by_preview_body");
+    const wrap = panel.closest(".bp_relation_wrap");
+    const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
+    const title = panel.querySelector(".bp_relation_preview_title");
+    const body = panel.querySelector(".bp_relation_preview_body");
     if (!(title instanceof Element) || !(body instanceof Element)) return;
 
     const defaultTitle = (title.textContent || "").trim() || "Hover a use site";
-    const items = Array.from(panel.querySelectorAll(".bp_used_by_item[data-bp-used-preview-id]"));
+    const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
     let closeTimer = null;
     let activateRequestToken = 0;
 
@@ -1533,16 +1552,16 @@ def usedByPanelJs : String := r##"(function () {
 
     function activeItem() {
       return items.find(function (item) {
-        return item instanceof Element && item.classList.contains("bp_used_by_item_active");
+        return item instanceof Element && item.classList.contains("bp_relation_item_active");
       }) || items[0] || null;
     }
 
     function selectItem(item) {
       if (!(item instanceof Element)) return;
-      const itemTitle = (item.getAttribute("data-bp-used-preview-title") || "").trim() || defaultTitle;
+      const itemTitle = (item.getAttribute("data-bp-relation-preview-title") || "").trim() || defaultTitle;
       items.forEach(function (other) {
         if (other instanceof Element) {
-          other.classList.toggle("bp_used_by_item_active", other === item);
+          other.classList.toggle("bp_relation_item_active", other === item);
         }
       });
       title.textContent = itemTitle;
@@ -1560,7 +1579,7 @@ def usedByPanelJs : String := r##"(function () {
       const opts = options && typeof options === "object" ? options : {};
       cancelClose();
       if (wrap instanceof Element) {
-        wrap.classList.add("bp_used_by_wrap_open");
+        wrap.classList.add("bp_relation_wrap_open");
       }
       setExpanded(true);
       if (opts.loadPreview !== false) {
@@ -1571,7 +1590,7 @@ def usedByPanelJs : String := r##"(function () {
     function closeWrap() {
       cancelClose();
       if (wrap instanceof Element) {
-        wrap.classList.remove("bp_used_by_wrap_open");
+        wrap.classList.remove("bp_relation_wrap_open");
       }
       setExpanded(false);
     }
@@ -1581,7 +1600,7 @@ def usedByPanelJs : String := r##"(function () {
       closeTimer = window.setTimeout(function () {
         closeTimer = null;
         if (wrap instanceof Element) {
-          wrap.classList.remove("bp_used_by_wrap_open");
+          wrap.classList.remove("bp_relation_wrap_open");
         }
         setExpanded(false);
       }, 180);
@@ -1590,8 +1609,8 @@ def usedByPanelJs : String := r##"(function () {
     async function activate(item, options) {
       if (!(item instanceof Element)) return;
       const opts = options && typeof options === "object" ? options : {};
-      const previewKey = (item.getAttribute("data-bp-used-preview-key") || "").trim();
-      const itemTitle = (item.getAttribute("data-bp-used-preview-title") || "").trim() || defaultTitle;
+      const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
+      const itemTitle = (item.getAttribute("data-bp-relation-preview-title") || "").trim() || defaultTitle;
       const requestToken = ++activateRequestToken;
       selectItem(item);
       body.innerHTML = loadingPreviewHtml();
@@ -1642,14 +1661,14 @@ def usedByPanelJs : String := r##"(function () {
       });
     });
     const initialItem = items.find(function (item) {
-      return item instanceof Element && item.classList.contains("bp_used_by_item_active");
+      return item instanceof Element && item.classList.contains("bp_relation_item_active");
     }) || items[0];
     if (initialItem instanceof Element) {
       selectItem(initialItem);
     }
 
     if (wrap instanceof Element && chip instanceof Element) {
-      setExpanded(wrap.classList.contains("bp_used_by_wrap_open"));
+      setExpanded(wrap.classList.contains("bp_relation_wrap_open"));
       const previewAwareClose = function (ev) {
         if (!previewUtils || typeof previewUtils.shouldKeepOpen !== "function") {
           scheduleClose();
@@ -1670,8 +1689,8 @@ def usedByPanelJs : String := r##"(function () {
         ev.preventDefault();
         ev.stopPropagation();
         cancelClose();
-        wrap.classList.toggle("bp_used_by_wrap_open");
-        const expanded = wrap.classList.contains("bp_used_by_wrap_open");
+        wrap.classList.toggle("bp_relation_wrap_open");
+        const expanded = wrap.classList.contains("bp_relation_wrap_open");
         setExpanded(expanded);
         if (expanded) {
           loadActivePreview();
@@ -1697,27 +1716,27 @@ def usedByPanelJs : String := r##"(function () {
     }
   }
 
-  function bindAllUsedByPanels(root) {
+  function bindAllRelationPanels(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
-    root.querySelectorAll(".bp_used_by_panel").forEach(bindUsedByPanel);
+    root.querySelectorAll(".bp_relation_panel").forEach(bindRelationPanel);
   }
 
   if (window.bpPreviewUtils && typeof window.bpPreviewUtils.registerPreviewHydrator === "function") {
-    window.bpPreviewUtils.registerPreviewHydrator("usedBy", bindAllUsedByPanels);
+    window.bpPreviewUtils.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
   }
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
-      bindAllUsedByPanels(document);
+      bindAllRelationPanels(document);
     });
   } else {
-    bindAllUsedByPanels(document);
+    bindAllRelationPanels(document);
   }
 })();"##
 
 def blockJsAssets : List String :=
   Informal.Commands.withInlinePreviewJsAssets
     []
-    [codeSummaryPreviewJs, usedByPanelJs, Informal.StyleSwitcher.jsInteractive]
+    [codeSummaryPreviewJs, relationPanelJs, Informal.StyleSwitcher.jsInteractive]
 
 end Informal.Block.Assets

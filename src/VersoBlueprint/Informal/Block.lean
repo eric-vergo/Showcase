@@ -133,6 +133,7 @@ block_extension Block.informal (data : BlockData) where
         let content := (← blocks.mapM goB)
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
         let groupEntry ← RelatedPanel.renderGroupExtra relatedPanelContext data
+        let usesEntry ← RelatedPanel.renderUsesExtra relatedPanelContext data
         let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
         let foldInformalBlock :=
           match data.kind with
@@ -148,8 +149,9 @@ block_extension Block.informal (data : BlockData) where
             attrs
             headerExtras := {
               group? := groupEntry.map HeaderExtra.group
-              code? := some <| HeaderExtra.code codeEntry
+              uses? := some <| HeaderExtra.uses usesEntry
               usedBy? := some <| HeaderExtra.usedBy usedByEntry
+              code? := some <| HeaderExtra.code codeEntry
             }
             folded := foldInformalBlock
           } content
@@ -162,7 +164,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let label := resolved.label
     let accepted ← Environment.push
       label resolved.envKind resolved.codeHint resolved.parent resolved.priority
-      resolved.owner resolved.tags resolved.effort resolved.prUrl
+      resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.metadataUses
     let contents ← contents.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
@@ -186,8 +188,10 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       match blockKind with
       | .proof => none
       | .statement _ => BlockCodeData.ofCodeRefHint nodeCodeRef?
-    let statementDeps := node?.bind (·.statement.map (·.deps)) |>.getD #[]
-    let proofDeps := node?.bind (·.proof.map (·.deps)) |>.getD #[]
+    let statementPayload? := node?.bind (·.statement)
+    let proofPayload? := node?.bind (·.proof)
+    let statementUses := statementPayload?.map (·.deps) |>.getD #[]
+    let proofUses := proofPayload?.map (·.deps) |>.getD #[]
     let owner := node?.bind (·.owner)
     let ownerInfo? ←
       match owner with
@@ -205,8 +209,8 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       numberingMode := numberingMode opts
       subNumberingPrefix := subNumberingPrefix opts
       subNumberingCounter := subNumberingCounter opts
-      statementDeps
-      proofDeps
+      statementUses
+      proofUses
       owner
       ownerDisplayName := ownerInfo?.map (·.displayName)
       ownerUrl := ownerInfo?.bind (·.url)

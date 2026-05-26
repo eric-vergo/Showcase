@@ -156,7 +156,7 @@ class TestPreviewRuntimeRegressions:
         page.route("**/-verso-data/blueprint-preview-manifest.json", count_manifest_fetch)
         page.goto(f"{server}/Preview-Relationships/")
         page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
-        page.locator('.bp_wrapper[title="used_target"] .bp_used_by_wrap').first.wait_for()
+        page.locator('.bp_wrapper[title="used_target"] .bp_relation_wrap').first.wait_for()
         page.wait_for_timeout(250)
 
         status = page.evaluate(
@@ -168,7 +168,7 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] == 0
         assert status["state"] == "idle"
 
-        page.locator('.bp_wrapper[title="used_target"] .bp_used_by_chip').first.hover()
+        page.locator('.bp_wrapper[title="used_target"] .bp_relation_chip').first.hover()
         page.wait_for_function(
             """() => {
                 const utils = window.bpPreviewUtils;
@@ -347,21 +347,53 @@ class TestPreviewRuntimeRegressions:
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
 
-        wrap = page.locator('.bp_wrapper[title="used_target"] .bp_used_by_wrap').first
+        wrap = page.locator('.bp_wrapper[title="used_target"] .bp_relation_wrap').first
         expect(wrap).to_have_count(1)
-        assert "bp_used_by_preview_fallback_tpl" not in page.content()
+        assert "bp_relation_preview_fallback_tpl" not in page.content()
 
-        chip = wrap.locator(".bp_used_by_chip").first
+        chip = wrap.locator(".bp_relation_chip").first
         chip.hover()
 
-        expect(wrap.locator(".bp_used_by_item.bp_used_by_item_active")).to_have_count(1)
+        expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
-        body = wrap.locator(".bp_used_by_preview_body")
+        body = wrap.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Statement depends on")
+
+        assert_no_runtime_errors(errors)
+
+    def test_uses_panel_loads_manifest_backed_preview(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+
+        slot = page.locator('.bp_wrapper[title="used_statement"] .bp_extra_slot_uses').first
+        wrap = slot.locator(".bp_relation_wrap").first
+        expect(wrap).to_have_count(1)
+        assert "bp_relation_preview_fallback_tpl" not in page.content()
+
+        chip = wrap.locator(".bp_relation_chip").first
+        expect(chip).to_have_text("uses 1")
+        chip.hover()
+
+        panel = wrap.locator(".bp_relation_panel").first
+        expect(panel).to_be_visible()
+        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Uses 1")
+        expect(panel.locator(".bp_relation_item")).to_have_count(1)
+        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("used_target")
+        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("statement")
+        expect(panel.locator(".bp_relation_item")).to_have_attribute(
+            "data-bp-relation-preview-id", re.compile(r"^bp-uses-")
+        )
+
+        body = panel.locator(".bp_relation_preview_body")
+        page.wait_for_function(
+            "(el) => !!el && el.innerHTML.includes('<p')",
+            arg=body.element_handle(),
+        )
+        expect(body).to_contain_text("Target statement with associated Lean code.")
 
         assert_no_runtime_errors(errors)
 

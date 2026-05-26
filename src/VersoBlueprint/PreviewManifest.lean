@@ -510,10 +510,10 @@ structure Entry where
   parent : Option Name := none
   /-- Resolved display title for the parent/group, if any. -/
   parentTitle : Option String := none
-  /-- Informal nodes used by the statement. -/
-  statementDeps : Array Name := #[]
-  /-- Informal nodes used by the proof. -/
-  proofDeps : Array Name := #[]
+  /-- Structured statement use metadata, preserving origin and intent tags. -/
+  statementUses : Array Informal.Data.UseRef := #[]
+  /-- Structured proof use metadata, preserving origin and intent tags. -/
+  proofUses : Array Informal.Data.UseRef := #[]
   /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
   /-- Normalized tags attached to this informal node. -/
@@ -778,8 +778,8 @@ private def buildTraversalEntries
         href := blockHref state entry.label
         parent := blockData?.bind (·.parent)
         parentTitle := blockParentTitle? state blockData?
-        statementDeps := blockData?.map (·.statementDeps) |>.getD #[]
-        proofDeps := blockData?.map (·.proofDeps) |>.getD #[]
+        statementUses := blockData?.map (·.statementUses) |>.getD #[]
+        proofUses := blockData?.map (·.proofUses) |>.getD #[]
         ownerDisplayName := blockData?.bind (·.ownerDisplayName)
         tags := blockData?.map (·.tags) |>.getD #[]
         priority := blockData?.bind (·.priority)
