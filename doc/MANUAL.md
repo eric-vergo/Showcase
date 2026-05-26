@@ -64,6 +64,18 @@ Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.
 
+For dependencies that do not have a natural sentence-level reference, use the
+block option `(uses := "label1, label2")`. Inline uses can carry
+`(intent := "auxiliary")` or `(intent := "technical")`; metadata-only uses use
+the parallel `(uses_intent := "...")` option.
+
+Dependency use metadata options are string-valued:
+
+- `intent` / `uses_intent`: one of `"regular"`, `"auxiliary"`, or
+  `"technical"`; omitted values default to `"regular"`
+- `origin` / `uses_origin`: one of `"manual"` or `"automatic"`; omitted values
+  default to `"manual"`
+
 If a role such as `{uses "addition_spec"}[]`, `{bpref "addition_spec"}[]`, or a
 citation has an empty payload, Blueprint can generate the visible text
 automatically, for example `Theorem N`.

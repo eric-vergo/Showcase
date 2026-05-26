@@ -43,6 +43,59 @@ abbrev Parent := Label
 @[expose]
 abbrev AuthorId := Label
 
+inductive UseOrigin where
+  | manual
+  | automatic
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+def UseOrigin.parse? (raw : String) : Option UseOrigin :=
+  match raw.trimAscii.toString.toLower with
+  | "manual" | "user" | "declared" => some .manual
+  | "automatic" | "auto" | "inferred" => some .automatic
+  | _ => none
+
+instance : ToString UseOrigin where
+  toString
+    | .manual => "manual"
+    | .automatic => "automatic"
+
+inductive UseIntent where
+  | regular
+  | auxiliary
+  | technical
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+def UseIntent.parse? (raw : String) : Option UseIntent :=
+  match raw.trimAscii.toString.toLower with
+  | "regular" | "default" | "ordinary" => some .regular
+  | "auxiliary" | "aux" => some .auxiliary
+  | "technical" | "tech" => some .technical
+  | _ => none
+
+instance : ToString UseIntent where
+  toString
+    | .regular => "regular"
+    | .auxiliary => "auxiliary"
+    | .technical => "technical"
+
+/--
+Structured metadata for one declared dependency edge between informal nodes.
+
+{lit}`origin` records whether the edge was user-authored or introduced by automation.
+{lit}`intent` classifies regular, auxiliary, and technical dependency edges.
+-/
+structure UseRef where
+  /-- Target informal node label. -/
+  label : Label
+  /-- Whether the edge was user-authored or introduced by automation. -/
+  origin : UseOrigin := .manual
+  /-- Semantic classification for this dependency edge. -/
+  intent : UseIntent := .regular
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+def UseRef.labels (uses : Array UseRef) : Array Label :=
+  uses.map (·.label)
+
 structure AuthorInfo where
   displayName : String
   url : Option String := none
@@ -336,10 +389,14 @@ deriving Repr, Inhabited
 
 structure InformalData where
   stx : Syntax
-  deps : Array Label := #[]
+  /-- Structured dependency edges declared from this informal payload. -/
+  deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
   elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
 deriving Repr, Inhabited
+
+def InformalData.dependencyLabels (data : InformalData) : Array Label :=
+  data.deps.map (·.label)
 
 structure Node where
   kind : NodeKind := .lemma

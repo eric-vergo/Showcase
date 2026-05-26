@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import VersoBlueprint.StringParsing
 
 namespace Informal.LeanNameParsing
 
@@ -12,7 +13,7 @@ open Lean
 
 /-- Trim leading/trailing ASCII whitespace from a Lean name fragment. -/
 private def normalize (s : String) : String :=
-  s.trimAscii.toString
+  StringParsing.trimAscii s
 
 /-- Parse a Lean declaration name using Lean's standard `String.toName` parser. -/
 private def parse? (s : String) : Option Name :=
@@ -39,9 +40,6 @@ Temporary workaround for directive args:
 TODO: remove this when Verso supports list-valued directive arguments.
 -/
 def splitCommaSeparatedList (s : String) : Array String :=
-  s.splitOn ","
-  |>.toArray
-  |>.map normalize
-  |>.filter (fun p => !p.isEmpty)
+  StringParsing.splitCommaSeparatedList s
 
 end Informal.LeanNameParsing

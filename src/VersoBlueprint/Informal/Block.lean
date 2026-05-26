@@ -29,6 +29,7 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
+import VersoBlueprint.StringParsing
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Profiling
 
@@ -66,6 +67,13 @@ structure Config where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  directUses : Array Data.UseRef := #[]
+  invalidDirectUseOrigin : Option String := none
+  invalidDirectUseIntent : Option String := none
+  roleUseOrigin : Data.UseOrigin := .manual
+  invalidRoleUseOrigin : Option String := none
+  roleUseIntent : Data.UseIntent := .regular
+  invalidRoleUseIntent : Option String := none
   externalCode : Array Data.ExternalRef := #[]
   invalidExternalCode : Array String := #[]
 --  hide : Bool := false
@@ -88,15 +96,46 @@ private def normalizeEffort? (raw : String) : Option String :=
   | _ => none
 
 private def normalizeTags (raw : String) : Array String :=
-  raw.splitOn ","
-    |>.toArray
+  StringParsing.splitCommaSeparatedList raw
     |>.map (fun tag => tag.trimAscii.toString.toLower)
-    |>.filter (fun tag => !tag.isEmpty)
     |>.foldl (init := #[]) fun acc tag => if acc.contains tag then acc else acc.push tag
 
+private def parseUseLabels (raw? : Option String) : Array Data.Label :=
+  match raw? with
+  | none => #[]
+  | some raw => (StringParsing.splitCommaSeparatedList raw).map LabelNameParsing.parse
+
+private def parseUseOrigin (raw? : Option String) : Data.UseOrigin × Option String :=
+  match raw? with
+  | none => (.manual, none)
+  | some raw =>
+    let raw := raw.trimAscii.toString
+    match Data.UseOrigin.parse? raw with
+    | some origin => (origin, none)
+    | none => (.manual, some raw)
+
+private def parseUseIntent (raw? : Option String) : Data.UseIntent × Option String :=
+  match raw? with
+  | none => (.regular, none)
+  | some raw =>
+    let raw := raw.trimAscii.toString
+    match Data.UseIntent.parse? raw with
+    | some intent => (intent, none)
+    | none => (.regular, some raw)
+
+private def mkUseRefs
+    (labels : Array Data.Label) (origin : Data.UseOrigin) (intent : Data.UseIntent) :
+    Array Data.UseRef :=
+  labels.map fun label => { label, origin, intent }
+
 def Config.parse  : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl =>
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl
+      uses usesOrigin usesIntent origin intent =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
+    let (directUseOrigin, invalidDirectUseOrigin) := parseUseOrigin usesOrigin
+    let (directUseIntent, invalidDirectUseIntent) := parseUseIntent usesIntent
+    let (roleUseOrigin, invalidRoleUseOrigin) := parseUseOrigin origin
+    let (roleUseIntent, invalidRoleUseIntent) := parseUseIntent intent
     {
       label := LabelNameParsing.parse labelArg.val
       labelSyntax := labelArg.syntax
@@ -107,11 +146,20 @@ def Config.parse  : ArgParse m Config :=
       tags := normalizeTags (tags.getD "")
       effort := effort
       prUrl := prUrl.map (·.trimAscii.toString)
+      directUses := mkUseRefs (parseUseLabels uses) directUseOrigin directUseIntent
+      invalidDirectUseOrigin := invalidDirectUseOrigin
+      invalidDirectUseIntent := invalidDirectUseIntent
+      roleUseOrigin := roleUseOrigin
+      invalidRoleUseOrigin := invalidRoleUseOrigin
+      roleUseIntent := roleUseIntent
+      invalidRoleUseIntent := invalidRoleUseIntent
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
+        <*> .named `uses .string true <*> .named `uses_origin .string true <*> .named `uses_intent .string true
+        <*> .named `origin .string true <*> .named `intent .string true
 
 instance : FromArgs Config m where
   fromArgs := Config.parse
@@ -893,6 +941,10 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let hasExternalRaw := !resolvedExternalCode.isEmpty
     if !cfg.invalidExternalCode.isEmpty then
       logWarningAt cfg.labelSyntax m!"Label {label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
+    if let some raw := cfg.invalidDirectUseOrigin then
+      logErrorAt cfg.labelSyntax m!"Label {label} has invalid '(uses_origin := \"{raw}\")'; expected one of \"manual\", \"automatic\""
+    if let some raw := cfg.invalidDirectUseIntent then
+      logErrorAt cfg.labelSyntax m!"Label {label} has invalid '(uses_intent := \"{raw}\")'; expected one of \"regular\", \"auxiliary\", \"technical\""
     if isProof && hasExternalRaw then
       logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(lean := ...)' in a proof block"
     let priority : Option String ←
@@ -971,7 +1023,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
         some (.external resolvedExternalCode)
       else
         none
-    let accepted ← Environment.push label envKind codeHint cfg.parent priority owner tags effort prUrl
+    let accepted ← Environment.push label envKind codeHint cfg.parent priority owner tags effort prUrl cfg.directUses
     let contents ← contents.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
@@ -995,8 +1047,10 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       match blockKind with
       | .proof => none
       | .statement _ => BlockCodeData.ofCodeRefHint nodeCodeRef?
-    let statementDeps := node?.bind (·.statement.map (·.deps)) |>.getD #[]
-    let proofDeps := node?.bind (·.proof.map (·.deps)) |>.getD #[]
+    let statementPayload? := node?.bind (·.statement)
+    let proofPayload? := node?.bind (·.proof)
+    let statementUses := statementPayload?.map (·.deps) |>.getD #[]
+    let proofUses := proofPayload?.map (·.deps) |>.getD #[]
     let owner := node?.bind (·.owner)
     let ownerInfo? ←
       match owner with
@@ -1012,8 +1066,8 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       parent := node?.bind (·.parent)
       count
       numberingMode := numberingMode opts
-      statementDeps
-      proofDeps
+      statementUses
+      proofUses
       owner
       ownerDisplayName := ownerInfo?.map (·.displayName)
       ownerUrl := ownerInfo?.bind (·.url)

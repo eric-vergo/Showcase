@@ -62,8 +62,24 @@ Using {uses "lem:hover.base"}[] and again {uses "lem:hover.base"}[].
 Target lemma for reference-only links.
 :::
 
-:::lemma_ "lem:hover.bpref.source"
+:::lemma_ "lem:hover.bpref.ref"
 Mention {bpref "lem:hover.bpref.target"}[] without declaring a dependency.
+:::
+:::::::
+
+#docs (Genre.Manual) hoverUseIntentDoc "Hover Use Intent Doc" :=
+:::::::
+:::lemma_ "lem:hover.intent.hidden"
+Hidden metadata dependency target.
+:::
+
+:::lemma_ "lem:hover.intent.inline"
+Inline dependency target.
+:::
+
+:::lemma_ "lem:hover.intent.node" (uses := "lem:hover.intent.hidden") (uses_origin := "automatic") (uses_intent := "technical")
+Mention {uses "lem:hover.intent.inline" (intent := "auxiliary")}[] while the
+technical edge is declared in block metadata.
 :::
 :::::::
 
@@ -110,7 +126,57 @@ Cite once {Informal.citet hover.cite (kind := lemma) (index := 3)}[] and cite tw
 #eval
   show CoreM Bool from do
     let state := Informal.Environment.informalExt.getState (← getEnv)
-    match state.data.get? (Name.mkSimple "lem:hover.bpref.source") with
+    let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
+    let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
+    match state.data.get? (Name.mkSimple "lem:hover.intent.node") with
+    | some node =>
+      match node.statement with
+      | some statement =>
+        let uses := statement.deps
+        let hidden? := uses.find? (·.label == hiddenLabel)
+        let inline? := uses.find? (·.label == inlineLabel)
+        pure <|
+          uses.any (·.label == hiddenLabel) &&
+          uses.any (·.label == inlineLabel) &&
+          match hidden?, inline? with
+          | some hidden, some inline =>
+            hidden.origin == .automatic &&
+            hidden.intent == Informal.Data.UseIntent.technical &&
+            inline.origin == .manual &&
+            inline.intent == Informal.Data.UseIntent.auxiliary
+          | _, _ => false
+      | none => pure false
+    | none => pure false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls hoverUseIntentDoc
+    let hiddenLabel := Name.mkSimple "lem:hover.intent.hidden"
+    let inlineLabel := Name.mkSimple "lem:hover.intent.inline"
+    match Informal.TraversalIndex.Nodes.data? st (Name.mkSimple "lem:hover.intent.node") with
+    | some block =>
+      let hidden? := block.statementUses.find? (·.label == hiddenLabel)
+      let inline? := block.statementUses.find? (·.label == inlineLabel)
+      pure <|
+        block.statementDeps.contains hiddenLabel &&
+        block.statementDeps.contains inlineLabel &&
+        match hidden?, inline? with
+        | some hidden, some inline =>
+          hidden.origin == .automatic &&
+          hidden.intent == Informal.Data.UseIntent.technical &&
+          inline.origin == .manual &&
+          inline.intent == Informal.Data.UseIntent.auxiliary
+        | _, _ => false
+    | none => pure false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let state := Informal.Environment.informalExt.getState (← getEnv)
+    match state.data.get? (Name.mkSimple "lem:hover.bpref.ref") with
     | some node =>
       pure <| node.statement.map (·.deps.isEmpty) |>.getD false
     | none => pure false

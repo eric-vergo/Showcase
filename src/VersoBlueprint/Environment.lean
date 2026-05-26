@@ -25,7 +25,7 @@ structure InProgress where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
-  deps : Array Label := #[]
+  deps : Array UseRef := #[]
   previewBlocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
   elabStx : Array Syntax := #[]
 deriving Inhabited, Repr
@@ -191,13 +191,13 @@ def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool :
 def push (label : Label) (kind : Data.InProgressKind)
     (codeHint : Option CodeRef := none) (parent : Option Parent := none) (priority : Option String := none)
     (owner : Option AuthorId := none) (tags : Array String := #[]) (effort : Option String := none)
-    (prUrl : Option String := none) : m Bool := do
+    (prUrl : Option String := none) (useRefs : Array UseRef := #[]) : m Bool := do
   reportImportedConflicts
   let ok ← checkLabelAndNesting label kind
   if !ok then
     return false
   modify fun data =>
-    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl }
+    let pdata := { label, kind, codeHint, parent, priority, owner, tags, effort, prUrl, deps := useRefs }
     { data with stack := pdata :: data.stack }
   return true
 
@@ -245,15 +245,21 @@ def peek : m (Option InProgress) := do
 def stack : m (List InProgress) := do
   return (informalExt.getState (← getEnv)).stack
 
-def addDep (stx : Syntax) (dep : Name) : m Unit := do
+def addUse (stx : Syntax) (useRef : UseRef) : m Unit := do
   match (informalExt.getState (← getEnv)).stack with
   | [] =>
     logErrorAt stx m!"uses declaration outside an informal enviroment"
     pure ()
   | cur :: rest =>
-    let cur := { cur with deps := cur.deps.push dep }
+    let cur := {
+      cur with
+        deps := cur.deps.push useRef
+    }
     let stack := cur :: rest
     modify fun state => { state with stack }
+
+def addDep (stx : Syntax) (dep : Name) : m Unit := do
+  addUse stx { label := dep }
 
 def setStatementElab (stxs : Array Syntax) : m Unit := do
   match (informalExt.getState (← getEnv)).stack with

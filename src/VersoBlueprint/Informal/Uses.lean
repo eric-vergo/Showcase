@@ -119,12 +119,20 @@ private def Data.Node.toBlockInfo (node : Data.Node) (label : Data.Label) : Bloc
 
 private def nodeRefImpl (registerDependency : Bool) : RoleExpanderOf Config
   | cfg, contents => do
+    if let some raw := cfg.invalidRoleUseOrigin then
+      logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(origin := \"{raw}\")'; expected one of \"manual\", \"automatic\""
+    if let some raw := cfg.invalidRoleUseIntent then
+      logErrorAt cfg.labelSyntax m!"uses reference to {cfg.label} has invalid '(intent := \"{raw}\")'; expected one of \"regular\", \"auxiliary\", \"technical\""
     let contents ← contents.mapM elabInline
     let label := cfg.label
     let node ← Environment.getNode? label
     if registerDependency then
       let useRef ← getRef
-      Environment.addDep useRef label
+      Environment.addUse useRef {
+        label
+        origin := cfg.roleUseOrigin
+        intent := cfg.roleUseIntent
+      }
     let data : InlineData := { label, block := node.map (fun n => n.toBlockInfo label) }
     ``(Inline.other (Inline.informal $(quote data)) #[$contents,*])
 
