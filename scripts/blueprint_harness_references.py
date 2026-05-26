@@ -15,7 +15,7 @@ from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_e
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
 LEGACY_V428_BLUEPRINT_MIRROR_REPOSITORY = "ejgallego/verso-blueprint"
 OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"main"'
+    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.28.0"'
 )
 OFFICIAL_BLUEPRINT_URL_PATTERNS = (
     rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
