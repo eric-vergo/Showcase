@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoManual
+import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block
@@ -53,12 +54,21 @@ private partial def previewCodeBlocks
 block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
-    let .ok cdata@{ label, definedDefs := _, definedTheorems := _, foldCodeBlock := _, foldProofs := _ } := fromJson? (α := InlineCodeData) data
+    let .ok cdata := fromJson? (α := InlineCodeData) data
       | logError s!"Malformed data: {data}"
         pure none
+    let label := cdata.label
     if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
       pure none
     else
+      if !cdata.statementUses.isEmpty || !cdata.proofUses.isEmpty then
+        if let some existing := Informal.TraversalIndex.Nodes.storedData? (← get) label then
+          let updated := {
+            existing with
+              statementUses := Data.UseRef.mergeByLabel existing.statementUses cdata.statementUses
+              proofUses := Data.UseRef.mergeByLabel existing.proofUses cdata.proofUses
+          }
+          modify fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson updated)
       let previewBlocks := previewCodeBlocks id _contents
       let previewTargets :=
         (cdata.definedDefs.map (·.name)) ++ (cdata.definedTheorems.map (·.name))
@@ -83,7 +93,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      let .ok { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs } := fromJson? (α := InlineCodeData) data
+      let .ok { label, definedDefs, definedTheorems, statementUses := _, proofUses := _, foldCodeBlock, foldProofs } := fromJson? (α := InlineCodeData) data
         | HtmlT.logError s!"Malformed data: {data}"
           pure .empty
       let s ← HtmlT.state
@@ -111,20 +121,24 @@ block_extension Block.informalCode (data : InlineCodeData) where
 structure CodeConfig where
   label : Data.Label
   leanLabel : Name
+  autoDeps : Option Bool := none
   labelSyntax : Syntax := Syntax.missing
 
 section
-variable [Monad m] [MonadError m] [MonadOptions m]
+variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [MonadEnv m]
+    [MonadError m] [MonadOptions m] [MonadLog m] [AddMessageContext m]
 
 def CodeConfig.parse : ArgParse m CodeConfig :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) opts =>
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) autoDeps opts =>
     let label := LabelNameParsing.parse labelArg.val
     let leanLabel := LabelNameParsing.parse labelArg.val (some opts)
     {
       label
       leanLabel
+      autoDeps
       labelSyntax := labelArg.syntax
     }) <$> .positional `label (.withSyntax .string)
+      <*> .named' `autoDeps true
       <*> .lift "current elaboration options" getOptions
 
 instance : FromArgs CodeConfig m where
@@ -176,15 +190,23 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
     let codeBlock := res.block
     let definedDefs := res.definedDefs.map CodeDeclData.ofLiterateDef
     let definedTheorems := res.definedTheorems.map CodeDeclData.ofLiterateThm
+    let mut inferredUseRefs : DependencyAnalysis.InferredUseRefs := {}
+    let codeRef ← getRef
+    Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems
+    if DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+      let decls := (res.definedDefs.map (·.name)) ++ (res.definedTheorems.map (·.name))
+      let deps ← liftM <| DependencyAnalysis.inferDecls decls
+      inferredUseRefs := deps.toUseRefs (currentLabel? := some cfg.label)
+      liftM <| DependencyAnalysis.attachInferredUseRefs cfg.label codeRef inferredUseRefs
     let data : InlineCodeData := {
       label := cfg.label
       definedDefs
       definedTheorems
+      statementUses := inferredUseRefs.statement
+      proofUses := inferredUseRefs.proof
       foldCodeBlock := verso.blueprint.foldCodeBlocks.get (← getOptions)
       foldProofs := verso.blueprint.foldProofs.get (← getOptions)
     }
-    let codeRef ← getRef
-    Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems
     ``(Block.other (Block.informalCode $(quote data)) #[$codeBlock])
 
 @[code_block]

@@ -106,6 +106,8 @@ structure InlineCodeData where
   label : Data.Label
   definedDefs : Array CodeDeclData := #[]
   definedTheorems : Array CodeDeclData := #[]
+  statementUses : Array Data.UseRef := #[]
+  proofUses : Array Data.UseRef := #[]
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote

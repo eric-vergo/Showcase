@@ -171,13 +171,14 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let label := resolved.label
     let accepted ← Environment.push
       label resolved.envKind resolved.codeHint resolved.parent resolved.priority
-      resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.metadataUses
+      resolved.owner resolved.tags resolved.effort resolved.prUrl resolved.statementUses
     let contents ← contents.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
     let previewBlocks ← liftM <| Informal.evalElaboratedBlocks (contents.map (·.raw))
     Environment.setPreviewBlocks previewBlocks
     let count ← Environment.pop blockRef
+    liftM <| DependencyAnalysis.attachInferredUseRefs label blockRef { proof := resolved.proofUses }
     let node? ← Environment.getNode? label
     let nodeCodeRef? := node?.bind (·.code)
     let blockKind : Data.InProgressKind ←

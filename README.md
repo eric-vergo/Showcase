@@ -92,6 +92,16 @@ theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
   simp
 ```
 
+Add `(autoDeps := true)` when a tagged declaration, labeled inline Lean block,
+or `(lean := "...")` statement should infer statement/proof dependency edges to
+directly referenced Lean declarations that are already associated with Blueprint
+labels. You can also set `set_option verso.blueprint.autoDeps true` for a file
+or section, with local `(autoDeps := false)` available as an override. Inferred
+edges are recorded with origin `"automatic"`; explicit `uses` and `proofUses`
+entries remain manual unless written through the usual Blueprint dependency
+syntax. Manual `{uses ...}` links remain available for prose-first Blueprint
+nodes.
+
 ```md
 :::theorem "addition_assoc" (lean := "Nat.add_assoc, Nat.add_comm")
 This informal node is linked to existing compiled Lean declarations.
