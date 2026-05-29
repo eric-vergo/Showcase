@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean.Elab.InfoTree.Types
 import VersoManual
 import VersoBlueprint.Data
+import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.DirectiveArgParsing
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.ExternalCode
@@ -38,6 +39,8 @@ structure Config where
   labelSyntax : Syntax := Syntax.missing
   /-- Optional Lean/external-code references associated with statement blocks. -/
   lean : Option String := none
+  /-- Optional local override for automatic dependency inference. -/
+  autoDeps : Option Bool := none
   /-- Optional parent node label. -/
   parent : Option Data.Parent := none
   /-- Raw priority option, normalized during directive resolution. -/
@@ -82,10 +85,11 @@ private def normalizeTags (raw : String) : Array String :=
     |>.foldl (init := #[]) fun acc tag => if acc.contains tag then acc else acc.push tag
 
 section
-variable [Monad m] [MonadInfoTree m] [MonadLiftT CoreM m] [MonadEnv m] [MonadError m] [MonadFileMap m]
+variable [Monad m] [MonadInfoTree m] [MonadResolveName m] [MonadLiftT CoreM m] [MonadEnv m]
+    [MonadError m] [MonadFileMap m] [MonadLog m] [AddMessageContext m] [MonadOptions m]
 
 def Config.parse : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean autoDeps parent priority owner tags effort prUrl
       uses usesOrigin usesIntent =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
     let parsedLabel := LabelArg.parse labelArg
@@ -94,6 +98,7 @@ def Config.parse : ArgParse m Config :=
       label := parsedLabel.label
       labelSyntax := parsedLabel.labelSyntax
       lean := lean
+      autoDeps := autoDeps
       parent := parent.map LabelNameParsing.parse
       priority := priority
       owner := owner.map LabelNameParsing.parse
@@ -106,6 +111,7 @@ def Config.parse : ArgParse m Config :=
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
+        <*> .named' `autoDeps true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
         <*> .named `uses .string true <*> .named `uses_origin .string true <*> .named `uses_intent .string true
@@ -127,7 +133,8 @@ structure ResolvedConfig where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
-  metadataUses : Array Data.UseRef := #[]
+  statementUses : Array Data.UseRef := #[]
+  proofUses : Array Data.UseRef := #[]
 
 private def resolvePriority? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
@@ -238,6 +245,12 @@ def Config.resolveForDirective {m}
   let tags ← resolveTags cfg isProof
   let prUrl ← resolvePrUrl? cfg isProof
   let hasExternal := hasExternalRaw && !isProof
+  let inferredDeps ←
+    if hasExternal && DependencyAnalysis.enabled (← getOptions) cfg.autoDeps then
+      liftM <| DependencyAnalysis.inferExternalRefs resolvedExternalCode
+    else
+      pure {}
+  let inferredUseRefs := inferredDeps.toUseRefs cfg.metadataUses (some cfg.label)
   let codeHint : Option Data.CodeRef :=
     if isProof then
       none
@@ -256,7 +269,8 @@ def Config.resolveForDirective {m}
     tags
     effort
     prUrl
-    metadataUses := cfg.metadataUses
+    statementUses := inferredUseRefs.statement
+    proofUses := inferredUseRefs.proof
   }
 
 end Informal

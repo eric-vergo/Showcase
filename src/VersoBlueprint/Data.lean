@@ -105,6 +105,30 @@ deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 def UseRef.labels (uses : Array UseRef) : Array Label :=
   uses.map (·.label)
 
+/--
+Merge duplicate dependency refs for the same label.
+
+An explicit manual edge is preferred over an inferred automatic duplicate.
+Otherwise, the existing ref is kept so order and earlier metadata remain stable.
+-/
+def UseRef.mergeSameLabel (current incoming : UseRef) : UseRef :=
+  match current.origin, incoming.origin with
+  | .automatic, .manual => incoming
+  | _, _ => current
+
+def UseRef.pushMergeByLabel (uses : Array UseRef) (useRef : UseRef) : Array UseRef :=
+  if uses.any (·.label == useRef.label) then
+    uses.map fun current =>
+      if current.label == useRef.label then
+        current.mergeSameLabel useRef
+      else
+        current
+  else
+    uses.push useRef
+
+def UseRef.mergeByLabel (current incoming : Array UseRef) : Array UseRef :=
+  incoming.foldl UseRef.pushMergeByLabel current
+
 structure AuthorInfo where
   displayName : String
   url : Option String := none
@@ -407,6 +431,9 @@ structure InformalData where
   elabStx : Array Syntax := #[] -- Syntax is going to have type Verso.Block ...
 deriving Repr, Inhabited
 
+def InformalData.hasBody (data : InformalData) : Bool :=
+  !data.previewBlocks.isEmpty || !data.elabStx.isEmpty
+
 def InformalData.dependencyLabels (data : InformalData) : Array Label :=
   data.deps.map (·.label)
 
@@ -538,6 +565,25 @@ private def mergeTags (current incoming : Array String) : Array String :=
   incoming.foldl (init := current) fun acc tag =>
     if acc.contains tag then acc else acc.push tag
 
+private def fillBodylessPayload (current incoming : InformalData) : InformalData :=
+  { incoming with deps := UseRef.mergeByLabel current.deps incoming.deps }
+
+private def fillPayload? (current? : Option InformalData) (incoming : InformalData) :
+    Option InformalData :=
+  match current? with
+  | none => some incoming
+  | some current =>
+    if current.hasBody then
+      none
+    else
+      some (fillBodylessPayload current incoming)
+
+private def Data.nextCount (data : Data) : Nat :=
+  data.foldl (init := 0) (fun count _label node => max count node.count) + 1
+
+private def Node.countOrNext (node : Node) (nextCount : Nat) : Nat :=
+  if node.count == 0 then nextCount else node.count
+
 private def mergeTexSource (label : Label) (slot : String)
     (current : Array (String × TexSource)) (incoming : TexSource)
     : m (Array (String × TexSource)) := do
@@ -571,7 +617,7 @@ def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload
     let prUrl ← mergePrUrl label node.prUrl prUrl
     let tags := mergeTags node.tags tags
     return { node with code, parent, priority, owner, tags, effort, prUrl }
-  let nextCount := data.size + 1
+  let nextCount := data.nextCount
   match data.get? label, kind with
   -- First statement for a fresh label.
   | none, .statement nodeKind =>
@@ -588,32 +634,35 @@ def Data.register (data : Data) (label : Label) (kind : InProgressKind) (payload
     return data
   -- Late statement fill for an existing placeholder node.
   | some node, .statement nodeKind =>
-    if node.statement.isNone then
-      let count := if node.count == 0 then nextCount else node.count
+    match fillPayload? node.statement payload with
+    | some statement =>
+      let count := node.countOrNext nextCount
       let node ← applyHints {
         node with
           kind := nodeKind
           count
-          statement := some payload
+          statement := some statement
       }
       return data.insert label node
-    else
+    | none =>
       -- logError m!"Duplicated entry for {label}"
       return data
   -- Register proof for an existing statement.
   | some node, .proof =>
-    if node.proof.isSome then
-      -- logError m!"{label} already has a proof"
-      return data
-    else if node.statement.isNone then
+    if node.statement.isNone then
       logError m!"Cannot register proof for {label}: statement dependencies are missing"
       return data
     else
-      let node ← applyHints {
-        node with
-          proof := some payload
-      }
-      return data.insert label node
+      match fillPayload? node.proof payload with
+      | some proof =>
+        let node ← applyHints {
+          node with
+            proof := some proof
+        }
+        return data.insert label node
+      | none =>
+        -- logError m!"{label} already has a proof"
+        return data
 
 /-- Register Lean code and code metadata for an informal object label. -/
 def Data.registerCode (data : Data) (label : Label) (code : Syntax)
