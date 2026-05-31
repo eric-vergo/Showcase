@@ -65,6 +65,9 @@ jobs:
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+      - name: Match reference target toolchain
+        if: ${{ matrix.rc != '' }}
+        run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Write deploy project manifest
         env:
           BP_PROJECT_ID: ${{ matrix.project_id }}
