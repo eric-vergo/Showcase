@@ -49,6 +49,9 @@ jobs:
           echo "blueprint=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+      - name: Match reference target toolchain
+        if: ${{ needs.resolve-reference-release.outputs.rc != '' }}
+        run: printf 'leanprover/lean4:${{ needs.resolve-reference-release.outputs.toolchain }}\n' > lean-toolchain
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
