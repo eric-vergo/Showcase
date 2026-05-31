@@ -62,8 +62,9 @@ jobs:
           path: |
             .lake/packages/mathlib
             .lake/packages/verso
-          key: ${{ runner.os }}-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          key: ${{ runner.os }}-lake-packages-v2-${{ needs.resolve-reference-release.outputs.toolchain }}-${{ hashFiles('lake-manifest.json') }}
           restore-keys: |
+            ${{ runner.os }}-lake-packages-v2-${{ needs.resolve-reference-release.outputs.toolchain }}-
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
         uses: actions/cache@v4
@@ -71,8 +72,9 @@ jobs:
           path: |
             .lake/packages/mathlib/.lake/build
             .lake/packages/verso/.lake/build
-          key: ${{ runner.os }}-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          key: ${{ runner.os }}-lake-deps-${{ needs.resolve-reference-release.outputs.toolchain }}-${{ hashFiles('lake-manifest.json') }}
           restore-keys: |
+            ${{ runner.os }}-lake-deps-${{ needs.resolve-reference-release.outputs.toolchain }}-
             ${{ runner.os }}-lake-deps-
       - name: Restore external reference dependency cache
         if: ${{ matrix.reference_cache_key != '' }}
@@ -89,7 +91,7 @@ jobs:
           lake --version
           python3 --version
       - name: Generate reference blueprint
-        run: ./scripts/generate-reference-blueprints.sh --project ${{ matrix.project_id }}
+        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --project ${{ matrix.project_id }}
       - name: Upload reference blueprint artifact
         uses: actions/upload-artifact@v4
         with:

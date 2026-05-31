@@ -93,18 +93,20 @@ jobs:
           path: |
             .lake/packages/mathlib
             .lake/packages/verso
-          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-${{ matrix.release_id }}
+          key: ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}-${{ matrix.release_id }}
           restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ matrix.toolchain }}-
+            ${{ runner.os }}-reference-deploy-lake-packages-v2-
       - name: Restore Lake dependency build cache
         uses: actions/cache@v4
         with:
           path: |
             .lake/packages/mathlib/.lake/build
             .lake/packages/verso/.lake/build
-          key: ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-${{ matrix.release_id }}
+          key: ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}-${{ matrix.release_id }}
           restore-keys: |
-            ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
+            ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-
+            ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Restore external reference dependency cache
         if: ${{ matrix.reference_cache_key != '' }}
         uses: actions/cache@v4
@@ -125,6 +127,7 @@ jobs:
             --manifest _out/deploy-projects/${{ matrix.project_id }}.json \
             --release ${{ matrix.release_id }} \
             --project ${{ matrix.project_id }} \
+            --allow-unsafe-root-release \
             --allow-local-build \
             --serial \
             _out/reference-blueprints/${{ matrix.release_id }}
