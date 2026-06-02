@@ -28,6 +28,17 @@ Default proof body.
 :::
 :::::::
 
+#docs (Genre.Manual) proofTargetTitleDoc "Proof Target Title" :=
+:::::::
+:::lemma_ "display.lemma.proof"
+Lemma statement.
+:::
+
+:::proof "display.lemma.proof"
+Lemma proof body.
+:::
+:::::::
+
 #docs (Genre.Manual) blockKindDisplayDoc "Block Kind Display" :=
 :::::::
 :::proposition "display.proposition"
@@ -89,6 +100,14 @@ set_option verso.blueprint.foldCodeBlocks false
     hasSubstr out "<div class=\"bp_wrapper bp_kind_proof_wrapper" &&
     !hasSubstr out "<details class=\"bp_wrapper bp_kind_proof_wrapper" &&
     hasSubstr out "Default proof body."
+
+/-- info: true -/
+#guard_msgs in
+#eval! do
+  let out ← renderManualDocHtmlString manualImpls proofTargetTitleDoc
+  pure <|
+    hasSubstr out "Proof for Lemma" &&
+    hasSubstr out "Lemma proof body."
 
 /-- info: true -/
 #guard_msgs in
