@@ -51,6 +51,22 @@ Second statement.
       | return false
     pure (node.statement.isSome && node.proof.isNone)
 
+#docs (Manual) propositionKindDoc "Proposition Kind" :=
+:::::::
+:::proposition "prop.kind"
+Proposition body.
+:::
+:::::::
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let state ← currentState
+    let some node := state.data.get? (Name.mkSimple "prop.kind")
+      | return false
+    pure (node.kind == .proposition && node.statement.isSome)
+
 /--
 error: Cannot declare nested definitions
 ---

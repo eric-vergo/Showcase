@@ -57,7 +57,7 @@ The important files are:
 ## What the template demonstrates
 
 - labels that identify Blueprint nodes
-- `:::definition`, `:::theorem`, and `:::proof`
+- `:::definition`, `:::proposition`, `:::theorem`, and `:::proof`
 - local Lean code attached to a Blueprint label
 - local Rust code attached to a Blueprint label
 - a statement linked to an existing Lean declaration

@@ -55,6 +55,7 @@ instance : Quote AuthorInfo where
 
 inductive NodeKind where
   | definition
+  | proposition
   | lemma
   | theorem
   | corollary
@@ -63,12 +64,13 @@ deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
 instance : ToString NodeKind where
   toString
     | .definition => "Definition"
+    | .proposition => "Proposition"
     | .lemma => "Lemma"
     | .theorem => "Theorem"
     | .corollary => "Corollary"
 
 def NodeKind.isTheoremLike : NodeKind → Bool
-  | .lemma | .theorem | .corollary => true
+  | .proposition | .lemma | .theorem | .corollary => true
   | .definition => false
 
 inductive InProgressKind where
@@ -80,6 +82,7 @@ open Syntax in
 instance : Quote NodeKind where
   quote
     | .definition => mkCApp ``NodeKind.definition #[]
+    | .proposition => mkCApp ``NodeKind.proposition #[]
     | .lemma => mkCApp ``NodeKind.lemma #[]
     | .theorem => mkCApp ``NodeKind.theorem #[]
     | .corollary => mkCApp ``NodeKind.corollary #[]

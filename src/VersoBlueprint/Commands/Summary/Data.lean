@@ -307,6 +307,7 @@ structure Summary where
   showDebugDiagnostics : Bool := false
   totalEntries : Nat := 0
   definitions : Nat := 0
+  propositions : Nat := 0
   lemmas : Nat := 0
   theorems : Nat := 0
   corollaries : Nat := 0
@@ -315,6 +316,7 @@ structure Summary where
   informalOnlyEntries : Nat := 0
   totalStatus : EntryStatusCounts := {}
   definitionStatus : EntryStatusCounts := {}
+  propositionStatus : EntryStatusCounts := {}
   lemmaStatus : EntryStatusCounts := {}
   theoremStatus : EntryStatusCounts := {}
   corollaryStatus : EntryStatusCounts := {}
@@ -353,6 +355,7 @@ instance : Quote Summary where
       quote s.showDebugDiagnostics,
       quote s.totalEntries,
       quote s.definitions,
+      quote s.propositions,
       quote s.lemmas,
       quote s.theorems,
       quote s.corollaries,
@@ -361,6 +364,7 @@ instance : Quote Summary where
       quote s.informalOnlyEntries,
       quote s.totalStatus,
       quote s.definitionStatus,
+      quote s.propositionStatus,
       quote s.lemmaStatus,
       quote s.theoremStatus,
       quote s.corollaryStatus,

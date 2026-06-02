@@ -28,6 +28,13 @@ Default proof body.
 :::
 :::::::
 
+#docs (Genre.Manual) blockKindDisplayDoc "Block Kind Display" :=
+:::::::
+:::proposition "display.proposition"
+Proposition statement.
+:::
+:::::::
+
 set_option verso.blueprint.foldProofBlocks true
 
 #docs (Genre.Manual) foldedProofBlockDoc "Folded Proof Block" :=
@@ -82,6 +89,14 @@ set_option verso.blueprint.foldCodeBlocks false
     hasSubstr out "<div class=\"bp_wrapper bp_kind_proof_wrapper" &&
     !hasSubstr out "<details class=\"bp_wrapper bp_kind_proof_wrapper" &&
     hasSubstr out "Default proof body."
+
+/-- info: true -/
+#guard_msgs in
+#eval! do
+  let out ← renderManualDocHtmlString manualImpls blockKindDisplayDoc
+  pure <|
+    hasSubstr out "bp_kind_proposition_wrapper" &&
+    hasSubstr out "Proposition"
 
 /-- info: true -/
 #guard_msgs in

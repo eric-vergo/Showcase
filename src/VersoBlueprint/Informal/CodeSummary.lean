@@ -192,6 +192,7 @@ def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
   else
     match decl.kind with
     | .definition => some "definition"
+    | .proposition => some "proposition"
     | .lemma => some "lemma"
     | .theorem => some "theorem"
     | .corollary => some "corollary"
@@ -199,7 +200,7 @@ def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
 private def externalSummaryKind (decl : Data.ExternalRef) : DeclSummaryKind :=
   match decl.kind with
   | .definition => .definition
-  | .lemma | .theorem | .corollary => .theoremLike
+  | .proposition | .lemma | .theorem | .corollary => .theoremLike
 
 private def externalDeclHref (decl : Data.ExternalRef) (hrefOf : Name → Option String) : Option String :=
   if decl.present then

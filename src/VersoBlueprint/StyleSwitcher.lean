@@ -67,6 +67,7 @@ html[data-bp-style="blueprint"] .bp_content {
 }
 
 html[data-bp-style="blueprint"] .bp_kind_theorem_content,
+html[data-bp-style="blueprint"] .bp_kind_proposition_content,
 html[data-bp-style="blueprint"] .bp_kind_lemma_content,
 html[data-bp-style="blueprint"] .bp_kind_corollary_content,
 html[data-bp-style="blueprint"] .bp_kind_proof_content,
@@ -103,6 +104,7 @@ html[data-bp-style="modern"] .bp_content {
 }
 
 html[data-bp-style="modern"] .bp_kind_theorem_content,
+html[data-bp-style="modern"] .bp_kind_proposition_content,
 html[data-bp-style="modern"] .bp_kind_lemma_content,
 html[data-bp-style="modern"] .bp_kind_corollary_content,
 html[data-bp-style="modern"] .bp_kind_proof_content,
@@ -163,6 +165,7 @@ html[data-bp-style="bold"] .bp_content {
 }
 
 html[data-bp-style="bold"] .bp_kind_theorem_content,
+html[data-bp-style="bold"] .bp_kind_proposition_content,
 html[data-bp-style="bold"] .bp_kind_lemma_content,
 html[data-bp-style="bold"] .bp_kind_corollary_content,
 html[data-bp-style="bold"] .bp_kind_proof_content,

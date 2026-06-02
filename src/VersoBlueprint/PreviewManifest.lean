@@ -500,7 +500,7 @@ structure Entry where
   label : Name
   /-- Which preview variant this entry contains; non-block previews use `statement`. -/
   facet : PreviewCache.Facet
-  /-- Kind (definition, lemma, theorem, corollary). -/
+  /-- Kind (definition, proposition, lemma, theorem, corollary). -/
   kind : Option Informal.Data.NodeKind := none
   /-- Resolved display title for this preview entry. -/
   title : String

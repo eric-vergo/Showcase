@@ -40,18 +40,22 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
   let proofGap := ProvedStatus.ofRefCounts 0 1
   let bothGap := ProvedStatus.ofRefCounts 1 1
   (!provedStatus.blocksStatementCompletion .definition) &&
+  (!provedStatus.blocksStatementCompletion .proposition) &&
   (!provedStatus.blocksStatementCompletion .lemma) &&
   (!provedStatus.blocksStatementCompletion .theorem) &&
   (!provedStatus.blocksStatementCompletion .corollary) &&
   stmtGap.blocksStatementCompletion .definition &&
+  stmtGap.blocksStatementCompletion .proposition &&
   stmtGap.blocksStatementCompletion .lemma &&
   stmtGap.blocksStatementCompletion .theorem &&
   stmtGap.blocksStatementCompletion .corollary &&
   proofGap.blocksStatementCompletion .definition &&
+  (!proofGap.blocksStatementCompletion .proposition) &&
   (!proofGap.blocksStatementCompletion .lemma) &&
   (!proofGap.blocksStatementCompletion .theorem) &&
   (!proofGap.blocksStatementCompletion .corollary) &&
   bothGap.blocksStatementCompletion .definition &&
+  bothGap.blocksStatementCompletion .proposition &&
   bothGap.blocksStatementCompletion .lemma &&
   bothGap.blocksStatementCompletion .theorem &&
   bothGap.blocksStatementCompletion .corollary &&
@@ -63,6 +67,7 @@ private def mkLiterateCode (definedDefs : Array LiterateDef) (definedTheorems : 
 #eval
   let statuses : Array ProvedStatus := #[.proved, ProvedStatus.ofRefCounts 0 1]
   ProvedStatus.anyBlocksStatementCompletion .definition statuses (fun s => s) &&
+  (!ProvedStatus.anyBlocksStatementCompletion .proposition statuses (fun s => s)) &&
   (!ProvedStatus.anyBlocksStatementCompletion .theorem statuses (fun s => s)) &&
   ProvedStatus.anyBlocksProofCompletion statuses (fun s => s)
 
