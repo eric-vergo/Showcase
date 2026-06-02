@@ -716,9 +716,13 @@ private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.
   | some blockData => some (blockData.withResolvedNumbering state)
   | none => none
 
-private def blockTitle (state : TraverseState) (label : Name) (blockData? : Option Informal.BlockData := none) : String :=
+private def blockTitle (state : TraverseState) (label : Name)
+    (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) : String :=
   match blockData? <|> blockInfo? state label with
-  | some blockData => blockData.displayTitle state
+  | some blockData =>
+      match facet with
+      | .proof => blockData.displayProofTitle state
+      | .statement => blockData.displayTitle state
   | none => label.toString
 
 private def blockHref (state : TraverseState) (label : Name) : Option String :=
@@ -770,7 +774,7 @@ private def buildTraversalEntries
         label := entry.label
         facet := entry.facet
         kind := blockKind? blockData?
-        title := blockTitle state entry.label blockData?
+        title := blockTitle state entry.label entry.facet blockData?
         href := blockHref state entry.label
         parent := blockData?.bind (·.parent)
         parentTitle := blockParentTitle? state blockData?

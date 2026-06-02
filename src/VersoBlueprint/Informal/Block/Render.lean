@@ -78,7 +78,8 @@ private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
         contentCss := "corollary_thmcontent"
       }
 
-private def renderBlockTitleRow (style : BlockKindRenderStyle) (labelText numberText : String) :
+private def renderBlockTitleRow (style : BlockKindRenderStyle)
+    (labelText numberText captionText : String) :
     Verso.Output.Html :=
   open Verso.Output.Html in
   let titleRowClass :=
@@ -90,7 +91,7 @@ private def renderBlockTitleRow (style : BlockKindRenderStyle) (labelText number
   let labelClass := s!"bp_label bp_kind_{style.kindCss}_label {style.labelCss}"
   {{
     <div class={{titleRowClass}}>
-      <span class={{captionClass}} title={{labelText}}> {{.text true style.kindText}} </span>
+      <span class={{captionClass}} title={{labelText}}> {{.text true captionText}} </span>
       {{ if style.showLabel then {{<span class={{labelClass}}> {{.text true numberText}} </span>}} else .empty }}
     </div>
   }}
@@ -311,6 +312,7 @@ HTML IDs, header extras, and the resolved display number.
 -/
 structure InformalBlockRenderContext where
   numberText : String
+  captionText? : Option String := none
   attrs : Array (String × String) := #[]
   headerExtras : HeaderExtras := {}
   folded : Bool := false
@@ -330,7 +332,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
   let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
-  let titleRow := renderBlockTitleRow style labelText ctx.numberText
+  let titleRow := renderBlockTitleRow style labelText ctx.numberText (ctx.captionText?.getD style.kindText)
   let extras : Verso.Output.Html :=
     match data.kind with
     | .proof => .empty

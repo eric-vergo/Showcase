@@ -620,6 +620,10 @@ block_extension Block.informal (data : BlockData) where
         let informalBlock :=
           renderInformalBlockHtml data {
             numberText := data.displayNumber s
+            captionText? :=
+              match data.kind with
+              | .proof => some (data.displayTitle s)
+              | .statement _ => none
             attrs
             headerExtras := {
               group? := groupEntry.map HeaderExtra.group
