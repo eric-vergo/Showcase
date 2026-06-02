@@ -11,10 +11,23 @@ namespace Informal
 
 open Lean
 
+/-- Which broad numbering scheme should informal blocks use? -/
 inductive NumberingMode where
   | sub
   | global
   | local
+deriving Repr, Inhabited, BEq, FromJson, ToJson, Quote
+
+/-- Which numbered ancestors should appear before the local sub-number? -/
+inductive SubNumberingPrefix where
+  | full
+  | first
+deriving Repr, Inhabited, BEq, FromJson, ToJson, Quote
+
+/-- Which counter should be appended after the rendered sub-numbering prefix? -/
+inductive SubNumberingCounter where
+  | prefix
+  | document
 deriving Repr, Inhabited, BEq, FromJson, ToJson, Quote
 
 def NumberingMode.parse? (raw : String) : Option NumberingMode :=
@@ -24,15 +37,47 @@ def NumberingMode.parse? (raw : String) : Option NumberingMode :=
   | "local" => some .local
   | _ => none
 
+def SubNumberingPrefix.parse? (raw : String) : Option SubNumberingPrefix :=
+  match raw.trimAscii.toString.toLower with
+  | "full" | "path" | "section" | "sections" => some .full
+  | "first" | "top" | "chapter" => some .first
+  | _ => none
+
+def SubNumberingCounter.parse? (raw : String) : Option SubNumberingCounter :=
+  match raw.trimAscii.toString.toLower with
+  | "prefix" | "section" | "sections" | "local" => some .prefix
+  | "document" | "global" => some .document
+  | _ => none
+
 register_option verso.blueprint.numbering : String := {
   defValue := "sub"
-  descr := "Numbering mode for blueprint informal blocks: `sub` (default; prefix with numbered part path), `global`, or `local`"
+  descr := "Numbering mode for blueprint informal blocks: `sub` (default; prefix according to sub-numbering options), `global`, or `local`"
+}
+
+register_option verso.blueprint.subNumberingPrefix : String := {
+  defValue := "full"
+  descr := "Prefix used by `verso.blueprint.numbering = sub`: `full` (default; full numbered part path) or `first` (first numbered ancestor)"
+}
+
+register_option verso.blueprint.subNumberingCounter : String := {
+  defValue := "prefix"
+  descr := "Counter used by `verso.blueprint.numbering = sub`: `prefix` (default; reset for each rendered prefix) or `document` (document-order count)"
 }
 
 def numberingMode (opts : Lean.Options) : NumberingMode :=
   match NumberingMode.parse? (verso.blueprint.numbering.get opts) with
   | some mode => mode
   | none => .sub
+
+def subNumberingPrefix (opts : Lean.Options) : SubNumberingPrefix :=
+  match SubNumberingPrefix.parse? (verso.blueprint.subNumberingPrefix.get opts) with
+  | some mode => mode
+  | none => .full
+
+def subNumberingCounter (opts : Lean.Options) : SubNumberingCounter :=
+  match SubNumberingCounter.parse? (verso.blueprint.subNumberingCounter.get opts) with
+  | some mode => mode
+  | none => .prefix
 
 structure CodeDeclData where
   name : Name
@@ -111,8 +156,12 @@ structure BlockData where
   parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
+  /-- Prefix policy for `numberingMode = .sub`. -/
+  subNumberingPrefix : SubNumberingPrefix := .full
+  /-- Counter policy for `numberingMode = .sub`. -/
+  subNumberingCounter : SubNumberingCounter := .prefix
   /--
-  Top-level rendered part prefix assigned during traversal (for example `3` or `A`).
+  Rendered part prefix assigned during traversal (for example `3`, `A`, or `1.3`).
 
   This is stored as `String` rather than `Manual.Numbering` because it is a
   render-facing cache: the upstream part numbering may be numeric or alphabetic,
@@ -149,6 +198,10 @@ structure StoredBlockData where
   parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
+  /-- Prefix policy for `numberingMode = .sub`. -/
+  subNumberingPrefix : SubNumberingPrefix := .full
+  /-- Counter policy for `numberingMode = .sub`. -/
+  subNumberingCounter : SubNumberingCounter := .prefix
   partPrefix : Option String := none
   globalCount : Option Nat := none
   statementDeps : Array Data.Label := #[]
@@ -169,6 +222,8 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
+  subNumberingPrefix := data.subNumberingPrefix
+  subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
   statementDeps := data.statementDeps
@@ -191,6 +246,8 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
+  subNumberingPrefix := data.subNumberingPrefix
+  subNumberingCounter := data.subNumberingCounter
   partPrefix := data.partPrefix
   globalCount := data.globalCount
   statementDeps := data.statementDeps

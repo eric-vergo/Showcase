@@ -516,31 +516,6 @@ private def registerExternalDeclAnchors
   for decl in decls do
     registerExternalDeclAnchor label decl
 
-private def storeTraversedBlockData
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (id : Verso.Multi.InternalId)
-    (blockData : BlockData) :
-    m Unit := do
-  let label := blockData.label
-  let storedBlockData := blockData.toStoredData
-  match Informal.TraversalIndex.Nodes.storedData? (← get) label with
-  | some existing =>
-    let mergedData := mergeStoredBlockData existing storedBlockData
-    modify λ s => Informal.TraversalIndex.Nodes.saveData s label (toJson mergedData)
-  | none =>
-    let path := (← read).path
-    let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
-    modify fun s =>
-      let (globalCount, s) := reserveGlobalBlockNumber s
-      let blockData := { storedBlockData with globalCount := storedBlockData.globalCount <|> some globalCount }
-      s
-        |> (fun s => Informal.TraversalIndex.Nodes.saveId s label id)
-        |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData))
-
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where
   -- for TOC
@@ -553,13 +528,12 @@ block_extension Block.informal (data : BlockData) where
       logError s!"Malformed data ({err}): {data}"
       pure none
     | .ok blockData =>
-      let partPrefix := numberedPartPrefix? (← read)
-      let blockData := { blockData with partPrefix := blockData.partPrefix <|> partPrefix }
+      let blockData := blockData.withTraversalNumberingContext (← read)
       let externalDecls := externalDeclsOfBlock blockData
       registerBlockPreviewData id blockData _contents
       registerExternalCodePreviews id externalDecls
       registerExternalDeclAnchors blockData.label externalDecls
-      storeTraversedBlockData id blockData
+      saveTraversedBlockData id blockData
       return none
   toTeX := none
   extraCss := Informal.Block.Assets.blockCssAssets
@@ -575,7 +549,7 @@ block_extension Block.informal (data : BlockData) where
       | .ok data =>
         let s ← HtmlT.state
         let ctxt ← HtmlT.context
-        let data := data.withResolvedNumbering s (numberedPartPrefix? ctxt)
+        let data := data.withResolvedNumberingInContext s ctxt
         let relatedPanelContext := mkRelatedPanelContext s
         let attrs := s.htmlId id
         let codeHref : Option String :=
@@ -785,6 +759,8 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
       parent := node?.bind (·.parent)
       count
       numberingMode := numberingMode opts
+      subNumberingPrefix := subNumberingPrefix opts
+      subNumberingCounter := subNumberingCounter opts
       statementDeps
       proofDeps
       owner
