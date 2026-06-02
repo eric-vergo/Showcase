@@ -32,6 +32,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintImportedDuplicates.Transitive,
     `VersoBlueprintTests.BlueprintExternalHeadingStatus,
     `VersoBlueprintTests.BlueprintGraph,
+    `VersoBlueprintTests.BlueprintHeaderExtras,
     `VersoBlueprintTests.BlueprintInformal,
     `VersoBlueprintTests.BlueprintInlinePrecision,
     `VersoBlueprintTests.BlueprintLinkHover,
