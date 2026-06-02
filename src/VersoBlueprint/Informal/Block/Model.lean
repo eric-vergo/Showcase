@@ -112,7 +112,7 @@ structure BlockData where
   count : Nat
   numberingMode : NumberingMode := .sub
   /--
-  Top-level rendered part prefix assigned during traversal (for example `3` or `A`).
+  Rendered part prefix assigned during traversal (for example `3`, `A`, or `1.3`).
 
   This is stored as `String` rather than `Manual.Numbering` because it is a
   render-facing cache: the upstream part numbering may be numeric or alphabetic,

@@ -763,7 +763,15 @@ private def storeTraversedBlockData
     let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-{label}"
     modify fun s =>
       let (globalCount, s) := reserveGlobalBlockNumber s
-      let blockData := { storedBlockData with globalCount := storedBlockData.globalCount <|> some globalCount }
+      let (count, s) :=
+        match storedBlockData.numberingMode, storedBlockData.partPrefix with
+        | .sub, some partPrefix => reserveSectionBlockNumber s partPrefix
+        | _, _ => (storedBlockData.count, s)
+      let blockData := {
+        storedBlockData with
+          count
+          globalCount := storedBlockData.globalCount <|> some globalCount
+      }
       s
         |> (fun s => Informal.TraversalIndex.Nodes.saveId s label id)
         |> (fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson blockData))

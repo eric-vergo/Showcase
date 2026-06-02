@@ -15,6 +15,8 @@ open Verso.Genre Manual
 
 def numberingCounterState : Name := Lean.Name.mkSimple "Informal.Block.numberingCounter"
 
+def sectionNumberingCounterState : Name := Lean.Name.mkSimple "Informal.Block.sectionNumberingCounter"
+
 def nextGlobalBlockNumber (st : TraverseState) : Nat :=
   match st.get? numberingCounterState with
   | some (.ok (n : Nat)) => n
@@ -24,12 +26,37 @@ def reserveGlobalBlockNumber (st : TraverseState) : Nat × TraverseState :=
   let next := nextGlobalBlockNumber st
   (next, st.set numberingCounterState (next + 1))
 
-/-- The first numbered part above the current block, used for chapter-style sub-numbering. -/
+private def sectionBlockCounters (st : TraverseState) : Array (String × Nat) :=
+  match st.get? sectionNumberingCounterState with
+  | some (.ok (counters : Array (String × Nat))) => counters
+  | _ => #[]
+
+private def nextSectionBlockNumber (st : TraverseState) (partPrefix : String) : Nat :=
+  ((sectionBlockCounters st).findSome? fun (candidate, next) =>
+    if candidate == partPrefix then some next else none).getD 1
+
+private def setSectionBlockCounter
+    (counters : Array (String × Nat)) (partPrefix : String) (next : Nat) :
+    Array (String × Nat) :=
+  let counters := counters.filter fun (candidate, _) => candidate != partPrefix
+  counters.push (partPrefix, next)
+
+def reserveSectionBlockNumber (st : TraverseState) (partPrefix : String) : Nat × TraverseState :=
+  let counters := sectionBlockCounters st
+  let next := nextSectionBlockNumber st partPrefix
+  (next, st.set sectionNumberingCounterState (setSectionBlockCounter counters partPrefix (next + 1)))
+
+private def numberingPartString : Numbering → String
+  | .nat n => toString n
+  | .letter a => toString a
+
+/-- The full numbered part path above the current block, used for sub-numbering. -/
 def numberedPartPrefix? (ctxt : TraverseContext) : Option String := Id.run do
-  for header in ctxt.headers[1:] do
-    if let some n := header.metadata.bind (·.assignedNumber) then
-      return some (toString n)
-  none
+  let mut nums : Array String := #[]
+  for num? in ctxt.sectionNumber[1:] do
+    if let some num := num? then
+      nums := nums.push (numberingPartString num)
+  if nums.isEmpty then none else some (String.intercalate "." nums.toList)
 
 def resolveStoredNodeData? (st : TraverseState) (label : Data.Label) : Option StoredBlockData :=
   Informal.TraversalIndex.Nodes.storedData? st label
@@ -89,6 +116,7 @@ def BlockData.withResolvedNumbering
   match resolveStoredNodeData? st data.label with
   | some stored =>
     { data with
+        count := stored.count
         numberingMode := stored.numberingMode
         partPrefix := data.partPrefix <|> stored.partPrefix <|> fallbackPrefix?
         globalCount := data.globalCount <|> stored.globalCount

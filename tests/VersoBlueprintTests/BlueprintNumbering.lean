@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint
+import VersoBlueprint.Informal.Block.Store
 import VersoManual
 
 namespace Verso.VersoBlueprintTests.BlueprintNumbering
@@ -31,6 +32,47 @@ private def emptyState : TraverseState :=
   subBlock.displayNumber emptyState == "3.4" &&
   globalBlock.displayNumber emptyState == "17" &&
   subBlock.displayTitle emptyState == "Definition 3.4"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let base : BlockData := {
+    kind := .statement .theorem
+    label := `bp.numbering.sectionSub
+    count := 2
+  }
+  let subBlock := { base with numberingMode := .sub, partPrefix := some "1.3" }
+  subBlock.displayNumber emptyState == "1.3.2" &&
+  subBlock.displayTitle emptyState == "Theorem 1.3.2"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let stored : BlockData := {
+    kind := .statement .lemma
+    label := `bp.numbering.storedSub
+    count := 9
+    numberingMode := .sub
+    partPrefix := some "1.3"
+  }
+  let state :=
+    Informal.TraversalIndex.Nodes.saveData
+      (TraverseState.initialize default)
+      stored.label
+      (toJson stored.toStoredData)
+  let renderData := { stored with count := 120 }
+  renderData.displayNumber state == "1.3.9" &&
+  renderData.displayTitle state == "Lemma 1.3.9"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let (first, state) := reserveSectionBlockNumber emptyState "1.3"
+  let (second, state) := reserveSectionBlockNumber state "1.3"
+  let (other, _) := reserveSectionBlockNumber state "1.4"
+  first == 1 &&
+  second == 2 &&
+  other == 1
 
 /-- info: true -/
 #guard_msgs in
