@@ -18,8 +18,8 @@ import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
@@ -430,233 +430,6 @@ private def renderGroupEntry {m}
     }
     pure <| some (renderRelatedPanel cfg panelEntries)
 
-private structure BlockKindRenderStyle where
-  kindText : String
-  showLabel : Bool := true
-  kindCss : String
-  wrapperCss : String
-  headingCss : String
-  captionCss : String
-  labelCss : String
-  contentCss : String
-
-private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
-  match data.kind with
-  | .proof =>
-    {
-      kindText := "Proof"
-      showLabel := false
-      kindCss := "proof"
-      wrapperCss := "proof_wrapper bp_kind_proof bp_style_proof"
-      headingCss := "proof_heading"
-      captionCss := "proof_caption"
-      labelCss := "proof_label"
-      contentCss := "proof_content"
-    }
-  | .statement nodeKind =>
-    match nodeKind with
-    | .definition =>
-      {
-        kindText := s!"{nodeKind}"
-        kindCss := "definition"
-        wrapperCss := "definition_thmwrapper theorem-style-definition bp_kind_definition bp_style_definition"
-        headingCss := "definition_thmheading"
-        captionCss := "definition_thmcaption"
-        labelCss := "definition_thmlabel"
-        contentCss := "definition_thmcontent"
-      }
-    | .theorem =>
-      {
-        kindText := s!"{nodeKind}"
-        kindCss := "theorem"
-        wrapperCss := "theorem_thmwrapper theorem-style-plain bp_kind_theorem bp_style_plain"
-        headingCss := "theorem_thmheading"
-        captionCss := "theorem_thmcaption"
-        labelCss := "theorem_thmlabel"
-        contentCss := "theorem_thmcontent"
-      }
-    | .lemma =>
-      {
-        kindText := s!"{nodeKind}"
-        kindCss := "lemma"
-        wrapperCss := "lemma_thmwrapper theorem-style-plain bp_kind_lemma bp_style_plain"
-        headingCss := "lemma_thmheading"
-        captionCss := "lemma_thmcaption"
-        labelCss := "lemma_thmlabel"
-        contentCss := "lemma_thmcontent"
-      }
-    | .corollary =>
-      {
-        kindText := s!"{nodeKind}"
-        kindCss := "corollary"
-        wrapperCss := "corollary_thmwrapper theorem-style-plain bp_kind_corollary bp_style_plain"
-        headingCss := "corollary_thmheading"
-        captionCss := "corollary_thmcaption"
-        labelCss := "corollary_thmlabel"
-        contentCss := "corollary_thmcontent"
-      }
-
-private def renderBlockTitleRow (style : BlockKindRenderStyle) (labelText numberText : String) : Output.Html :=
-  open Verso.Output.Html in
-  let titleRowClass :=
-    if style.showLabel then
-      "bp_heading_title_row bp_heading_title_row_statement"
-    else
-      "bp_heading_title_row"
-  let captionClass := s!"bp_caption bp_kind_{style.kindCss}_caption {style.captionCss}"
-  let labelClass := s!"bp_label bp_kind_{style.kindCss}_label {style.labelCss}"
-  {{
-    <div class={{titleRowClass}}>
-      <span class={{captionClass}} title={{labelText}}> {{.text true style.kindText}} </span>
-      {{ if style.showLabel then {{<span class={{labelClass}}> {{.text true numberText}} </span>}} else .empty }}
-    </div>
-  }}
-
-private def renderStatementHeaderExtras
-    (groupEntry? : Option Output.Html)
-    (codeEntry usedByEntry : Output.Html) : Output.Html :=
-  open Verso.Output.Html in
-  let extrasClass :=
-    if groupEntry?.isSome then
-      "bp_extras bp_extras_with_group thm_header_extras"
-    else
-      "bp_extras thm_header_extras"
-  {{
-    <div class={{extrasClass}}>
-      {{match groupEntry? with
-        | some groupEntry => {{<span class="bp_extra_slot bp_extra_slot_group">{{groupEntry}}</span>}}
-        | none => .empty}}
-      <span class="bp_extra_slot bp_extra_slot_code">
-        {{codeEntry}}
-      </span>
-      <span class="bp_extra_slot bp_extra_slot_used_by">
-        {{usedByEntry}}
-      </span>
-    </div>
-  }}
-
-private def renderMetadataItem (key : String) (value : Output.Html) (extraClass : String := "") : Output.Html :=
-  open Verso.Output.Html in
-  let itemClass :=
-    if extraClass.isEmpty then
-      "bp_metadata_item"
-    else
-      s!"bp_metadata_item {extraClass}"
-  {{
-    <span class={{itemClass}}>
-      <span class="bp_metadata_key">{{.text true key}}</span>
-      {{value}}
-    </span>
-  }}
-
-private def renderMetadataTextValue (value : String) : Output.Html :=
-  {{<span class="bp_metadata_value">{{.text true value}}</span>}}
-
-private def renderMetadataLinkValue (href : String) (label : String) : Output.Html :=
-  {{<a class="bp_metadata_link bp_metadata_value" href={{href}}>{{.text true label}}</a>}}
-
-private def renderMetadataCodeValue (value : Data.AuthorId) : Output.Html :=
-  {{<span class="bp_metadata_value"><code>s!"{value}"</code></span>}}
-
-private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) : Output.Html :=
-  {{<a class="bp_metadata_link bp_metadata_value" href={{href}}><code>s!"{value}"</code></a>}}
-
-private def renderOwnerMetadataItem (data : BlockData) : Output.Html :=
-  open Verso.Output.Html in
-  let avatar : Output.Html :=
-    match data.ownerImageUrl with
-    | some href => {{ <img class="bp_metadata_avatar" src={{href}} alt="" /> }}
-    | none => .empty
-  match data.ownerDisplayName, data.owner, data.ownerUrl with
-  | some displayName, _, some href =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataLinkValue href displayName]) "bp_metadata_owner"
-  | some displayName, _, none =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataTextValue displayName]) "bp_metadata_owner"
-  | none, some owner, some href =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeLinkValue href owner]) "bp_metadata_owner"
-  | none, some owner, none =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeValue owner]) "bp_metadata_owner"
-  | _, _, _ => .empty
-
-private def renderStatementMetadataPanel (data : BlockData) : Output.Html :=
-  open Verso.Output.Html in
-  let metadata := data.metadataPresentation
-  let ownerItem := renderOwnerMetadataItem data
-  let effortNode : Output.Html :=
-    match metadata.effort with
-    | some effort => renderMetadataItem "Effort" (renderMetadataTextValue effort)
-    | none => .empty
-  let priorityNode : Output.Html :=
-    match metadata.priority with
-    | some priority => renderMetadataItem "Priority" (renderMetadataTextValue priority)
-    | none => .empty
-  let prNode : Output.Html :=
-    match metadata.prUrl with
-    | some href => renderMetadataItem "PR" (renderMetadataLinkValue href "link")
-    | none => .empty
-  let tagNodes : Output.Html :=
-    if metadata.tags.isEmpty then
-      .empty
-    else
-      renderMetadataItem "Tags" {{
-        <span class="bp_metadata_tags">
-          {{metadata.tags.map (fun tag => {{ <span class="bp_metadata_tag">{{.text true tag}}</span> }})}}
-        </span>
-      }}
-  if metadata.hasAny then
-    {{
-      <div class="bp_metadata_panel">
-        {{ownerItem}}
-        {{effortNode}}
-        {{priorityNode}}
-        {{tagNodes}}
-        {{prNode}}
-      </div>
-    }}
-  else
-    .empty
-
-private def renderInformalBlock (data : BlockData) (numberText : String) (attrs : Array (String × String))
-    (codeEntry : Output.Html) (groupEntry? : Option Output.Html) (usedByEntry : Output.Html)
-    (content : Array Output.Html) (folded : Bool := false) : Output.Html :=
-  open Verso.Output.Html in
-  let style := blockKindRenderStyle data
-  let labelText := s!"{data.label}"
-  let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
-  let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
-  let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
-  let titleRow := renderBlockTitleRow style labelText numberText
-  let extras : Output.Html :=
-    match data.kind with
-    | .proof => .empty
-    | .statement _ => renderStatementHeaderExtras groupEntry? codeEntry usedByEntry
-  let metadataPanel : Output.Html :=
-    match data.kind with
-    | .proof => .empty
-    | .statement _ => renderStatementMetadataPanel data
-  if folded then
-    {{
-      <details class={{wrapperClass}} title={{labelText}} {{attrs}}>
-        <summary class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </summary>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </details>
-    }}
-  else
-    {{
-      <div class={{wrapperClass}} title={{labelText}} {{attrs}}>
-        <div class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </div>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </div>
-    }}
-
 private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
   match blockData.kind, blockData.codeData with
   | .statement _, some codeData => codeData.externalDecls
@@ -871,8 +644,16 @@ block_extension Block.informal (data : BlockData) where
           | .proof => data.foldProofBlock
           | .statement _ => false
         let informalBlock :=
-          renderInformalBlock data (data.displayNumber s) attrs codeEntry groupEntry usedByEntry content
-            (folded := foldInformalBlock)
+          renderInformalBlockHtml data {
+            numberText := data.displayNumber s
+            attrs
+            headerExtras := {
+              group? := groupEntry.map HeaderExtra.group
+              code? := some <| HeaderExtra.code codeEntry
+              usedBy? := some <| HeaderExtra.usedBy usedByEntry
+            }
+            folded := foldInformalBlock
+          } content
         return .seq #[informalBlock, externalPanel]
 
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config

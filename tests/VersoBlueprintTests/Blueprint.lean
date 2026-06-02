@@ -11,6 +11,7 @@ import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 import VersoBlueprintTests.BlueprintExternalHeadingStatus
 import VersoBlueprintTests.BlueprintGraph
+import VersoBlueprintTests.BlueprintHeaderExtras
 import VersoBlueprintTests.BlueprintInformal
 import VersoBlueprintTests.BlueprintInlinePrecision
 import VersoBlueprintTests.BlueprintLinkHover
