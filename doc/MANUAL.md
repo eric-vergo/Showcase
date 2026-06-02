@@ -205,12 +205,13 @@ This example shows the core pattern:
 Blueprint chapters commonly use:
 
 - `:::definition "label_1"`
-- `:::lemma_ "label_2"`
-- `:::theorem "label_3"`
-- `:::corollary "label_4"`
-- `:::proof "label_3"`
+- `:::proposition "label_2"`
+- `:::lemma_ "label_3"`
+- `:::theorem "label_4"`
+- `:::corollary "label_5"`
+- `:::proof "label_4"`
 
-`:::proof "label_3"` attaches to the earlier statement with the same label.
+`:::proof "label_4"` attaches to the earlier statement with the same label.
 
 ## Connecting Blocks to Lean
 

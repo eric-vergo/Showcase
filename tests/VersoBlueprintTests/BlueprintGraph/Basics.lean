@@ -37,6 +37,7 @@ open Verso.VersoBlueprintTests.BlueprintGraph.Shared
   let status : Data.ProvedStatus :=
     .containsSorry #[{ location := .statement, refs? := some 2 }, { location := .proof, refs? := some 3 }]
   Data.NodeKind.definition.isTheoremLike = false &&
+  Data.NodeKind.proposition.isTheoremLike &&
   Data.NodeKind.theorem.isTheoremLike &&
   status.sorryLocationText = "in statement and proof" &&
   status.statusLabel = "contains sorry" &&

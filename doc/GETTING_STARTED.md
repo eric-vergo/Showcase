@@ -91,7 +91,7 @@ plus
 [project_template/ProjectTemplate/Chapters/Collatz.lean](../project_template/ProjectTemplate/Chapters/Collatz.lean)
 show the most important authoring patterns:
 
-- definition, theorem, and proof blocks
+- definition, proposition, theorem, and proof blocks
 - labels that identify nodes
 - a `uses` link to another Blueprint entry
 - a `bpref` link when prose should reference a node without adding a dependency

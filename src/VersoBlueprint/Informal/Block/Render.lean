@@ -47,6 +47,16 @@ private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
         labelCss := "definition_thmlabel"
         contentCss := "definition_thmcontent"
       }
+    | .proposition =>
+      {
+        kindText := s!"{nodeKind}"
+        kindCss := "proposition"
+        wrapperCss := "proposition_thmwrapper theorem-style-plain bp_kind_proposition bp_style_plain"
+        headingCss := "proposition_thmheading"
+        captionCss := "proposition_thmcaption"
+        labelCss := "proposition_thmlabel"
+        contentCss := "proposition_thmcontent"
+      }
     | .theorem =>
       {
         kindText := s!"{nodeKind}"

@@ -36,6 +36,12 @@ private def hoverCitePreviewKey : String :=
     (some Informal.Cite.CitePartKind.lemma)
     (some "3")
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  Informal.Cite.CitePartKind.parse? "prop" == some .proposition &&
+  Informal.Cite.CitePartKind.proposition.text == "Proposition"
+
 #docs (Genre.Manual) hoverLinkDoc "Hover Link Doc" :=
 :::::::
 :::lemma_ "lem:hover.link"

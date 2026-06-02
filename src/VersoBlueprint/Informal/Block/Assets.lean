@@ -1333,6 +1333,7 @@ div.theorem_thmcontent {
   border-left: 0.15rem solid black;
 }
 
+.bp_kind_proposition_content,
 div.proposition_thmcontent {
   border-left: 0.15rem solid black;
 }

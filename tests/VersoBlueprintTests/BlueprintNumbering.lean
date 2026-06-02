@@ -27,10 +27,12 @@ private def emptyState : TraverseState :=
   let localBlock := { base with numberingMode := .local }
   let subBlock := { base with numberingMode := .sub, partPrefix := some "3" }
   let globalBlock := { base with numberingMode := .global, globalCount := some 17 }
+  let propositionBlock := { base with kind := .statement .proposition }
   localBlock.displayNumber emptyState == "4" &&
   subBlock.displayNumber emptyState == "3.4" &&
   globalBlock.displayNumber emptyState == "17" &&
-  subBlock.displayTitle emptyState == "Definition 3.4"
+  subBlock.displayTitle emptyState == "Definition 3.4" &&
+  propositionBlock.displayTitle emptyState == "Proposition 4"
 
 /-- info: true -/
 #guard_msgs in

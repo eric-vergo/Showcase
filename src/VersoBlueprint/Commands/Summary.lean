@@ -472,6 +472,11 @@ def buildSummary : CoreM Summary := do
             definitions := acc.definitions + 1
             definitionStatus := bumpEntryStatus acc.definitionStatus statusFlags
           }
+        | Data.NodeKind.proposition =>
+          { acc with
+            propositions := acc.propositions + 1
+            propositionStatus := bumpEntryStatus acc.propositionStatus statusFlags
+          }
         | Data.NodeKind.lemma =>
           { acc with
             lemmas := acc.lemmas + 1
@@ -1259,7 +1264,7 @@ private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
   {{ <details class="bp_summary_subsection">
       <summary>s!"{group.header} ({group.entries.length})"</summary>
       <ul class="bp_summary_list">
-        {{if rows.isEmpty then {{<li class="bp_summary_empty">"No theorem/lemma/corollary entries in this parent group."</li>}} else rows}}
+        {{if rows.isEmpty then {{<li class="bp_summary_empty">"No theorem/proposition/lemma/corollary entries in this parent group."</li>}} else rows}}
       </ul>
     </details> }}
 
@@ -1403,6 +1408,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
 
 private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showDefinitionCard := data.definitions > 0
+  let showPropositionCard := data.propositions > 0
   let showLemmaCard := data.lemmas > 0
   let showTheoremCard := data.theorems > 0
   let showCorollaryCard := data.corollaries > 0
@@ -1424,6 +1430,11 @@ private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Out
               "Definitions"
               (toString data.definitions)
               (Option.some (statusCountsText data.definitionStatus))}}
+          {{summaryOptionalCard
+              showPropositionCard
+              "Propositions"
+              (toString data.propositions)
+              (Option.some (statusCountsText data.propositionStatus))}}
           {{summaryOptionalCard showLemmaCard "Lemmas" (toString data.lemmas) (Option.some (statusCountsText data.lemmaStatus))}}
           {{summaryOptionalCard showTheoremCard "Theorems" (toString data.theorems) (Option.some (statusCountsText data.theoremStatus))}}
           {{summaryOptionalCard
@@ -1442,7 +1453,7 @@ private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Out
         {{summaryOptionalDetailsList showDefinitionIndex s!"Definition Index ({data.definitionIndex.length})" rows.definitionRows}}
         {{if showTheoremLikeIndex then
             {{<details class="bp_summary_subsection">
-              <summary>s!"Theorem / Lemma / Corollary Index ({data.theoremLikeIndex.length})"</summary>
+              <summary>s!"Theorem / Proposition / Lemma / Corollary Index ({data.theoremLikeIndex.length})"</summary>
               <ul class="bp_summary_list">
                 {{rows.theoremLikeRows}}
               </ul>

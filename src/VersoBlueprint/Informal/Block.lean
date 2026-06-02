@@ -808,6 +808,7 @@ private def expander (kind : Data.NodeKind) (isProof : Bool := false) : Directiv
       (expanderImpl kind isProof) cfg contents
 
 @[directive] def «definition» := expander .definition
+@[directive] def «proposition» := expander .proposition
 @[directive] def «lemma_» := expander .lemma
 @[directive] def «theorem» := expander .theorem
 @[directive] def «corollary» := expander .corollary

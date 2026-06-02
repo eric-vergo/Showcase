@@ -65,7 +65,7 @@ Theorem-like statements are blocked only by statement gaps.
 def ProvedStatus.blocksStatementCompletion (status : ProvedStatus) (kind : NodeKind) : Bool :=
   match kind with
   | .definition => status.hasTypeGap || status.hasProofGap
-  | .lemma | .theorem | .corollary => status.hasTypeGap
+  | .proposition | .lemma | .theorem | .corollary => status.hasTypeGap
 
 /-- Conservative proof-track blocker predicate. -/
 def ProvedStatus.blocksProofCompletion (status : ProvedStatus) : Bool :=

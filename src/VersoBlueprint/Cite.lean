@@ -99,6 +99,7 @@ inductive CitePartKind where
   | chapter
   | section
   | theorem
+  | proposition
   | lemma
   | corollary
   | page
@@ -111,6 +112,7 @@ def CitePartKind.parse? (s : String) : Option CitePartKind :=
   | "chapter" | "ch" => some .chapter
   | "section" | "sec" => some .section
   | "theorem" | "thm" => some .theorem
+  | "proposition" | "prop" => some .proposition
   | "lemma" | "lem" => some .lemma
   | "corollary" | "cor" => some .corollary
   | "page" | "p" | "pp" => some .page
@@ -122,6 +124,7 @@ def CitePartKind.text : CitePartKind → String
   | .chapter => "Chapter"
   | .section => "Section"
   | .theorem => "Theorem"
+  | .proposition => "Proposition"
   | .lemma => "Lemma"
   | .corollary => "Corollary"
   | .page => "p."
