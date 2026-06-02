@@ -85,7 +85,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       let panelHeader :=
         match Informal.TraversalIndex.Nodes.data? s label with
         | some b =>
-          let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
+          let b := b.withResolvedNumberingInContext s ctxt
           codePanelHeader b (b.displayNumber s)
         | none => fallbackCodePanelHeader
       let getDeclHref (decl : Name) : Option String :=
