@@ -50,7 +50,7 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       let panelHeader :=
         match Informal.TraversalIndex.Nodes.data? s cdata.label with
         | some b =>
-          let b := b.withResolvedNumbering s (numberedPartPrefix? ctxt)
+          let b := b.withResolvedNumberingInContext s ctxt
           Informal.Rust.codePanelHeader b (b.displayNumber s)
         | none => Informal.Rust.fallbackCodePanelHeader
       pure <| Informal.Rust.renderRawCodePanel panelHeader s!"Rust code for {cdata.label}" cdata.raw
