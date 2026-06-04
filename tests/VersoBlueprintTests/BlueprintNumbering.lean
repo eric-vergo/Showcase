@@ -137,6 +137,6 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     count := stored.count
   }
   proofRef.displayNumber state == "11" &&
-  proofRef.displayTitle state == "Proof 11"
+  proofRef.displayTitle state == "Proof for Theorem 11"
 
 end Verso.VersoBlueprintTests.BlueprintNumbering
