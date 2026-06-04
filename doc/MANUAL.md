@@ -641,6 +641,8 @@ that elaborates the Blueprint chapter or document:
 
 ```lean
 set_option verso.blueprint.numbering global
+set_option verso.blueprint.subNumberingPrefix full
+set_option verso.blueprint.subNumberingCounter prefix
 set_option verso.blueprint.foldProofBlocks true
 set_option verso.blueprint.foldCodeBlocks false
 ```
@@ -649,9 +651,25 @@ Current options:
 
 - `verso.blueprint.numbering`
   - default: `sub`
-  - `sub`: chapter-prefixed numbering such as `Theorem 5.5`
+  - `sub`: prefixed numbering such as `Theorem 1.3.2`; the prefix and counter
+    are controlled by the sub-numbering options below
   - `global`: document-order numbering such as `Theorem 27`
   - `local`: legacy local numbering without a chapter prefix
+- `verso.blueprint.subNumberingPrefix`
+  - default: `full`
+  - `full`: use the full numbered section path, such as `1.3`
+  - `first`: use only the first numbered ancestor, such as `1`
+- `verso.blueprint.subNumberingCounter`
+  - default: `prefix`
+  - `prefix`: reset the block counter for each rendered prefix, such as
+    `Theorem 1.3.2`
+  - `document`: use the document-order block count after the prefix, such as
+    `Theorem 1.93`
+
+Set `verso.blueprint.subNumberingPrefix first` together with
+`verso.blueprint.subNumberingCounter document` to recover chapter-only
+prefixes with document-order block counts.
+
 - `verso.blueprint.foldProofs`
   - default: `true`
   - folds proof bodies in rendered Lean code panels after `by`

@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint
+import VersoBlueprint.Informal.Block.Store
 import VersoManual
 
 namespace Verso.VersoBlueprintTests.BlueprintNumbering
@@ -15,6 +16,12 @@ open Verso.Genre Manual
 
 private def emptyState : TraverseState :=
   TraverseState.initialize default
+
+private def header (title : String) (number? : Option Numbering) : PartHeader := {
+  titleString := title
+  metadata := number?.map fun number => { ({} : PartMetadata) with assignedNumber := some number }
+  properties := {}
+}
 
 /-- info: true -/
 #guard_msgs in
@@ -33,6 +40,80 @@ private def emptyState : TraverseState :=
   globalBlock.displayNumber emptyState == "17" &&
   subBlock.displayTitle emptyState == "Definition 3.4" &&
   propositionBlock.displayTitle emptyState == "Proposition 4"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let base : BlockData := {
+    kind := .statement .theorem
+    label := `bp.numbering.sectionSub
+    count := 2
+  }
+  let subBlock := { base with numberingMode := .sub, partPrefix := some "1.3" }
+  subBlock.displayNumber emptyState == "1.3.2" &&
+  subBlock.displayTitle emptyState == "Theorem 1.3.2"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let context : TraverseContext := {
+    path := #[]
+    headers := #[
+      header "Root" none,
+      header "Chapter" (some (.nat 1)),
+      header "Section" (some (.nat 3)),
+      header "Appendix" (some (.letter 'A'))
+    ]
+    blockContext := #[]
+    draft := false
+    logError := fun _ => pure ()
+  }
+  numberedPartPrefix? .full context == some "1.3.A" &&
+  numberedPartPrefix? .first context == some "1"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let stored : BlockData := {
+    kind := .statement .lemma
+    label := `bp.numbering.storedSub
+    count := 9
+    numberingMode := .sub
+    partPrefix := some "1.3"
+  }
+  let state :=
+    Informal.TraversalIndex.Nodes.saveData
+      (TraverseState.initialize default)
+      stored.label
+      (toJson stored.toStoredData)
+  let renderData := { stored with count := 120 }
+  renderData.displayNumber state == "1.3.9" &&
+  renderData.displayTitle state == "Lemma 1.3.9"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let (first, state) := reservePrefixBlockNumber emptyState "1.3"
+  let (second, state) := reservePrefixBlockNumber state "1.3"
+  let (other, _) := reservePrefixBlockNumber state "1.4"
+  first == 1 &&
+  second == 2 &&
+  other == 1
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let data : StoredBlockData := {
+    kind := .statement .theorem
+    label := `bp.numbering.documentCounter
+    count := 42
+    numberingMode := .sub
+    subNumberingCounter := .document
+    partPrefix := some "1"
+  }
+  let (count, state) := reserveSubBlockNumber emptyState data
+  count == 42 &&
+  (reservePrefixBlockNumber state "1").fst == 1
 
 /-- info: true -/
 #guard_msgs in
