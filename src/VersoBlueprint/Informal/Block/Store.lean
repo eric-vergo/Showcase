@@ -225,10 +225,33 @@ def blockDisplayTitle (data : BlockData) (numberText : String) : String :=
   | .proof => s!"Proof {numberText}"
   | .statement kind => s!"{kind} {numberText}"
 
+def BlockData.statementKind? (data : BlockData) (st : TraverseState) : Option Data.NodeKind :=
+  match data.kind with
+  | .statement kind => some kind
+  | .proof =>
+      match resolveStoredNodeData? st data.label with
+      | some stored =>
+          match stored.kind with
+          | .statement kind => some kind
+          | .proof => none
+      | none => none
+
+def proofDisplayTitle (statementKind? : Option Data.NodeKind) (numberText : String) : String :=
+  match statementKind? with
+  | some kind => s!"Proof for {kind} {numberText}"
+  | none => s!"Proof {numberText}"
+
+def BlockData.displayProofTitle (data : BlockData)
+    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
+  proofDisplayTitle (data.statementKind? st) (data.displayNumber st fallbackPrefix?)
+
 /-- The user-facing title for a block, including kind and resolved number. -/
 def BlockData.displayTitle (data : BlockData)
     (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  blockDisplayTitle data (data.displayNumber st fallbackPrefix?)
+  let numberText := data.displayNumber st fallbackPrefix?
+  match data.kind with
+  | .proof => data.displayProofTitle st fallbackPrefix?
+  | .statement _ => blockDisplayTitle data numberText
 
 /--
 Save one traversed informal block in the semantic node index.
