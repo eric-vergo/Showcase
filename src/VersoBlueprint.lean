@@ -33,6 +33,7 @@ import VersoBlueprint.Informal.Code
 import VersoBlueprint.Informal.RustBlock
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.LeanCodePreview
