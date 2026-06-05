@@ -10,6 +10,7 @@ import Verso.Doc.Elab
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.Slides.Render
 
 namespace Informal.Slides
 
@@ -654,26 +655,12 @@ def blueprintSlidesCssFile : VersoSlides.CssFile where
   filename := blueprintSlidesCssFilename
   contents := ⟨blueprintSlidesCss⟩
 
-/-
-The slide block hydrates preview-manifest JSON in the browser, so it cannot call
-`Informal.renderInformalBlockHtml` directly. The JavaScript renderer below keeps
-the same standard `HeaderExtras` slot wrapper classes and order.
+/--
+Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
+while generating the slide deck.
 -/
-private def slideNodeJs : String := r##"(function () {
+private def slideNodeHydrationJs : String := r##"(function () {
   if (window.bpSlideNodeRuntime) return;
-
-  function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-  }
-
-  function safeArray(value) {
-    return Array.isArray(value) ? value : [];
-  }
 
   function trimSlashes(text, side) {
     let value = String(text || "");
@@ -692,13 +679,6 @@ private def slideNodeJs : String := r##"(function () {
         if (hostBase) return hostBase;
       }
     }
-    const docBase = document.documentElement.getAttribute("data-bp-site-base") || "";
-    if (docBase.trim()) return docBase.trim();
-    const bodyBase =
-      document.body instanceof Element
-        ? (document.body.getAttribute("data-bp-site-base") || "").trim()
-        : "";
-    if (bodyBase) return bodyBase;
     const runtimeBase =
       window.bpSlideNodeRuntimeConfig &&
       typeof window.bpSlideNodeRuntimeConfig.blueprintBaseUrl === "string"
@@ -721,9 +701,6 @@ private def slideNodeJs : String := r##"(function () {
     if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) return raw;
     const base = String(baseUrl || "").trim();
     if (!base) return raw;
-    if (base.startsWith("http://") || base.startsWith("https://") || base.startsWith("/")) {
-      return trimSlashes(base, "right") + "/" + trimSlashes(raw, "left");
-    }
     return trimSlashes(base, "right") + "/" + trimSlashes(raw, "left");
   }
 
@@ -751,598 +728,6 @@ private def slideNodeJs : String := r##"(function () {
       } catch (_err) {}
     }
     return !!opened;
-  }
-
-  function renderPill(label, value) {
-    if (value === null || value === undefined || String(value).trim() === "") return "";
-    return (
-      "<span class=\"bp_slide_node_pill\"><strong>" +
-      escapeHtml(label) +
-      "</strong> " +
-      escapeHtml(value) +
-      "</span>"
-    );
-  }
-
-  function renderDependencyPill(entry) {
-    const statementDeps = safeArray(entry.statementDeps);
-    const proofDeps = safeArray(entry.proofDeps);
-    const count = statementDeps.length + proofDeps.length;
-    if (count === 0) return "";
-    const label = count === 1 ? "dep" : "deps";
-    return renderPill(label, String(count));
-  }
-
-  function renderTags(entry) {
-    return safeArray(entry.tags)
-      .map(function (tag) { return renderPill("tag", tag); })
-      .join("");
-  }
-
-  function renderMeta(entry) {
-    const parts = [
-      renderPill("parent", entry.parentTitle || entry.parent),
-      renderPill("owner", entry.ownerDisplayName),
-      renderPill("priority", entry.priority),
-      renderPill("effort", entry.effort),
-      renderDependencyPill(entry),
-      renderTags(entry)
-    ].filter(Boolean);
-    if (parts.length === 0) return "";
-    return "<div class=\"bp_slide_node_meta\">" + parts.join("") + "</div>";
-  }
-
-  function capitalize(text) {
-    const raw = String(text || "").trim();
-    if (!raw) return "";
-    return raw.slice(0, 1).toUpperCase() + raw.slice(1);
-  }
-
-  function splitDisplayTitle(entry) {
-    const kind = capitalize(entry.kind || entry.targetKind || "Blueprint");
-    const title = String(entry.title || "").trim();
-    if (title) {
-      const match = title.match(/^(\S+)\s+(.+)$/);
-      if (match) return { caption: match[1], label: match[2], title: title };
-      return { caption: kind, label: title, title: title };
-    }
-    const label = String(entry.label || "").trim();
-    return { caption: kind, label: label, title: kind + (label ? " " + label : "") };
-  }
-
-  function manifestEntries() {
-    const manifest = window.bpSharedPreviewManifest;
-    if (!(manifest instanceof Map)) return [];
-    return Array.from(manifest.values());
-  }
-
-  function containsLabel(values, label) {
-    return safeArray(values).some(function (value) {
-      return String(value || "") === label;
-    });
-  }
-
-  function entryId(entry) {
-    return String(entry && (entry.label || entry.key || entry.title) || "").trim();
-  }
-
-  function statementPreviewKey(label) {
-    const raw = String(label || "").trim();
-    return raw ? raw + "--statement" : "";
-  }
-
-  function preferStatementEntry(current, next) {
-    if (!current) return next;
-    if (String(current.facet || "") !== "statement" && String(next && next.facet || "") === "statement") {
-      return next;
-    }
-    return current;
-  }
-
-  function titleNumber(entry) {
-    const title = String(entry && entry.title || "");
-    const match = title.match(/(\d+(?:\.\d+)?)/);
-    return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
-  }
-
-  function sortEntries(entries) {
-    return entries.slice().sort(function (a, b) {
-      const aNum = titleNumber(a);
-      const bNum = titleNumber(b);
-      if (aNum !== bNum) return aNum - bNum;
-      return String(a.title || a.label || "").localeCompare(String(b.title || b.label || ""));
-    });
-  }
-
-  function uniqueEntries(entries) {
-    const byId = new Map();
-    safeArray(entries).forEach(function (entry) {
-      const id = entryId(entry);
-      if (!id) return;
-      byId.set(id, preferStatementEntry(byId.get(id), entry));
-    });
-    return sortEntries(Array.from(byId.values()));
-  }
-
-  function entryByStatementLabel(label) {
-    const target = String(label || "").trim();
-    if (!target) return null;
-    return manifestEntries().find(function (entry) {
-      return (
-        entry &&
-        entry.targetKind === "block" &&
-        String(entry.facet || "") === "statement" &&
-        String(entry.label || "").trim() === target
-      );
-    }) || null;
-  }
-
-  function dependencyAxis(entry, label) {
-    const inStatement = containsLabel(entry.statementDeps, label);
-    const inProof = containsLabel(entry.proofDeps, label);
-    if (inStatement && inProof) return "statement, proof";
-    if (inProof) return "proof";
-    if (inStatement) return "statement";
-    return "";
-  }
-
-  function dependencyEntries(entry) {
-    const labels = [];
-    safeArray(entry.statementDeps).concat(safeArray(entry.proofDeps)).forEach(function (label) {
-      const raw = String(label || "").trim();
-      if (raw && !labels.includes(raw)) labels.push(raw);
-    });
-    return labels.map(function (label) {
-      const manifestEntry = entryByStatementLabel(label);
-      const title = manifestEntry && String(manifestEntry.title || "").trim()
-        ? String(manifestEntry.title).trim()
-        : label;
-      return Object.assign(
-        {
-          label: label,
-          key: statementPreviewKey(label),
-          title: title,
-          axis: dependencyAxis(entry, label)
-        },
-        manifestEntry || {}
-      );
-    });
-  }
-
-  function usedByEntries(label) {
-    if (!label) return [];
-    const entries = [];
-    manifestEntries().forEach(function (entry) {
-      if (!entry || entry.targetKind !== "block") return;
-      if (String(entry.facet || "") !== "statement") return;
-      if (String(entry.label || "") === label) return;
-      const axis = dependencyAxis(entry, label);
-      if (axis) {
-        entries.push(Object.assign({ axis: axis }, entry));
-      }
-    });
-    return uniqueEntries(entries);
-  }
-
-  function groupEntries(entry) {
-    const parent = String(entry && entry.parent || "").trim();
-    if (!parent) return [];
-    return uniqueEntries(manifestEntries().filter(function (candidate) {
-      return (
-        candidate &&
-        candidate.targetKind === "block" &&
-        String(candidate.facet || "") === "statement" &&
-        String(candidate.parent || "").trim() === parent
-      );
-    }));
-  }
-
-  function codePreviewKeys(entry) {
-    return safeArray(entry.leanCodePreviewKeys)
-      .map(function (key) { return String(key || "").trim(); })
-      .filter(Boolean);
-  }
-
-  async function loadCodeEntries(entry, utils) {
-    const keys = codePreviewKeys(entry);
-    const loaded = [];
-    for (const key of keys) {
-      const codeEntry = await utils.loadSharedPreviewEntry(key);
-      if (codeEntry && typeof codeEntry.html === "string" && codeEntry.html.trim()) {
-        loaded.push(codeEntry);
-      }
-    }
-    return loaded;
-  }
-
-  function safePreviewId(prefix, value) {
-    return prefix + "-" + String(value || "")
-      .replace(/[^A-Za-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-  }
-
-  function renderPanelEntry(item, currentLabel, idPrefix, axis) {
-    const label = String(item.label || "").trim();
-    const title = String(item.title || label || "Blueprint entry").trim();
-    const href = String(item.href || "").trim();
-    const key = String(item.key || statementPreviewKey(label)).trim();
-    const active = label && label === currentLabel ? " bp_used_by_item_active" : "";
-    const previewId = safePreviewId(idPrefix, label || key || title);
-    const axisLabel = String(item.axis || axis || "").trim();
-    const target = href
-      ? "<a class=\"bp_used_by_target\" href=\"" + escapeHtml(href) + "\">"
-      : "<span class=\"bp_used_by_target\">";
-    const close = href ? "</a>" : "</span>";
-    const axisBadge = axisLabel
-      ? "<span class=\"bp_used_by_axis_badge\">" + escapeHtml(axisLabel) + "</span>"
-      : "";
-    return (
-      "<li class=\"bp_used_by_item" + active + "\" data-bp-used-preview-id=\"" +
-        escapeHtml(previewId) + "\" data-bp-used-preview-key=\"" + escapeHtml(key) +
-        "\" data-bp-used-preview-title=\"" + escapeHtml(title) + "\">" +
-        target +
-          "<span class=\"bp_used_by_target_title\">" + escapeHtml(title) + "</span>" +
-          "<span class=\"bp_used_by_target_meta\"><code>" + escapeHtml(label || key) +
-            "</code>" + axisBadge + "</span>" +
-        close +
-      "</li>"
-    );
-  }
-
-  function renderSlidePanel(kind, chipText, chipTitle, panelTitle, panelMeta, entries, currentLabel, idPrefix, axis) {
-    const count = Array.isArray(entries) ? entries.length : 0;
-    const list = count > 0
-      ? entries.map(function (item) { return renderPanelEntry(item, currentLabel, idPrefix, axis); }).join("")
-      : "<li class=\"bp_used_by_item\"><span class=\"bp_used_by_target\"><span class=\"bp_used_by_target_title\">None</span></span></li>";
-    return (
-      "<div class=\"bp_used_by_wrap bp_slide_" + escapeHtml(kind) + "_wrap\">" +
-        "<button type=\"button\" class=\"bp_used_by_chip\" title=\"" + escapeHtml(chipTitle) +
-          "\" aria-expanded=\"false\">" + escapeHtml(chipText) + "</button>" +
-        "<div class=\"bp_used_by_panel\" data-bp-slide-panel=\"" + escapeHtml(kind) + "\">" +
-          "<div class=\"bp_used_by_panel_header\">" +
-            "<div class=\"bp_used_by_panel_title\">" + escapeHtml(panelTitle) + "</div>" +
-            "<div class=\"bp_used_by_panel_meta\">" + escapeHtml(panelMeta) + "</div>" +
-          "</div>" +
-          "<div class=\"bp_used_by_panel_body\">" +
-            "<ul class=\"bp_used_by_list\">" + list + "</ul>" +
-            "<div class=\"bp_used_by_preview_surface\">" +
-              "<div class=\"bp_used_by_preview_header\">" +
-                "<div class=\"bp_used_by_preview_label\">Preview</div>" +
-                "<div class=\"bp_used_by_preview_title\"></div>" +
-              "</div>" +
-              "<div class=\"bp_used_by_preview_body\"></div>" +
-            "</div>" +
-          "</div>" +
-        "</div>" +
-      "</div>"
-    );
-  }
-
-  function renderGroupChip(entry) {
-    const title = String(entry.parentTitle || entry.parent || "").trim();
-    if (!title) return "";
-    const label = String(entry.label || "").trim();
-    const entries = groupEntries(entry);
-    return (
-      "<span class=\"bp_extra_slot bp_extra_slot_group\">" +
-        renderSlidePanel(
-          "group",
-          "group",
-          "Other entries in group " + title,
-          "Group: " + title + " (" + entries.length + ")",
-          "Hover another entry in this group to preview it.",
-          entries,
-          label,
-          "bp-slide-group-" + label,
-          ""
-        ) +
-      "</span>"
-    );
-  }
-
-  function renderCodeStatusChip(entry, count) {
-    if (count <= 0) return "";
-    const previewKey = codePreviewKeys(entry)[0] || "";
-    const previewTitle = String(entry.label || entry.title || "Lean declarations");
-    const chip =
-      "<span class=\"bp_code_link bp_code_link_status bp_code_link_status_proved\" " +
-        "title=\"Lean declarations (available: " + count + ")\">" +
-        "<span class=\"bp_code_status_symbol\">✓</span>" +
-        "<span class=\"bp_code_link_label\">L∃∀N</span>" +
-      "</span>";
-    const body = previewKey
-      ? "<span class=\"bp_inline_preview_ref bp_slide_code_chip_preview\" " +
-          "data-bp-preview-id=\"bp-slide-code-" + escapeHtml(previewTitle) + "\" " +
-          "data-bp-preview-title=\"" + escapeHtml(previewTitle) + "\" " +
-          "data-bp-preview-key=\"" + escapeHtml(previewKey) + "\" " +
-          "tabindex=\"0\" role=\"button\" aria-label=\"Lean declarations\">" +
-          chip +
-        "</span>"
-      : chip;
-    return (
-      "<span class=\"bp_extra_slot bp_extra_slot_code\">" +
-        "<span class=\"bp_code_summary_preview_root\">" +
-          body +
-        "</span>" +
-      "</span>"
-    );
-  }
-
-  function renderUsesChip(entries) {
-    const count = Array.isArray(entries) ? entries.length : 0;
-    if (count <= 0) return "";
-    const chipText = "uses " + escapeHtml(String(count));
-    return (
-      "<span class=\"bp_extra_slot bp_extra_slot_uses\">" +
-        renderSlidePanel(
-          "uses",
-          "uses " + String(count),
-          "Statement and proof dependencies",
-          "Uses " + String(count),
-          "Hover a dependency to preview it.",
-          entries,
-          "",
-          "bp-slide-uses",
-          ""
-        ) +
-      "</span>"
-    );
-  }
-
-  function renderUsedByChip(entries) {
-    const count = Array.isArray(entries) ? entries.length : 0;
-    const chipText = "used by " + escapeHtml(String(count));
-    if (count > 0) {
-      return (
-        "<span class=\"bp_extra_slot bp_extra_slot_used_by\">" +
-          renderSlidePanel(
-            "used-by",
-            "used by " + String(count),
-            "Reverse dependencies",
-            "Used by " + String(count),
-            "Hover a use site to preview it.",
-            entries,
-            "",
-            "bp-slide-used-by",
-            "statement"
-          ) +
-        "</span>"
-      );
-    }
-    return (
-      "<span class=\"bp_extra_slot bp_extra_slot_used_by\">" +
-        "<span class=\"bp_used_by_chip bp_used_by_chip_empty\" title=\"Reverse dependencies\">" +
-          chipText +
-        "</span>" +
-      "</span>"
-    );
-  }
-
-  function renderExtras(entry, codeCount) {
-    const label = String(entry.label || "").trim();
-    const group = renderGroupChip(entry);
-    const uses = renderUsesChip(dependencyEntries(entry));
-    const code = renderCodeStatusChip(entry, codeCount);
-    const usedBy = usedByEntries(label);
-    const parts = [
-      group,
-      uses,
-      code,
-      renderUsedByChip(usedBy)
-    ].filter(Boolean);
-    if (parts.length === 0) return "";
-    const classes = ["bp_extras", "thm_header_extras"];
-    if (group) classes.push("bp_extras_with_group");
-    if (uses) classes.push("bp_extras_with_uses");
-    return "<div class=\"" + classes.join(" ") + "\">" + parts.join("") + "</div>";
-  }
-
-  function renderCodeBadge(count) {
-    if (count <= 0) return "";
-    const noun = count === 1 ? "theorem" : "declarations";
-    return (
-      "<span class=\"bp_code_summary_indicator\">" +
-        "<span class=\"bp_external_status_badge bp_external_status_badge_summary bp_external_status_ok\" " +
-          "title=\"Lean declarations: " + count + " available\">" +
-          "<span class=\"bp_external_status_icon bp_external_status_ok\">●</span>" +
-          "<span class=\"bp_external_status_badge_text\">" + escapeHtml(String(count) + " " + noun) + "</span>" +
-        "</span>" +
-      "</span>"
-    );
-  }
-
-  function codeEntrySignatureHtml(codeEntry) {
-    const raw = codeEntry && typeof codeEntry.html === "string" ? codeEntry.html : "";
-    if (!raw.trim()) return "";
-    const template = document.createElement("template");
-    template.innerHTML = raw;
-    template.content.querySelectorAll(".narrow-only").forEach(function (node) {
-      node.remove();
-    });
-    const pre =
-      template.content.querySelector(".bp_external_decl_signature_wrap .wide-only pre") ||
-      template.content.querySelector(".bp_external_decl_signature_wrap pre") ||
-      template.content.querySelector("pre");
-    if (pre instanceof Element) {
-      return "<div class=\"bp_slide_code_signature\">" + pre.outerHTML + "</div>";
-    }
-    const wrapper = document.createElement("div");
-    wrapper.appendChild(template.content.cloneNode(true));
-    return wrapper.innerHTML;
-  }
-
-  function renderCodePanel(entry, codeEntries, parts) {
-    if (!Array.isArray(codeEntries) || codeEntries.length === 0) return "";
-    const codeHtml = codeEntries.map(codeEntrySignatureHtml).filter(Boolean).join("");
-    if (!codeHtml) return "";
-    const count = codeEntries.length;
-    return (
-      "<div class=\"bp_wrapper bp_code_panel_wrapper\">" +
-        "<details class=\"bp_code_block bp_code_panel\" open>" +
-          "<summary class=\"bp_heading lemma_thmheading\" title=\"Lean code for " +
-            escapeHtml(entry.label || parts.title) + "\">" +
-            "<span class=\"bp_heading_title_row\">" +
-              "<span class=\"bp_caption lemma_thmcaption bp_code_summary_text\">Lean code for " +
-                escapeHtml(parts.caption) +
-              "</span>" +
-              "<span class=\"bp_label lemma_thmlabel bp_code_summary_label\">" +
-                escapeHtml(parts.label) +
-              "</span>" +
-            "</span>" +
-            renderCodeBadge(count) +
-          "</summary>" +
-          "<div class=\"bp_slide_code_body\">" + codeHtml + "</div>" +
-        "</details>" +
-      "</div>"
-    );
-  }
-
-  function renderNotice(kind, title, detail) {
-    return (
-      "<div class=\"bp_slide_node_notice bp_slide_node_notice_" +
-      escapeHtml(kind) +
-      "\"><strong>" +
-      escapeHtml(title) +
-      "</strong><br>" +
-      escapeHtml(detail) +
-      "</div>"
-    );
-  }
-
-  function loadingHtml(key) {
-    return renderNotice("loading", "Loading Blueprint node", key);
-  }
-
-  function missingHtml(key) {
-    const utils = window.bpPreviewUtils;
-    if (utils && typeof utils.readSharedPreviewManifestStatus === "function") {
-      const status = utils.readSharedPreviewManifestStatus();
-      if (status && status.state === "error" && status.lastError) {
-        return renderNotice("error", "Preview manifest unavailable", status.lastError);
-      }
-    }
-    return renderNotice("error", "Blueprint node not found", key);
-  }
-
-  function readEntryFacet(entry, node, key) {
-    const raw =
-      entry && typeof entry.facet === "string"
-        ? entry.facet
-        : node instanceof Element
-          ? node.getAttribute("data-bp-facet") || ""
-          : "";
-    const facet = String(raw || "").trim().toLowerCase();
-    if (facet) return facet;
-    return String(key || "").endsWith("--proof") ? "proof" : "statement";
-  }
-
-  function entryHref(entry, key, facet, baseUrl) {
-    let raw = String(entry && entry.href ? entry.href : "").trim();
-    if (facet === "proof" && raw.includes("--statement")) {
-      raw = raw.replace("--statement", "--proof");
-    }
-    return resolveBlueprintHref(raw, baseUrl);
-  }
-
-  async function renderEntry(entry, node, key) {
-    const utils = window.bpPreviewUtils;
-    const titleOverride = node instanceof Element ? (node.getAttribute("data-bp-title") || "").trim() : "";
-    const parts = titleOverride
-      ? splitDisplayTitle(Object.assign({}, entry, { title: titleOverride }))
-      : splitDisplayTitle(entry);
-    const label = entry.label || node.getAttribute("data-bp-label") || key;
-    const kind = String(entry.kind || "theorem").toLowerCase();
-    const facet = readEntryFacet(entry, node, key);
-    const isProof = facet === "proof";
-    const renderKind = isProof ? "proof" : kind;
-    const html = typeof entry.html === "string" ? entry.html : "";
-    const baseUrl = readBlueprintBaseUrl(node);
-    const href = entryHref(entry, key, facet, baseUrl);
-    const compact = node.getAttribute("data-bp-compact") === "true";
-    const codeEntries = compact || !utils ? [] : await loadCodeEntries(entry, utils);
-    const titleRow = isProof
-      ? "<div class=\"bp_heading_title_row\">" +
-          "<span class=\"bp_caption bp_kind_proof_caption proof_caption\" title=\"" +
-            escapeHtml(label) + "\">Proof</span>" +
-        "</div>"
-      : "<div class=\"bp_heading_title_row bp_heading_title_row_statement\">" +
-          "<span class=\"bp_caption bp_kind_" + escapeHtml(kind) + "_caption " + escapeHtml(kind) + "_thmcaption\" " +
-            "title=\"" + escapeHtml(label) + "\">" + escapeHtml(parts.caption) + "</span>" +
-          "<span class=\"bp_label bp_kind_" + escapeHtml(kind) + "_label " + escapeHtml(kind) + "_thmlabel\">" +
-            escapeHtml(parts.label) + "</span>" +
-        "</div>";
-    const linkedTitleRow = href
-      ? "<a class=\"bp_slide_node_heading_link\" data-bp-slide-link=\"blueprint\" href=\"" + escapeHtml(href) +
-        "\" target=\"bp-slide-blueprint\" rel=\"noopener\" title=\"Open Blueprint node\">" +
-        titleRow + "</a>"
-      : titleRow;
-    const heading =
-      "<div class=\"bp_heading bp_kind_" + escapeHtml(renderKind) + "_heading " +
-        (isProof ? "proof_heading" : escapeHtml(kind) + "_thmheading") + "\">" +
-        linkedTitleRow +
-        (isProof ? "" : renderExtras(entry, codeEntries.length)) +
-      "</div>";
-    const wrapperClass = isProof
-      ? "bp_wrapper bp_kind_proof_wrapper proof_thmwrapper proof_wrapper bp_kind_proof bp_style_proof"
-      : "bp_wrapper bp_kind_" + escapeHtml(kind) + "_wrapper " + escapeHtml(kind) +
-        "_thmwrapper " + escapeHtml(kind) + "_thmwrapper " +
-        (kind === "definition" ? "theorem-style-definition bp_style_definition" : "theorem-style-plain bp_style_plain") +
-        " bp_kind_" + escapeHtml(kind);
-    const contentClass = isProof
-      ? "bp_content bp_kind_proof_content proof_content"
-      : "bp_content bp_kind_" + escapeHtml(kind) + "_content " + escapeHtml(kind) + "_thmcontent";
-    return (
-      "<div class=\"bp_slide_node_blueprint\">" +
-        "<div class=\"" + wrapperClass + "\" " +
-          "title=\"" + escapeHtml(label) + "\">" +
-          heading +
-          "<div class=\"" + contentClass + "\">" + html + "</div>" +
-        "</div>" +
-        renderCodePanel(entry, codeEntries, parts) +
-      "</div>"
-    );
-  }
-
-  async function hydrateNode(node) {
-    if (!(node instanceof Element)) return;
-    const key = (node.getAttribute("data-bp-preview-key") || "").trim();
-    if (!key) return;
-    if (node.getAttribute("data-bp-slide-node-key") === key) return;
-    node.setAttribute("data-bp-slide-node-key", key);
-    node.innerHTML = loadingHtml(key);
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.loadSharedPreviewEntry !== "function") {
-      node.innerHTML = renderNotice(
-        "error",
-        "Preview runtime unavailable",
-        "Rebuild the slide deck with the Blueprint slide assets enabled."
-      );
-      return;
-    }
-    const entry = await utils.loadSharedPreviewEntry(key);
-    if (!entry) {
-      node.removeAttribute("data-bp-slide-node-key");
-      node.innerHTML = missingHtml(key);
-      return;
-    }
-    node.innerHTML = await renderEntry(entry, node, key);
-    prepareBlueprintLinks(node, rememberBlueprintBaseUrl(node));
-    if (typeof utils.renderMath === "function") utils.renderMath(node);
-    if (typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(node);
-  }
-
-  function registerPreviewHydrator() {
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
-    utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
-      if (!(root instanceof Element)) return;
-      prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
-    });
-  }
-
-  function hydrate(root) {
-    const scope = root && typeof root.querySelectorAll === "function" ? root : document;
-    scope.querySelectorAll(".bp_slide_node[data-bp-preview-key]").forEach(hydrateNode);
   }
 
   function renderDocstrings(root) {
@@ -1464,6 +849,27 @@ private def slideNodeJs : String := r##"(function () {
     }, 260);
   }
 
+  function hydrate(root) {
+    const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+    scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
+      if (!(node instanceof Element)) return;
+      const baseUrl = rememberBlueprintBaseUrl(node);
+      prepareBlueprintLinks(node, baseUrl);
+      const utils = window.bpPreviewUtils;
+      if (utils && typeof utils.renderMath === "function") utils.renderMath(node);
+      if (utils && typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(node);
+    });
+  }
+
+  function registerPreviewHydrator() {
+    const utils = window.bpPreviewUtils;
+    if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
+    utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
+      if (!(root instanceof Element)) return;
+      prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
+    });
+  }
+
   function start() {
     registerPreviewHydrator();
     hydrate(document);
@@ -1523,7 +929,7 @@ private def slideNodeJs : String := r##"(function () {
 def blueprintSlidesJs : String :=
   String.intercalate "\n\n" <|
     Informal.Commands.inlinePreviewJsAssets ++
-      [Informal.Block.Assets.usedByPanelJs, slideNodeJs]
+      [Informal.Block.Assets.usedByPanelJs, slideNodeHydrationJs]
 
 public def blueprintSlidesExtraJs : Array String :=
   #[blueprintSlidesJsFilename]
@@ -1570,7 +976,9 @@ public def slidesMainWithBlueprintPreviews
   let config := withBlueprintSlidesAssets config
   let rc ← VersoSlides.slidesMain config doc
   if rc == 0 then
+    let manifest? ← previewManifest?.mapM readBlueprintPreviewManifest
     writeBlueprintSlidesJs config.outputDir
+    renderBlueprintSlideNodesInFile (config.outputDir / "index.html") manifest?
     if let some previewManifest := previewManifest? then
       copyBlueprintPreviewManifest config.outputDir previewManifest
   pure rc
@@ -1602,7 +1010,7 @@ public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term :
       "bp_slide_node bp_slide_node_compact"
     else
       "bp_slide_node"
-  let mut attrs : Array (String × String) := #[
+  let mut attrs : Array (String × String) := blueprintSlideNodeMarkerAttrs ++ #[
     ("class", className),
     ("data-bp-label", cfg.label),
     ("data-bp-facet", facet),

@@ -600,8 +600,9 @@ lake env lean --run <GeneratorMain>.lean --help
 
 `VersoBlueprint.Slides` adds a `{blueprint_node ...}` block command for Verso
 Slides decks. It renders an entry from the same shared preview manifest emitted
-by a Blueprint site; the slide deck does not re-traverse the Blueprint source
-document itself.
+by a Blueprint site. The slide deck generator reads that manifest and writes the
+Blueprint node shell into the generated slide HTML; it does not re-traverse the
+Blueprint source document itself.
 
 Slide source:
 
@@ -635,10 +636,11 @@ def main : IO UInt32 :=
     (%doc MyTalk.Deck.deck)
 ```
 
-This wrapper adds the Blueprint slide CSS/JS assets, writes the slide runtime
-JavaScript file, and optionally copies an already-generated shared preview
-manifest to the deck output at
-`-verso-data/blueprint-preview-manifest.json`.
+This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
+placeholders into static slide HTML from the provided manifest, writes the slide
+interaction JavaScript file, and optionally copies the same manifest to the deck
+output at `-verso-data/blueprint-preview-manifest.json` so related-entry and
+Lean-code hover previews can load their bodies.
 
 ## The Generator Entry Point
 
