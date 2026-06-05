@@ -597,6 +597,50 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
+## Blueprint Nodes in Verso Slides
+
+`VersoBlueprint.Slides` adds a `{blueprint_node ...}` block command for Verso
+Slides decks. It renders an entry from the same shared preview manifest emitted
+by a Blueprint site; the slide deck does not re-traverse the Blueprint source
+document itself.
+
+Slide source:
+
+```lean
+import VersoBlueprint.Slides
+
+open VersoSlides
+
+#docs (Slides) deck "Talk" :=
+:::::::
+# Key statement
+
+{blueprint_node "addition_assoc" (siteBase := "blueprint")}
+:::::::
+```
+
+The `siteBase` option is useful when links in the preview manifest should open
+against a Blueprint site hosted next to, or below, the slide deck. Omit it when
+the manifest links are already correct relative to the deck.
+
+Use the Blueprint slide wrapper in the deck generator:
+
+```lean
+import VersoBlueprint.Slides
+import MyTalk.Deck
+
+def main : IO UInt32 :=
+  Informal.Slides.slidesMainWithBlueprintPreviews
+    { outputDir := "_out/slides" }
+    (previewManifest? := some "_out/site/html-multi/-verso-data/blueprint-preview-manifest.json")
+    (%doc MyTalk.Deck.deck)
+```
+
+This wrapper adds the Blueprint slide CSS/JS assets, writes the slide runtime
+JavaScript file, and optionally copies an already-generated shared preview
+manifest to the deck output at
+`-verso-data/blueprint-preview-manifest.json`.
+
 ## The Generator Entry Point
 
 Blueprint projects normally expose a small generator `main` function.

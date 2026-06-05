@@ -8,6 +8,8 @@ import VersoSlides
 import Verso.Doc.ArgParse
 import Verso.Doc.Elab
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.PreviewManifest
 
 namespace Informal.Slides
 
@@ -645,7 +647,8 @@ private def slideNodeCss : String := r##"
 
 def blueprintSlidesCss : String :=
   String.intercalate "\n\n" <|
-    Informal.Commands.withInlinePreviewCssAssets [slideNodeCss]
+    Informal.Commands.withPreviewPanelInlinePreviewCssAssets
+      [Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
 
 def blueprintSlidesCssFile : VersoSlides.CssFile where
   filename := blueprintSlidesCssFilename
@@ -1003,7 +1006,10 @@ private def slideNodeJs : String := r##"(function () {
           "<div class=\"bp_used_by_panel_body\">" +
             "<ul class=\"bp_used_by_list\">" + list + "</ul>" +
             "<div class=\"bp_used_by_preview_surface\">" +
-              "<div class=\"bp_used_by_preview_title\"></div>" +
+              "<div class=\"bp_used_by_preview_header\">" +
+                "<div class=\"bp_used_by_preview_label\">Preview</div>" +
+                "<div class=\"bp_used_by_preview_title\"></div>" +
+              "</div>" +
               "<div class=\"bp_used_by_preview_body\"></div>" +
             "</div>" +
           "</div>" +
@@ -1240,7 +1246,10 @@ private def slideNodeJs : String := r##"(function () {
 
   async function renderEntry(entry, node, key) {
     const utils = window.bpPreviewUtils;
-    const parts = splitDisplayTitle(entry);
+    const titleOverride = node instanceof Element ? (node.getAttribute("data-bp-title") || "").trim() : "";
+    const parts = titleOverride
+      ? splitDisplayTitle(Object.assign({}, entry, { title: titleOverride }))
+      : splitDisplayTitle(entry);
     const label = entry.label || node.getAttribute("data-bp-label") || key;
     const kind = String(entry.kind || "theorem").toLowerCase();
     const facet = readEntryFacet(entry, node, key);
@@ -1276,8 +1285,9 @@ private def slideNodeJs : String := r##"(function () {
     const wrapperClass = isProof
       ? "bp_wrapper bp_kind_proof_wrapper proof_thmwrapper proof_wrapper bp_kind_proof bp_style_proof"
       : "bp_wrapper bp_kind_" + escapeHtml(kind) + "_wrapper " + escapeHtml(kind) +
-        "_thmwrapper " + escapeHtml(kind) + "_thmwrapper theorem-style-plain bp_kind_" +
-        escapeHtml(kind) + " bp_style_plain";
+        "_thmwrapper " + escapeHtml(kind) + "_thmwrapper " +
+        (kind === "definition" ? "theorem-style-definition bp_style_definition" : "theorem-style-plain bp_style_plain") +
+        " bp_kind_" + escapeHtml(kind);
     const contentClass = isProof
       ? "bp_content bp_kind_proof_content proof_content"
       : "bp_content bp_kind_" + escapeHtml(kind) + "_content " + escapeHtml(kind) + "_thmcontent";
@@ -1319,7 +1329,6 @@ private def slideNodeJs : String := r##"(function () {
     prepareBlueprintLinks(node, rememberBlueprintBaseUrl(node));
     if (typeof utils.renderMath === "function") utils.renderMath(node);
     if (typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(node);
-    bindSlideUsedByPanels(node);
   }
 
   function registerPreviewHydrator() {
@@ -1328,14 +1337,12 @@ private def slideNodeJs : String := r##"(function () {
     utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;
       prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
-      bindSlideUsedByPanels(root);
     });
   }
 
   function hydrate(root) {
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node[data-bp-preview-key]").forEach(hydrateNode);
-    bindSlideUsedByPanels(scope);
   }
 
   function renderDocstrings(root) {
@@ -1394,92 +1401,6 @@ private def slideNodeJs : String := r##"(function () {
       theme: "lean"
     });
     return token._tippy || null;
-  }
-
-  function showPanelPreview(wrap, item) {
-    if (!(wrap instanceof Element) || !(item instanceof Element)) return;
-    const panel = wrap.querySelector(".bp_used_by_panel");
-    const titleNode = wrap.querySelector(".bp_used_by_preview_title");
-    const bodyNode = wrap.querySelector(".bp_used_by_preview_body");
-    if (!(panel instanceof Element) || !(titleNode instanceof Element) || !(bodyNode instanceof Element)) return;
-    wrap.querySelectorAll(".bp_used_by_item_active").forEach(function (active) {
-      active.classList.remove("bp_used_by_item_active");
-    });
-    item.classList.add("bp_used_by_item_active");
-    const key = (item.getAttribute("data-bp-used-preview-key") || "").trim();
-    const title = (item.getAttribute("data-bp-used-preview-title") || key || "Preview").trim();
-    const requestId = String(Date.now()) + "-" + Math.random();
-    panel.setAttribute("data-bp-slide-preview-request", requestId);
-    titleNode.textContent = title;
-    bodyNode.innerHTML = "<div class=\"bp_used_by_preview_message\">Loading preview...</div>";
-    const utils = window.bpPreviewUtils;
-    if (!key || !utils || typeof utils.loadSharedPreviewEntry !== "function") {
-      bodyNode.innerHTML = "<div class=\"bp_used_by_preview_message\">Preview unavailable.</div>";
-      return;
-    }
-    utils.loadSharedPreviewEntry(key).then(function (entry) {
-      if (panel.getAttribute("data-bp-slide-preview-request") !== requestId) return;
-      const html =
-        utils && typeof utils.readPreviewTemplate === "function"
-          ? utils.readPreviewTemplate(entry)
-          : entry && typeof entry.html === "string"
-            ? entry.html
-            : "";
-      bodyNode.innerHTML = html || "<div class=\"bp_used_by_preview_message\">Preview unavailable.</div>";
-      prepareBlueprintLinks(bodyNode, readBlueprintBaseUrl(wrap.closest(".bp_slide_node")));
-      if (utils && typeof utils.renderMath === "function") utils.renderMath(bodyNode);
-      if (utils && typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(bodyNode);
-    });
-  }
-
-  function bindSlideUsedByPanels(root) {
-    const scope = root && typeof root.querySelectorAll === "function" ? root : document;
-    scope.querySelectorAll(".bp_slide_node .bp_used_by_wrap").forEach(function (wrap) {
-      if (!(wrap instanceof Element)) return;
-      if (wrap.getAttribute("data-bp-slide-used-bound") === "1") return;
-      wrap.setAttribute("data-bp-slide-used-bound", "1");
-      const button = wrap.querySelector(".bp_used_by_chip");
-      const items = Array.from(wrap.querySelectorAll(".bp_used_by_item[data-bp-used-preview-key]"));
-      let hideTimer = null;
-      function cancelHide() {
-        if (hideTimer !== null) {
-          window.clearTimeout(hideTimer);
-          hideTimer = null;
-        }
-      }
-      function openPanel() {
-        cancelHide();
-        wrap.classList.add("bp_used_by_wrap_open");
-        if (button instanceof HTMLElement) button.setAttribute("aria-expanded", "true");
-        const active = wrap.querySelector(".bp_used_by_item_active[data-bp-used-preview-key]");
-        const first = active || items[0];
-        if (first instanceof Element) showPanelPreview(wrap, first);
-      }
-      function closePanel() {
-        cancelHide();
-        wrap.classList.remove("bp_used_by_wrap_open");
-        if (button instanceof HTMLElement) button.setAttribute("aria-expanded", "false");
-      }
-      function scheduleClose() {
-        cancelHide();
-        hideTimer = window.setTimeout(function () {
-          hideTimer = null;
-          if (!wrap.matches(":hover") && !wrap.matches(":focus-within")) closePanel();
-        }, 180);
-      }
-      wrap.addEventListener("mouseenter", openPanel);
-      wrap.addEventListener("focusin", openPanel);
-      wrap.addEventListener("mouseleave", scheduleClose);
-      wrap.addEventListener("focusout", function (event) {
-        if (event.relatedTarget instanceof Node && wrap.contains(event.relatedTarget)) return;
-        scheduleClose();
-      });
-      items.forEach(function (item) {
-        if (!(item instanceof Element)) return;
-        item.addEventListener("mouseenter", function () { showPanelPreview(wrap, item); });
-        item.addEventListener("focusin", function () { showPanelPreview(wrap, item); });
-      });
-    });
   }
 
   let previewCleanupTimer = null;
@@ -1601,13 +1522,58 @@ private def slideNodeJs : String := r##"(function () {
 
 def blueprintSlidesJs : String :=
   String.intercalate "\n\n" <|
-    Informal.Commands.inlinePreviewJsAssets ++ [slideNodeJs]
+    Informal.Commands.inlinePreviewJsAssets ++
+      [Informal.Block.Assets.usedByPanelJs, slideNodeJs]
 
-def blueprintSlidesExtraJs : Array String :=
+public def blueprintSlidesExtraJs : Array String :=
   #[blueprintSlidesJsFilename]
 
-def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
-  IO.FS.writeFile (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
+private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
+
+private def writeFileWithDirs (path : System.FilePath) (content : String) : IO Unit := do
+  let dir := path.parent.getD "."
+  if !(← dir.pathExists) then
+    IO.FS.createDirAll dir
+  IO.FS.writeFile path content
+
+/-- Add the Blueprint slide CSS/JS assets to a Verso Slides config. -/
+public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
+  { config with
+    extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
+    extraJs := pushIfMissing config.extraJs blueprintSlidesJsFilename }
+
+/-- Write the JavaScript file referenced by {name}`withBlueprintSlidesAssets`. -/
+public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
+  writeFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
+
+/-- Output path where slide decks expect the shared Blueprint preview manifest. -/
+public def blueprintSlidesPreviewManifestPath (outputDir : System.FilePath) : System.FilePath :=
+  outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
+
+/-- Copy a generated Blueprint shared preview manifest into a slide deck output directory. -/
+public def copyBlueprintPreviewManifest
+    (outputDir source : System.FilePath) : IO Unit := do
+  let contents ← IO.FS.readFile source
+  writeFileWithDirs (blueprintSlidesPreviewManifestPath outputDir) contents
+
+/--
+Generate a slide deck with Blueprint preview-node assets enabled.
+
+When `previewManifest?` is provided, the manifest is copied to the deck's
+`-verso-data/blueprint-preview-manifest.json` path after the deck is written.
+-/
+public def slidesMainWithBlueprintPreviews
+    (config : VersoSlides.Config := {})
+    (previewManifest? : Option System.FilePath := none)
+    (doc : Verso.Doc.Part VersoSlides.Slides) : IO UInt32 := do
+  let config := withBlueprintSlidesAssets config
+  let rc ← VersoSlides.slidesMain config doc
+  if rc == 0 then
+    writeBlueprintSlidesJs config.outputDir
+    if let some previewManifest := previewManifest? then
+      copyBlueprintPreviewManifest config.outputDir previewManifest
+  pure rc
 
 public structure BlueprintNodeConfig where
   label : String
@@ -1629,27 +1595,27 @@ private def previewKey (label facet : String) : String :=
   s!"{label}--{facet}"
 
 public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term := do
-    let facet := cfg.facet.getD "statement"
-    let key := previewKey cfg.label facet
-    let className :=
-      if cfg.compact then
-        "bp_slide_node bp_slide_node_compact"
-      else
-        "bp_slide_node"
-    let mut attrs : Array (String × String) := #[
-      ("class", className),
-      ("data-bp-label", cfg.label),
-      ("data-bp-facet", facet),
-      ("data-bp-preview-key", key),
-      ("data-bp-compact", if cfg.compact then "true" else "false")
-    ]
-    if let some title := cfg.title then
-      attrs := attrs.push ("data-bp-title", title)
-    if let some siteBase := cfg.siteBase then
-      attrs := attrs.push ("data-bp-site-base", siteBase)
-    let fallback := s!"Loading Blueprint node {cfg.label}..."
-    ``(Verso.Doc.Block.other (VersoSlides.BlockExt.wrap $(quote attrs))
-        #[Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote fallback)]])
+  let facet := cfg.facet.getD "statement"
+  let key := previewKey cfg.label facet
+  let className :=
+    if cfg.compact then
+      "bp_slide_node bp_slide_node_compact"
+    else
+      "bp_slide_node"
+  let mut attrs : Array (String × String) := #[
+    ("class", className),
+    ("data-bp-label", cfg.label),
+    ("data-bp-facet", facet),
+    ("data-bp-preview-key", key),
+    ("data-bp-compact", if cfg.compact then "true" else "false")
+  ]
+  if let some title := cfg.title then
+    attrs := attrs.push ("data-bp-title", title)
+  if let some siteBase := cfg.siteBase then
+    attrs := attrs.push ("data-bp-site-base", siteBase)
+  let fallback := s!"Loading Blueprint node {cfg.label}..."
+  ``(Verso.Doc.Block.other (VersoSlides.BlockExt.wrap $(quote attrs))
+      #[Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote fallback)]])
 
 end Informal.Slides
 
@@ -1658,10 +1624,9 @@ open Verso Doc Elab
 /--
 Render a Blueprint preview-manifest entry by label inside a Verso Slides deck.
 
-The slide generator must copy a VBP shared preview manifest to the slide
-output's `-verso-data/blueprint-preview-manifest.json` path and include
-`Informal.Slides.blueprintSlidesCssFile` plus
-`Informal.Slides.blueprintSlidesJs`.
+Use {name}`Informal.Slides.slidesMainWithBlueprintPreviews` in the deck
+generator, or add {name}`Informal.Slides.withBlueprintSlidesAssets` to the
+config and call {name}`Informal.Slides.writeBlueprintSlidesJs` manually.
 -/
 @[block_command]
 public meta def blueprint_node : BlockCommandOf Informal.Slides.BlueprintNodeConfig

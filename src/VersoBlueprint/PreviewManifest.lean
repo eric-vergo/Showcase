@@ -514,6 +514,8 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
+  /-- Shared-preview manifest keys for Lean declaration previews associated with this entry. -/
+  leanCodePreviewKeys : Array String := #[]
   /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
   /-- Normalized tags attached to this informal node. -/
@@ -748,6 +750,24 @@ private def blockParentTitle? (state : TraverseState) (blockData? : Option Infor
     blockData.parent.map fun parent =>
       (groupTitle? state parent).getD parent.toString
 
+private def pushUnique [BEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
+
+private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array String :=
+  match Informal.TraversalIndex.InlineCode.data? state label with
+  | none => #[]
+  | some codeData =>
+    let decls := (codeData.definedDefs.map (·.name)) ++ (codeData.definedTheorems.map (·.name))
+    decls.map Informal.TraversalIndex.LeanCodePreviews.lookupKey
+
+private def blockLeanCodePreviewKeys
+    (state : TraverseState)
+    (label : Name)
+    (entry : PreviewCache.Entry) : Array String :=
+  (inlineCodePreviewKeys state label).foldl
+    (init := entry.leanCodePreviewKeys)
+    (fun keys key => pushUnique keys key)
+
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
@@ -780,6 +800,7 @@ private def buildTraversalEntries
         parentTitle := blockParentTitle? state blockData?
         statementUses := blockData?.map (·.statementUses) |>.getD #[]
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
+        leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
         ownerDisplayName := blockData?.bind (·.ownerDisplayName)
         tags := blockData?.map (·.tags) |>.getD #[]
         priority := blockData?.bind (·.priority)
@@ -854,7 +875,11 @@ private def buildCitationEntries
       entries := entries.push manifestEntry
   pure entries
 
-private def buildManifestFile
+/--
+Build the canonical shared preview manifest from a completed Manual traversal
+state.
+-/
+def buildManifestFile
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO File := do
