@@ -31,15 +31,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 {blueprint_node "def:code.preview" (siteBase := "blueprint")}
 :::::::
 
-private def blueprintNodeAttrs (label key : String) : Array (String × String) :=
-  Informal.Slides.blueprintSlideNodeMarkerAttrs ++ #[
-    ("class", "bp_slide_node"),
-    ("data-bp-label", label),
-    ("data-bp-facet", "statement"),
-    ("data-bp-preview-key", key),
-    ("data-bp-compact", "false"),
-    ("data-bp-site-base", "blueprint")
-  ]
+private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideNode where
+  label := label
+  facet := "statement"
+  key := key
+  title? := none
+  compact := false
+  siteBase? := some "blueprint"
 
 private def dummySlidesCss (filename body : String) : VersoSlides.CssFile where
   filename
@@ -62,11 +60,21 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   hasSubstr js "function bindUsedByPanel(panel)" &&
     hasSubstr js "function hydrate(root)" &&
     hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
+    !hasSubstr js "function openBlueprintHref(href)" &&
+    !hasSubstr js "function renderDocstrings(root)" &&
+    !hasSubstr js "function ensureLeanHover(target)" &&
+    !hasSubstr js "function scheduleSlidePreviewCleanup()" &&
     !hasSubstr js "function bindSlideUsedByPanels" &&
     !hasSubstr js "async function renderEntry(entry, node, key)" &&
     !hasSubstr js "function renderGroupChip(entry)" &&
     !hasSubstr js "function renderUsesChip(entries)" &&
     !hasSubstr js "function renderCodeStatusChip(entry, count)"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node := blueprintNode "def:code.preview" "def:code.preview--statement"
+  Informal.Slides.BlueprintSlideNode.fromAttrs? node.toAttrs == some node
 
 /-- info: true -/
 #guard_msgs in
@@ -136,10 +144,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
-    let some renderedHtml :=
-      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
-        (blueprintNodeAttrs "def:code.preview" key)
-      | return false
+    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+      (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
@@ -172,10 +179,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         entry.usedBy.size == 1 &&
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
-    let some renderedHtml :=
-      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
-        (blueprintNodeAttrs "def:group.target" key)
-      | return false
+    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+      (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
     pure <|
       groupManifestOk &&
@@ -201,10 +207,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
       match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
-    let some renderedHtml :=
-      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
-        (blueprintNodeAttrs "def:group.missing.target" key)
-      | return false
+    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+      (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString
     pure <|
       groupManifestOk &&

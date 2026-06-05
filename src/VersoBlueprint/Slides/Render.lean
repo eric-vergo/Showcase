@@ -4,10 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import Std.Data.HashMap
 import Verso.Output.Html
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
+import VersoBlueprint.Lib.HoverRender
 
 namespace Informal.Slides
 
@@ -20,6 +22,69 @@ private def slideNodeMarkerValue : String := "true"
 
 def blueprintSlideNodeMarkerAttrs : Array (String × String) :=
   #[(slideNodeMarkerAttr, slideNodeMarkerValue)]
+
+public structure BlueprintSlideNode where
+  label : String
+  facet : String := "statement"
+  key : String
+  title? : Option String := none
+  compact : Bool := false
+  siteBase? : Option String := none
+deriving Repr, BEq
+
+private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
+  (attrs.find? fun attr => attr.1 == name).map (·.2)
+
+private def BlueprintSlideNode.className (node : BlueprintSlideNode) : String :=
+  if node.compact then
+    "bp_slide_node bp_slide_node_compact"
+  else
+    "bp_slide_node"
+
+def BlueprintSlideNode.toAttrs (node : BlueprintSlideNode) : Array (String × String) :=
+  blueprintSlideNodeMarkerAttrs ++
+    #[ ("class", node.className)
+     , ("data-bp-label", node.label)
+     , ("data-bp-facet", node.facet)
+     , ("data-bp-preview-key", node.key)
+     , ("data-bp-compact", if node.compact then "true" else "false")
+     ] ++
+    (node.title?.map (fun title => #[("data-bp-title", title)] ) |>.getD #[]) ++
+    (node.siteBase?.map (fun siteBase => #[("data-bp-site-base", siteBase)] ) |>.getD #[])
+
+def BlueprintSlideNode.fromAttrs? (attrs : Array (String × String)) : Option BlueprintSlideNode := do
+  let marker ← attrValue? attrs slideNodeMarkerAttr
+  guard (marker == slideNodeMarkerValue)
+  let label ← attrValue? attrs "data-bp-label"
+  let facet := attrValue? attrs "data-bp-facet" |>.getD "statement"
+  let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
+  let title? := attrValue? attrs "data-bp-title"
+  let compact := attrValue? attrs "data-bp-compact" == some "true"
+  let siteBase? := attrValue? attrs "data-bp-site-base"
+  some { label, facet, key, title?, compact, siteBase? }
+
+def BlueprintSlideNode.renderedAttrs (node : BlueprintSlideNode) : Array (String × String) :=
+  node.toAttrs ++ #[("data-bp-rendered", "static")]
+
+def BlueprintSlideNode.fallbackText (node : BlueprintSlideNode) : String :=
+  s!"Loading Blueprint node {node.label}..."
+
+public structure RenderContext where
+  manifest? : Option Informal.PreviewManifest.File := none
+  entriesByKey : Std.HashMap String Informal.PreviewManifest.Entry := {}
+
+def RenderContext.ofManifest? (manifest? : Option Informal.PreviewManifest.File) : RenderContext :=
+  let entriesByKey := Id.run do
+    let mut map : Std.HashMap String Informal.PreviewManifest.Entry := {}
+    if let some manifest := manifest? then
+      for entry in manifest.previews do
+        map := map.insert entry.key entry
+    pure map
+  { manifest? := manifest?, entriesByKey }
+
+private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
+    Option Informal.PreviewManifest.Entry :=
+  ctx.entriesByKey.get? key
 
 private def Html.raw (html : String) : Html :=
   .text false html
@@ -62,19 +127,8 @@ private def nameString (name : Name) : String :=
   name.toString
 
 private def safePreviewId (idPrefix value : String) : String :=
-  let trimHyphens (s : String) : String :=
-    String.ofList <| (s.toList.dropWhile (· == '-')).reverse.dropWhile (· == '-') |>.reverse
-  let isAllowed (c : Char) : Bool :=
-    let v := c.val
-    (v >= 'A'.val && v <= 'Z'.val) ||
-      (v >= 'a'.val && v <= 'z'.val) ||
-      (v >= '0'.val && v <= '9'.val) ||
-      c == '_' || c == '-'
-  let body :=
-    value.toList.foldl
-      (fun acc c => acc.push (if isAllowed c then c else '-'))
-      ""
-  s!"{idPrefix}-{trimHyphens body}"
+  let body := Informal.HoverRender.previewKey value
+  if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
 
 private def splitDisplayTitle (entry : Informal.PreviewManifest.Entry) (titleOverride? : Option String) :
     String × String × String :=
@@ -93,10 +147,10 @@ private def splitDisplayTitle (entry : Informal.PreviewManifest.Entry) (titleOve
       let label := String.intercalate " " rest
       if label.isEmpty then (kindText, first, title) else (first, label, title)
 
-private def codeEntries (manifest : Informal.PreviewManifest.File)
+private def codeEntries (ctx : RenderContext)
     (entry : Informal.PreviewManifest.Entry) : Array Informal.PreviewManifest.Entry :=
   entry.leanCodePreviewKeys.filterMap fun key =>
-    manifest.previews.find? fun candidate => candidate.key == key
+    ctx.findEntry? key
 
 private def axisBadge (axis : Informal.PreviewManifest.RelationAxis) : Html :=
   {{<span class="bp_used_by_axis_badge">{{Html.ofString axis.display}}</span>}}
@@ -312,9 +366,8 @@ private def renderNotice (kind title detail : String) : Html :=
     </div>
   }}
 
-private def renderEntryShell (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) (titleOverride? siteBase? : Option String)
-    (compact : Bool) : Html :=
+private def renderEntryShell (ctx : RenderContext)
+    (entry : Informal.PreviewManifest.Entry) (node : BlueprintSlideNode) : Html :=
   let isProof := entry.facet == .proof
   let renderKind :=
     if isProof then
@@ -322,9 +375,9 @@ private def renderEntryShell (manifest : Informal.PreviewManifest.File)
     else
       .statement (entry.kind.getD .theorem)
   let style := Informal.BlockKindRenderStyle.ofInProgressKind renderKind
-  let (caption, label, _title) := splitDisplayTitle entry titleOverride?
-  let href := resolveBlueprintHref entry.href siteBase?
-  let codeEntries := if compact then #[] else codeEntries manifest entry
+  let (caption, label, _title) := splitDisplayTitle entry node.title?
+  let href := resolveBlueprintHref entry.href node.siteBase?
+  let codeEntries := if node.compact then #[] else codeEntries ctx entry
   let titleRow : Html :=
     if isProof then
       {{
@@ -363,7 +416,7 @@ private def renderEntryShell (manifest : Informal.PreviewManifest.File)
     {{
       <div class={{"bp_heading bp_kind_" ++ style.kindCss ++ "_heading " ++ style.headingCss}}>
         {{linkedTitleRow}}
-        {{ if isProof then .empty else renderExtras entry codeEntries.size siteBase? }}
+        {{ if isProof then .empty else renderExtras entry codeEntries.size node.siteBase? }}
       </div>
     }}
   let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
@@ -378,65 +431,30 @@ private def renderEntryShell (manifest : Informal.PreviewManifest.File)
     </div>
   }}
 
-private structure PlaceholderConfig where
-  label : String
-  facet : String
-  key : String
-  title? : Option String := none
-  compact : Bool := false
-  siteBase? : Option String := none
+private def renderMissingNode (node : BlueprintSlideNode) (title detail : String) : Html :=
+  .tag "div" node.renderedAttrs (renderNotice "error" title detail)
 
-private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
-  (attrs.find? fun attr => attr.1 == name).map (·.2)
-
-private def placeholderConfigFromAttrs? (attrs : Array (String × String)) : Option PlaceholderConfig := do
-  let marker ← attrValue? attrs slideNodeMarkerAttr
-  guard (marker == slideNodeMarkerValue)
-  let label ← attrValue? attrs "data-bp-label"
-  let facet := attrValue? attrs "data-bp-facet" |>.getD "statement"
-  let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
-  let title? := attrValue? attrs "data-bp-title"
-  let compact := attrValue? attrs "data-bp-compact" == some "true"
-  let siteBase? := attrValue? attrs "data-bp-site-base"
-  some { label, facet, key, title?, compact, siteBase? }
-
-private def renderedNodeAttrs (cfg : PlaceholderConfig) : Array (String × String) :=
-  #[ ("class", if cfg.compact then "bp_slide_node bp_slide_node_compact" else "bp_slide_node")
-   , ("data-bp-label", cfg.label)
-   , ("data-bp-facet", cfg.facet)
-   , ("data-bp-preview-key", cfg.key)
-   , ("data-bp-compact", if cfg.compact then "true" else "false")
-   , ("data-bp-rendered", "static")
-   ] ++
-   (cfg.title?.map (fun title => #[("data-bp-title", title)] ) |>.getD #[]) ++
-   (cfg.siteBase?.map (fun siteBase => #[("data-bp-site-base", siteBase)] ) |>.getD #[])
-
-private def renderMissingNode (cfg : PlaceholderConfig) (title detail : String) : Html :=
-  .tag "div" (renderedNodeAttrs cfg) (renderNotice "error" title detail)
-
-private def renderPlaceholder (manifest? : Option Informal.PreviewManifest.File)
-    (cfg : PlaceholderConfig) : Html :=
-  match manifest? with
+public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : Html :=
+  match ctx.manifest? with
   | none =>
-    renderMissingNode cfg "Preview manifest unavailable"
+    renderMissingNode node "Preview manifest unavailable"
       "Pass previewManifest? to slidesMainWithBlueprintPreviews so Blueprint slide nodes can be rendered during slide generation."
-  | some manifest =>
-    match manifest.previews.find? (fun entry => entry.key == cfg.key) with
+  | some _manifest =>
+    match ctx.findEntry? node.key with
     | none =>
-      renderMissingNode cfg "Blueprint node not found" cfg.key
+      renderMissingNode node "Blueprint node not found" node.key
     | some entry =>
-      .tag "div" (renderedNodeAttrs cfg)
-        (renderEntryShell manifest entry cfg.title? cfg.siteBase? cfg.compact)
+      .tag "div" node.renderedAttrs (renderEntryShell ctx entry node)
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
 `VersoSlides.BlockExt.wrap` emitted by `blueprint_node`.
 -/
 public def renderBlueprintSlideNodeFromAttrs?
-    (manifest? : Option Informal.PreviewManifest.File)
+    (ctx : RenderContext)
     (attrs : Array (String × String)) : Option Html := do
-  let cfg ← placeholderConfigFromAttrs? attrs
-  some (renderPlaceholder manifest? cfg)
+  let node ← BlueprintSlideNode.fromAttrs? attrs
+  some (renderBlueprintSlideNode ctx node)
 
 def readBlueprintPreviewManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File := do

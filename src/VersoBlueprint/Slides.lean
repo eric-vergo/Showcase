@@ -621,87 +621,7 @@ private def slideNodeHydrationJs : String := r##"(function () {
     });
   }
 
-  function openBlueprintHref(href) {
-    const targetHref = String(href || "").trim();
-    if (!targetHref) return false;
-    const opened = window.open(targetHref, "bp-slide-blueprint");
-    if (opened && typeof opened.focus === "function") {
-      try {
-        opened.focus();
-      } catch (_err) {}
-    }
-    return !!opened;
-  }
-
-  function renderDocstrings(root) {
-    if (!root || typeof root.querySelectorAll !== "function") return;
-    if (typeof marked === "undefined" || !marked || typeof marked.parse !== "function") return;
-    root.querySelectorAll("code.docstring, pre.docstring").forEach(function (node) {
-      if (!(node instanceof Element)) return;
-      const rendered = document.createElement("div");
-      rendered.className = "docstring";
-      rendered.innerHTML = marked.parse(node.innerText || "");
-      node.parentNode && node.parentNode.replaceChild(rendered, node);
-    });
-  }
-
-  function leanHoverContent(target) {
-    const content = document.createElement("span");
-    content.className = "hl lean";
-    content.style.display = "block";
-    content.style.maxHeight = "300px";
-    content.style.overflowY = "auto";
-    content.style.overflowX = "hidden";
-    const hoverInfo = target.querySelector(".hover-info");
-    if (hoverInfo instanceof Element) {
-      const clone = hoverInfo.cloneNode(true);
-      if (clone instanceof HTMLElement) clone.style.display = "block";
-      content.appendChild(clone);
-      renderDocstrings(content);
-    }
-    return content;
-  }
-
-  function leanHoverTarget(target) {
-    if (!(target instanceof Element)) return null;
-    const lean = target.closest(".hl.lean");
-    if (!(lean instanceof Element)) return null;
-    const token = target.closest(
-      ".token, .has-info, .tactic, .level-var, .level-const, .level-op, .sort"
-    );
-    if (!(token instanceof Element) || !lean.contains(token)) return null;
-    if (!token.querySelector(".hover-info")) return null;
-    return token;
-  }
-
-  function ensureLeanHover(target) {
-    const token = leanHoverTarget(target);
-    if (!(token instanceof Element)) return null;
-    if (token._tippy) return token._tippy;
-    if (typeof tippy !== "function") return null;
-    tippy(token, {
-      content: leanHoverContent,
-      maxWidth: "none",
-      appendTo: function () { return document.body; },
-      interactive: true,
-      delay: [100, null],
-      followCursor: "initial",
-      theme: "lean"
-    });
-    return token._tippy || null;
-  }
-
-  let previewCleanupTimer = null;
-
-  function clearSlidePreviewCleanup() {
-    if (previewCleanupTimer !== null) {
-      window.clearTimeout(previewCleanupTimer);
-      previewCleanupTimer = null;
-    }
-  }
-
   function hideSlidePreviewPanels() {
-    clearSlidePreviewCleanup();
     document
       .querySelectorAll("#bp-inline-preview-panel, #bp-inline-preview-child-panel, .bp_preview_panel")
       .forEach(function (panel) {
@@ -709,47 +629,7 @@ private def slideNodeHydrationJs : String := r##"(function () {
         panel.hidden = true;
         panel.style.left = "";
         panel.style.top = "";
-        panel.style.width = "";
-        panel.style.minHeight = "";
-        panel.querySelectorAll(
-          ".bp_inline_preview_panel_title, .bp_preview_panel_title, " +
-          ".bp_code_summary_preview_title, .bp_summary_preview_panel_title"
-        ).forEach(function (title) {
-          if (title instanceof HTMLElement) title.textContent = "";
-        });
-        panel.querySelectorAll(
-          ".bp_inline_preview_panel_body, .bp_preview_panel_body, " +
-          ".bp_code_summary_preview_body, .bp_summary_preview_panel_body"
-        ).forEach(function (body) {
-          if (body instanceof HTMLElement) body.innerHTML = "";
-        });
       });
-  }
-
-  function pointerIsOnPreviewSurface(target) {
-    if (!(target instanceof Element)) return false;
-    return !!target.closest(
-      ".bp_inline_preview_ref, .bp_inline_preview_panel, .bp_preview_panel, " +
-      ".bp_code_summary_preview_wrap_active, .bp_used_by_panel, .bp_used_by_chip"
-    );
-  }
-
-  function previewSurfaceIsActive() {
-    return !!document.querySelector(
-      ".bp_inline_preview_ref:hover, .bp_inline_preview_ref:focus-within, " +
-      ".bp_inline_preview_panel:hover, .bp_inline_preview_panel:focus-within, " +
-      ".bp_preview_panel:hover, .bp_preview_panel:focus-within, " +
-      ".bp_code_summary_preview_wrap_active:hover, .bp_code_summary_preview_wrap_active:focus-within, " +
-      ".bp_used_by_panel:hover, .bp_used_by_panel:focus-within"
-    );
-  }
-
-  function scheduleSlidePreviewCleanup() {
-    clearSlidePreviewCleanup();
-    previewCleanupTimer = window.setTimeout(function () {
-      previewCleanupTimer = null;
-      if (!previewSurfaceIsActive()) hideSlidePreviewPanels();
-    }, 260);
   }
 
   function hydrate(root) {
@@ -776,39 +656,6 @@ private def slideNodeHydrationJs : String := r##"(function () {
   function start() {
     registerPreviewHydrator();
     hydrate(document);
-    document.addEventListener("click", function (event) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const link = target.closest("a[data-bp-slide-link], .bp_slide_node .bp_slide_node_heading_link");
-      if (!(link instanceof HTMLAnchorElement)) return;
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      event.stopPropagation();
-      openBlueprintHref(link.href);
-    }, true);
-    document.addEventListener("mouseover", function (event) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const host = target.closest("[data-bp-site-base]");
-      if (host instanceof Element) rememberBlueprintBaseUrl(host);
-      const hover = ensureLeanHover(target);
-      if (hover && typeof hover.show === "function") hover.show();
-    }, true);
-    document.addEventListener("focusin", function (event) {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const host = target.closest("[data-bp-site-base]");
-      if (host instanceof Element) rememberBlueprintBaseUrl(host);
-      const hover = ensureLeanHover(target);
-      if (hover && typeof hover.show === "function") hover.show();
-    }, true);
-    document.addEventListener("pointermove", function (event) {
-      if (pointerIsOnPreviewSurface(event.target)) {
-        clearSlidePreviewCleanup();
-      } else {
-        scheduleSlidePreviewCleanup();
-      }
-    }, true);
     if (window.Reveal && typeof window.Reveal.on === "function") {
       window.Reveal.on("slidechanged", function (event) {
         hideSlidePreviewPanels();
@@ -899,13 +746,13 @@ private def collectSlideAssets (config : VersoSlides.Config) :
   inferInstance
 
 @[reducible] private def blueprintSlidesGenreHtml
-    (manifest? : Option Informal.PreviewManifest.File) :
+    (renderContext : Informal.Slides.RenderContext) :
     Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
   { defaultSlidesGenreHtml with
     block := fun inlineHtml blockHtml container contents => do
       match container with
       | .wrap attrs =>
-        match renderBlueprintSlideNodeFromAttrs? manifest? attrs with
+        match renderBlueprintSlideNodeFromAttrs? renderContext attrs with
         | some html => pure html
         | none => defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
       | _ =>
@@ -918,6 +765,7 @@ private def slidesMainWithBlueprintRenderer
     (doc : Verso.Doc.Part VersoSlides.Slides)
     (quiet : Bool := false) : IO UInt32 := do
   let assetPlan ← collectSlideAssets config
+  let renderContext := Informal.Slides.RenderContext.ofManifest? manifest?
   let hasError ← IO.mkRef false
   let logError (msg : String) : IO Unit := do
     hasError.set true
@@ -934,7 +782,7 @@ private def slidesMainWithBlueprintRenderer
   }
   let (slidesHtml, hoverState) ←
     (let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
-        blueprintSlidesGenreHtml manifest?
+        blueprintSlidesGenreHtml renderContext
      (VersoSlides.renderDocument config doc).run ctx |>.run {})
   let title := VersoSlides.inlinesToPlainText doc.title
   let fullHtml := VersoSlides.renderFullHtml config title slidesHtml traverseState.cssBlocks
@@ -1031,23 +879,16 @@ private def previewKey (label facet : String) : String :=
 public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term := do
   let facet := cfg.facet.getD "statement"
   let key := previewKey cfg.label facet
-  let className :=
-    if cfg.compact then
-      "bp_slide_node bp_slide_node_compact"
-    else
-      "bp_slide_node"
-  let mut attrs : Array (String × String) := blueprintSlideNodeMarkerAttrs ++ #[
-    ("class", className),
-    ("data-bp-label", cfg.label),
-    ("data-bp-facet", facet),
-    ("data-bp-preview-key", key),
-    ("data-bp-compact", if cfg.compact then "true" else "false")
-  ]
-  if let some title := cfg.title then
-    attrs := attrs.push ("data-bp-title", title)
-  if let some siteBase := cfg.siteBase then
-    attrs := attrs.push ("data-bp-site-base", siteBase)
-  let fallback := s!"Loading Blueprint node {cfg.label}..."
+  let node : BlueprintSlideNode := {
+    label := cfg.label
+    facet := facet
+    key := key
+    title? := cfg.title
+    compact := cfg.compact
+    siteBase? := cfg.siteBase
+  }
+  let attrs := node.toAttrs
+  let fallback := node.fallbackText
   ``(Verso.Doc.Block.other (VersoSlides.BlockExt.wrap $(quote attrs))
       #[Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote fallback)]])
 
