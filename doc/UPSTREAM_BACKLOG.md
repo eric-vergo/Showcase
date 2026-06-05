@@ -1,6 +1,6 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-05-06
+Last reviewed: 2026-06-05
 
 This file is the repository's local "Verso upstream backlog": a queue of
 changes that would be better solved in upstream `verso`, Lake, or Lean once the
@@ -66,6 +66,21 @@ pull requests unless that upstream write action is explicitly requested.
     graph-specific page-shell overrides that are not about graph layout itself
 
 ## Runtime Assets and Browser Rendering
+
+- [ ] Add a Verso Slides generation hook for downstream block rendering.
+  - current Blueprint workaround:
+    `VersoBlueprint.Slides.slidesMainWithBlueprintRenderer` supplies a local
+    `GenreHtml Slides IO` instance so `{blueprint_node}` blocks render from the
+    Blueprint preview manifest before the HTML document is serialized; because
+    `VersoSlides.slidesMain` owns both rendering and file emission, Blueprint
+    also mirrors the small config-asset plan and write loop
+  - desired upstream behavior:
+    downstream packages should be able to customize slide block rendering, or
+    provide an already-rendered slide body, while reusing the upstream
+    `slidesMain` asset validation and output writer
+  - removable Blueprint code:
+    local `SlideAssetPayload`, `recordSlideAsset`, `collectSlideAssets`, and
+    the copied `slidesMain` output loop in `VersoBlueprint.Slides`
 
 - [ ] Decide whether page-level KaTeX preludes belong in core `verso`.
   - current Blueprint workaround:

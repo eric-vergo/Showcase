@@ -386,28 +386,18 @@ private structure PlaceholderConfig where
   compact : Bool := false
   siteBase? : Option String := none
 
-private def unescapeAttr (value : String) : String :=
-  value
-    |>.replace "&quot;" "\""
-    |>.replace "&amp;" "&"
+private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
+  (attrs.find? fun attr => attr.1 == name).map (·.2)
 
-private def attrValue? (tag name : String) : Option String :=
-  match tag.splitOn (name ++ "=\"") with
-  | _ :: valueAndMore :: _ =>
-    match valueAndMore.splitOn "\"" with
-    | value :: _ => some (unescapeAttr value)
-    | _ => none
-  | _ => none
-
-private def placeholderConfig? (tag : String) : Option PlaceholderConfig := do
-  let marker ← attrValue? tag slideNodeMarkerAttr
+private def placeholderConfigFromAttrs? (attrs : Array (String × String)) : Option PlaceholderConfig := do
+  let marker ← attrValue? attrs slideNodeMarkerAttr
   guard (marker == slideNodeMarkerValue)
-  let label ← attrValue? tag "data-bp-label"
-  let facet := attrValue? tag "data-bp-facet" |>.getD "statement"
-  let key := attrValue? tag "data-bp-preview-key" |>.getD s!"{label}--{facet}"
-  let title? := attrValue? tag "data-bp-title"
-  let compact := attrValue? tag "data-bp-compact" == some "true"
-  let siteBase? := attrValue? tag "data-bp-site-base"
+  let label ← attrValue? attrs "data-bp-label"
+  let facet := attrValue? attrs "data-bp-facet" |>.getD "statement"
+  let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
+  let title? := attrValue? attrs "data-bp-title"
+  let compact := attrValue? attrs "data-bp-compact" == some "true"
+  let siteBase? := attrValue? attrs "data-bp-site-base"
   some { label, facet, key, title?, compact, siteBase? }
 
 private def renderedNodeAttrs (cfg : PlaceholderConfig) : Array (String × String) :=
@@ -439,37 +429,14 @@ private def renderPlaceholder (manifest? : Option Informal.PreviewManifest.File)
         (renderEntryShell manifest entry cfg.title? cfg.siteBase? cfg.compact)
 
 /--
-Replace the first generated placeholder emitted by `blueprint_node`.
-
-Verso Slides does not expose a raw-HTML block extension, so the slide wrapper
-post-processes the deterministic `<div ... data-bp-blueprint-node="true">`
-shape that this package emits. The placeholder body is a simple fallback
-paragraph, so the first closing `</div>` belongs to the placeholder itself.
+Render a Blueprint slide node from the structured attributes carried by the
+`VersoSlides.BlockExt.wrap` emitted by `blueprint_node`.
 -/
-private def replaceFirstPlaceholder? (manifest? : Option Informal.PreviewManifest.File)
-    (html : String) : Option String := do
-  let marker := s!"{slideNodeMarkerAttr}=\"{slideNodeMarkerValue}\""
-  let beforeMarker :: afterMarker :: _ := html.splitOn marker
-    | none
-  let beforeParts := beforeMarker.splitOn "<div"
-  let startTagLeft ← beforeParts.getLast?
-  let beforeStart := String.intercalate "<div" beforeParts.dropLast
-  let afterStartParts := afterMarker.splitOn ">"
-  let startTagRight ← afterStartParts.head?
-  let afterStart := String.intercalate ">" (afterStartParts.drop 1)
-  let tag := "<div" ++ startTagLeft ++ marker ++ startTagRight ++ ">"
-  let cfg ← placeholderConfig? tag
-  let afterEndParts := afterStart.splitOn "</div>"
-  let _placeholderBody ← afterEndParts.head?
-  let afterEnd := String.intercalate "</div>" (afterEndParts.drop 1)
-  let rendered := (renderPlaceholder manifest? cfg).asString
-  some (beforeStart ++ rendered ++ afterEnd)
-
-partial def renderBlueprintSlideNodesInHtml
-    (manifest? : Option Informal.PreviewManifest.File) (html : String) : String :=
-  match replaceFirstPlaceholder? manifest? html with
-  | none => html
-  | some html' => renderBlueprintSlideNodesInHtml manifest? html'
+public def renderBlueprintSlideNodeFromAttrs?
+    (manifest? : Option Informal.PreviewManifest.File)
+    (attrs : Array (String × String)) : Option Html := do
+  let cfg ← placeholderConfigFromAttrs? attrs
+  some (renderPlaceholder manifest? cfg)
 
 def readBlueprintPreviewManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File := do
@@ -480,11 +447,5 @@ def readBlueprintPreviewManifest (path : System.FilePath) :
   match fromJson? (α := Informal.PreviewManifest.File) json with
   | .ok file => pure file
   | .error err => throw <| IO.userError s!"could not decode Blueprint preview manifest {path}: {err}"
-
-def renderBlueprintSlideNodesInFile
-    (indexPath : System.FilePath)
-    (manifest? : Option Informal.PreviewManifest.File) : IO Unit := do
-  let html ← IO.FS.readFile indexPath
-  IO.FS.writeFile indexPath (renderBlueprintSlideNodesInHtml manifest? html)
 
 end Informal.Slides

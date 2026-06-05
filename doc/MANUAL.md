@@ -642,7 +642,7 @@ def main : IO UInt32 :=
 ```
 
 This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
-placeholders into static slide HTML from the provided manifest, writes the slide
+blocks into static slide HTML from the provided manifest, writes the slide
 interaction JavaScript file, and optionally copies the same manifest to the deck
 output at `-verso-data/blueprint-preview-manifest.json` so related-entry and
 Lean-code hover previews can load their bodies.
