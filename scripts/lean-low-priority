@@ -13,11 +13,20 @@ niceness="${BP_LEAN_NICENESS:-10}"
 # parallelism. Keep the throttle specific to the GitHub reference workflow so
 # ordinary local builds and user-invoked wrapper calls retain Lake's defaults.
 if [[ "${GITHUB_WORKFLOW:-}" == "Reference Blueprints" && "$1" == "lake" ]]; then
-  lake_threads="${BP_LAKE_THREADS:-2}"
+  lake_threads="${BP_LAKE_THREADS:-1}"
+  lean_threads="${BP_LEAN_THREADS:-$lake_threads}"
+  command_args=("lake")
   if [[ -n "$lake_threads" ]]; then
-    command_args=("lake" "-Kthreads=$lake_threads" "${@:2}")
+    command_args+=("-Kthreads=$lake_threads")
+  fi
+  if [[ "${2:-}" == "env" && "${3:-}" == "lean" ]]; then
+    command_args+=("env" "lean")
+    if [[ -n "$lean_threads" ]]; then
+      command_args+=("-Dweak.threads=$lean_threads")
+    fi
+    command_args+=("${@:4}")
   else
-    command_args=("$@")
+    command_args+=("${@:2}")
   fi
 else
   command_args=("$@")
