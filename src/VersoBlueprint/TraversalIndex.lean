@@ -12,6 +12,15 @@ import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 
+/-!
+Typed accessors for Blueprint's traversal-time stores.
+
+Verso traversal domains are flexible, but raw domain names and JSON payloads are
+easy to misuse. This module is the small typed facade used by renderers and
+traversal hooks. Each namespace names one store and exposes only the operations
+callers should need.
+-/
+
 namespace Informal.TraversalIndex
 
 open Lean
@@ -233,6 +242,30 @@ def object? (state : TraverseState) (targetKey : String) : Option Verso.Multi.Ob
 
 def href? (state : TraverseState) (label decl : Name) : Option String :=
   Resolve.resolveRenderedExternalDeclHref? state label decl
+
+/-- HTML `id` attributes for a registered rendered external-declaration row. -/
+def htmlIdAttrs (state : TraverseState) (label decl : Name) : Array (String × String) :=
+  match object? state (key label decl) with
+  | none => #[]
+  | some obj =>
+    match obj.ids.toArray[0]? with
+    | some targetId => state.htmlId targetId
+    | none => #[]
+
+/--
+HTML `id` attributes for an external reference row.
+
+Rendered external-declaration rows are keyed by canonical declaration names.
+The written-name fallback keeps links stable for older traversal objects that
+were stored before canonicalization became the convention.
+-/
+def refHtmlIdAttrs (state : TraverseState) (label : Name)
+    (decl : Informal.Data.ExternalRef) : Array (String × String) :=
+  let canonicalAttrs := htmlIdAttrs state label decl.canonical
+  if canonicalAttrs.isEmpty then
+    htmlIdAttrs state label decl.written
+  else
+    canonicalAttrs
 
 def saveId
     (state : TraverseState) (targetKey : String) (id : Verso.Multi.InternalId) : TraverseState :=

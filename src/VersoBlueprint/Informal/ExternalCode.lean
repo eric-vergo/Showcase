@@ -12,6 +12,15 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.LeanNameParsing
 
+/-!
+Parsing and rendering support for external Lean declarations attached to an
+informal block.
+
+Directive authors write names with `(lean := "...")`. This module turns those
+names into stable external references during elaboration, then renders the
+shared external-code panel and hover-preview rows during HTML generation.
+-/
+
 namespace Informal
 
 /--
@@ -124,6 +133,33 @@ private structure LinkedExternalDecl where
   decl : Data.ExternalRef
   href : Option String := none
   anchorAttrs : Array (String × String) := #[]
+
+/--
+Resolve the row link for an external reference.
+
+For present declarations we prefer the canonical Lean name, but fall back to the
+written name so older data and unresolved names still produce the best available
+link. Missing declarations only have the written name to try.
+-/
+private def externalRefHref?
+    (getDeclHref : Name → Option String) (decl : Data.ExternalRef) : Option String :=
+  if decl.present then
+    match getDeclHref decl.canonical with
+    | some href => some href
+    | none => getDeclHref decl.written
+  else
+    getDeclHref decl.written
+
+/-- Build the small render model used by both preview and panel rows. -/
+private def linkedExternalDecl
+    (getDeclHref : Name → Option String)
+    (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String))
+    (decl : Data.ExternalRef) : LinkedExternalDecl :=
+  {
+    decl
+    href := externalRefHref? getDeclHref decl
+    anchorAttrs := getDeclAnchorAttrs decl
+  }
 
 private def externalDeclSorryLocation (decl : LinkedExternalDecl) : String :=
   if decl.decl.present then
@@ -300,15 +336,7 @@ def renderPreviewHtml
   if externalDecls.isEmpty then
     .empty
   else
-    let linkedDecls := externalDecls.map fun decl =>
-      let href :=
-        if decl.present then
-          match getDeclHref decl.canonical with
-          | some href => some href
-          | none => getDeclHref decl.written
-        else
-          getDeclHref decl.written
-      { decl, href }
+    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref (fun _ => #[]))
     {{
       <ul class="bp_code_hover_list bp_external_decl_list">
         {{.seq <| linkedDecls.map (renderExternalDeclRow ∘ externalDeclRowData)}}
@@ -329,15 +357,7 @@ def renderParts (panelHeader : CodePanelHeader)
   if externalDecls.isEmpty then
     {}
   else
-    let linkedDecls := externalDecls.map fun decl =>
-      let href :=
-        if decl.present then
-          match getDeclHref decl.canonical with
-          | some href => some href
-          | none => getDeclHref decl.written
-        else
-          getDeclHref decl.written
-      { decl, href, anchorAttrs := getDeclAnchorAttrs decl }
+    let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let externalCodePanel : Output.Html :=
       mkCodePanel panelHeader summaryTitle indicator
         {{<ul class="bp_code_hover_list bp_external_decl_list">

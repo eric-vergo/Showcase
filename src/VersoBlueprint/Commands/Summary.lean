@@ -1696,9 +1696,7 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
     let ctx : SummaryHtmlContext := {
       entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
       declHref? := fun label decl =>
-        match Resolve.resolveRenderedExternalDeclHref? s label decl with
-        | Option.some href => Option.some href
-        | Option.none => Resolve.resolveInlineLeanDeclHref? s decl
+        Resolve.resolveInformalDeclHref? s label decl
       previewLookupKey? := fun label => previewLookupKeys.get? label
     }
     let previewUi := Informal.HoverRender.summaryPreviewUi
