@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import Std.Data.HashMap
 import VersoSlides
 import Verso.Doc.ArgParse
 import Verso.Doc.Elab
@@ -845,6 +846,123 @@ private def writeFileWithDirs (path : System.FilePath) (content : String) : IO U
     IO.FS.createDirAll dir
   IO.FS.writeFile path content
 
+private def writeBinFileWithDirs (path : System.FilePath) (content : ByteArray) : IO Unit := do
+  let dir := path.parent.getD "."
+  if !(← dir.pathExists) then
+    IO.FS.createDirAll dir
+  IO.FS.writeBinFile path content
+
+private inductive SlideAssetPayload where
+  | text (body : String)
+  | binary (bytes : ByteArray)
+
+private def SlideAssetPayload.equal : SlideAssetPayload → SlideAssetPayload → Bool
+  | .text a, .text b => a == b
+  | .binary a, .binary b => a == b
+  | _, _ => false
+
+private def SlideAssetPayload.kind : SlideAssetPayload → String
+  | .text _ => "text"
+  | .binary _ => "binary"
+
+private def recordSlideAsset
+    (seen : Std.HashMap String (String × SlideAssetPayload))
+    (filename source : String) (payload : SlideAssetPayload) :
+    IO (Std.HashMap String (String × SlideAssetPayload)) := do
+  match seen.get? filename with
+  | none => pure <| seen.insert filename (source, payload)
+  | some (prevSource, prev) =>
+    if prev.equal payload then
+      pure seen
+    else
+      throw <| IO.userError
+        s!"Filename collision in config: \"{filename}\" is claimed by {prevSource} ({prev.kind}) and {source} ({payload.kind}) with different contents."
+
+private def collectSlideAssets (config : VersoSlides.Config) :
+    IO (Std.HashMap String (String × SlideAssetPayload)) := do
+  let mut seen : Std.HashMap String (String × SlideAssetPayload) := {}
+  if let .custom theme := config.theme then
+    seen ← recordSlideAsset seen theme.stylesheet.filename
+      "theme stylesheet" (.text theme.stylesheet.contents.css)
+    for asset in theme.assets do
+      seen ← recordSlideAsset seen asset.filename
+        "theme asset" (.binary asset.contents)
+  seen ← recordSlideAsset seen config.highlightTheme.filename
+    "highlight.js theme" (.text config.highlightTheme.contents.css)
+  for css in config.extraCss do
+    seen ← recordSlideAsset seen css.filename
+      "extraCss" (.text css.contents.css)
+  pure seen
+
+@[reducible] private def defaultSlidesGenreHtml :
+    Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
+  inferInstance
+
+@[reducible] private def blueprintSlidesGenreHtml
+    (manifest? : Option Informal.PreviewManifest.File) :
+    Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
+  { defaultSlidesGenreHtml with
+    block := fun inlineHtml blockHtml container contents => do
+      match container with
+      | .wrap attrs =>
+        match renderBlueprintSlideNodeFromAttrs? manifest? attrs with
+        | some html => pure html
+        | none => defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
+      | _ =>
+        defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
+  }
+
+private def slidesMainWithBlueprintRenderer
+    (config : VersoSlides.Config)
+    (manifest? : Option Informal.PreviewManifest.File)
+    (doc : Verso.Doc.Part VersoSlides.Slides)
+    (quiet : Bool := false) : IO UInt32 := do
+  let assetPlan ← collectSlideAssets config
+  let hasError ← IO.mkRef false
+  let logError (msg : String) : IO Unit := do
+    hasError.set true
+    IO.eprintln msg
+  let (doc, traverseState) ←
+    (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
+  let ctx : Verso.Doc.Html.HtmlT.Context VersoSlides.Slides IO := {
+    options := { logError := logError }
+    traverseContext := ()
+    traverseState := traverseState
+    definitionIds := {}
+    linkTargets := {}
+    codeOptions := {}
+  }
+  let (slidesHtml, hoverState) ←
+    (let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
+        blueprintSlidesGenreHtml manifest?
+     (VersoSlides.renderDocument config doc).run ctx |>.run {})
+  let title := VersoSlides.inlinesToPlainText doc.title
+  let fullHtml := VersoSlides.renderFullHtml config title slidesHtml traverseState.cssBlocks
+  let dir := config.outputDir
+  if !(← dir.pathExists) then
+    IO.FS.createDirAll dir
+  let indexPath := dir / "index.html"
+  IO.FS.writeFile indexPath ("<!doctype html>\n" ++ fullHtml.asString)
+  IO.FS.writeFile (dir / "-verso-docs.json") (toString hoverState.dedup.docJson)
+  VersoSlides.writeVendoredAssets dir config.theme
+  for (filename, _source, payload) in assetPlan.toList do
+    match payload with
+    | .text body => writeFileWithDirs (dir / filename) body
+    | .binary bytes => writeBinFileWithDirs (dir / filename) bytes
+  if !traverseState.imageFiles.isEmpty then
+    let imagesDir := dir / "images"
+    IO.FS.createDirAll imagesDir
+    for (resolved, outputName) in traverseState.imageFiles.toList do
+      let contents ← IO.FS.readBinFile resolved
+      writeBinFileWithDirs (imagesDir / outputName) contents
+  unless quiet do
+    IO.println s!"Slides written to {indexPath}"
+  if ← hasError.get then
+    IO.eprintln "Errors were encountered!"
+    pure 1
+  else
+    pure 0
+
 /-- Add the Blueprint slide CSS/JS assets to a Verso Slides config. -/
 public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
   { config with
@@ -868,19 +986,21 @@ public def copyBlueprintPreviewManifest
 /--
 Generate a slide deck with Blueprint preview-node assets enabled.
 
-When `previewManifest?` is provided, the manifest is copied to the deck's
+When `previewManifest?` is provided, the manifest is read during slide
+generation so `{blueprint_node}` blocks render as static Blueprint shells. The
+same manifest is also copied to the deck's
 `-verso-data/blueprint-preview-manifest.json` path after the deck is written.
 -/
 public def slidesMainWithBlueprintPreviews
     (config : VersoSlides.Config := {})
     (previewManifest? : Option System.FilePath := none)
-    (doc : Verso.Doc.Part VersoSlides.Slides) : IO UInt32 := do
+    (doc : Verso.Doc.Part VersoSlides.Slides)
+    (quiet : Bool := false) : IO UInt32 := do
   let config := withBlueprintSlidesAssets config
-  let rc ← VersoSlides.slidesMain config doc
+  let manifest? ← previewManifest?.mapM readBlueprintPreviewManifest
+  let rc ← slidesMainWithBlueprintRenderer config manifest? doc (quiet := quiet)
   if rc == 0 then
-    let manifest? ← previewManifest?.mapM readBlueprintPreviewManifest
     writeBlueprintSlidesJs config.outputDir
-    renderBlueprintSlideNodesInFile (config.outputDir / "index.html") manifest?
     if let some previewManifest := previewManifest? then
       copyBlueprintPreviewManifest config.outputDir previewManifest
   pure rc

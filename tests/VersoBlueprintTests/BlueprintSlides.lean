@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import Init.Data.Random
 import VersoBlueprint.Slides
 import Verso.Doc.Concrete
 import VersoBlueprintTests.Blueprint.Support
@@ -30,6 +31,30 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 {blueprint_node "def:code.preview" (siteBase := "blueprint")}
 :::::::
 
+private def blueprintNodeAttrs (label key : String) : Array (String × String) :=
+  Informal.Slides.blueprintSlideNodeMarkerAttrs ++ #[
+    ("class", "bp_slide_node"),
+    ("data-bp-label", label),
+    ("data-bp-facet", "statement"),
+    ("data-bp-preview-key", key),
+    ("data-bp-compact", "false"),
+    ("data-bp-site-base", "blueprint")
+  ]
+
+private def dummySlidesCss (filename body : String) : VersoSlides.CssFile where
+  filename
+  contents := ⟨body⟩
+
+private partial def freshSlidesSmokeRoot : IO System.FilePath := do
+  let suffix ← IO.rand 0 1000000000000
+  let root :=
+    System.FilePath.mk ".lake" / "build" / "tmp" /
+      "verso-blueprint-slides-smoke-test" / toString suffix
+  if ← root.pathExists then
+    freshSlidesSmokeRoot
+  else
+    pure root
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -52,6 +77,26 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     cfg.extraJs.contains Informal.Slides.blueprintSlidesJsFilename &&
     cfgAgain.extraCss.size == cfg.extraCss.size &&
     cfgAgain.extraJs.size == cfg.extraJs.size
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    try
+      let _ ← Informal.Slides.slidesMainWithBlueprintPreviews
+        { outputDir := ".lake/build/tmp/verso-blueprint-slides-config-collision",
+          extraCss := #[dummySlidesCss "dup.css" "one", dummySlidesCss "dup.css" "two"] }
+        (previewManifest? := none)
+        staticBlueprintNodeSlideFixture.toPart
+        (quiet := true)
+      pure false
+    catch ex =>
+      let msg := toString ex
+      pure <|
+        hasSubstr msg "Filename collision in config" &&
+          hasSubstr msg "dup.css" &&
+          hasSubstr msg "extraCss" &&
+          hasSubstr msg "text"
 
 /-- info: true -/
 #guard_msgs in
@@ -91,12 +136,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
-    let placeholder :=
-      "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
-      "data-bp-label=\"def:code.preview\" data-bp-facet=\"statement\" " ++
-      s!"data-bp-preview-key=\"{key}\" data-bp-compact=\"false\" " ++
-      "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:code.preview...</p></div>"
-    let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
+    let some renderedHtml :=
+      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
+        (blueprintNodeAttrs "def:code.preview" key)
+      | return false
+    let rendered := renderedHtml.asString
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
         hasSubstr rendered "bp_slide_node_blueprint" &&
@@ -128,12 +172,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         entry.usedBy.size == 1 &&
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
-    let placeholder :=
-      "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
-      "data-bp-label=\"def:group.target\" data-bp-facet=\"statement\" " ++
-      s!"data-bp-preview-key=\"{key}\" data-bp-compact=\"false\" " ++
-      "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:group.target...</p></div>"
-    let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
+    let some renderedHtml :=
+      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
+        (blueprintNodeAttrs "def:group.target" key)
+      | return false
+    let rendered := renderedHtml.asString
     pure <|
       groupManifestOk &&
         usedByManifestOk &&
@@ -158,12 +201,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
-    let placeholder :=
-      "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
-      "data-bp-label=\"def:group.missing.target\" data-bp-facet=\"statement\" " ++
-      s!"data-bp-preview-key=\"{key}\" data-bp-compact=\"false\" " ++
-      "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:group.missing.target...</p></div>"
-    let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
+    let some renderedHtml :=
+      Informal.Slides.renderBlueprintSlideNodeFromAttrs? (some file)
+        (blueprintNodeAttrs "def:group.missing.target" key)
+      | return false
+    let rendered := renderedHtml.asString
     pure <|
       groupManifestOk &&
         hasSubstr rendered "bp_extra_slot_group" &&
@@ -171,33 +213,26 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
         hasSubstr rendered "Undeclared group"
 
-/--
-info: Slides written to /tmp/verso-blueprint-slides-smoke-test/slides/index.html
----
-info: true
--/
+/-- info: true -/
 #guard_msgs in
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
-    let root := System.FilePath.mk "/tmp/verso-blueprint-slides-smoke-test"
+    let root ← freshSlidesSmokeRoot
     let outDir := root / "slides"
     let manifestPath := root / Informal.PreviewManifest.manifestFilename
     if !(← root.pathExists) then
       IO.FS.createDirAll root
-    let indexPath := outDir / "index.html"
-    if ← indexPath.pathExists then
-      IO.FS.removeFile indexPath
-    if ← manifestPath.pathExists then
-      IO.FS.removeFile manifestPath
     IO.FS.writeFile manifestPath (Lean.toJson file).compress
     let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
       { outputDir := outDir }
       (previewManifest? := some manifestPath)
       staticBlueprintNodeSlideFixture.toPart
+      (quiet := true)
     if rc != 0 then
       return false
+    let indexPath := outDir / "index.html"
     if !(← indexPath.pathExists) then
       return false
     let index ← IO.FS.readFile indexPath
