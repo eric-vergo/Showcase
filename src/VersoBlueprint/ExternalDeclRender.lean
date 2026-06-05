@@ -49,10 +49,11 @@ deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
 /--
 Rendered external declaration HTML in both forms needed by Blueprint.
 
-`html` is the compact page form: it uses Blueprint-local hover ids and carries
-hover bodies separately in `hoverPayloads`, allowing the final page renderer to
-deduplicate repeated declaration hovers. `selfContainedHtml` is the standalone
-form used by preview and manifest paths that are rendered without page state.
+`html` is a compact template: it uses Blueprint-local hover ids, carries hover
+bodies separately in `hoverPayloads`, and contains a tiny marker where the
+standalone hover body should be reinserted. The final page renderer rewrites the
+local ids into Verso page hover ids and removes the markers; preview and
+manifest paths inline the payloads at the markers to recover standalone HTML.
 
 The local ids in `html` are not stable semantic ids. They are only positions in
 the isolated highlighted-code hover table produced while rendering this snippet.
@@ -61,12 +62,27 @@ The page renderer must therefore translate them before emitting normal
 -/
 structure ExternalDeclRenderedHtml where
   html : String
-  selfContainedHtml : String
   hoverPayloads : Array ExternalDeclHoverPayload
 deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
 
+def externalDeclHoverLocalAttrName : String := "data-bp-external-hover-local"
+
+def externalDeclHoverInlineMarkerAttrName : String := "data-bp-external-hover-inline-local"
+
+def externalDeclHoverLocalAttr (localId : Nat) : String :=
+  s!"{externalDeclHoverLocalAttrName}=\"{localId}\""
+
+def externalDeclHoverInlineMarker (localId : Nat) : String :=
+  s!"<span {externalDeclHoverInlineMarkerAttrName}=\"{localId}\"></span>"
+
 def ExternalDeclRenderedHtml.selfContained (rendered : ExternalDeclRenderedHtml) : String :=
-  rendered.selfContainedHtml
+  rendered.hoverPayloads.foldl
+    (init := rendered.html)
+    (fun html payload =>
+      html
+        |>.replace (externalDeclHoverLocalAttr payload.localId) ""
+        |>.replace (externalDeclHoverInlineMarker payload.localId)
+          s!"<span class=\"hover-info\">{payload.html}</span>")
 
 abbrev ExternalDeclRenderResult := Except ExternalDeclRenderError ExternalDeclRenderedHtml
 
@@ -88,30 +104,30 @@ private def runHighlightedHtml
   set hoverState
   pure html
 
-private def inlineVersoHoverAttrs
+private def templateVersoHoverAttrs
     (html : ExternalDeclHtml) (hoverDedup : Verso.Code.Hover.Dedup ExternalDeclHtml) :
     ExternalDeclHtml :=
   Id.run <|
     html.visitM (tag := fun name attrs contents => do
-      let mut inlineHover? : Option ExternalDeclHtml := none
+      let mut marker? : Option Nat := none
       let mut attrs' : Array (String × String) := #[]
-      for (attr, value) in attrs do
-        if attr == "data-verso-hover" then
-          inlineHover? := value.toNat? >>= hoverDedup.get?
-        else
-          attrs' := attrs'.push (attr, value)
+      for attr in attrs do
+        match attr with
+        | ("data-verso-hover", value) =>
+            match value.toNat? with
+            | some localId =>
+                if (hoverDedup.get? localId).isSome then
+                  marker? := some localId
+                  attrs' := attrs'.push (externalDeclHoverLocalAttrName, value)
+                else
+                  attrs' := attrs'.push attr
+            | none => attrs' := attrs'.push attr
+        | attr => attrs' := attrs'.push attr
       let contents :=
-        match inlineHover? with
-        | some hoverHtml => contents ++ .tag "span" #[("class", "hover-info")] hoverHtml
+        match marker? with
+        | some localId =>
+            contents ++ .tag "span" #[(externalDeclHoverInlineMarkerAttrName, toString localId)] .empty
         | none => contents
-      pure <| some <| .tag name attrs' contents)
-
-private def localizeVersoHoverAttrs (html : ExternalDeclHtml) : ExternalDeclHtml :=
-  Id.run <|
-    html.visitM (tag := fun name attrs contents => do
-      let attrs' := attrs.map fun
-        | ("data-verso-hover", value) => ("data-bp-external-hover-local", value)
-        | attr => attr
       pure <| some <| .tag name attrs' contents)
 
 private def hoverPayloads
@@ -123,10 +139,12 @@ private def hoverPayloads
 /--
 Run isolated highlighted-code rendering and preserve both useful outcomes.
 
-The compact result is what normal pages should use: hover references are kept as
-local ids so repeated payloads can be registered once in the page hover table.
-The self-contained result is intentionally still available for snippet previews,
-where there is no surrounding page table to consult.
+The compact template is what normal pages should use: hover references are kept
+as local ids so repeated payloads can be registered once in the page hover
+table. The same template also reconstructs self-contained snippets for previews,
+where there is no surrounding page table to consult. Keeping one template avoids
+holding both full HTML forms for every external declaration while a large
+blueprint page is generated.
 
 We do not assign final Verso hover ids here because there is no final page
 `Html.State` yet. Assigning stable ids would require a separate Blueprint hover
@@ -137,8 +155,7 @@ private def renderWithHoverPayloads
     (html : ExternalDeclHighlightRender ExternalDeclHtml) : ExternalDeclRenderedHtml :=
   let (html, hoverState) := html.run {}
   {
-    html := (localizeVersoHoverAttrs html).asString
-    selfContainedHtml := (inlineVersoHoverAttrs html hoverState.dedup).asString
+    html := (templateVersoHoverAttrs html hoverState.dedup).asString
     hoverPayloads := hoverPayloads hoverState.dedup
   }
 
