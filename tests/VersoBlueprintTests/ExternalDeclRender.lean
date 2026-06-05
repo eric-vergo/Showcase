@@ -182,9 +182,11 @@ private def htmlTestContext :
         rendered.hoverPayloads.size > 0 &&
         rendered.hoverPayloads.any (fun payload => payload.html.contains "class=\"docstring\"") &&
         rendered.html.contains "data-bp-external-hover-local=\"" &&
+        rendered.html.contains "data-bp-external-hover-inline-local=\"" &&
         !rendered.html.contains "class=\"hover-info\"" &&
         rendered.selfContained.contains "class=\"hover-info\"" &&
-        !rendered.selfContained.contains "data-bp-external-hover-local="
+        !rendered.selfContained.contains "data-bp-external-hover-local=" &&
+        !rendered.selfContained.contains "data-bp-external-hover-inline-local="
     | .error _ => pure false
 
 /-- info: true -/
@@ -217,9 +219,11 @@ private def htmlTestContext :
       hoverState.dedup.contentId.size == payloadCount &&
       pageHtml.contains "data-verso-hover=\"" &&
       !pageHtml.contains "data-bp-external-hover-local=\"" &&
+      !pageHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !pageHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
-      !previewHtml.contains "data-bp-external-hover-local=\""
+      !previewHtml.contains "data-bp-external-hover-local=\"" &&
+      !previewHtml.contains "data-bp-external-hover-inline-local=\""
 
 /-- info: true -/
 #guard_msgs in

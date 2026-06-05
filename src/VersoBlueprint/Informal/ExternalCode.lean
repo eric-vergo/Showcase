@@ -300,12 +300,12 @@ Verso's normal dedup table before the page id is emitted.
 private def renderedHtmlWithPageHovers [Monad m]
     (renderedHtml : ExternalDeclRenderedHtml) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m String := do
-  let replacements ← renderedHtml.hoverPayloads.mapM fun payload => do
+  let mut html := renderedHtml.html
+  for payload in renderedHtml.hoverPayloads do
     let pageId ← registerPageHoverPayload payload
-    pure (s!"data-bp-external-hover-local=\"{payload.localId}\"", s!"data-verso-hover=\"{pageId}\"")
-  return replacements.foldl
-    (fun html replacement => html.replace replacement.1 replacement.2)
-    renderedHtml.html
+    html := html.replace (externalDeclHoverLocalAttr payload.localId) s!"data-verso-hover=\"{pageId}\""
+    html := html.replace (externalDeclHoverInlineMarker payload.localId) ""
+  return html
 
 private def externalDeclRenderedWithPageHovers [Monad m]
     (item : LinkedExternalDecl) :
