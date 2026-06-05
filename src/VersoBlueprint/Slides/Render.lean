@@ -61,12 +61,6 @@ private def resolveBlueprintHref (href : Option String) (baseUrl : Option String
 private def nameString (name : Name) : String :=
   name.toString
 
-private def containsName (values : Array Name) (label : Name) : Bool :=
-  values.any (· == label)
-
-private def statementPreviewKey (label : Name) : String :=
-  Informal.PreviewCache.key label .statement
-
 private def safePreviewId (idPrefix value : String) : String :=
   let trimHyphens (s : String) : String :=
     String.ofList <| (s.toList.dropWhile (· == '-')).reverse.dropWhile (· == '-') |>.reverse
@@ -99,121 +93,37 @@ private def splitDisplayTitle (entry : Informal.PreviewManifest.Entry) (titleOve
       let label := String.intercalate " " rest
       if label.isEmpty then (kindText, first, title) else (first, label, title)
 
-private def entryIsBlockStatement (entry : Informal.PreviewManifest.Entry) : Bool :=
-  match entry.targetKind, entry.facet with
-  | .block, .statement => true
-  | _, _ => false
-
-private def entryByStatementLabel? (manifest : Informal.PreviewManifest.File) (label : Name) :
-    Option Informal.PreviewManifest.Entry :=
-  manifest.previews.find? fun entry =>
-    entryIsBlockStatement entry && entry.label == label
-
-private def dependencyAxis (entry : Informal.PreviewManifest.Entry) (label : Name) : Option String :=
-  let inStatement := containsName entry.statementDeps label
-  let inProof := containsName entry.proofDeps label
-  match inStatement, inProof with
-  | true, true => some "statement, proof"
-  | false, true => some "proof"
-  | true, false => some "statement"
-  | false, false => none
-
-private structure PanelItem where
-  label : Name
-  title : String
-  href : Option String := none
-  key : String
-  axis : Option String := none
-
-private def uniquePanelItems (items : Array PanelItem) : Array PanelItem :=
-  let items := items.foldl
-    (fun acc item =>
-      if acc.any (fun existing => existing.label == item.label || existing.key == item.key) then
-        acc
-      else
-        acc.push item)
-    #[]
-  items.qsort fun a b =>
-    if a.title == b.title then nameString a.label < nameString b.label else a.title < b.title
-
-private def dependencyEntries (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) : Array PanelItem :=
-  let labels := (entry.statementDeps ++ entry.proofDeps).foldl
-    (fun acc label => if acc.contains label then acc else acc.push label)
-    #[]
-  uniquePanelItems <| labels.map fun label =>
-    let manifestEntry? := entryByStatementLabel? manifest label
-    {
-      label
-      title := manifestEntry?.map (·.title) |>.getD (nameString label)
-      href := manifestEntry?.bind (·.href)
-      key := statementPreviewKey label
-      axis := dependencyAxis entry label
-    }
-
-private def usedByEntries (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) : Array PanelItem :=
-  uniquePanelItems <| manifest.previews.filterMap fun candidate =>
-    if !entryIsBlockStatement candidate || candidate.label == entry.label then
-      none
-    else
-      dependencyAxis candidate entry.label |>.map fun axis =>
-        {
-          label := candidate.label
-          title := candidate.title
-          href := candidate.href
-          key := statementPreviewKey candidate.label
-          axis := some axis
-        }
-
-private def groupEntries (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) : Array PanelItem :=
-  match entry.parent with
-  | none => #[]
-  | some parent =>
-    uniquePanelItems <| manifest.previews.filterMap fun candidate =>
-      if entryIsBlockStatement candidate && candidate.parent == some parent then
-        some {
-          label := candidate.label
-          title := candidate.title
-          href := candidate.href
-          key := statementPreviewKey candidate.label
-        }
-      else
-        none
-
 private def codeEntries (manifest : Informal.PreviewManifest.File)
     (entry : Informal.PreviewManifest.Entry) : Array Informal.PreviewManifest.Entry :=
   entry.leanCodePreviewKeys.filterMap fun key =>
     manifest.previews.find? fun candidate => candidate.key == key
 
-private def panelEntry (item : PanelItem) (currentLabel : Name)
+private def axisBadge (axis : Informal.PreviewManifest.RelationAxis) : Html :=
+  {{<span class="bp_used_by_axis_badge">{{Html.ofString axis.display}}</span>}}
+
+private def panelEntry (item : Informal.PreviewManifest.RelatedEntry) (currentLabel : Name)
     (idPrefix : String) (baseUrl : Option String) : Informal.RelatedPanel.PanelEntry :=
   let label := nameString item.label
   let title := if item.title.trimAscii.toString.isEmpty then label else item.title
   let href := resolveBlueprintHref item.href baseUrl
-  let previewId := safePreviewId idPrefix (if label.isEmpty then item.key else label)
-  let axisBadge : Html :=
-    match item.axis with
-    | some axis =>
-      {{<span class="bp_used_by_axis_badge">{{Html.ofString axis}}</span>}}
-    | none => .empty
+  let previewId := safePreviewId idPrefix (if label.isEmpty then item.previewKey else label)
   {
     previewId
-    previewKey := item.key
+    previewKey := item.previewKey
     previewTitle := title
     href
-    metaHtml := {{
-      <code>{{Html.ofString (if label.isEmpty then item.key else label)}}</code>
-      {{axisBadge}}
-    }}
-    previewFallbackLabel? := some (if label.isEmpty then item.key else label)
+    metaHtml := .seq <| #[
+      {{<code>{{Html.ofString (if label.isEmpty then item.previewKey else label)}}</code>}}
+    ] ++ item.axes.map axisBadge
+    previewFallbackLabel? := some (if label.isEmpty then item.previewKey else label)
     active := item.label == currentLabel
   }
 
 private def renderSlidePanel (kind chipText chipTitle panelTitle panelMeta : String)
-    (entries : Array PanelItem) (currentLabel : Name) (idPrefix : String)
-    (baseUrl : Option String) : Html :=
+    (entries : Array Informal.PreviewManifest.RelatedEntry) (currentLabel : Name) (idPrefix : String)
+    (baseUrl : Option String)
+    (chipClass : String := "bp_used_by_chip")
+    (emptyChipClass : String := "bp_used_by_chip bp_used_by_chip_empty") : Html :=
   let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix baseUrl
   Informal.RelatedPanel.renderPanel {
     chipText := fun _ => chipText
@@ -221,27 +131,57 @@ private def renderSlidePanel (kind chipText chipTitle panelTitle panelMeta : Str
     singleTitle := fun _ => chipTitle
     panelTitle := fun _ => panelTitle
     panelMeta
+    chipClass
+    emptyChipClass
     wrapClass := "bp_used_by_wrap bp_slide_" ++ kind ++ "_wrap"
     panelAttrs := #[("data-bp-slide-panel", kind)]
     singleMode := .panel
   } panelEntries
 
-private def renderGroupChip (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
-  match entry.parentTitle <|> entry.parent.map nameString with
+private def renderGroupChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+  match entry.group with
   | none => .empty
-  | some title =>
-    let entries := groupEntries manifest entry
+  | some group =>
+    if group.declared && group.entries.isEmpty then
+      .empty
+    else
+    let chipClass :=
+      if group.declared then
+        "bp_used_by_chip"
+      else
+        "bp_used_by_chip bp_used_by_chip_warn"
+    let emptyChipClass :=
+      if group.declared then
+        "bp_used_by_chip bp_used_by_chip_empty"
+      else
+        "bp_used_by_chip bp_used_by_chip_empty bp_used_by_chip_warn"
+    let chipTitle :=
+      if group.entries.isEmpty then
+        if group.declared then
+          s!"Group: {group.title}. No other entries in this group."
+        else
+          s!"Parent group '{group.label}' is referenced here, but no :::group declaration was found."
+      else if group.declared then
+        s!"Other entries in group {group.title}"
+      else
+        s!"Undeclared group '{group.label}'"
+    let panelMeta :=
+      if group.declared then
+        "Hover another entry in this group to preview it."
+      else
+        s!"No :::group declaration was found for parent '{group.label}'; showing entries that share this parent label."
     renderSlidePanel
       "group"
       "group"
-      s!"Other entries in group {title}"
-      s!"Group: {title} ({entries.size})"
-      "Hover another entry in this group to preview it."
-      entries
+      chipTitle
+      s!"Group: {group.title} ({group.entries.size})"
+      panelMeta
+      group.entries
       entry.label
       s!"bp-slide-group-{nameString entry.label}"
       baseUrl
+      (chipClass := chipClass)
+      (emptyChipClass := emptyChipClass)
 
 private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count : Nat) : Html :=
   if count == 0 then
@@ -275,28 +215,24 @@ private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count
       <span class="bp_code_summary_preview_root">{{body}}</span>
     }}
 
-private def renderUsesChip (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
-  let entries := dependencyEntries manifest entry
-  if entries.isEmpty then
+private def renderUsesChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+  if entry.uses.isEmpty then
     .empty
   else
-    let count := entries.size
+    let count := entry.uses.size
     renderSlidePanel
       "uses"
       s!"uses {count}"
       "Statement and proof dependencies"
       s!"Uses {count}"
       "Hover a dependency to preview it."
-      entries
+      entry.uses
       Name.anonymous
       "bp-slide-uses"
       baseUrl
 
-private def renderUsedByChip (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
-  let entries := usedByEntries manifest entry
-  let count := entries.size
+private def renderUsedByChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+  let count := entry.usedBy.size
   if count == 0 then
     {{
       <span class="bp_used_by_chip bp_used_by_chip_empty" title="Reverse dependencies">
@@ -310,17 +246,17 @@ private def renderUsedByChip (manifest : Informal.PreviewManifest.File)
       "Reverse dependencies"
       s!"Used by {count}"
       "Hover a use site to preview it."
-      entries
+      entry.usedBy
       Name.anonymous
       "bp-slide-used-by"
       baseUrl
 
-private def renderExtras (manifest : Informal.PreviewManifest.File)
-    (entry : Informal.PreviewManifest.Entry) (codeCount : Nat) (baseUrl : Option String) : Html :=
-  let group := renderGroupChip manifest entry baseUrl
-  let uses := renderUsesChip manifest entry baseUrl
+private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : Nat)
+    (baseUrl : Option String) : Html :=
+  let group := renderGroupChip entry baseUrl
+  let uses := renderUsesChip entry baseUrl
   let code := renderCodeStatusChip entry codeCount
-  let usedBy := renderUsedByChip manifest entry baseUrl
+  let usedBy := renderUsedByChip entry baseUrl
   Informal.renderStatementHeaderExtras {
     group? := if group == .empty then none else some <| Informal.HeaderExtra.group group
     uses? := if uses == .empty then none else some <| Informal.HeaderExtra.uses uses
@@ -427,7 +363,7 @@ private def renderEntryShell (manifest : Informal.PreviewManifest.File)
     {{
       <div class={{"bp_heading bp_kind_" ++ style.kindCss ++ "_heading " ++ style.headingCss}}>
         {{linkedTitleRow}}
-        {{ if isProof then .empty else renderExtras manifest entry codeEntries.size siteBase? }}
+        {{ if isProof then .empty else renderExtras entry codeEntries.size siteBase? }}
       </div>
     }}
   let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"

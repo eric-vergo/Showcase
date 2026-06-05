@@ -491,6 +491,42 @@ inductive EntryKind where
   | citation
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- Dependency axis for a related informal node. -/
+inductive RelationAxis where
+  | statement
+  | proof
+deriving Inhabited, Repr, BEq, ToJson, FromJson
+
+def RelationAxis.display : RelationAxis → String
+  | .statement => "statement"
+  | .proof => "proof"
+
+/-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
+structure RelatedEntry where
+  /-- Informal label for the related node. -/
+  label : Name
+  /-- Resolved display title for the related node. -/
+  title : String
+  /-- Canonical link target for the related informal node, if available. -/
+  href : Option String := none
+  /-- Shared-preview manifest key for this related node's statement preview. -/
+  previewKey : String
+  /-- Statement/proof dependency axes through which this related node is connected. -/
+  axes : Array RelationAxis := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+/-- Manifest-owned group metadata for an informal node. -/
+structure GroupRelation where
+  /-- Parent/group label. -/
+  label : Name
+  /-- Resolved group title, or the parent label when no group declaration exists. -/
+  title : String
+  /-- Whether a matching `:::group` declaration was present. -/
+  declared : Bool := false
+  /-- Traversal-ordered statement siblings in this group, excluding the current node. -/
+  entries : Array RelatedEntry := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
 structure Entry where
   /-- Composite preview lookup key for this target family. -/
   key : String
@@ -516,6 +552,12 @@ structure Entry where
   proofUses : Array Informal.Data.UseRef := #[]
   /-- Shared-preview manifest keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
+  /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
+  uses : Array RelatedEntry := #[]
+  /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
+  usedBy : Array RelatedEntry := #[]
+  /-- Group declaration status and traversal-ordered sibling statement entries. -/
+  group : Option GroupRelation := none
   /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
   /-- Normalized tags attached to this informal node. -/
@@ -768,12 +810,94 @@ private def blockLeanCodePreviewKeys
     (init := entry.leanCodePreviewKeys)
     (fun keys key => pushUnique keys key)
 
+private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
+  let axes : Array RelationAxis :=
+    if source.statementDeps.contains target then #[.statement] else #[]
+  if source.proofDeps.contains target then axes.push .proof else axes
+
+private def relatedEntryForLabel
+    (state : TraverseState)
+    (label : Name)
+    (axes : Array RelationAxis := #[]) : RelatedEntry :=
+  let blockData? := blockInfo? state label
+  {
+    label
+    title := blockTitle state label .statement blockData?
+    href := blockHref state label
+    previewKey := PreviewCache.key label .statement
+    axes
+  }
+
+private def relatedEntryForBlock
+    (state : TraverseState)
+    (blockData : Informal.BlockData)
+    (axes : Array RelationAxis := #[]) : RelatedEntry :=
+  {
+    label := blockData.label
+    title := blockTitle state blockData.label .statement (some blockData)
+    href := blockHref state blockData.label
+    previewKey := PreviewCache.key blockData.label .statement
+    axes
+  }
+
+private def buildUsesRelations
+    (state : TraverseState)
+    (blockData : Informal.BlockData) : Array RelatedEntry :=
+  let labels := (blockData.statementDeps ++ blockData.proofDeps).foldl
+    (fun acc label => if acc.contains label then acc else acc.push label)
+    #[]
+  labels.map fun label =>
+    relatedEntryForLabel state label (relatedAxes blockData label)
+
+private def buildUsedByRelations
+    (state : TraverseState)
+    (storedBlocks : Array Informal.BlockData)
+    (blockData : Informal.BlockData) : Array RelatedEntry :=
+  storedBlocks.filterMap fun source =>
+    if source.label == blockData.label then
+      none
+    else
+      let axes := relatedAxes source blockData.label
+      if axes.isEmpty then
+        none
+      else
+        some <| relatedEntryForBlock state source axes
+
+private def buildGroupRelation?
+    (state : TraverseState)
+    (storedBlocks : Array Informal.BlockData)
+    (blockData : Informal.BlockData) : Option GroupRelation := do
+  let parent ← blockData.parent
+  let groupData? := Informal.TraversalIndex.Groups.data? state parent
+  let title :=
+    match groupData? with
+    | some groupData =>
+      let header := groupData.header.trimAscii.toString
+      if header.isEmpty then parent.toString else header
+    | none => parent.toString
+  let entries := storedBlocks.filterMap fun source =>
+    if source.label == blockData.label then
+      none
+    else if source.parent == some parent then
+      match source.kind with
+      | .statement _ => some <| relatedEntryForBlock state source
+      | .proof => none
+    else
+      none
+  some {
+    label := parent
+    title
+    declared := groupData?.isSome
+    entries
+  }
+
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO (Array Entry) := do
   let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
     | return #[]
+  let storedBlocks := Informal.collectStoredBlocks state
   let mut entries := #[]
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := PreviewCache.Entry) obj.data with
@@ -801,6 +925,9 @@ private def buildTraversalEntries
         statementUses := blockData?.map (·.statementUses) |>.getD #[]
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
         leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
+        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
+        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+        group := blockData?.bind (buildGroupRelation? state storedBlocks)
         ownerDisplayName := blockData?.bind (·.ownerDisplayName)
         tags := blockData?.map (·.tags) |>.getD #[]
         priority := blockData?.bind (·.priority)
@@ -952,7 +1079,8 @@ private def dumpManifest
 Emit the canonical shared blueprint preview manifest file.
 
 The shared manifest contains:
-- traversal-cached statement/proof previews keyed by `PreviewCache`,
+- traversal-cached statement/proof previews keyed by `PreviewCache`, including
+  uses, reverse uses, and group-panel relation metadata.
 - dedicated Lean-code previews keyed by `Informal.LeanCodePreview`.
 - citation previews keyed by citation label, style, and locator.
 -/

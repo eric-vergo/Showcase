@@ -180,7 +180,9 @@ rather than page-local template bodies:
    identities and blocks during traversal; citation traversal stores citation
    preview payloads under their own manifest keys.
 2. `PreviewManifest.lean` owns the Blueprint generator entry point and renders
-   the shared preview manifest consumed by the generated site.
+   the shared preview manifest consumed by the generated site. It also emits
+   informal-block relationship topology, including uses, reverse uses, and group
+   panel entries, while traversal state is still available.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
    manifest loading, missing-manifest diagnostics, hydration, math rendering,
    and anchored panel behavior.
@@ -190,7 +192,8 @@ rather than page-local template bodies:
 5. `VersoBlueprint.Slides` consumes the same manifest during slide generation to
    render `{blueprint_node}` shells into the deck HTML. Browser JavaScript then
    hydrates links, math, Lean hovers, and related-entry previews; it does not
-   reconstruct Blueprint block markup from manifest metadata.
+   reconstruct Blueprint block markup or relationship topology from ad hoc
+   manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now manifest callers: the rendered page carries the
