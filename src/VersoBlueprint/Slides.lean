@@ -123,6 +123,11 @@ private def collectSlideAssets (config : VersoSlides.Config) :
         defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
   }
 
+/--
+Local compatibility layer pending the upstream Verso Slides `Block.ofHtml`
+constructor tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream
+`slidesMain` so the copied asset/write loop can disappear.
+-/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
     (manifest? : Option Informal.PreviewManifest.File)
