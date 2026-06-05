@@ -2,15 +2,13 @@ import json
 import pytest
 import random
 import shutil
-import socket
 import subprocess
 import sys
-import time
-import urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+from support import PACKAGE_ROOT, find_free_port, wait_for_server
+
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
@@ -29,12 +27,6 @@ def default_site_dir() -> Path:
 DEFAULT_SITE_DIR = default_site_dir()
 
 
-def find_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def browser_executable(browser_type: str) -> str | None:
     candidates = {
         "chromium": ["chromium", "chromium-browser", "google-chrome"],
@@ -45,19 +37,6 @@ def browser_executable(browser_type: str) -> str | None:
         if path:
             return path
     return None
-
-
-def wait_for_server(url: str, proc: subprocess.Popen[bytes], timeout_s: float = 10.0) -> None:
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            raise RuntimeError(f"local test server exited early with code {proc.returncode}")
-        try:
-            with urllib.request.urlopen(url):
-                return
-        except OSError:
-            time.sleep(0.1)
-    raise RuntimeError(f"timed out waiting for local test server at {url}")
 
 
 def load_redirects(site_dir: str | Path):

@@ -47,9 +47,13 @@
     if (!(root instanceof Element)) return;
     root.querySelectorAll("a[href]").forEach(function (link) {
       if (!(link instanceof HTMLAnchorElement)) return;
-      if (link.getAttribute("data-bp-slide-link") === "blueprint") return;
-      const raw = (link.getAttribute("href") || "").trim();
+      const raw = (
+        link.getAttribute("data-bp-slide-href") ||
+        link.getAttribute("href") ||
+        ""
+      ).trim();
       if (!raw || raw.startsWith("#")) return;
+      link.setAttribute("data-bp-slide-href", raw);
       link.href = resolveBlueprintHref(raw, baseUrl);
       link.target = "bp-slide-blueprint";
       link.rel = "noopener";
