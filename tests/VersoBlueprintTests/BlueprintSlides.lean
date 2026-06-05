@@ -113,6 +113,21 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.target") .statement
+    let some entry := file.previews.find? (fun entry => entry.key == key)
+      | return false
+    let groupManifestOk :=
+      match entry.group with
+      | some group =>
+        group.declared &&
+          group.entries.size == 2 &&
+          !group.entries.any (fun related => related.label == entry.label)
+      | none => false
+    let usedByManifestOk :=
+      match entry.usedBy[0]? with
+      | some related =>
+        entry.usedBy.size == 1 &&
+          related.axes.contains Informal.PreviewManifest.RelationAxis.statement
+      | none => false
     let placeholder :=
       "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
       "data-bp-label=\"def:group.target\" data-bp-facet=\"statement\" " ++
@@ -120,12 +135,41 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:group.target...</p></div>"
     let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
     pure <|
-      hasSubstr rendered "bp_extra_slot_group" &&
+      groupManifestOk &&
+        usedByManifestOk &&
+        hasSubstr rendered "bp_extra_slot_group" &&
         hasSubstr rendered "bp_extra_slot_used_by" &&
         hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
         hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
+        hasSubstr rendered "Group: Preview group title. (2)" &&
         hasSubstr rendered "bp_used_by_item_active" &&
         !hasSubstr rendered "Loading Blueprint node"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls missingGroupPreviewDoc
+    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.missing.target") .statement
+    let some entry := file.previews.find? (fun entry => entry.key == key)
+      | return false
+    let groupManifestOk :=
+      match entry.group with
+      | some group => !group.declared && group.entries.size == 1
+      | none => false
+    let placeholder :=
+      "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
+      "data-bp-label=\"def:group.missing.target\" data-bp-facet=\"statement\" " ++
+      s!"data-bp-preview-key=\"{key}\" data-bp-compact=\"false\" " ++
+      "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:group.missing.target...</p></div>"
+    let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
+    pure <|
+      groupManifestOk &&
+        hasSubstr rendered "bp_extra_slot_group" &&
+        hasSubstr rendered "bp_used_by_chip_warn" &&
+        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        hasSubstr rendered "Undeclared group"
 
 /--
 info: Slides written to /tmp/verso-blueprint-slides-smoke-test/slides/index.html

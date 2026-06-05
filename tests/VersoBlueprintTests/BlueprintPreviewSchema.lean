@@ -42,7 +42,6 @@ open Informal.PreviewManifest
         labelJson.getObjValAs? String "description" |>.toOption
       let some useRefProps := useRefProps? | return false
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
-        defs.size == 8 &&
         !fileProps.contains "version" &&
         fileProps.contains "previews" &&
         entryProps.contains "key" &&
@@ -63,6 +62,9 @@ open Informal.PreviewManifest
         useRefProps.contains "intent" &&
         !useRefProps.contains "intents" &&
         entryProps.contains "leanCodePreviewKeys" &&
+        entryProps.contains "uses" &&
+        entryProps.contains "usedBy" &&
+        entryProps.contains "group" &&
         entryProps.contains "ownerDisplayName" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&
@@ -77,6 +79,9 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.UseRef" &&
         defs.contains "Informal.Data.UseOrigin" &&
         defs.contains "Informal.Data.UseIntent" &&
+        defs.contains "Informal.PreviewManifest.RelatedEntry" &&
+        defs.contains "Informal.PreviewManifest.GroupRelation" &&
+        defs.contains "Informal.PreviewManifest.RelationAxis" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 

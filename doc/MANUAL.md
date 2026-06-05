@@ -581,6 +581,10 @@ for:
 - metadata export for other tools
 - inspection and debugging
 
+For informal blocks, the manifest includes the rendered preview body plus the
+relationship metadata needed by generated consumers: direct uses, reverse uses,
+and group-panel entries.
+
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
 
