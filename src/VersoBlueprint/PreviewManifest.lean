@@ -540,6 +540,10 @@ structure Entry where
   kind : Option Informal.Data.NodeKind := none
   /-- Resolved display title for this preview entry. -/
   title : String
+  /-- Structured heading caption for renderers that need to lay out the title. -/
+  displayCaption : Option String := none
+  /-- Structured heading label or number for renderers that need to lay out the title. -/
+  displayLabel : Option String := none
   /-- Canonical link target for the rendered informal node. -/
   href : Option String := none
   /-- Parent/group label for this informal node, if any. -/
@@ -769,6 +773,26 @@ private def blockTitle (state : TraverseState) (label : Name)
       | .statement => blockData.displayTitle state
   | none => label.toString
 
+private structure BlockHeadingParts where
+  caption : String
+  label : String
+
+private def blockHeadingParts? (state : TraverseState) (label : Name)
+    (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
+    Option BlockHeadingParts := do
+  let blockData ← blockData? <|> blockInfo? state label
+  let numberText := blockData.displayNumber state
+  match facet with
+  | .statement =>
+      let kind ← blockData.statementKind? state
+      some { caption := toString kind, label := numberText }
+  | .proof =>
+      let label :=
+        match blockData.statementKind? state with
+        | some kind => s!"for {kind} {numberText}"
+        | none => numberText
+      some { caption := "Proof", label }
+
 private def blockHref (state : TraverseState) (label : Name) : Option String :=
   Informal.TraversalIndex.Nodes.href? state label
 
@@ -912,6 +936,7 @@ private def buildTraversalEntries
         continue
       let blockData? := blockInfo? state entry.label
       let key := PreviewCache.key entry.label entry.facet
+      let headingParts? := blockHeadingParts? state entry.label entry.facet blockData?
       let manifestEntry : Entry := {
         key
         targetKind := .block
@@ -919,6 +944,8 @@ private def buildTraversalEntries
         facet := entry.facet
         kind := blockKind? blockData?
         title := blockTitle state entry.label entry.facet blockData?
+        displayCaption := headingParts?.map (·.caption)
+        displayLabel := headingParts?.map (·.label)
         href := blockHref state entry.label
         parent := blockData?.bind (·.parent)
         parentTitle := blockParentTitle? state blockData?

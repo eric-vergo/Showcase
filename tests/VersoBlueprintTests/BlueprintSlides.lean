@@ -118,6 +118,8 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
       | return false
     pure <|
       blockEntry.leanCodePreviewKeys.contains codeKey &&
+        blockEntry.displayCaption == some "Definition" &&
+        blockEntry.displayLabel.any (fun label => !label.trimAscii.isEmpty) &&
         file.previews.any (fun entry =>
           entry.key == codeKey &&
             match entry.targetKind with

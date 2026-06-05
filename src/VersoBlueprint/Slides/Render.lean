@@ -20,7 +20,7 @@ open Verso.Output.Html
 private def slideNodeMarkerAttr : String := "data-bp-blueprint-node"
 private def slideNodeMarkerValue : String := "true"
 
-def blueprintSlideNodeMarkerAttrs : Array (String × String) :=
+private def blueprintSlideNodeMarkerAttrs : Array (String × String) :=
   #[(slideNodeMarkerAttr, slideNodeMarkerValue)]
 
 public structure BlueprintSlideNode where
@@ -86,7 +86,7 @@ private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
     Option Informal.PreviewManifest.Entry :=
   ctx.entriesByKey.get? key
 
-private def Html.raw (html : String) : Html :=
+private def trustedManifestHtml (html : String) : Html :=
   .text false html
 
 private def trimSlashes (side : String) (text : String) : String :=
@@ -130,22 +130,20 @@ private def safePreviewId (idPrefix value : String) : String :=
   let body := Informal.HoverRender.previewKey value
   if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
 
-private def splitDisplayTitle (entry : Informal.PreviewManifest.Entry) (titleOverride? : Option String) :
-    String × String × String :=
-  let title := (titleOverride?.getD entry.title).trimAscii.toString
+private structure SlideTitle where
+  caption : String
+  label : String
+
+private def slideTitle (entry : Informal.PreviewManifest.Entry) (titleOverride? : Option String) :
+    SlideTitle :=
   let kindText :=
     match entry.kind with
     | some kind => toString kind
     | none => "Blueprint"
-  if title.isEmpty then
-    let label := nameString entry.label
-    (kindText, label, if label.isEmpty then kindText else s!"{kindText} {label}")
-  else
-    match title.splitOn " " with
-    | [] => (kindText, title, title)
-    | first :: rest =>
-      let label := String.intercalate " " rest
-      if label.isEmpty then (kindText, first, title) else (first, label, title)
+  let caption := (entry.displayCaption.getD kindText).trimAscii.toString
+  let fallbackLabel := nameString entry.label
+  let label := ((titleOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
+  { caption, label }
 
 private def codeEntries (ctx : RenderContext)
     (entry : Informal.PreviewManifest.Entry) : Array Informal.PreviewManifest.Entry :=
@@ -338,7 +336,7 @@ private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
   if codeEntries.isEmpty then
     .empty
   else
-    let codeHtml := codeEntries.map (fun codeEntry => Html.raw codeEntry.html)
+    let codeHtml := codeEntries.map (fun codeEntry => trustedManifestHtml codeEntry.html)
     {{
       <div class="bp_wrapper bp_code_panel_wrapper">
         <details class="bp_code_block bp_code_panel" open>
@@ -375,7 +373,7 @@ private def renderEntryShell (ctx : RenderContext)
     else
       .statement (entry.kind.getD .theorem)
   let style := Informal.BlockKindRenderStyle.ofInProgressKind renderKind
-  let (caption, label, _title) := splitDisplayTitle entry node.title?
+  let title := slideTitle entry node.title?
   let href := resolveBlueprintHref entry.href node.siteBase?
   let codeEntries := if node.compact then #[] else codeEntries ctx entry
   let titleRow : Html :=
@@ -392,10 +390,10 @@ private def renderEntryShell (ctx : RenderContext)
         <div class="bp_heading_title_row bp_heading_title_row_statement">
           <span class={{"bp_caption bp_kind_" ++ style.kindCss ++ "_caption " ++ style.captionCss}}
               title={{nameString entry.label}}>
-            {{Html.ofString caption}}
+            {{Html.ofString title.caption}}
           </span>
           <span class={{"bp_label bp_kind_" ++ style.kindCss ++ "_label " ++ style.labelCss}}>
-            {{Html.ofString label}}
+            {{Html.ofString title.label}}
           </span>
         </div>
       }}
@@ -425,9 +423,9 @@ private def renderEntryShell (ctx : RenderContext)
     <div class="bp_slide_node_blueprint">
       <div class={{wrapperClass}} title={{nameString entry.label}}>
         {{heading}}
-        <div class={{contentClass}}>{{Html.raw entry.html}}</div>
+        <div class={{contentClass}}>{{trustedManifestHtml entry.html}}</div>
       </div>
-      {{renderCodePanel entry codeEntries caption label}}
+      {{renderCodePanel entry codeEntries title.caption title.label}}
     </div>
   }}
 
