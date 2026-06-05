@@ -29,6 +29,7 @@ import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.Informal.Block.Config
 import VersoBlueprint.Informal.Code
 import VersoBlueprint.Informal.RustBlock
 import VersoBlueprint.Informal.Block
