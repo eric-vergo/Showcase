@@ -60,6 +60,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   hasSubstr js "function bindUsedByPanel(panel)" &&
     hasSubstr js "function hydrate(root)" &&
     hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
+    hasSubstr js "data-bp-slide-href" &&
     !hasSubstr js "function openBlueprintHref(href)" &&
     !hasSubstr js "function renderDocstrings(root)" &&
     !hasSubstr js "function ensureLeanHover(target)" &&

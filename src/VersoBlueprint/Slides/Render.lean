@@ -89,40 +89,6 @@ private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
 private def trustedManifestHtml (html : String) : Html :=
   .text false html
 
-private def trimSlashes (side : String) (text : String) : String :=
-  let trimLeft (s : String) : String :=
-    String.ofList <| s.toList.dropWhile (· == '/')
-  let trimRight (s : String) : String :=
-    String.ofList <| (s.toList.reverse.dropWhile (· == '/')).reverse
-  let left :=
-    if side == "left" || side == "both" then
-      trimLeft text
-    else
-      text
-  if side == "right" || side == "both" then
-    trimRight left
-  else
-    left
-
-private def isAbsoluteHref (href : String) : Bool :=
-  href.startsWith "#"
-    || href.startsWith "//"
-    || href.contains "://"
-    || href.startsWith "mailto:"
-    || href.startsWith "tel:"
-
-private def resolveBlueprintHref (href : Option String) (baseUrl : Option String) : Option String :=
-  href.bind fun raw =>
-    let raw := raw.trimAscii.toString
-    if raw.isEmpty || isAbsoluteHref raw then
-      some raw
-    else
-      match baseUrl with
-      | some base =>
-        let base := base.trimAscii.toString
-        if base.isEmpty then some raw else some s!"{trimSlashes "right" base}/{trimSlashes "left" raw}"
-      | none => some raw
-
 private def nameString (name : Name) : String :=
   name.toString
 
@@ -154,16 +120,15 @@ private def axisBadge (axis : Informal.PreviewManifest.RelationAxis) : Html :=
   {{<span class="bp_used_by_axis_badge">{{Html.ofString axis.display}}</span>}}
 
 private def panelEntry (item : Informal.PreviewManifest.RelatedEntry) (currentLabel : Name)
-    (idPrefix : String) (baseUrl : Option String) : Informal.RelatedPanel.PanelEntry :=
+    (idPrefix : String) : Informal.RelatedPanel.PanelEntry :=
   let label := nameString item.label
   let title := if item.title.trimAscii.toString.isEmpty then label else item.title
-  let href := resolveBlueprintHref item.href baseUrl
   let previewId := safePreviewId idPrefix (if label.isEmpty then item.previewKey else label)
   {
     previewId
     previewKey := item.previewKey
     previewTitle := title
-    href
+    href := item.href
     metaHtml := .seq <| #[
       {{<code>{{Html.ofString (if label.isEmpty then item.previewKey else label)}}</code>}}
     ] ++ item.axes.map axisBadge
@@ -173,10 +138,9 @@ private def panelEntry (item : Informal.PreviewManifest.RelatedEntry) (currentLa
 
 private def renderSlidePanel (kind chipText chipTitle panelTitle panelMeta : String)
     (entries : Array Informal.PreviewManifest.RelatedEntry) (currentLabel : Name) (idPrefix : String)
-    (baseUrl : Option String)
     (chipClass : String := "bp_used_by_chip")
     (emptyChipClass : String := "bp_used_by_chip bp_used_by_chip_empty") : Html :=
-  let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix baseUrl
+  let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix
   Informal.RelatedPanel.renderPanel {
     chipText := fun _ => chipText
     chipTitle := fun _ => chipTitle
@@ -190,7 +154,7 @@ private def renderSlidePanel (kind chipText chipTitle panelTitle panelMeta : Str
     singleMode := .panel
   } panelEntries
 
-private def renderGroupChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+private def renderGroupChip (entry : Informal.PreviewManifest.Entry) : Html :=
   match entry.group with
   | none => .empty
   | some group =>
@@ -231,7 +195,6 @@ private def renderGroupChip (entry : Informal.PreviewManifest.Entry) (baseUrl : 
       group.entries
       entry.label
       s!"bp-slide-group-{nameString entry.label}"
-      baseUrl
       (chipClass := chipClass)
       (emptyChipClass := emptyChipClass)
 
@@ -267,7 +230,7 @@ private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count
       <span class="bp_code_summary_preview_root">{{body}}</span>
     }}
 
-private def renderUsesChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+private def renderUsesChip (entry : Informal.PreviewManifest.Entry) : Html :=
   if entry.uses.isEmpty then
     .empty
   else
@@ -281,9 +244,8 @@ private def renderUsesChip (entry : Informal.PreviewManifest.Entry) (baseUrl : O
       entry.uses
       Name.anonymous
       "bp-slide-uses"
-      baseUrl
 
-private def renderUsedByChip (entry : Informal.PreviewManifest.Entry) (baseUrl : Option String) : Html :=
+private def renderUsedByChip (entry : Informal.PreviewManifest.Entry) : Html :=
   let count := entry.usedBy.size
   if count == 0 then
     {{
@@ -301,14 +263,12 @@ private def renderUsedByChip (entry : Informal.PreviewManifest.Entry) (baseUrl :
       entry.usedBy
       Name.anonymous
       "bp-slide-used-by"
-      baseUrl
 
-private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : Nat)
-    (baseUrl : Option String) : Html :=
-  let group := renderGroupChip entry baseUrl
-  let uses := renderUsesChip entry baseUrl
+private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : Nat) : Html :=
+  let group := renderGroupChip entry
+  let uses := renderUsesChip entry
   let code := renderCodeStatusChip entry codeCount
-  let usedBy := renderUsedByChip entry baseUrl
+  let usedBy := renderUsedByChip entry
   Informal.renderStatementHeaderExtras {
     group? := if group == .empty then none else some <| Informal.HeaderExtra.group group
     uses? := if uses == .empty then none else some <| Informal.HeaderExtra.uses uses
@@ -374,7 +334,7 @@ private def renderEntryShell (ctx : RenderContext)
       .statement (entry.kind.getD .theorem)
   let style := Informal.BlockKindRenderStyle.ofInProgressKind renderKind
   let title := slideTitle entry node.title?
-  let href := resolveBlueprintHref entry.href node.siteBase?
+  let href := entry.href
   let codeEntries := if node.compact then #[] else codeEntries ctx entry
   let titleRow : Html :=
     if isProof then
@@ -414,7 +374,7 @@ private def renderEntryShell (ctx : RenderContext)
     {{
       <div class={{"bp_heading bp_kind_" ++ style.kindCss ++ "_heading " ++ style.headingCss}}>
         {{linkedTitleRow}}
-        {{ if isProof then .empty else renderExtras entry codeEntries.size node.siteBase? }}
+        {{ if isProof then .empty else renderExtras entry codeEntries.size }}
       </div>
     }}
   let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
