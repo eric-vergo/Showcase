@@ -64,7 +64,7 @@ span[class$="_thmlabel"]::after {
   justify-content: end;
   column-gap: 0.55rem;
   grid-template-columns: minmax(7.2rem, max-content) max-content;
-  grid-template-areas: "used code";
+  grid-template-areas: "code used";
   margin-left: auto;
 }
 
@@ -75,7 +75,21 @@ span[class$="_thmlabel"]::after {
 
 .bp_extras_with_group {
   grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
-  grid-template-areas: "group used code";
+  grid-template-areas: "group code used";
+}
+
+.bp_extras_with_uses {
+  grid-template-columns: minmax(5.2rem, max-content) max-content minmax(7.2rem, max-content);
+  grid-template-areas: "uses code used";
+}
+
+.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    minmax(5rem, max-content)
+    minmax(5.2rem, max-content)
+    max-content
+    minmax(7.2rem, max-content);
+  grid-template-areas: "group uses code used";
 }
 
 .bp_extras_with_group.bp_extras_with_uses {

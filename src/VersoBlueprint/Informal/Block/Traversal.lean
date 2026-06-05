@@ -48,7 +48,12 @@ def registerBlockPreviewData
     m Unit := do
   let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
   let previewKey := PreviewCache.key blockData.label previewFacet
-  let previewData := toJson (PreviewCache.Entry.ofBlocks blockData.label previewFacet contents)
+  let leanCodePreviewKeys :=
+    (externalDeclsOfBlock blockData).map fun decl =>
+      Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
+  let previewData := toJson <|
+    PreviewCache.Entry.ofBlocks blockData.label previewFacet contents
+      (leanCodePreviewKeys := leanCodePreviewKeys)
   let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
   if shouldWritePreviewData existingPreview? id then
     modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
