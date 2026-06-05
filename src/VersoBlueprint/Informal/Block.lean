@@ -20,7 +20,7 @@ import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.Block.Store
-import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Informal.Group
@@ -117,12 +117,6 @@ instance : FromArgs Config m where
   fromArgs := Config.parse
 
 end
-
-def shouldWritePreviewDataByIds [BEq α] (existingIds : Array α) (currentId : α) : Bool :=
-  existingIds.isEmpty || existingIds.contains currentId
-
-private def shouldWritePreviewData (existing? : Option Verso.Multi.Object) (id : Verso.Multi.InternalId) : Bool :=
-  shouldWritePreviewDataByIds ((existing?.map (·.ids.toArray)).getD #[]) id
 
 private def resolveStoredGroupData?
     (state : Verso.Genre.Manual.TraverseState) (label : Data.Label) : Option GroupBlockData :=
@@ -430,92 +424,6 @@ private def renderGroupEntry {m}
     }
     pure <| some (renderRelatedPanel cfg panelEntries)
 
-private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRef :=
-  match blockData.kind, blockData.codeData with
-  | .statement _, some codeData => codeData.externalDecls
-  | _, _ => #[]
-
-private def registerBlockPreviewData
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (id : Verso.Multi.InternalId)
-    (blockData : BlockData)
-    (contents : Array (Verso.Doc.Block Verso.Genre.Manual)) :
-    m Unit := do
-  let previewFacet := PreviewCache.Facet.ofInProgressKind blockData.kind
-  let previewKey := PreviewCache.key blockData.label previewFacet
-  let previewData := toJson (PreviewCache.Entry.ofBlocks blockData.label previewFacet contents)
-  let existingPreview? := Informal.TraversalIndex.TraversalPreviews.object? (← get) previewKey
-  if shouldWritePreviewData existingPreview? id then
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveData s previewKey previewData
-  if existingPreview?.isNone then
-    let path := (← read).path
-    let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-preview-{previewKey}"
-    modify λ s => Informal.TraversalIndex.TraversalPreviews.saveId s previewKey id
-
-private def registerExternalCodePreview
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (id : Verso.Multi.InternalId)
-    (decl : Data.ExternalRef) :
-    m Unit := do
-  let codePreviewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey decl.canonical
-  let codePreviewData := toJson (LeanCodePreview.Entry.ofExternalDecl decl.canonical decl)
-  let existingCodePreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) codePreviewKey
-  if shouldWritePreviewData existingCodePreview? id then
-    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveData s codePreviewKey codePreviewData
-  if existingCodePreview?.isNone then
-    let path := (← read).path
-    let _ ← Verso.Genre.Manual.externalTag id path s!"--lean-code-preview-{codePreviewKey}"
-    modify λ s => Informal.TraversalIndex.LeanCodePreviews.saveId s codePreviewKey id
-
-private def registerExternalCodePreviews
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (id : Verso.Multi.InternalId)
-    (decls : Array Data.ExternalRef) :
-    m Unit := do
-  for decl in decls do
-    registerExternalCodePreview id decl
-
-private def registerExternalDeclAnchor
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (label : Data.Label)
-    (decl : Data.ExternalRef) :
-    m Unit := do
-  let key := Resolve.externalRenderedDeclTargetKey label decl.canonical
-  if (Informal.TraversalIndex.ExternalDeclAnchors.object? (← get) key).isNone then
-    let declId ← Verso.Genre.Manual.freshId
-    let path := (← read).path
-    let _ ← Verso.Genre.Manual.externalTag declId path
-      s!"--informal-external-decl-{label}-{decl.canonical}"
-    modify λ s => Informal.TraversalIndex.ExternalDeclAnchors.saveId s key declId
-
-private def registerExternalDeclAnchors
-    {m}
-    [Monad m]
-    [MonadReaderOf TraverseContext m]
-    [MonadStateOf TraverseState m]
-    [MonadLiftT IO m]
-    (label : Data.Label)
-    (decls : Array Data.ExternalRef) :
-    m Unit := do
-  for decl in decls do
-    registerExternalDeclAnchor label decl
-
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where
   -- for TOC
@@ -529,10 +437,7 @@ block_extension Block.informal (data : BlockData) where
       pure none
     | .ok blockData =>
       let blockData := blockData.withTraversalNumberingContext (← read)
-      let externalDecls := externalDeclsOfBlock blockData
-      registerBlockPreviewData id blockData _contents
-      registerExternalCodePreviews id externalDecls
-      registerExternalDeclAnchors blockData.label externalDecls
+      registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
       return none
   toTeX := none
