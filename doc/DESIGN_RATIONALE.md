@@ -187,6 +187,10 @@ rather than page-local template bodies:
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
+5. `VersoBlueprint.Slides` consumes the same manifest during slide generation to
+   render `{blueprint_node}` shells into the deck HTML. Browser JavaScript then
+   hydrates links, math, Lean hovers, and related-entry previews; it does not
+   reconstruct Blueprint block markup from manifest metadata.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now manifest callers: the rendered page carries the

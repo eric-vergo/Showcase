@@ -12,7 +12,7 @@ namespace Informal
 
 open Verso.Output.Html
 
-private structure BlockKindRenderStyle where
+structure BlockKindRenderStyle where
   kindText : String
   showLabel : Bool := true
   kindCss : String
@@ -22,8 +22,9 @@ private structure BlockKindRenderStyle where
   labelCss : String
   contentCss : String
 
-private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
-  match data.kind with
+namespace BlockKindRenderStyle
+
+def ofInProgressKind : Data.InProgressKind → BlockKindRenderStyle
   | .proof =>
     {
       kindText := "Proof"
@@ -87,6 +88,11 @@ private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
         labelCss := "corollary_thmlabel"
         contentCss := "corollary_thmcontent"
       }
+
+end BlockKindRenderStyle
+
+private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
+  BlockKindRenderStyle.ofInProgressKind data.kind
 
 private def renderBlockTitleRow (style : BlockKindRenderStyle)
     (labelText numberText captionText : String) :
