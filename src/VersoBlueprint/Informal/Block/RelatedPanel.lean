@@ -12,6 +12,15 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.TraversalIndex
 
+/-!
+Rendering for the small relationship panels attached to informal blocks.
+
+These panels answer two local navigation questions: which blocks use this one,
+and which sibling/group entries belong with it. The data comes from traversal
+stores; this module keeps the HTML presentation separate from the main block
+renderer.
+-/
+
 namespace Informal
 namespace RelatedPanel
 
@@ -76,10 +85,7 @@ private structure UsedByEntry where
 
 private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry :=
   entries.qsort fun a b =>
-    let aNum := a.source.globalCount.getD a.source.count
-    let bNum := b.source.globalCount.getD b.source.count
-    aNum < bNum ||
-      (aNum == bNum && a.source.label.toString < b.source.label.toString)
+    BlockData.traversalOrderLess a.source b.source
 
 private def collectUsedByEntries
     (ctx : Context) (target : Data.Label) : Array UsedByEntry :=

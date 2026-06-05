@@ -7,6 +7,15 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoManual
 
+/-!
+Shared link-resolution policies for Blueprint renderers.
+
+Most callers should not need to know which Verso traversal domain stores a
+target. This module gives them small, named policies instead: resolve a plain
+domain object, resolve an inline Lean declaration, or resolve the best link for
+an informal block's Lean declaration.
+-/
+
 namespace Informal.Resolve
 
 open Lean
@@ -84,5 +93,19 @@ def resolveInlineLeanDeclHref? (s : Verso.Genre.Manual.TraverseState) (decl : Na
 def resolveRenderedExternalDeclHref? (s : Verso.Genre.Manual.TraverseState)
     (label decl : Name) : Option String :=
   resolveDomainHref? s externalRenderedDeclDomainName (externalRenderedDeclTargetKey label decl)
+
+/--
+Resolve a Lean declaration link as seen from one informal block.
+
+If the block rendered the declaration in its external-code panel, prefer that
+row: it lands the reader on the concrete code that the block is discussing.
+If no row was registered, fall back to the ordinary inline-Lean declaration
+anchor shared by the rest of the document.
+-/
+def resolveInformalDeclHref? (s : Verso.Genre.Manual.TraverseState)
+    (label decl : Name) : Option String :=
+  match resolveRenderedExternalDeclHref? s label decl with
+  | some href => some href
+  | none => resolveInlineLeanDeclHref? s decl
 
 end Informal.Resolve

@@ -7,6 +7,15 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.TraversalIndex
 
+/-!
+Traversal-time storage and numbering logic for informal blocks.
+
+The renderer receives local block data from the directive syntax, but final HTML
+needs document-order numbers, optional section prefixes, and metadata gathered
+from all occurrences of a label. This module owns that stored view and exposes
+small helpers for rendering code to ask for display numbers and titles.
+-/
+
 namespace Informal
 
 open Lean
@@ -158,13 +167,22 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
       prUrl := existing.prUrl <|> incoming.prUrl
   }
 
+/--
+Stable document-order comparison for informal blocks.
+
+`globalCount` is the traversal-order number assigned while walking the document.
+Older or partially populated stored data may not have it, so the local block
+counter remains the fallback. Labels break ties deterministically.
+-/
+def BlockData.traversalOrderLess (a b : BlockData) : Bool :=
+  let aNum := a.globalCount.getD a.count
+  let bNum := b.globalCount.getD b.count
+  aNum < bNum ||
+    (aNum == bNum && a.label.toString < b.label.toString)
+
 /-- Sort stored blocks by traversal order, using the label as a stable tiebreaker. -/
 private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
-  entries.qsort fun a b =>
-    let aNum := a.globalCount.getD a.count
-    let bNum := b.globalCount.getD b.count
-    aNum < bNum ||
-      (aNum == bNum && a.label.toString < b.label.toString)
+  entries.qsort BlockData.traversalOrderLess
 
 /-- Collect every informal block stored in the traversal index, in traversal order. -/
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=

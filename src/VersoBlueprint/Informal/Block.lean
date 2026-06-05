@@ -101,22 +101,9 @@ block_extension Block.informal (data : BlockData) where
           | .statement _ => data.codeData
         let codeSource := BlockCodeData.ofHintAndInline codeHint? codeData?
         let getDeclHref (decl : Name) : Option String :=
-          match Resolve.resolveRenderedExternalDeclHref? s data.label decl with
-          | some href => some href
-          | none => Resolve.resolveInlineLeanDeclHref? s decl
+          Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
-          let attrsFor (declName : Name) : Array (String × String) :=
-            let key := Resolve.externalRenderedDeclTargetKey data.label declName
-            match Informal.TraversalIndex.ExternalDeclAnchors.object? s key with
-            | none => #[]
-            | some obj =>
-              match obj.ids.toArray[0]? with
-              | some targetId => s.htmlId targetId
-              | none => #[]
-          -- Targets are keyed by canonical declaration name; fallback to the written name keeps
-          -- links stable if older cached objects were keyed before canonicalization.
-          let canonicalAttrs := attrsFor decl.canonical
-          if canonicalAttrs.isEmpty then attrsFor decl.written else canonicalAttrs
+          Informal.TraversalIndex.ExternalDeclAnchors.refHtmlIdAttrs s data.label decl
         let cdata := {
           codeHref
           source := codeSource
