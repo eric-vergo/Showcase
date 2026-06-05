@@ -191,9 +191,8 @@ rather than page-local template bodies:
    runtime to concrete surfaces.
 5. `VersoBlueprint.Slides` consumes the same manifest during slide generation to
    render `{blueprint_node}` shells into the deck HTML. Browser JavaScript then
-   hydrates links, math, Lean hovers, and related-entry previews; it does not
-   reconstruct Blueprint block markup or relationship topology from ad hoc
-   manifest scans.
+   hydrates links, math, and related-entry preview panels; it does not reconstruct
+   Blueprint block markup or relationship topology from ad hoc manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now manifest callers: the rendered page carries the

@@ -67,7 +67,7 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Runtime Assets and Browser Rendering
 
-- [ ] Add a Verso Slides generation hook for downstream block rendering.
+- [ ] Add a Verso Slides `Block.ofHtml` constructor.
   - current Blueprint workaround:
     `VersoBlueprint.Slides.slidesMainWithBlueprintRenderer` supplies a local
     `GenreHtml Slides IO` instance so `{blueprint_node}` blocks render from the
@@ -75,9 +75,9 @@ pull requests unless that upstream write action is explicitly requested.
     `VersoSlides.slidesMain` owns both rendering and file emission, Blueprint
     also mirrors the small config-asset plan and write loop
   - desired upstream behavior:
-    downstream packages should be able to customize slide block rendering, or
-    provide an already-rendered slide body, while reusing the upstream
-    `slidesMain` asset validation and output writer
+    downstream packages should be able to elaborate a slide block to an
+    already-rendered HTML body, while reusing the upstream `slidesMain` asset
+    validation and output writer
   - removable Blueprint code:
     local `SlideAssetPayload`, `recordSlideAsset`, `collectSlideAssets`, and
     the copied `slidesMain` output loop in `VersoBlueprint.Slides`
