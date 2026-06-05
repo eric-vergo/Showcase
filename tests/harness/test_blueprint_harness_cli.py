@@ -475,6 +475,47 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertNotIn("Worktree:", output)
         self.assertNotIn("Write scope:", output)
 
+    def test_public_pr_title_validation_rejects_scopes(self) -> None:
+        self.assertEqual(
+            harness_mod.validate_public_pr_title("feat: support Blueprint preview nodes in slides"),
+            "feat: support Blueprint preview nodes in slides",
+        )
+        with self.assertRaisesRegex(SystemExit, "without type scopes"):
+            harness_mod.validate_public_pr_title("feat(slides): render Blueprint preview nodes")
+        with self.assertRaisesRegex(SystemExit, "expected Lean upstream style"):
+            harness_mod.validate_public_pr_title("update slides")
+
+    def test_prepare_pr_rejects_scoped_current_commit_subject(self) -> None:
+        args = argparse.Namespace(
+            title=None,
+            summary=None,
+            change=None,
+            source_branch=None,
+            exempt=None,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "load_branch_policy": harness_mod.load_branch_policy,
+            "require_checkout_role": harness_mod.require_checkout_role,
+            "current_branch_name": harness_mod.current_branch_name,
+            "current_commit_subject": harness_mod.current_commit_subject,
+        }
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.load_branch_policy = lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.30.0",
+                required_backport_branches=("v4.29.0",),
+            )
+            harness_mod.require_checkout_role = lambda *_args, **_kwargs: None
+            harness_mod.current_branch_name = lambda _checkout_root: "feat/slides"
+            harness_mod.current_commit_subject = lambda _checkout_root: "feat(slides): render Blueprint preview nodes"
+            with self.assertRaisesRegex(SystemExit, "without type scopes"):
+                harness_mod.command_prepare_pr(args)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
+
     def test_prepare_backport_pr_prints_standardized_scaffold(self) -> None:
         args = argparse.Namespace(
             release="v4.28.0",
@@ -527,6 +568,37 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("## PR Body", output)
         self.assertIn("Primary review: #11", output)
         self.assertIn("Keep review comments on #11 unless this backport diverges materially.", output)
+
+    def test_prepare_backport_pr_rejects_scoped_main_title(self) -> None:
+        args = argparse.Namespace(
+            release="v4.28.0",
+            all_required=False,
+            main_pr=11,
+            main_title="fix(harness): require public PR titles",
+            source_branch="fix/public-pr-title",
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        originals = {
+            "detect_harness_layout": harness_mod.detect_harness_layout,
+            "load_branch_policy": harness_mod.load_branch_policy,
+            "default_dev_branch": harness_mod.default_dev_branch,
+            "require_checkout_role": harness_mod.require_checkout_role,
+            "source_commit_series": harness_mod.source_commit_series,
+        }
+        try:
+            harness_mod.detect_harness_layout = lambda _start=None: layout
+            harness_mod.load_branch_policy = lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.30.0",
+                required_backport_branches=("v4.28.0",),
+            )
+            harness_mod.default_dev_branch = lambda _checkout_root: "v4.30.0"
+            harness_mod.require_checkout_role = lambda *_args, **_kwargs: None
+            harness_mod.source_commit_series = lambda _repo_root, _source_branch: ["abc123"]
+            with self.assertRaisesRegex(SystemExit, "without type scopes"):
+                harness_mod.command_prepare_backport_pr(args)
+        finally:
+            for name, value in originals.items():
+                setattr(harness_mod, name, value)
 
     def test_prepare_backport_pr_all_required_prints_multiple_scaffolds(self) -> None:
         args = argparse.Namespace(
