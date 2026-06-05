@@ -23,6 +23,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 {blueprint_node "addition_assoc" (siteBase := "blueprint")}
 :::::::
 
+#docs (Slides) staticBlueprintNodeSlideFixture "Static Blueprint Node Slide" :=
+:::::::
+# Static Blueprint Node
+
+{blueprint_node "def:code.preview" (siteBase := "blueprint")}
+:::::::
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -98,5 +105,68 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr rendered "data-bp-site-base=\"blueprint\"" &&
         hasSubstr rendered "href=\"#--informal-preview" &&
         !hasSubstr rendered "Loading Blueprint node"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
+    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.target") .statement
+    let placeholder :=
+      "<div data-bp-blueprint-node=\"true\" class=\"bp_slide_node\" " ++
+      "data-bp-label=\"def:group.target\" data-bp-facet=\"statement\" " ++
+      s!"data-bp-preview-key=\"{key}\" data-bp-compact=\"false\" " ++
+      "data-bp-site-base=\"blueprint\"><p>Loading Blueprint node def:group.target...</p></div>"
+    let rendered := Informal.Slides.renderBlueprintSlideNodesInHtml (some file) placeholder
+    pure <|
+      hasSubstr rendered "bp_extra_slot_group" &&
+        hasSubstr rendered "bp_extra_slot_used_by" &&
+        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
+        hasSubstr rendered "bp_used_by_item_active" &&
+        !hasSubstr rendered "Loading Blueprint node"
+
+/--
+info: Slides written to /tmp/verso-blueprint-slides-smoke-test/slides/index.html
+---
+info: true
+-/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
+    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let root := System.FilePath.mk "/tmp/verso-blueprint-slides-smoke-test"
+    let outDir := root / "slides"
+    let manifestPath := root / Informal.PreviewManifest.manifestFilename
+    if !(← root.pathExists) then
+      IO.FS.createDirAll root
+    let indexPath := outDir / "index.html"
+    if ← indexPath.pathExists then
+      IO.FS.removeFile indexPath
+    if ← manifestPath.pathExists then
+      IO.FS.removeFile manifestPath
+    IO.FS.writeFile manifestPath (Lean.toJson file).compress
+    let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
+      { outputDir := outDir }
+      (previewManifest? := some manifestPath)
+      staticBlueprintNodeSlideFixture.toPart
+    if rc != 0 then
+      return false
+    if !(← indexPath.pathExists) then
+      return false
+    let index ← IO.FS.readFile indexPath
+    let copiedManifest := Informal.Slides.blueprintSlidesPreviewManifestPath outDir
+    let normalizedKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
+    pure <|
+      (← copiedManifest.pathExists) &&
+        hasSubstr index "data-bp-rendered=\"static\"" &&
+        hasSubstr index "bp_slide_node_blueprint" &&
+        hasSubstr index "bp_extra_slot_code" &&
+        hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
+        hasSubstr index "data-bp-site-base=\"blueprint\"" &&
+        hasSubstr index "href=\"#--informal-preview" &&
+        !hasSubstr index "Loading Blueprint node"
 
 end Verso.VersoBlueprintTests.BlueprintSlides

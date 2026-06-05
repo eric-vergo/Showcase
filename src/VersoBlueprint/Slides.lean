@@ -9,7 +9,9 @@ import Verso.Doc.ArgParse
 import Verso.Doc.Elab
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.PreviewCache
 import VersoBlueprint.Slides.Render
 
 namespace Informal.Slides
@@ -27,106 +29,6 @@ private def slideNodeCss : String := r##"
   text-align: left;
   color: var(--bp-color-text, #111827);
   font-size: 1.12em;
-}
-
-.bp_slide_node_card {
-  border: 1px solid var(--bp-color-border, #cbd5e1);
-  border-radius: 8px;
-  background: var(--bp-color-surface, #ffffff);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
-  overflow: hidden;
-}
-
-.bp_slide_node_header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 0.9rem 0.65rem;
-  border-left: 7px solid #0073a3;
-  border-bottom: 1px solid var(--bp-color-border-soft, #e2e8f0);
-  background: #eef7fb;
-}
-
-.bp_slide_node_title {
-  margin: 0;
-  color: var(--bp-color-text-strong, #0f172a);
-  font-size: 1.2rem;
-  line-height: 1.2;
-  font-weight: 800;
-}
-
-.bp_slide_node_label {
-  margin-top: 0.2rem;
-  color: var(--bp-color-text-muted, #334155);
-  font-family: var(--r-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 0.72rem;
-  overflow-wrap: anywhere;
-}
-
-.bp_slide_node_kind {
-  flex: 0 0 auto;
-  border: 1px solid var(--bp-color-border, #cbd5e1);
-  border-radius: 999px;
-  padding: 0.16rem 0.45rem;
-  background: #ffffff;
-  color: var(--bp-color-text-muted, #334155);
-  font-size: 0.66rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.bp_slide_node_meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.32rem;
-  padding: 0.55rem 0.9rem 0;
-}
-
-.bp_slide_node_pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.22rem;
-  min-width: 0;
-  border: 1px solid var(--bp-color-border-soft, #e2e8f0);
-  border-radius: 999px;
-  background: var(--bp-color-surface-muted, #f8fafc);
-  color: var(--bp-color-text-muted, #334155);
-  padding: 0.14rem 0.42rem;
-  font-size: 0.68rem;
-  line-height: 1.25;
-}
-
-.bp_slide_node_pill strong {
-  color: var(--bp-color-text-strong, #0f172a);
-  font-weight: 750;
-}
-
-.bp_slide_node_body {
-  padding: 0.65rem 0.9rem 0.85rem;
-  line-height: 1.35;
-  max-height: 16rem;
-  overflow: auto;
-}
-
-.bp_slide_node_body p {
-  margin: 0 0 0.45rem;
-}
-
-.bp_slide_node_body p:last-child {
-  margin-bottom: 0;
-}
-
-.bp_slide_node_body code,
-.bp_slide_node_body pre {
-  font-size: 0.82em;
-}
-
-.bp_slide_node_body pre {
-  max-height: 9.5rem;
-  overflow: auto;
-  margin: 0.4rem 0 0;
 }
 
 .bp_slide_node_notice {
@@ -1000,7 +902,11 @@ public meta instance : FromArgs BlueprintNodeConfig DocElabM where
       .named `siteBase .string true
 
 private def previewKey (label facet : String) : String :=
-  s!"{label}--{facet}"
+  let label := Informal.LabelNameParsing.parse label
+  match facet with
+  | "statement" => Informal.PreviewCache.key label .statement
+  | "proof" => Informal.PreviewCache.key label .proof
+  | other => s!"{label}--{other}"
 
 public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term := do
   let facet := cfg.facet.getD "statement"
