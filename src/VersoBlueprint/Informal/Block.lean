@@ -18,13 +18,13 @@ import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
+import VersoBlueprint.Informal.Block.Config
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
-import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -52,69 +52,6 @@ open CodeSummary
 Elaboration, traversal, and rendering are standard, using {ref VersoManual} helpers for custom blocks and inlines.
 
 -/
-
-/-- Configuration for directives / code-blocks. Q: should we allow non-labelled informal objects? -/
-structure Config where
-  label : Data.Label
-  labelSyntax : Syntax := Syntax.missing
-  lean : Option String := none
-  parent : Option Data.Parent := none
-  priority : Option String := none
-  owner : Option Data.AuthorId := none
-  tags : Array String := #[]
-  effort : Option String := none
-  prUrl : Option String := none
-  externalCode : Array Data.ExternalRef := #[]
-  invalidExternalCode : Array String := #[]
---  hide : Bool := false
-
-section
-variable [Monad m] [MonadInfoTree m] [MonadLiftT CoreM m] [MonadEnv m] [MonadError m] [MonadFileMap m]
-
-private def normalizePriority? (raw : String) : Option String :=
-  match raw.trimAscii.toString.toLower with
-  | "high" => some "high"
-  | "medium" => some "medium"
-  | "low" => some "low"
-  | _ => none
-
-private def normalizeEffort? (raw : String) : Option String :=
-  match raw.trimAscii.toString.toLower with
-  | "small" | "s" => some "small"
-  | "medium" | "m" => some "medium"
-  | "large" | "l" => some "large"
-  | _ => none
-
-private def normalizeTags (raw : String) : Array String :=
-  raw.splitOn ","
-    |>.toArray
-    |>.map (fun tag => tag.trimAscii.toString.toLower)
-    |>.filter (fun tag => !tag.isEmpty)
-    |>.foldl (init := #[]) fun acc tag => if acc.contains tag then acc else acc.push tag
-
-def Config.parse  : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl =>
-    let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
-    {
-      label := LabelNameParsing.parse labelArg.val
-      labelSyntax := labelArg.syntax
-      lean := lean
-      parent := parent.map LabelNameParsing.parse
-      priority := priority
-      owner := owner.map LabelNameParsing.parse
-      tags := normalizeTags (tags.getD "")
-      effort := effort
-      prUrl := prUrl.map (·.trimAscii.toString)
-      externalCode := externalCode
-      invalidExternalCode := invalidExternalCode
-    }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
-        <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
-        <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
-
-instance : FromArgs Config m where
-  fromArgs := Config.parse
-
-end
 
 /- Informal custom blocks -/
 block_extension Block.informal (data : BlockData) where
@@ -234,92 +171,11 @@ block_extension Block.informal (data : BlockData) where
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
     let blockRef ← getRef
-    let label := cfg.label
-    let envKind : Data.InProgressKind :=
-      if isProof then .proof else .statement kind
-    let resolvedExternalCode ← ExternalCode.resolveExternalCodeList label cfg.labelSyntax kind cfg.externalCode
-    let hasExternalRaw := !resolvedExternalCode.isEmpty
-    if !cfg.invalidExternalCode.isEmpty then
-      logWarningAt cfg.labelSyntax m!"Label {label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
-    if isProof && hasExternalRaw then
-      logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(lean := ...)' in a proof block"
-    let priority : Option String ←
-      match cfg.priority with
-      | none => pure none
-      | some raw =>
-        match normalizePriority? raw with
-        | some normalized =>
-          if isProof then
-            logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(priority := ...)' in a proof block"
-            pure none
-          else
-            pure (some normalized)
-        | none =>
-          logErrorAt cfg.labelSyntax m!"Label {label} has invalid '(priority := \"{raw}\")'; expected one of \"high\", \"medium\", \"low\""
-          pure none
-    let owner : Option Data.AuthorId ←
-      match cfg.owner with
-      | none => pure none
-      | some owner =>
-        if isProof then
-          logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(owner := ...)' in a proof block"
-          pure none
-        else if (← Environment.getAuthor? owner).isNone then
-          logErrorAt cfg.labelSyntax m!"Label {label} references unknown owner '{owner}'; declare it first with ':::author'"
-          pure none
-        else
-          pure (some owner)
-    let effort : Option String ←
-      match cfg.effort with
-      | none => pure none
-      | some raw =>
-        match normalizeEffort? raw with
-        | some normalized =>
-          if isProof then
-            logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(effort := ...)' in a proof block"
-            pure none
-          else
-            pure (some normalized)
-        | none =>
-          logErrorAt cfg.labelSyntax m!"Label {label} has invalid '(effort := \"{raw}\")'; expected one of \"small\", \"medium\", \"large\""
-          pure none
-    let tags : Array String :=
-      if isProof && !cfg.tags.isEmpty then
-        #[]
-      else
-        cfg.tags
-    if isProof && !cfg.tags.isEmpty then
-      logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(tags := ...)' in a proof block"
-    let prUrl : Option String :=
-      if isProof then
-        none
-      else
-        match cfg.prUrl with
-        | some url =>
-          let url := url.trimAscii.toString
-          if url.isEmpty then
-            none
-          else if url.startsWith "http://" || url.startsWith "https://" then
-            some url
-          else
-            none
-        | none => none
-    if isProof && cfg.prUrl.isSome then
-      logErrorAt cfg.labelSyntax m!"Label {label} cannot use '(pr_url := ...)' in a proof block"
-    if !isProof then
-      if let some url := cfg.prUrl then
-        let url := url.trimAscii.toString
-        if !url.isEmpty && !(url.startsWith "http://" || url.startsWith "https://") then
-          logErrorAt cfg.labelSyntax m!"Label {label} has invalid '(pr_url := \"{url}\")'; expected an http(s) URL"
-    let hasExternal := hasExternalRaw && !isProof
-    let codeHint : Option Data.CodeRef :=
-      if isProof then
-        none
-      else if hasExternal then
-        some (.external resolvedExternalCode)
-      else
-        none
-    let accepted ← Environment.push label envKind codeHint cfg.parent priority owner tags effort prUrl
+    let resolved ← cfg.resolveForDirective kind isProof
+    let label := resolved.label
+    let accepted ← Environment.push
+      label resolved.envKind resolved.codeHint resolved.parent resolved.priority
+      resolved.owner resolved.tags resolved.effort resolved.prUrl
     let contents ← contents.mapM elabBlock
     if !accepted then
       return ← ``(Block.concat #[$contents,*])
@@ -336,7 +192,7 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
           match node? with
             | some node => pure node.kind
             | none =>
-              logErrorAt cfg.labelSyntax m!"Internal error: missing node '{label}' after environment registration"
+              logErrorAt resolved.labelSyntax m!"Internal error: missing node '{label}' after environment registration"
               pure kind
         pure <| .statement nodeKind
     let codeData :=
