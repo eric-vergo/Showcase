@@ -9,8 +9,22 @@ fi
 
 niceness="${BP_LEAN_NICENESS:-10}"
 
-if command -v nice >/dev/null 2>&1; then
-  exec nice -n "$niceness" "$@"
+# Heavy reference projects can exceed hosted-runner resources at Lake's default
+# parallelism. Keep the throttle specific to the GitHub reference workflow so
+# ordinary local builds and user-invoked wrapper calls retain Lake's defaults.
+if [[ "${GITHUB_WORKFLOW:-}" == "Reference Blueprints" && "$1" == "lake" ]]; then
+  lake_threads="${BP_LAKE_THREADS:-2}"
+  if [[ -n "$lake_threads" ]]; then
+    command_args=("lake" "-Kthreads=$lake_threads" "${@:2}")
+  else
+    command_args=("$@")
+  fi
 else
-  exec "$@"
+  command_args=("$@")
+fi
+
+if command -v nice >/dev/null 2>&1; then
+  exec nice -n "$niceness" "${command_args[@]}"
+else
+  exec "${command_args[@]}"
 fi
