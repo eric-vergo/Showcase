@@ -59,6 +59,13 @@ from scripts.blueprint_harness_worktrees import (
 )
 
 PUBLIC_REPOSITORY = "leanprover/verso-blueprint"
+PUBLIC_PR_TITLE_TYPES = ("feat", "fix", "doc", "style", "refactor", "test", "chore", "perf")
+PUBLIC_PR_TITLE_RE = re.compile(
+    r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r"): \S.*$"
+)
+PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
+    r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
+)
 
 
 @dataclass(frozen=True)
@@ -162,6 +169,25 @@ def current_commit_subject(repo_root: Path) -> str:
     if not subject:
         raise SystemExit("[blueprint-harness] unable to derive a PR title from the current commit subject")
     return subject
+
+
+def validate_public_pr_title(title: str) -> str:
+    normalized = title.strip()
+    if normalized != title or not normalized:
+        raise SystemExit("[blueprint-harness] public PR title must not be empty or padded with whitespace")
+    if PUBLIC_PR_SCOPED_TITLE_RE.match(normalized):
+        raise SystemExit(
+            "[blueprint-harness] invalid public PR title: follow Lean upstream style "
+            "`<type>: <subject>` without type scopes such as `feat(entry): ...`; "
+            "put the affected area in the subject instead."
+        )
+    if not PUBLIC_PR_TITLE_RE.match(normalized):
+        allowed = ", ".join(PUBLIC_PR_TITLE_TYPES)
+        raise SystemExit(
+            "[blueprint-harness] invalid public PR title: expected Lean upstream style "
+            f"`<type>: <subject>` with one of: {allowed}."
+        )
+    return normalized
 
 
 def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
@@ -858,7 +884,7 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
     if not source_branch:
         raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
 
-    title = args.title or current_commit_subject(layout.package_root)
+    title = validate_public_pr_title(args.title or current_commit_subject(layout.package_root))
     print_public_pr_message_scaffold(
         default_dev=policy.default_dev_branch,
         source_branch=source_branch,
@@ -878,7 +904,7 @@ def command_prepare_backport_pr(args: argparse.Namespace) -> int:
     if not source_branch:
         raise SystemExit("[blueprint-harness] unable to determine a source branch; pass `--source-branch` explicitly")
 
-    main_title = args.main_title or current_commit_subject(layout.package_root)
+    main_title = validate_public_pr_title(args.main_title or current_commit_subject(layout.package_root))
     source_commits = source_commit_series(layout.package_root, source_branch)
     default_dev = default_dev_branch(layout.package_root)
 
