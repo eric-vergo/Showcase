@@ -113,14 +113,14 @@ block_extension Block.informal (data : BlockData) where
           match data.kind with
           | .statement _ => some <| CodeSummary.renderParts data cdata getDeclHref
           | .proof => none
-        let externalParts? : Option ExternalCode.RenderParts :=
+        let externalParts? : Option ExternalCode.RenderParts ←
           match data.kind, codeSource with
           | .statement _, some (.external decls) =>
             if decls.isEmpty then
-              none
+              pure none
             else
               let panelHeader := codePanelHeader data (data.displayNumber s)
-              some <| ExternalCode.renderParts
+              some <$> ExternalCode.renderPartsWithPageHovers
                 panelHeader
                 panelSummary.summaryTitle
                 panelSummary.indicator
@@ -128,7 +128,7 @@ block_extension Block.informal (data : BlockData) where
                 getDeclHref
                 getDeclAnchorAttrs
                 (folded := data.foldCodeBlock)
-          | _, _ => none
+          | _, _ => pure none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
         let content := (← blocks.mapM goB)
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
