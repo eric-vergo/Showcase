@@ -296,7 +296,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
         (headerSource? := headerSource?)).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
-      | .ok html => .ok html.asString
+      | .ok html => .ok html
       | .error err => .error err
     pure {
       ref with

@@ -248,7 +248,7 @@ instance [Quote ε] [Quote α] : Quote (Except ε α) where
     | .ok value => Syntax.mkApp (mkCIdent ``Except.ok) #[quote value]
     | .error error => Syntax.mkApp (mkCIdent ``Except.error) #[quote error]
 
-abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError String
+abbrev ExternalDeclRender := Except Informal.ExternalDeclRenderError Informal.ExternalDeclRenderedHtml
 
 /--
 Reference to an external declaration mentioned by a blueprint node.
