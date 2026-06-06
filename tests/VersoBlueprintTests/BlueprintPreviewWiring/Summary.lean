@@ -49,12 +49,14 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewUtilsJs "function statementPreviewKey(label)" &&
         hasSubstr previewUtilsJs "function loadSharedPreviewEntry(previewKey)" &&
         hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
+        hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
         hasSubstr previewUtilsJs "window.setTimeout(function () {" &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
+        !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
         !hasSubstr inlineJs "ensureInlinePreviewStore" &&
         !hasSubstr inlineJs "template.bp_inline_preview_tpl"
       | _, _, _, _ => false
@@ -78,7 +80,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match inlineJs? with
       | some inlineJs =>
         hasSubstr inlineJs "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\"" &&
-        hasSubstr inlineJs "function fallbackInlinePreviewHtml(trigger, key)"
+        hasSubstr inlineJs "function fallbackInlinePreviewHtml(trigger, key, escapeHtml)"
       | none => false
     )
 

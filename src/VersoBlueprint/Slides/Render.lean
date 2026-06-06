@@ -4,9 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Std.Data.HashMap
 import Verso.Output.Html
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.PreviewManifest.RelatedPanel
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
@@ -73,30 +73,20 @@ def BlueprintSlideNode.fallbackText (node : BlueprintSlideNode) : String :=
 
 public structure RenderContext where
   manifest? : Option Informal.PreviewManifest.File := none
-  entriesByKey : Std.HashMap String Informal.PreviewManifest.Entry := {}
+  index : Informal.PreviewManifest.Index := {}
 
 def RenderContext.ofManifest? (manifest? : Option Informal.PreviewManifest.File) : RenderContext :=
-  let entriesByKey := Id.run do
-    let mut map : Std.HashMap String Informal.PreviewManifest.Entry := {}
-    if let some manifest := manifest? then
-      for entry in manifest.previews do
-        map := map.insert entry.key entry
-    pure map
-  { manifest? := manifest?, entriesByKey }
+  { manifest? := manifest?, index := manifest?.map (·.index) |>.getD {} }
 
 private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
     Option Informal.PreviewManifest.Entry :=
-  ctx.entriesByKey.get? key
+  ctx.index.findEntry? key
 
 private def trustedManifestHtml (html : String) : Html :=
   .text false html
 
 private def nameString (name : Name) : String :=
   name.toString
-
-private def safePreviewId (idPrefix value : String) : String :=
-  let body := Informal.HoverRender.previewKey value
-  if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
 
 private structure SlideTitle where
   caption : String
@@ -115,28 +105,7 @@ private def slideTitle (entry : Informal.PreviewManifest.Entry) (titleOverride? 
 
 private def codeEntries (ctx : RenderContext)
     (entry : Informal.PreviewManifest.Entry) : Array Informal.PreviewManifest.Entry :=
-  entry.leanCodePreviewKeys.filterMap fun key =>
-    ctx.findEntry? key
-
-private def axisBadge (axis : Informal.PreviewManifest.RelationAxis) : Html :=
-  {{<span class="bp_used_by_axis_badge">{{Html.ofString axis.display}}</span>}}
-
-private def panelEntry (item : Informal.PreviewManifest.RelatedEntry) (currentLabel : Name)
-    (idPrefix : String) : Informal.RelatedPanel.PanelEntry :=
-  let label := nameString item.label
-  let title := if item.title.trimAscii.toString.isEmpty then label else item.title
-  let previewId := safePreviewId idPrefix (if label.isEmpty then item.previewKey else label)
-  {
-    previewId
-    previewKey := item.previewKey
-    previewTitle := title
-    href := item.href
-    metaHtml := .seq <| #[
-      {{<code>{{Html.ofString (if label.isEmpty then item.previewKey else label)}}</code>}}
-    ] ++ item.axes.map axisBadge
-    previewFallbackLabel? := some (if label.isEmpty then item.previewKey else label)
-    active := item.label == currentLabel
-  }
+  ctx.index.codeEntries entry
 
 private def slidePanelConfig (kind : String)
     (cfg : Informal.RelatedPanel.PanelConfig) : Informal.RelatedPanel.PanelConfig :=
@@ -149,7 +118,7 @@ private def slidePanelConfig (kind : String)
 private def renderSlidePanel (kind : String) (cfg : Informal.RelatedPanel.PanelConfig)
     (entries : Array Informal.PreviewManifest.RelatedEntry) (currentLabel : Name) (idPrefix : String)
     : Html :=
-  let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix
+  let panelEntries := Informal.PreviewManifest.relatedPanelEntries entries currentLabel idPrefix
   Informal.RelatedPanel.renderPanel (slidePanelConfig kind cfg) panelEntries
 
 private def renderGroupChip (entry : Informal.PreviewManifest.Entry) : Html :=
@@ -170,7 +139,7 @@ private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count
   let previewTitle := nameString entry.label
   Informal.CodeSummary.renderManifestCodeStatusChip
     count
-    (safePreviewId "bp-slide-code" previewTitle)
+    (Informal.HoverRender.previewId "bp-slide-code" previewTitle)
     previewTitle
     entry.leanCodePreviewKeys[0]?
     (previewRefClassExtra := "bp_slide_code_chip_preview")
@@ -298,13 +267,7 @@ public def renderBlueprintSlideNodeFromAttrs?
   some (renderBlueprintSlideNode ctx node)
 
 def readBlueprintPreviewManifest (path : System.FilePath) :
-    IO Informal.PreviewManifest.File := do
-  let json ←
-    match Json.parse (← IO.FS.readFile path) with
-    | .ok json => pure json
-    | .error err => throw <| IO.userError s!"could not parse Blueprint preview manifest {path}: {err}"
-  match fromJson? (α := Informal.PreviewManifest.File) json with
-  | .ok file => pure file
-  | .error err => throw <| IO.userError s!"could not decode Blueprint preview manifest {path}: {err}"
+    IO Informal.PreviewManifest.File :=
+  Informal.PreviewManifest.readFile path
 
 end Informal.Slides

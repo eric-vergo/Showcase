@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import Lean.Elab.Command
+import Std.Data.HashMap
 import Std.Data.HashSet
 import VersoManual
 import VersoManual.HighlightedCode
@@ -577,6 +578,35 @@ deriving Inhabited, Repr, ToJson, FromJson
 structure File where
   previews : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
+
+structure Index where
+  entriesByKey : Std.HashMap String Entry := {}
+deriving Inhabited
+
+def Index.ofFile (file : File) : Index := {
+  entriesByKey := file.previews.foldl (fun entries entry => entries.insert entry.key entry) {}
+}
+
+def File.index (file : File) : Index :=
+  Index.ofFile file
+
+def Index.findEntry? (index : Index) (key : String) : Option Entry :=
+  index.entriesByKey.get? key
+
+def File.findEntry? (file : File) (key : String) : Option Entry :=
+  file.index.findEntry? key
+
+def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
+  entry.leanCodePreviewKeys.filterMap index.findEntry?
+
+def readFile (path : System.FilePath) : IO File := do
+  let json ←
+    match Json.parse (← IO.FS.readFile path) with
+    | .ok json => pure json
+    | .error err => throw <| IO.userError s!"could not parse Blueprint preview manifest {path}: {err}"
+  match fromJson? (α := File) json with
+  | .ok file => pure file
+  | .error err => throw <| IO.userError s!"could not decode Blueprint preview manifest {path}: {err}"
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}

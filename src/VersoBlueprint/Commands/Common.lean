@@ -878,6 +878,7 @@ def previewHoverUtilsJs : String := r##"(function () {
   window.bpPreviewUtils = {
     collectPreviewTemplates: collectPreviewTemplates,
     readPreviewTemplate: readPreviewTemplate,
+    escapeHtml: escapeHtml,
     loadSharedPreviewManifest: loadSharedPreviewManifest,
     readSharedPreviewManifestStatus: readSharedPreviewManifestStatus,
     readSharedPreviewEntry: readSharedPreviewEntry,
@@ -1051,16 +1052,7 @@ def openTargetDetailsJs : String := r##"(function () {
 def inlineLinkPreviewJs : String := r##"(function () {
   const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
-  function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-  }
-
-  function fallbackInlinePreviewHtml(trigger, key) {
+  function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
     if (!(trigger instanceof Element)) return "";
     const title = (trigger.getAttribute("data-bp-preview-title") || key || "").trim();
     const label = (trigger.getAttribute("data-bp-preview-fallback-label") || "").trim();
@@ -1121,11 +1113,13 @@ def inlineLinkPreviewJs : String := r##"(function () {
       typeof previewUtils.showPanelContent !== "function" ||
       typeof previewUtils.hidePanelContent !== "function" ||
       typeof previewUtils.shouldKeepOpen !== "function" ||
+      typeof previewUtils.escapeHtml !== "function" ||
       typeof previewUtils.configureCloseButton !== "function" ||
       typeof previewUtils.positionAnchoredPanel !== "function"
     ) {
       return;
     }
+    const escapeHtml = previewUtils.escapeHtml;
     const previewDebug =
       typeof previewUtils.previewDebug === "function"
         ? previewUtils.previewDebug
@@ -1409,7 +1403,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
           if (asyncHtml) return asyncHtml;
         }
       }
-      return fallbackInlinePreviewHtml(trigger, key);
+      return fallbackInlinePreviewHtml(trigger, key, escapeHtml);
     }
 
     async function showChildFromTrigger(trigger) {

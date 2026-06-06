@@ -1,0 +1,139 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+
+import Std.Data.HashMap
+import VersoSlides
+import VersoManual
+import VersoBlueprint.Commands.Common
+import VersoBlueprint.Informal.Block.Assets
+import VersoBlueprint.PreviewManifest
+
+namespace Informal.Slides
+
+def blueprintSlidesCssFilename : String := "blueprint-slides.css"
+def blueprintSlidesJsFilename : String := "blueprint-slides.js"
+
+private def slideNodeCss : String := include_str "blueprint-slides.css"
+
+def blueprintSlidesCss : String :=
+  String.intercalate "\n\n" <|
+    Informal.Commands.withPreviewPanelInlinePreviewCssAssets
+      [Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
+
+def blueprintSlidesCssFile : VersoSlides.CssFile where
+  filename := blueprintSlidesCssFilename
+  contents := ⟨blueprintSlidesCss⟩
+
+/--
+Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
+while generating the slide deck.
+-/
+private def slideNodeHydrationJs : String := include_str "blueprint-slides.js"
+
+def blueprintSlidesJs : String :=
+  String.intercalate "\n\n" <|
+    Informal.Commands.inlinePreviewJsAssets ++
+      [Informal.Block.Assets.usedByPanelJs, slideNodeHydrationJs]
+
+public def blueprintSlidesExtraJs : Array String :=
+  #[blueprintSlidesJsFilename]
+
+private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
+
+private def writeTextFileWithDirs (path : System.FilePath) (content : String) : IO Unit := do
+  let dir := path.parent.getD "."
+  if !(← dir.pathExists) then
+    IO.FS.createDirAll dir
+  IO.FS.writeFile path content
+
+private def writeBinFileWithDirs (path : System.FilePath) (content : ByteArray) : IO Unit := do
+  let dir := path.parent.getD "."
+  if !(← dir.pathExists) then
+    IO.FS.createDirAll dir
+  IO.FS.writeBinFile path content
+
+inductive SlideAssetPayload where
+  | text (body : String)
+  | binary (bytes : ByteArray)
+
+private def SlideAssetPayload.equal : SlideAssetPayload → SlideAssetPayload → Bool
+  | .text a, .text b => a == b
+  | .binary a, .binary b => a == b
+  | _, _ => false
+
+private def SlideAssetPayload.kind : SlideAssetPayload → String
+  | .text _ => "text"
+  | .binary _ => "binary"
+
+structure SlideAssetPlan where
+  assets : Std.HashMap String (String × SlideAssetPayload) := {}
+
+private def recordSlideAsset
+    (seen : Std.HashMap String (String × SlideAssetPayload))
+    (filename source : String) (payload : SlideAssetPayload) :
+    IO (Std.HashMap String (String × SlideAssetPayload)) := do
+  match seen.get? filename with
+  | none => pure <| seen.insert filename (source, payload)
+  | some (prevSource, prev) =>
+    if prev.equal payload then
+      pure seen
+    else
+      throw <| IO.userError
+        s!"Filename collision in config: \"{filename}\" is claimed by {prevSource} ({prev.kind}) and {source} ({payload.kind}) with different contents."
+
+def collectSlideAssets (config : VersoSlides.Config) : IO SlideAssetPlan := do
+  let mut seen : Std.HashMap String (String × SlideAssetPayload) := {}
+  if let .custom theme := config.theme then
+    seen ← recordSlideAsset seen theme.stylesheet.filename
+      "theme stylesheet" (.text theme.stylesheet.contents.css)
+    for asset in theme.assets do
+      seen ← recordSlideAsset seen asset.filename
+        "theme asset" (.binary asset.contents)
+  seen ← recordSlideAsset seen config.highlightTheme.filename
+    "highlight.js theme" (.text config.highlightTheme.contents.css)
+  for css in config.extraCss do
+    seen ← recordSlideAsset seen css.filename
+      "extraCss" (.text css.contents.css)
+  pure { assets := seen }
+
+def writeSlideAssets (outputDir : System.FilePath) (plan : SlideAssetPlan) : IO Unit := do
+  for (filename, _source, payload) in plan.assets.toList do
+    match payload with
+    | .text body => writeTextFileWithDirs (outputDir / filename) body
+    | .binary bytes => writeBinFileWithDirs (outputDir / filename) bytes
+
+def writeSlideImages
+    (outputDir : System.FilePath)
+    (imageFiles : Std.HashMap String String) : IO Unit := do
+  unless imageFiles.isEmpty do
+    let imagesDir := outputDir / "images"
+    IO.FS.createDirAll imagesDir
+    for (resolved, outputName) in imageFiles.toList do
+      let contents ← IO.FS.readBinFile resolved
+      writeBinFileWithDirs (imagesDir / outputName) contents
+
+/-- Add the Blueprint slide CSS/JS assets to a Verso Slides config. -/
+public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
+  { config with
+    extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
+    extraJs := pushIfMissing config.extraJs blueprintSlidesJsFilename }
+
+/-- Write the JavaScript file referenced by {name}`withBlueprintSlidesAssets`. -/
+public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
+  writeTextFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
+
+/-- Output path where slide decks expect the shared Blueprint preview manifest. -/
+public def blueprintSlidesPreviewManifestPath (outputDir : System.FilePath) : System.FilePath :=
+  outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
+
+/-- Copy a generated Blueprint shared preview manifest into a slide deck output directory. -/
+public def copyBlueprintPreviewManifest
+    (outputDir source : System.FilePath) : IO Unit := do
+  let contents ← IO.FS.readFile source
+  writeTextFileWithDirs (blueprintSlidesPreviewManifestPath outputDir) contents
+
+end Informal.Slides

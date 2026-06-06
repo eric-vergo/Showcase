@@ -76,6 +76,10 @@ def previewKey (s : String) : String :=
     else
       acc ++ s!"-{toHex c.toNat}"
 
+def previewId (idPrefix value : String) : String :=
+  let body := previewKey value
+  if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
+
 def inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
 
 def inlinePreviewMarkerBlock : Verso.Genre.Manual.Block := {

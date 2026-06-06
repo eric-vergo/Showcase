@@ -1450,12 +1450,13 @@ def codeSummaryPreviewJs : String := r##"(function () {
 
 def relationPanelJs : String := r##"(function () {
   function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
+    const previewUtils = window.bpPreviewUtils;
+    if (previewUtils && typeof previewUtils.escapeHtml === "function") {
+      return previewUtils.escapeHtml(text);
+    }
+    const scratch = document.createElement("div");
+    scratch.textContent = String(text || "");
+    return scratch.innerHTML;
   }
 
   function previewMessageHtml(kind, title, detail) {
