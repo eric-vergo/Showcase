@@ -336,27 +336,8 @@ private def renderEntryShell (ctx : RenderContext)
   let title := slideTitle entry node.title?
   let href := entry.href
   let codeEntries := if node.compact then #[] else codeEntries ctx entry
-  let titleRow : Html :=
-    if isProof then
-      {{
-        <div class="bp_heading_title_row">
-          <span class="bp_caption bp_kind_proof_caption proof_caption" title={{nameString entry.label}}>
-            "Proof"
-          </span>
-        </div>
-      }}
-    else
-      {{
-        <div class="bp_heading_title_row bp_heading_title_row_statement">
-          <span class={{"bp_caption bp_kind_" ++ style.kindCss ++ "_caption " ++ style.captionCss}}
-              title={{nameString entry.label}}>
-            {{Html.ofString title.caption}}
-          </span>
-          <span class={{"bp_label bp_kind_" ++ style.kindCss ++ "_label " ++ style.labelCss}}>
-            {{Html.ofString title.label}}
-          </span>
-        </div>
-      }}
+  let titleRow := Informal.renderBlockTitleRow style (nameString entry.label) title.label
+    (if isProof then "Proof" else title.caption)
   let linkedTitleRow : Html :=
     match href with
     | some href =>

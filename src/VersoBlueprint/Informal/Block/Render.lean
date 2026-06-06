@@ -94,7 +94,8 @@ end BlockKindRenderStyle
 private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
   BlockKindRenderStyle.ofInProgressKind data.kind
 
-private def renderBlockTitleRow (style : BlockKindRenderStyle)
+/-- Render the caption/label row shared by informal block shells. -/
+def renderBlockTitleRow (style : BlockKindRenderStyle)
     (labelText numberText captionText : String) :
     Verso.Output.Html :=
   open Verso.Output.Html in
