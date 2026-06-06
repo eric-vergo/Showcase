@@ -5,18 +5,15 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoSlides
-import Verso.Doc.ArgParse
 import Verso.Doc.Elab
-import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewManifest
-import VersoBlueprint.PreviewCache
 import VersoBlueprint.Slides.Assets
+import VersoBlueprint.Slides.Node
 import VersoBlueprint.Slides.Render
 
 namespace Informal.Slides
 
-open Lean
-open Verso Doc Elab ArgParse
+open Verso Doc Elab
 
 @[reducible] private def defaultSlidesGenreHtml :
     Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
@@ -106,45 +103,6 @@ public def slidesMainWithBlueprintPreviews
     if let some previewManifest := previewManifest? then
       copyBlueprintPreviewManifest config.outputDir previewManifest
   pure rc
-
-public structure BlueprintNodeConfig where
-  label : String
-  facet : Option String := none
-  title : Option String := none
-  compact : Bool := false
-  siteBase : Option String := none
-
-public meta instance : FromArgs BlueprintNodeConfig DocElabM where
-  fromArgs :=
-    BlueprintNodeConfig.mk <$>
-      .positional `label .string <*>
-      .named `facet .string true <*>
-      .named `title .string true <*>
-      .flag `compact false <*>
-      .named `siteBase .string true
-
-private def previewKey (label facet : String) : String :=
-  let label := Informal.LabelNameParsing.parse label
-  match facet with
-  | "statement" => Informal.PreviewCache.key label .statement
-  | "proof" => Informal.PreviewCache.key label .proof
-  | other => s!"{label}--{other}"
-
-public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term := do
-  let facet := cfg.facet.getD "statement"
-  let key := previewKey cfg.label facet
-  let node : BlueprintSlideNode := {
-    label := cfg.label
-    facet := facet
-    key := key
-    title? := cfg.title
-    compact := cfg.compact
-    siteBase? := cfg.siteBase
-  }
-  let attrs := node.toAttrs
-  let fallback := node.fallbackText
-  ``(Verso.Doc.Block.other (VersoSlides.BlockExt.wrap $(quote attrs))
-      #[Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote fallback)]])
 
 end Informal.Slides
 
