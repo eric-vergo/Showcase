@@ -404,6 +404,9 @@ class TestPreviewRuntimeRegressions:
         chip = wrap.locator(".bp_relation_chip").first
         chip.hover()
 
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
+            "Reverse dependency previews"
+        )
         expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
         body = wrap.locator(".bp_relation_preview_body")
@@ -431,6 +434,7 @@ class TestPreviewRuntimeRegressions:
         panel = wrap.locator(".bp_relation_panel").first
         expect(panel).to_be_visible()
         expect(panel.locator(".bp_relation_panel_title")).to_have_text("Uses 1")
+        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Dependency previews")
         expect(panel.locator(".bp_relation_item")).to_have_count(1)
         expect(panel.locator(".bp_relation_target_meta")).to_contain_text("used_target")
         expect(panel.locator(".bp_relation_target_meta")).to_contain_text("statement")

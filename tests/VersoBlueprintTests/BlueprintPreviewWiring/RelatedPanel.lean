@@ -28,6 +28,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
       hasSubstr out "class=\"bp_relation_preview_message\"" &&
       hasSubstr out "Loading preview" &&
+      hasSubstr out "Reverse dependency previews" &&
+      !hasSubstr out "Hover a use site to preview it." &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
       hasSubstr out "data-bp-relation-preview-id" &&
       hasSubstr out "data-bp-relation-preview-key" &&
@@ -86,7 +88,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_relation_chip bp_uses_chip\"" &&
       hasSubstr out "class=\"bp_relation_panel\"" &&
       hasSubstr out "Uses 3" &&
-      hasSubstr out "Hover a dependency to preview it." &&
+      hasSubstr out "Dependency previews" &&
+      !hasSubstr out "Hover a dependency to preview it." &&
       hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
@@ -119,7 +122,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_group\"" "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
-      hasSubstr out "Hover another entry in this group to preview it." &&
+      hasSubstr out "Group member previews" &&
+      !hasSubstr out "Hover another entry in this group to preview it." &&
       hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
       hasSubstr out "class=\"bp_relation_preview_message\"" &&
       hasSubstr out "Loading preview" &&

@@ -19,6 +19,7 @@ class TestBlueprintGroupPreview:
         chip.click()
         expect(panel).to_be_visible()
         expect(panel.locator(".bp_relation_panel_title")).to_contain_text("Group: Preview group title.")
+        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Group member previews")
 
         items = panel.locator(".bp_relation_item")
         expect(items).to_have_count(2)

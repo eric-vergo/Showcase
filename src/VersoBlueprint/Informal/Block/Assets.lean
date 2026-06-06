@@ -1531,7 +1531,7 @@ def relationPanelJs : String := r##"(function () {
     const body = panel.querySelector(".bp_relation_preview_body");
     if (!(title instanceof Element) || !(body instanceof Element)) return;
 
-    const defaultTitle = (title.textContent || "").trim() || "Hover a use site";
+    const defaultTitle = (title.textContent || "").trim() || "Relation preview";
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
     let closeTimer = null;
     let activateRequestToken = 0;
