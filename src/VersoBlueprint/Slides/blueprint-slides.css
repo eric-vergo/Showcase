@@ -70,9 +70,9 @@
   grid-template-columns:
     minmax(5.2rem, max-content)
     minmax(5.2rem, max-content)
+    minmax(6.6rem, max-content)
     max-content
-    minmax(6.6rem, max-content);
-  grid-template-areas: "group uses code used";
+  grid-template-areas: "group uses used code";
   column-gap: 0.36rem;
   margin-left: auto;
 }
@@ -92,6 +92,16 @@
   line-height: 1.1;
   padding: 0.22rem 0.58rem;
   white-space: nowrap;
+}
+
+.bp_slide_node .bp_extras .bp_code_summary_preview_root,
+.bp_slide_node .bp_extras .bp_code_summary_preview_wrap,
+.bp_slide_node .bp_extras .bp_inline_preview_ref {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.1;
 }
 
 .bp_slide_node button.bp_used_by_chip {
@@ -335,6 +345,7 @@
 }
 
 .bp_slide_node .bp_external_decl_rendered pre,
+.bp_slide_node .bp_slide_code_body code.hl.lean.block,
 .bp_slide_node .bp_slide_code_body pre,
 .bp_inline_preview_panel .bp_external_decl_signature_wrap pre,
 .bp_inline_preview_panel .bp_external_decl_rendered pre,
@@ -358,6 +369,7 @@
 }
 
 .bp_slide_node .bp_external_decl_rendered pre *,
+.bp_slide_node .bp_slide_code_body code.hl.lean.block *,
 .bp_slide_node .bp_slide_code_body pre *,
 .bp_inline_preview_panel .bp_external_decl_signature_wrap pre *,
 .bp_inline_preview_panel .bp_external_decl_rendered pre *,
@@ -366,6 +378,7 @@
 }
 
 .bp_slide_node .bp_external_decl_rendered pre .keyword,
+.bp_slide_node .bp_slide_code_body code.hl.lean.block .keyword,
 .bp_slide_node .bp_slide_code_body pre .keyword,
 .bp_inline_preview_panel pre .keyword {
   color: #8839a0 !important;
@@ -373,12 +386,14 @@
 }
 
 .bp_slide_node .bp_external_decl_rendered pre .const,
+.bp_slide_node .bp_slide_code_body code.hl.lean.block .const,
 .bp_slide_node .bp_slide_code_body pre .const,
 .bp_inline_preview_panel pre .const {
   color: #1a5fb4 !important;
 }
 
 .bp_slide_node .bp_external_decl_rendered pre .var,
+.bp_slide_node .bp_slide_code_body code.hl.lean.block .var,
 .bp_slide_node .bp_slide_code_body pre .var,
 .bp_inline_preview_panel pre .var {
   color: #1a7a6a !important;

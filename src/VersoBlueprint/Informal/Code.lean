@@ -27,19 +27,26 @@ open Lean.Doc.Syntax
 namespace Informal
 open CodeSummary
 
+private def preservePreviewBlock (container : Verso.Genre.Manual.Block) : Bool :=
+  container.name == ``Manual.InlineLean.Block.lean ||
+    container.name == ``Manual.Block.lean
+
 private partial def previewCodeBlocks
+    (id : Verso.Multi.InternalId)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) :
     Array (Verso.Doc.Block Verso.Genre.Manual) :=
   blocks.foldl (init := #[]) fun acc block =>
     acc ++
       match block with
       | .concat contents =>
-        previewCodeBlocks contents
-      | .other _ contents =>
-        if contents.isEmpty then
+        previewCodeBlocks id contents
+      | .other container contents =>
+        if preservePreviewBlock container then
+          #[.other { container with id := some id } contents]
+        else if contents.isEmpty then
           #[block]
         else
-          previewCodeBlocks contents
+          previewCodeBlocks id contents
       | _ =>
         #[block]
 
@@ -52,7 +59,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
     if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
       pure none
     else
-      let previewBlocks := previewCodeBlocks _contents
+      let previewBlocks := previewCodeBlocks id _contents
       let previewTargets :=
         (cdata.definedDefs.map (·.name)) ++ (cdata.definedTheorems.map (·.name))
       for target in previewTargets do

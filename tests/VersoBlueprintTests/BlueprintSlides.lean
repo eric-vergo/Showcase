@@ -167,6 +167,21 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
+    let some codeEntry := file.previews.find? (fun entry => entry.key == codeKey)
+      | return false
+    pure <|
+      hasSubstr codeEntry.html "class=\"hl lean block\"" &&
+        hasSubstr codeEntry.html "examples" &&
+        !hasSubstr codeEntry.html "<pre>def "
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
+    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:used.target") .statement
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget

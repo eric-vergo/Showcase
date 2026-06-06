@@ -363,38 +363,38 @@ def renderCodeCountSummaryIndicator (count : Nat) : Output.Html :=
     }}
 
 /--
-Render a code-status chip whose hover body is supplied by the shared preview
-manifest rather than an inline template.
+Render a manifest-backed Lean code panel with the same shell and declaration
+count indicator as ordinary Blueprint code panels.
 -/
-def renderManifestCodeStatusChip (count : Nat) (previewId previewTitle : String)
-    (previewKey? : Option String) (previewRefClassExtra : String := "")
-    (ariaLabel : String := "Lean declarations") : Output.Html :=
-  open Verso.Output.Html in
-  if count == 0 then
+def renderManifestCodePanel
+    (header : CodePanelHeader) (summaryTitle : String)
+    (codeCount : Nat) (body : Output.Html)
+    (attrs : Array (String × String) := #[])
+    (folded : Bool := false) : Output.Html :=
+  if codeCount == 0 then
     .empty
   else
-    let chip := renderCodeCountStatusBadge count
-    let body : Output.Html :=
-      match previewKey? with
-      | some key =>
-        let refClass :=
-          if previewRefClassExtra.isEmpty then
-            "bp_inline_preview_ref"
-          else
-            "bp_inline_preview_ref " ++ previewRefClassExtra
-        .tag "span"
-          #[ ("class", refClass)
-           , ("data-bp-preview-id", previewId)
-           , ("data-bp-preview-title", previewTitle)
-           , ("data-bp-preview-key", key)
-           , ("tabindex", "0")
-           , ("role", "button")
-           , ("aria-label", ariaLabel)
-           ]
-          chip
-      | none => chip
+    mkCodePanel header summaryTitle (renderCodeCountSummaryIndicator codeCount)
+      body attrs (folded := folded)
+
+/--
+Render the manifest-backed Lean-code preview body used by generated slide
+chips. The entries are already display-deduplicated by the manifest index.
+-/
+def renderManifestCodePreviewBody (codeBodies : Array Output.Html) : Output.Html :=
+  open Verso.Output.Html in
+  if codeBodies.isEmpty then
+    .empty
+  else
     {{
-      <span class="bp_code_summary_preview_root">{{body}}</span>
+      <div class="bp_code_summary_preview_content bp_manifest_code_preview_content">
+        <div class="bp_code_hover_section bp_manifest_code_preview_section">
+          <span class="bp_code_hover_label">"Lean code"</span>
+          <div class="bp_manifest_code_preview_code">
+            {{.seq codeBodies}}
+          </div>
+        </div>
+      </div>
     }}
 
 private def renderCodeEntryNode (href : Option String) (title : String) (visual : CodeEntryVisual)
@@ -441,6 +441,23 @@ private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.H
       {{Informal.HoverRender.codeSummaryPreviewUi.panel}}
     </span>
   }}
+
+/--
+Render a manifest-backed code-status chip with the same hover panel used by
+ordinary Blueprint code-summary chips.
+-/
+def renderManifestCodeStatusChip (count : Nat) (previewTitle : String) (previewBody : Output.Html)
+    (ariaLabel : String := "Lean declarations") : Output.Html :=
+  if count == 0 then
+    .empty
+  else if previewBody == .empty then
+    renderCodeCountStatusBadge count
+  else
+    renderCodeSummaryPreview previewTitle
+      (renderCodeCountStatusBadge count)
+      previewBody
+      (focusable := true)
+      (ariaLabel? := some ariaLabel)
 
 private def renderCodeEntryWrap (href : Option String) (title previewTitle : String)
     (previewBody : Output.Html) (visual : CodeEntryVisual)
