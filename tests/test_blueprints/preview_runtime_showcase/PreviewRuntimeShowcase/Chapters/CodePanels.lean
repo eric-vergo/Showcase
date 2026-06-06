@@ -91,10 +91,16 @@ theorem PreviewFreyPackage.ofCounterexample {a b c p : Nat} (hp5 : 5 <= p)
 
 end PreviewRuntimeShowcase.CodePanelDecls
 
+open PreviewRuntimeShowcase.CodePanelDecls
+
 #doc (Manual) "Code Panels" =>
 
 :::definition "panel_external_definition" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition")
 In-module external definition panel sample.
+:::
+
+:::definition "panel_external_short_name_definition" (lean := "previewExternalDefinition")
+Namespace-opened external definition panel sample.
 :::
 
 :::definition "panel_external_abbrev" (lean := "PreviewRuntimeShowcase.CodePanelDecls.previewExternalAbbrev")

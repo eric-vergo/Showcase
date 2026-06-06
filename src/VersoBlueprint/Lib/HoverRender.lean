@@ -199,6 +199,46 @@ def summaryPreviewWrap
       </span>
     }}
 
+/--
+All attributes needed to bind one inline preview trigger to its runtime panel.
+
+`triggerId` is the page-local UI id used for hover state. `lookupKey?` is the
+shared preview-manifest key used to load the preview body; the two are often but
+not always the same value.
+-/
+structure InlinePreviewTarget where
+  triggerId : String
+  title : String
+  lookupKey? : Option String := none
+  fallbackLabel? : Option String := none
+  fallbackDetail? : Option String := none
+
+/-- Build a target whose trigger id and manifest lookup key are the same. -/
+def InlinePreviewTarget.manifestBacked
+    (lookupKey title : String)
+    (fallbackLabel? : Option String := none)
+    (fallbackDetail? : Option String := none) : InlinePreviewTarget :=
+  {
+    triggerId := lookupKey
+    title
+    lookupKey? := some lookupKey
+    fallbackLabel?
+    fallbackDetail?
+  }
+
+/-- Build a target with a distinct trigger id and manifest lookup key. -/
+def InlinePreviewTarget.withLookupKey
+    (triggerId title lookupKey : String)
+    (fallbackLabel? : Option String := none)
+    (fallbackDetail? : Option String := none) : InlinePreviewTarget :=
+  {
+    triggerId
+    title
+    lookupKey? := some lookupKey
+    fallbackLabel?
+    fallbackDetail?
+  }
+
 private def inlinePreviewRefAttrs
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
@@ -242,5 +282,11 @@ def inlinePreviewNode (node : Verso.Output.Html)
     (previewFallbackLabel? : Option String := none)
     (previewFallbackDetail? : Option String := none) : Verso.Output.Html :=
   inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
+
+/-- Render one inline preview trigger from a bundled preview target. -/
+def inlinePreviewTargetNode
+    (node : Verso.Output.Html) (target : InlinePreviewTarget) : Verso.Output.Html :=
+  inlinePreviewNode node target.triggerId target.title target.lookupKey?
+    target.fallbackLabel? target.fallbackDetail?
 
 end Informal.HoverRender

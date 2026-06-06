@@ -212,6 +212,56 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_code_summary_decl_link_hover_loads_canonical_lean_preview(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Code-Panels/")
+
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        wrapper = page.locator(
+            '.bp_wrapper[title="panel_external_short_name_definition"]'
+        ).first
+        trigger = wrapper.locator(
+            ".bp_extra_slot_code .bp_code_summary_preview_wrap_active"
+        ).first
+        expect(trigger).to_have_count(1)
+        trigger.hover()
+
+        summary_panel = wrapper.locator(
+            ".bp_extra_slot_code .bp_code_summary_preview_panel"
+        ).first
+        expect(summary_panel).to_be_visible()
+        expect(summary_panel.locator(".bp_code_decl_item").first).to_contain_text(
+            "previewExternalDefinition"
+        )
+
+        canonical_key = (
+            "Informal.LeanCodePreview."
+            "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition"
+        )
+        decl_link = summary_panel.locator(
+            f'.bp_inline_preview_ref[data-bp-preview-key="{canonical_key}"]'
+        ).first
+        expect(decl_link).to_have_count(1)
+        expect(decl_link.locator("code")).to_have_text("previewExternalDefinition")
+
+        decl_link.hover()
+
+        panel = page.locator("#bp-inline-preview-panel")
+        body = panel.locator(".bp_inline_preview_panel_body")
+        expect(panel).to_be_visible()
+        expect(panel.locator(".bp_inline_preview_panel_title")).to_have_text(
+            "previewExternalDefinition"
+        )
+        expect(body).to_contain_text(
+            "PreviewRuntimeShowcase.CodePanelDecls.previewExternalDefinition"
+        )
+        expect(body).to_contain_text("def")
+
+        assert_no_runtime_errors(errors)
+
     def test_blueprint_summary_decl_link_hover_loads_manifest_backed_code_preview(
         self, server: str, page: Page
     ):
