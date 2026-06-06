@@ -95,3 +95,30 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
 
             self.assertEqual(rebuilt, ["VersoBlueprint.Commands.Graph"])
             run_mock.assert_called_once()
+
+    def test_rebuild_embedded_asset_owners_rebuilds_slide_asset_owner_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            css = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.css"
+            js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.js"
+            owner = root / "src" / "VersoBlueprint" / "Slides" / "Assets.lean"
+            cached_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Slides" / "Assets.olean"
+            cached_ir = root / ".lake" / "build" / "ir" / "VersoBlueprint" / "Slides" / "Assets.c"
+            owner.parent.mkdir(parents=True, exist_ok=True)
+            cached_olean.parent.mkdir(parents=True, exist_ok=True)
+            cached_ir.parent.mkdir(parents=True, exist_ok=True)
+            css.write_text("/* css */", encoding="utf-8")
+            js.write_text("// js", encoding="utf-8")
+            owner.write_text("-- lean", encoding="utf-8")
+            cached_olean.write_text("stale", encoding="utf-8")
+            cached_ir.write_text("stale", encoding="utf-8")
+
+            with patch("scripts.blueprint_harness_utils.run") as run_mock:
+                rebuilt = rebuild_embedded_asset_owners(root)
+
+            self.assertEqual(rebuilt, ["VersoBlueprint.Slides.Assets"])
+            run_mock.assert_called_once()
+            command = run_mock.call_args.kwargs["command"] if "command" in run_mock.call_args.kwargs else run_mock.call_args.args[0]
+            self.assertEqual(command.count("VersoBlueprint.Slides.Assets"), 1)
+            self.assertFalse(cached_olean.exists())
+            self.assertFalse(cached_ir.exists())
