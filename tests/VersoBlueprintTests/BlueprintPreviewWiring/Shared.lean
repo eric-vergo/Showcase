@@ -133,6 +133,21 @@ Statement with an associated Lean declaration link in the summary.
 {blueprint_summary}
 :::::::
 
+namespace ShortExternalPreview
+
+def openedSummaryDecl : Nat := 0
+
+end ShortExternalPreview
+
+open ShortExternalPreview
+
+#docs (Genre.Manual) shortExternalNamePreviewDoc "Blueprint Short External Name Preview Wiring" :=
+:::::::
+:::definition "def:code.short_external" (lean := "openedSummaryDecl")
+Statement with a namespace-opened external declaration name.
+:::
+:::::::
+
 /-- External declaration docstring dedup marker for repeated preview refs. -/
 def externalDocstringDedupDecl : Nat := 0
 

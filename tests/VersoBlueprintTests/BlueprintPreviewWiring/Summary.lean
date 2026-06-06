@@ -86,6 +86,21 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #guard_msgs in
 #eval
   show IO Bool from do
+    let out ← renderManualDocHtmlString manualImpls shortExternalNamePreviewDoc
+    let canonicalKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.ShortExternalPreview.openedSummaryDecl
+    let shortKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      (Lean.Name.mkSimple "openedSummaryDecl")
+    pure (
+      hasSubstr out "<code>openedSummaryDecl</code>" &&
+      hasSubstr out s!"data-bp-preview-key=\"{canonicalKey}\"" &&
+      !hasSubstr out s!"data-bp-preview-key=\"{shortKey}\""
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls externalDocstringDedupDoc
     let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl
