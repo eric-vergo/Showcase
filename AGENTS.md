@@ -127,7 +127,8 @@
   interface.
 - Harnessed artifact-generation flows now proactively refresh the owner-module
   mtimes for embedded package assets such as `graph.css`, `graph.js`,
-  `summary.css`, `bibliography.css`, and `static-web/math.js` before build
+  `summary.css`, `bibliography.css`, `blueprint-slides.css`,
+  `blueprint-slides.js`, and `static-web/math.js` before build
   steps run, remove those owner modules' cached build outputs, and then run a
   targeted root `lake build` for those owner modules. This keeps downstream
   generator projects from silently serving stale embedded assets when only the

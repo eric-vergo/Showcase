@@ -101,6 +101,8 @@
 
 .bp_slide_node .bp_used_by_panel {
   box-sizing: border-box;
+  left: auto;
+  right: 0;
   top: calc(100% + 0.36rem);
   z-index: 1200;
   width: min(34rem, 82vw);
@@ -110,11 +112,6 @@
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
   color: var(--bp-color-text, #111827);
   padding: 0.55rem;
-}
-
-.bp_slide_node .bp_extra_slot_group .bp_used_by_panel {
-  left: 0;
-  right: auto;
 }
 
 .bp_slide_node .bp_used_by_panel_header {

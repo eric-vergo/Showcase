@@ -13,6 +13,8 @@ EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
     ("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     ("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
     ("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
+    ("src/VersoBlueprint/Slides/blueprint-slides.css", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
+    ("src/VersoBlueprint/Slides/blueprint-slides.js", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
     ("static-web/math.js", "src/VersoBlueprint/Macros.lean", "VersoBlueprint.Macros"),
 )
 
