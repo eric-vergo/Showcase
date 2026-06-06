@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Std.Data.HashMap
 import Verso.Output.Html
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Lib.HoverRender
@@ -136,23 +137,19 @@ private def panelEntry (item : Informal.PreviewManifest.RelatedEntry) (currentLa
     active := item.label == currentLabel
   }
 
-private def renderSlidePanel (kind chipText chipTitle panelTitle panelMeta : String)
-    (entries : Array Informal.PreviewManifest.RelatedEntry) (currentLabel : Name) (idPrefix : String)
-    (chipClass : String := "bp_used_by_chip")
-    (emptyChipClass : String := "bp_used_by_chip bp_used_by_chip_empty") : Html :=
-  let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix
-  Informal.RelatedPanel.renderPanel {
-    chipText := fun _ => chipText
-    chipTitle := fun _ => chipTitle
-    singleTitle := fun _ => chipTitle
-    panelTitle := fun _ => panelTitle
-    panelMeta
-    chipClass
-    emptyChipClass
+private def slidePanelConfig (kind : String)
+    (cfg : Informal.RelatedPanel.PanelConfig) : Informal.RelatedPanel.PanelConfig :=
+  { cfg with
     wrapClass := "bp_used_by_wrap bp_slide_" ++ kind ++ "_wrap"
     panelAttrs := #[("data-bp-slide-panel", kind)]
     singleMode := .panel
-  } panelEntries
+  }
+
+private def renderSlidePanel (kind : String) (cfg : Informal.RelatedPanel.PanelConfig)
+    (entries : Array Informal.PreviewManifest.RelatedEntry) (currentLabel : Name) (idPrefix : String)
+    : Html :=
+  let panelEntries := entries.map fun item => panelEntry item currentLabel idPrefix
+  Informal.RelatedPanel.renderPanel (slidePanelConfig kind cfg) panelEntries
 
 private def renderGroupChip (entry : Informal.PreviewManifest.Entry) : Html :=
   match entry.group with
@@ -161,42 +158,12 @@ private def renderGroupChip (entry : Informal.PreviewManifest.Entry) : Html :=
     if group.declared && group.entries.isEmpty then
       .empty
     else
-    let chipClass :=
-      if group.declared then
-        "bp_used_by_chip"
-      else
-        "bp_used_by_chip bp_used_by_chip_warn"
-    let emptyChipClass :=
-      if group.declared then
-        "bp_used_by_chip bp_used_by_chip_empty"
-      else
-        "bp_used_by_chip bp_used_by_chip_empty bp_used_by_chip_warn"
-    let chipTitle :=
-      if group.entries.isEmpty then
-        if group.declared then
-          s!"Group: {group.title}. No other entries in this group."
-        else
-          s!"Parent group '{group.label}' is referenced here, but no :::group declaration was found."
-      else if group.declared then
-        s!"Other entries in group {group.title}"
-      else
-        s!"Undeclared group '{group.label}'"
-    let panelMeta :=
-      if group.declared then
-        "Hover another entry in this group to preview it."
-      else
-        s!"No :::group declaration was found for parent '{group.label}'; showing entries that share this parent label."
     renderSlidePanel
       "group"
-      "group"
-      chipTitle
-      s!"Group: {group.title} ({group.entries.size})"
-      panelMeta
+      (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
       group.entries
       entry.label
       s!"bp-slide-group-{nameString entry.label}"
-      (chipClass := chipClass)
-      (emptyChipClass := emptyChipClass)
 
 private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count : Nat) : Html :=
   if count == 0 then
@@ -237,32 +204,24 @@ private def renderUsesChip (entry : Informal.PreviewManifest.Entry) : Html :=
     let count := entry.uses.size
     renderSlidePanel
       "uses"
-      s!"uses {count}"
-      "Statement and proof dependencies"
-      s!"Uses {count}"
-      "Hover a dependency to preview it."
+      {
+        chipText := fun _ => s!"uses {count}"
+        chipTitle := fun _ => "Statement and proof dependencies"
+        singleTitle := fun _ => "Statement and proof dependencies"
+        panelTitle := fun _ => s!"Uses {count}"
+        panelMeta := "Hover a dependency to preview it."
+      }
       entry.uses
       Name.anonymous
       "bp-slide-uses"
 
 private def renderUsedByChip (entry : Informal.PreviewManifest.Entry) : Html :=
-  let count := entry.usedBy.size
-  if count == 0 then
-    {{
-      <span class="bp_used_by_chip bp_used_by_chip_empty" title="Reverse dependencies">
-        {{Html.ofString s!"used by {count}"}}
-      </span>
-    }}
-  else
-    renderSlidePanel
-      "used-by"
-      s!"used by {count}"
-      "Reverse dependencies"
-      s!"Used by {count}"
-      "Hover a use site to preview it."
-      entry.usedBy
-      Name.anonymous
-      "bp-slide-used-by"
+  renderSlidePanel
+    "used-by"
+    (Informal.RelatedPanel.usedByPanelConfig)
+    entry.usedBy
+    Name.anonymous
+    "bp-slide-used-by"
 
 private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : Nat) : Html :=
   let group := renderGroupChip entry
@@ -297,24 +256,11 @@ private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
     .empty
   else
     let codeHtml := codeEntries.map (fun codeEntry => trustedManifestHtml codeEntry.html)
-    {{
-      <div class="bp_wrapper bp_code_panel_wrapper">
-        <details class="bp_code_block bp_code_panel" open>
-          <summary class="bp_heading lemma_thmheading" title={{"Lean code for " ++ nameString entry.label}}>
-            <span class="bp_heading_title_row">
-              <span class="bp_caption lemma_thmcaption bp_code_summary_text">
-                {{Html.ofString s!"Lean code for {caption}"}}
-              </span>
-              <span class="bp_label lemma_thmlabel bp_code_summary_label">
-                {{Html.ofString label}}
-              </span>
-            </span>
-            {{renderCodeBadge codeEntries.size}}
-          </summary>
-          <div class="bp_slide_code_body">{{codeHtml}}</div>
-        </details>
-      </div>
-    }}
+    Informal.mkCodePanel
+      { caption := s!"Lean code for {caption}", number? := some label }
+      ("Lean code for " ++ nameString entry.label)
+      (renderCodeBadge codeEntries.size)
+      {{<div class="bp_slide_code_body">{{codeHtml}}</div>}}
 
 private def renderNotice (kind title detail : String) : Html :=
   {{
