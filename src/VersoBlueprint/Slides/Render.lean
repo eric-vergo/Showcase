@@ -111,7 +111,7 @@ private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : N
   }
 
 private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
-    (codeEntries : Array Informal.PreviewManifest.Entry) (caption label : String) : Html :=
+    (codeEntries : Array Informal.PreviewManifest.Entry) (codeCount : Nat) (caption label : String) : Html :=
   if codeEntries.isEmpty then
     .empty
   else
@@ -119,7 +119,7 @@ private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
     Informal.mkCodePanel
       { caption := s!"Lean code for {caption}", number? := some label }
       ("Lean code for " ++ entry.label.toString)
-      (Informal.CodeSummary.renderCodeCountSummaryIndicator codeEntries.size)
+      (Informal.CodeSummary.renderCodeCountSummaryIndicator codeCount)
       {{<div class="bp_slide_code_body">{{codeHtml}}</div>}}
 
 private def renderNotice (kind title detail : String) : Html :=
@@ -142,6 +142,7 @@ private def renderEntryShell (ctx : RenderContext)
   let title := slideTitle entry node.title?
   let href := entry.href
   let labelText := entry.label.toString
+  let codeCount := if node.compact then 0 else ctx.index.codeEntryCount entry
   let codeEntries := if node.compact then #[] else ctx.index.codeEntries entry
   let titleRowAttrs? : Option (Array (String × String)) :=
     href.map fun href =>
@@ -160,13 +161,13 @@ private def renderEntryShell (ctx : RenderContext)
         numberText := title.label
         captionText := if isProof then "Proof" else title.caption
         titleRowAttrs?
-        headerExtras := if isProof then {} else renderExtras entry codeEntries.size
+        headerExtras := if isProof then {} else renderExtras entry codeCount
       }
       (trustedManifestHtml entry.html)
   {{
     <div class="bp_slide_node_blueprint">
       {{blockShell}}
-      {{renderCodePanel entry codeEntries title.caption title.label}}
+      {{renderCodePanel entry codeEntries codeCount title.caption title.label}}
     </div>
   }}
 

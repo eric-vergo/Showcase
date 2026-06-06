@@ -39,6 +39,24 @@ private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideN
   compact := false
   siteBase? := some "blueprint"
 
+private def manifestCodeEntry (key html : String) : Informal.PreviewManifest.Entry where
+  key := key
+  targetKind := .leanDecl
+  label := Lean.Name.mkSimple key
+  facet := .statement
+  title := key
+  html := html
+
+private def manifestBlockEntry (key : String) (codeKeys : Array String) :
+    Informal.PreviewManifest.Entry where
+  key := key
+  targetKind := .block
+  label := Lean.Name.mkSimple key
+  facet := .statement
+  title := key
+  leanCodePreviewKeys := codeKeys
+  html := ""
+
 private def dummySlidesCss (filename body : String) : VersoSlides.CssFile where
   filename
   contents := ⟨body⟩
@@ -76,6 +94,22 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   let node := blueprintNode "def:code.preview" "def:code.preview--statement"
   Informal.Slides.BlueprintSlideNode.fromAttrs? node.toAttrs == some node
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let blockEntry := manifestBlockEntry "block" #["a", "b", "c"]
+  let file : Informal.PreviewManifest.File := {
+    previews := #[
+      blockEntry,
+      manifestCodeEntry "a" "<pre>same</pre>",
+      manifestCodeEntry "b" "<pre>same</pre>",
+      manifestCodeEntry "c" "<pre>different</pre>"
+    ]
+  }
+  let index := file.index
+  index.codeEntryCount blockEntry == 3 &&
+    (index.codeEntries blockEntry).map (·.key) == #["a", "c"]
 
 /-- info: true -/
 #guard_msgs in
