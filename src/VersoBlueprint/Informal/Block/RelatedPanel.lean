@@ -338,10 +338,10 @@ private def renderPanel (cfg : Config) (entries : Array Entry) : Output.Html :=
             </a>}}
         else
           renderChip cfg.chipClass (cfg.singleTitle entry) 1
-      Informal.HoverRender.inlinePreviewNode
-        chipNode entry.previewId entry.previewTitle
-        (previewLookupKey? := some entry.previewKey)
-        (previewFallbackLabel? := some s!"{entry.label}")
+      let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
+        entry.previewId entry.previewTitle entry.previewKey
+        (fallbackLabel? := some s!"{entry.label}")
+      Informal.HoverRender.inlinePreviewTargetNode chipNode previewTarget
   else
     renderEntriesPanel entries
 
