@@ -11,7 +11,6 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.CodeSummary
-import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Slides.Node
 
 namespace Informal.Slides
@@ -63,7 +62,8 @@ private def renderSlidePanel (kind : String) (cfg : Informal.RelatedPanel.PanelC
   let panelEntries := Informal.PreviewManifest.relatedPanelEntries entries currentLabel idPrefix
   Informal.RelatedPanel.renderPanel (slidePanelConfig kind cfg) panelEntries
 
-private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : Nat) :
+private def renderExtras (entry : Informal.PreviewManifest.Entry)
+    (codeEntries : Array Informal.PreviewManifest.Entry) (codeCount : Nat) :
     Informal.HeaderExtras :=
   let group : Html :=
     match entry.group with
@@ -89,13 +89,14 @@ private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : N
         Name.anonymous
         "bp-slide-uses"
   let previewTitle := entry.label.toString
+  let codePreviewBody :=
+    codeEntries.map (fun codeEntry => trustedManifestHtml codeEntry.html)
+      |> Informal.CodeSummary.renderManifestCodePreviewBody
   let code : Html :=
     Informal.CodeSummary.renderManifestCodeStatusChip
       codeCount
-      (Informal.HoverRender.previewId "bp-slide-code" previewTitle)
       previewTitle
-      entry.leanCodePreviewKeys[0]?
-      (previewRefClassExtra := "bp_slide_code_chip_preview")
+      codePreviewBody
   let usedBy :=
     renderSlidePanel
       "used-by"
@@ -109,18 +110,6 @@ private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : N
     code? := if code == .empty then none else some <| Informal.HeaderExtra.code code
     usedBy? := if usedBy == .empty then none else some <| Informal.HeaderExtra.usedBy usedBy
   }
-
-private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
-    (codeEntries : Array Informal.PreviewManifest.Entry) (codeCount : Nat) (caption label : String) : Html :=
-  if codeEntries.isEmpty then
-    .empty
-  else
-    let codeHtml := codeEntries.map (fun codeEntry => trustedManifestHtml codeEntry.html)
-    Informal.mkCodePanel
-      { caption := s!"Lean code for {caption}", number? := some label }
-      ("Lean code for " ++ entry.label.toString)
-      (Informal.CodeSummary.renderCodeCountSummaryIndicator codeCount)
-      {{<div class="bp_slide_code_body">{{codeHtml}}</div>}}
 
 private def renderNotice (kind title detail : String) : Html :=
   {{
@@ -144,6 +133,16 @@ private def renderEntryShell (ctx : RenderContext)
   let labelText := entry.label.toString
   let codeCount := if node.compact then 0 else ctx.index.codeEntryCount entry
   let codeEntries := if node.compact then #[] else ctx.index.codeEntries entry
+  let codePanel : Html :=
+    if codeEntries.isEmpty then
+      .empty
+    else
+      let codeHtml := codeEntries.map (fun codeEntry => trustedManifestHtml codeEntry.html)
+      Informal.CodeSummary.renderManifestCodePanel
+        { caption := s!"Lean code for {title.caption}", number? := some title.label }
+        ("Lean code for " ++ labelText)
+        codeCount
+        {{<div class="bp_slide_code_body">{{codeHtml}}</div>}}
   let titleRowAttrs? : Option (Array (String × String)) :=
     href.map fun href =>
       #[ ("class", "bp_slide_node_heading_link")
@@ -161,13 +160,13 @@ private def renderEntryShell (ctx : RenderContext)
         numberText := title.label
         captionText := if isProof then "Proof" else title.caption
         titleRowAttrs?
-        headerExtras := if isProof then {} else renderExtras entry codeCount
+        headerExtras := if isProof then {} else renderExtras entry codeEntries codeCount
       }
       (trustedManifestHtml entry.html)
   {{
     <div class="bp_slide_node_blueprint">
       {{blockShell}}
-      {{renderCodePanel entry codeEntries codeCount title.caption title.label}}
+      {{codePanel}}
     </div>
   }}
 

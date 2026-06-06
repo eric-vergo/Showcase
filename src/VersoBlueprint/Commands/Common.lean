@@ -99,6 +99,10 @@ def previewPanelCss : String := r##"
   padding: 0.65rem 0.75rem;
 }
 
+.bp_preview_panel[hidden] {
+  display: none !important;
+}
+
 .bp_preview_panel[data-bp-preview-placement="anchored"]::before {
   content: "";
   position: absolute;
@@ -715,6 +719,9 @@ def previewHoverUtilsJs : String := r##"(function () {
 
     const previewMap = collectPreviewTemplates(previewRoot, templateSelector, keyAttr);
     const triggers = triggerRoot.querySelectorAll(triggerSelector);
+    if (panel && panel.ownerDocument && panel.ownerDocument.body && panel.parentElement !== panel.ownerDocument.body) {
+      panel.ownerDocument.body.appendChild(panel);
+    }
     const title = panel ? panel.querySelector(titleSelector) : null;
     const body = panel ? panel.querySelector(bodySelector) : null;
     const close = panel ? panel.querySelector(closeSelector) : null;
@@ -918,6 +925,10 @@ def inlinePreviewCss : String := r##"
   border-radius: var(--bp-radius-md);
   background: var(--bp-color-surface);
   box-shadow: var(--bp-shadow-lg);
+}
+
+.bp_inline_preview_panel[hidden] {
+  display: none !important;
 }
 
 .bp_inline_preview_panel_child {

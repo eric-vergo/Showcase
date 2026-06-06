@@ -64,7 +64,7 @@ span[class$="_thmlabel"]::after {
   justify-content: end;
   column-gap: 0.55rem;
   grid-template-columns: minmax(7.2rem, max-content) max-content;
-  grid-template-areas: "code used";
+  grid-template-areas: "used code";
   margin-left: auto;
 }
 
@@ -75,21 +75,21 @@ span[class$="_thmlabel"]::after {
 
 .bp_extras_with_group {
   grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
-  grid-template-areas: "group code used";
+  grid-template-areas: "group used code";
 }
 
 .bp_extras_with_uses {
   grid-template-columns: minmax(5.2rem, max-content) max-content minmax(7.2rem, max-content);
-  grid-template-areas: "uses code used";
+  grid-template-areas: "uses used code";
 }
 
 .bp_extras_with_group.bp_extras_with_uses {
   grid-template-columns:
     minmax(5rem, max-content)
     minmax(5.2rem, max-content)
-    max-content
-    minmax(7.2rem, max-content);
-  grid-template-areas: "group uses code used";
+    minmax(7.2rem, max-content)
+    max-content;
+  grid-template-areas: "group uses used code";
 }
 
 .bp_extras_with_group.bp_extras_with_uses {
@@ -350,6 +350,30 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_summary_preview_panel .bp_code_hover_list {
   list-style: none;
+}
+
+.bp_manifest_code_preview_content {
+  gap: 0.45rem;
+}
+
+.bp_manifest_code_preview_code {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.bp_manifest_code_preview_code code.hl.lean.block {
+  display: block;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-sm);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-strong);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
 }
 
 .bp_code_decl_item {

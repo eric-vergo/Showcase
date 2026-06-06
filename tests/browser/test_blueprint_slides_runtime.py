@@ -19,7 +19,7 @@ from scripts.blueprint_harness_references import (
     restore_tracked_project_manifest,
     snapshot_tracked_project_manifest,
 )
-from scripts.blueprint_harness_utils import lean_low_priority_command
+from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
 
 
 def generate_project_template_manifest(manifest_path: Path) -> None:
@@ -69,6 +69,7 @@ def slides_server(tmp_path_factory):
     output_dir = tmp_path_factory.mktemp("blueprint-slides-runtime")
     manifest_path = output_dir / "project-template-preview-manifest.json"
     generate_project_template_manifest(manifest_path)
+    rebuild_embedded_asset_owners(PACKAGE_ROOT)
     subprocess.run(
         ["scripts/lean-low-priority", "lake", "build", "VersoBlueprint.Slides"],
         cwd=PACKAGE_ROOT,
@@ -161,10 +162,71 @@ class TestBlueprintSlidesRuntime:
         expect(node.locator(".bp_extra_slot_uses .bp_used_by_chip")).to_have_text("uses 2")
         expect(node.locator(".bp_extra_slot_code .bp_code_link")).to_have_count(1)
         expect(node.locator(".bp_extra_slot_used_by .bp_used_by_chip")).to_have_text("used by 1")
+        assert node.locator(".bp_extras > .bp_extra_slot").evaluate_all(
+            """slots => slots.map(slot => {
+              if (slot.classList.contains("bp_extra_slot_group")) return "group";
+              if (slot.classList.contains("bp_extra_slot_uses")) return "uses";
+              if (slot.classList.contains("bp_extra_slot_used_by")) return "used-by";
+              if (slot.classList.contains("bp_extra_slot_code")) return "code";
+              return "unknown";
+            })"""
+        ) == ["group", "uses", "used-by", "code"]
+        assert node.locator(".bp_extras").evaluate(
+            """extras => getComputedStyle(extras).gridTemplateAreas"""
+        ) == '"group uses used code"'
+        chip_boxes = node.locator(
+            ".bp_extra_slot_group .bp_used_by_chip,"
+            ".bp_extra_slot_uses .bp_used_by_chip,"
+            ".bp_extra_slot_used_by .bp_used_by_chip,"
+            ".bp_extra_slot_code .bp_code_link"
+        ).evaluate_all(
+            """chips => chips.map(chip => {
+              const box = chip.getBoundingClientRect();
+              return { top: box.top, height: box.height };
+            })"""
+        )
+        assert max(box["top"] for box in chip_boxes) - min(box["top"] for box in chip_boxes) < 1
+        assert max(box["height"] for box in chip_boxes) - min(box["height"] for box in chip_boxes) < 1
+        code_chip = node.locator(".bp_extra_slot_code .bp_code_summary_preview_wrap_active")
+        expect(code_chip).to_have_count(1)
+        code_chip.hover()
+        code_panel = page.locator(".bp_code_summary_preview_panel").first
+        expect(code_panel).to_be_visible()
+        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text("collatz_step")
+        expect(code_panel.locator(".bp_code_hover_label")).to_have_text("Lean code")
+        expect(code_panel.locator(".bp_manifest_code_preview_code code.hl.lean.block")).to_have_count(1)
+        assert code_panel.locator(".bp_manifest_code_preview_code .keyword.token").count() >= 2
+        expect(code_panel.locator(".bp_manifest_code_preview_code")).to_contain_text("def collatzStep")
+        expect(code_panel.locator(".bp_manifest_code_preview_code")).to_contain_text(
+            "def collatzTerminatesAtOne"
+        )
+        code_panel_metrics = code_panel.evaluate(
+            """panel => {
+              const panelBox = panel.getBoundingClientRect();
+              const bodyBox = panel.querySelector(".bp_code_summary_preview_body").getBoundingClientRect();
+              const code = panel.querySelector(".bp_manifest_code_preview_code code.hl.lean.block");
+              const codeBox = code.getBoundingClientRect();
+              return {
+                panelRight: panelBox.right,
+                viewportWidth: window.innerWidth,
+                codeLeft: codeBox.left,
+                codeRight: codeBox.right,
+                bodyLeft: bodyBox.left,
+                bodyRight: bodyBox.right,
+                codeFontSize: parseFloat(getComputedStyle(code).fontSize)
+              };
+            }"""
+        )
+        assert code_panel_metrics["panelRight"] <= code_panel_metrics["viewportWidth"] - 8
+        assert code_panel_metrics["codeLeft"] >= code_panel_metrics["bodyLeft"]
+        assert code_panel_metrics["codeRight"] <= code_panel_metrics["bodyRight"] + 1
+        assert code_panel_metrics["codeFontSize"] >= 12
+        expect(page.locator("#bp-inline-preview-panel")).to_be_hidden()
         expect(node.locator(".bp_code_panel_wrapper .bp_external_status_badge_text")).to_have_text(
             "2 declarations"
         )
-        expect(node.locator(".bp_slide_code_body pre")).to_have_count(1)
+        expect(node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(1)
+        assert node.locator(".bp_slide_code_body .keyword.token").count() >= 2
         expect(node.locator(".bp_slide_code_body")).to_contain_text("collatzStep")
 
         expect_slide_link(
