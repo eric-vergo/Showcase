@@ -76,8 +76,8 @@ private structure Config where
   panelTitle : Nat → String
   panelMeta : String
   panelMetaClass : String := "bp_relation_panel_meta"
-  previewDefaultTitle : String := "Hover an entry"
-  previewEmptyText : String := "Hover an entry to preview it."
+  previewDefaultTitle : String := "Preview"
+  previewLoadingDetail : String := "Preview content is loaded from the shared Blueprint manifest."
   chipClass : String := "bp_relation_chip"
   emptyChipClass : String := "bp_relation_chip bp_relation_chip_empty"
   singleAsPanel : Bool := false
@@ -296,7 +296,7 @@ private def renderPanel (cfg : Config) (entries : Array Entry) : Output.Html :=
       match selectedEntry? with
       | some entry => entry.previewTitle
       | none => cfg.previewDefaultTitle
-    let previewBody : Output.Html := loadingBody cfg.previewEmptyText
+    let previewBody : Output.Html := loadingBody cfg.previewLoadingDetail
     {{
       <div class="bp_relation_wrap">
         <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
@@ -371,9 +371,9 @@ def renderUsedByExtra {m}
           s!"Reverse dependencies for {data.label}"
       singleTitle := fun entry => s!"Reverse dependency: {entry.previewTitle}"
       panelTitle := fun n => s!"Used by {n}"
-      panelMeta := "Hover a use site to preview it."
-      previewDefaultTitle := "Hover a use site"
-      previewEmptyText := "Hover a use site to preview it."
+      panelMeta := "Reverse dependency previews"
+      previewDefaultTitle := "Reverse dependency preview"
+      previewLoadingDetail := "Reverse dependency preview content is loaded from the shared Blueprint manifest."
     }
     pure <| renderPanel cfg panelEntries
 
@@ -411,9 +411,9 @@ def renderUsesExtra {m}
           s!"Dependencies used by {data.label}"
       singleTitle := fun entry => s!"Dependency: {entry.previewTitle}"
       panelTitle := fun n => s!"Uses {n}"
-      panelMeta := "Hover a dependency to preview it."
-      previewDefaultTitle := "Hover a dependency"
-      previewEmptyText := "Hover a dependency to preview it."
+      panelMeta := "Dependency previews"
+      previewDefaultTitle := "Dependency preview"
+      previewLoadingDetail := "Dependency preview content is loaded from the shared Blueprint manifest."
       chipClass := "bp_relation_chip bp_uses_chip"
       emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
       singleAsPanel := true
@@ -449,7 +449,7 @@ def renderGroupExtra {m}
         "bp_relation_chip bp_relation_chip_empty bp_relation_chip_warn"
     let panelMeta :=
       if group.declared then
-        "Hover another entry in this group to preview it."
+        "Group member previews"
       else
         s!"No :::group declaration was found for parent '{group.label}'; showing entries that share this parent label."
     let cfg : Config := {
@@ -472,8 +472,8 @@ def renderGroupExtra {m}
       panelTitle := fun n => s!"Group: {group.title} ({n})"
       panelMeta
       panelMetaClass := if group.declared then "bp_relation_panel_meta" else "bp_relation_panel_meta bp_relation_chip_warn"
-      previewDefaultTitle := "Hover a group entry"
-      previewEmptyText := "Hover a group entry to preview it."
+      previewDefaultTitle := "Group member preview"
+      previewLoadingDetail := "Group member preview content is loaded from the shared Blueprint manifest."
       chipClass
       emptyChipClass
     }
