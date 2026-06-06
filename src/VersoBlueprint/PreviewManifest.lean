@@ -596,8 +596,26 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
+private def pushDistinctCodeEntry (entries : Array Entry) (entry : Entry) : Array Entry :=
+  if entries.any (fun existing => existing.html == entry.html) then
+    entries
+  else
+    entries.push entry
+
+/-- Count available Lean-code preview entries before display-level deduplication. -/
+def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
+  (entry.leanCodePreviewKeys.filterMap index.findEntry?).size
+
+/--
+Lean-code preview keys are declaration-granular, but several declarations from
+one literate code block can render to the same HTML. Return distinct display
+bodies while keeping `codeEntryCount` available for declaration counts.
+-/
 def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
-  entry.leanCodePreviewKeys.filterMap index.findEntry?
+  entry.leanCodePreviewKeys.foldl (init := #[]) fun entries key =>
+    match index.findEntry? key with
+    | some codeEntry => pushDistinctCodeEntry entries codeEntry
+    | none => entries
 
 def readFile (path : System.FilePath) : IO File := do
   let json ←
