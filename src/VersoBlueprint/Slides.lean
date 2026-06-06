@@ -4,106 +4,19 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
-import Std.Data.HashMap
 import VersoSlides
 import Verso.Doc.ArgParse
 import Verso.Doc.Elab
-import VersoBlueprint.Commands.Common
-import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.Slides.Assets
 import VersoBlueprint.Slides.Render
 
 namespace Informal.Slides
 
 open Lean
 open Verso Doc Elab ArgParse
-
-def blueprintSlidesCssFilename : String := "blueprint-slides.css"
-def blueprintSlidesJsFilename : String := "blueprint-slides.js"
-
-private def slideNodeCss : String := include_str "Slides/blueprint-slides.css"
-
-def blueprintSlidesCss : String :=
-  String.intercalate "\n\n" <|
-    Informal.Commands.withPreviewPanelInlinePreviewCssAssets
-      [Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
-
-def blueprintSlidesCssFile : VersoSlides.CssFile where
-  filename := blueprintSlidesCssFilename
-  contents := ⟨blueprintSlidesCss⟩
-
-/--
-Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
-while generating the slide deck.
--/
-private def slideNodeHydrationJs : String := include_str "Slides/blueprint-slides.js"
-
-def blueprintSlidesJs : String :=
-  String.intercalate "\n\n" <|
-    Informal.Commands.inlinePreviewJsAssets ++
-      [Informal.Block.Assets.usedByPanelJs, slideNodeHydrationJs]
-
-public def blueprintSlidesExtraJs : Array String :=
-  #[blueprintSlidesJsFilename]
-
-private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
-
-private def writeFileWithDirs (path : System.FilePath) (content : String) : IO Unit := do
-  let dir := path.parent.getD "."
-  if !(← dir.pathExists) then
-    IO.FS.createDirAll dir
-  IO.FS.writeFile path content
-
-private def writeBinFileWithDirs (path : System.FilePath) (content : ByteArray) : IO Unit := do
-  let dir := path.parent.getD "."
-  if !(← dir.pathExists) then
-    IO.FS.createDirAll dir
-  IO.FS.writeBinFile path content
-
-private inductive SlideAssetPayload where
-  | text (body : String)
-  | binary (bytes : ByteArray)
-
-private def SlideAssetPayload.equal : SlideAssetPayload → SlideAssetPayload → Bool
-  | .text a, .text b => a == b
-  | .binary a, .binary b => a == b
-  | _, _ => false
-
-private def SlideAssetPayload.kind : SlideAssetPayload → String
-  | .text _ => "text"
-  | .binary _ => "binary"
-
-private def recordSlideAsset
-    (seen : Std.HashMap String (String × SlideAssetPayload))
-    (filename source : String) (payload : SlideAssetPayload) :
-    IO (Std.HashMap String (String × SlideAssetPayload)) := do
-  match seen.get? filename with
-  | none => pure <| seen.insert filename (source, payload)
-  | some (prevSource, prev) =>
-    if prev.equal payload then
-      pure seen
-    else
-      throw <| IO.userError
-        s!"Filename collision in config: \"{filename}\" is claimed by {prevSource} ({prev.kind}) and {source} ({payload.kind}) with different contents."
-
-private def collectSlideAssets (config : VersoSlides.Config) :
-    IO (Std.HashMap String (String × SlideAssetPayload)) := do
-  let mut seen : Std.HashMap String (String × SlideAssetPayload) := {}
-  if let .custom theme := config.theme then
-    seen ← recordSlideAsset seen theme.stylesheet.filename
-      "theme stylesheet" (.text theme.stylesheet.contents.css)
-    for asset in theme.assets do
-      seen ← recordSlideAsset seen asset.filename
-        "theme asset" (.binary asset.contents)
-  seen ← recordSlideAsset seen config.highlightTheme.filename
-    "highlight.js theme" (.text config.highlightTheme.contents.css)
-  for css in config.extraCss do
-    seen ← recordSlideAsset seen css.filename
-      "extraCss" (.text css.contents.css)
-  pure seen
 
 @[reducible] private def defaultSlidesGenreHtml :
     Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
@@ -162,16 +75,8 @@ private def slidesMainWithBlueprintRenderer
   IO.FS.writeFile indexPath ("<!doctype html>\n" ++ fullHtml.asString)
   IO.FS.writeFile (dir / "-verso-docs.json") (toString hoverState.dedup.docJson)
   VersoSlides.writeVendoredAssets dir config.theme
-  for (filename, _source, payload) in assetPlan.toList do
-    match payload with
-    | .text body => writeFileWithDirs (dir / filename) body
-    | .binary bytes => writeBinFileWithDirs (dir / filename) bytes
-  if !traverseState.imageFiles.isEmpty then
-    let imagesDir := dir / "images"
-    IO.FS.createDirAll imagesDir
-    for (resolved, outputName) in traverseState.imageFiles.toList do
-      let contents ← IO.FS.readBinFile resolved
-      writeBinFileWithDirs (imagesDir / outputName) contents
+  writeSlideAssets dir assetPlan
+  writeSlideImages dir traverseState.imageFiles
   unless quiet do
     IO.println s!"Slides written to {indexPath}"
   if ← hasError.get then
@@ -179,26 +84,6 @@ private def slidesMainWithBlueprintRenderer
     pure 1
   else
     pure 0
-
-/-- Add the Blueprint slide CSS/JS assets to a Verso Slides config. -/
-public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : VersoSlides.Config :=
-  { config with
-    extraCss := pushIfMissing config.extraCss blueprintSlidesCssFile
-    extraJs := pushIfMissing config.extraJs blueprintSlidesJsFilename }
-
-/-- Write the JavaScript file referenced by {name}`withBlueprintSlidesAssets`. -/
-public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
-  writeFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
-
-/-- Output path where slide decks expect the shared Blueprint preview manifest. -/
-public def blueprintSlidesPreviewManifestPath (outputDir : System.FilePath) : System.FilePath :=
-  outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
-
-/-- Copy a generated Blueprint shared preview manifest into a slide deck output directory. -/
-public def copyBlueprintPreviewManifest
-    (outputDir source : System.FilePath) : IO Unit := do
-  let contents ← IO.FS.readFile source
-  writeFileWithDirs (blueprintSlidesPreviewManifestPath outputDir) contents
 
 /--
 Generate a slide deck with Blueprint preview-node assets enabled.
