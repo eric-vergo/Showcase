@@ -10,6 +10,7 @@ import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
+import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Lib.HoverRender
 
 namespace Informal.Slides
@@ -166,51 +167,21 @@ private def renderGroupChip (entry : Informal.PreviewManifest.Entry) : Html :=
       s!"bp-slide-group-{nameString entry.label}"
 
 private def renderCodeStatusChip (entry : Informal.PreviewManifest.Entry) (count : Nat) : Html :=
-  if count == 0 then
-    .empty
-  else
-    let previewKey := entry.leanCodePreviewKeys[0]?
-    let previewTitle := nameString entry.label
-    let chip : Html :=
-      {{
-        <span class="bp_code_link bp_code_link_status bp_code_link_status_proved"
-            title={{s!"Lean declarations (available: {count})"}}>
-          <span class="bp_code_status_symbol">"✓"</span>
-          <span class="bp_code_link_label">"L∃∀N"</span>
-        </span>
-      }}
-    let body : Html :=
-      match previewKey with
-      | some key =>
-        .tag "span"
-          #[ ("class", "bp_inline_preview_ref bp_slide_code_chip_preview")
-           , ("data-bp-preview-id", safePreviewId "bp-slide-code" previewTitle)
-           , ("data-bp-preview-title", previewTitle)
-           , ("data-bp-preview-key", key)
-           , ("tabindex", "0")
-           , ("role", "button")
-           , ("aria-label", "Lean declarations")
-           ]
-          chip
-      | none => chip
-    {{
-      <span class="bp_code_summary_preview_root">{{body}}</span>
-    }}
+  let previewTitle := nameString entry.label
+  Informal.CodeSummary.renderManifestCodeStatusChip
+    count
+    (safePreviewId "bp-slide-code" previewTitle)
+    previewTitle
+    entry.leanCodePreviewKeys[0]?
+    (previewRefClassExtra := "bp_slide_code_chip_preview")
 
 private def renderUsesChip (entry : Informal.PreviewManifest.Entry) : Html :=
   if entry.uses.isEmpty then
     .empty
   else
-    let count := entry.uses.size
     renderSlidePanel
       "uses"
-      {
-        chipText := fun _ => s!"uses {count}"
-        chipTitle := fun _ => "Statement and proof dependencies"
-        singleTitle := fun _ => "Statement and proof dependencies"
-        panelTitle := fun _ => s!"Uses {count}"
-        panelMeta := "Hover a dependency to preview it."
-      }
+      Informal.RelatedPanel.usesPanelConfig
       entry.uses
       Name.anonymous
       "bp-slide-uses"
@@ -235,21 +206,6 @@ private def renderExtras (entry : Informal.PreviewManifest.Entry) (codeCount : N
     usedBy? := if usedBy == .empty then none else some <| Informal.HeaderExtra.usedBy usedBy
   }
 
-private def renderCodeBadge (count : Nat) : Html :=
-  if count == 0 then
-    .empty
-  else
-    let noun := if count == 1 then "theorem" else "declarations"
-    {{
-      <span class="bp_code_summary_indicator">
-        <span class="bp_external_status_badge bp_external_status_badge_summary bp_external_status_ok"
-            title={{s!"Lean declarations: {count} available"}}>
-          <span class="bp_external_status_icon bp_external_status_ok">"●"</span>
-          <span class="bp_external_status_badge_text">{{Html.ofString s!"{count} {noun}"}}</span>
-        </span>
-      </span>
-    }}
-
 private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
     (codeEntries : Array Informal.PreviewManifest.Entry) (caption label : String) : Html :=
   if codeEntries.isEmpty then
@@ -259,7 +215,7 @@ private def renderCodePanel (entry : Informal.PreviewManifest.Entry)
     Informal.mkCodePanel
       { caption := s!"Lean code for {caption}", number? := some label }
       ("Lean code for " ++ nameString entry.label)
-      (renderCodeBadge codeEntries.size)
+      (Informal.CodeSummary.renderCodeCountSummaryIndicator codeEntries.size)
       {{<div class="bp_slide_code_body">{{codeHtml}}</div>}}
 
 private def renderNotice (kind title detail : String) : Html :=

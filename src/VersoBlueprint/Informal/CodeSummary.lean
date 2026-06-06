@@ -325,6 +325,77 @@ private def renderCodeHeadingRenderHealthBadge (health : ExternalRenderHealth) :
   else
     {{<span class="bp_render_warning_badge bp_code_render_warning_badge" title={{health.summaryText}}>"!"</span>}}
 
+def codeCountTitle (count : Nat) : String :=
+  s!"Lean declarations (available: {count})"
+
+private def codeCountNoun (count : Nat) : String :=
+  if count == 1 then "theorem" else "declarations"
+
+def renderCodeCountStatusBadge (count : Nat) : Output.Html :=
+  open Verso.Output.Html in
+  if count == 0 then
+    .empty
+  else
+    {{
+      <span class="bp_code_link bp_code_link_status bp_code_link_status_proved"
+          title={{codeCountTitle count}}>
+        <span class="bp_code_status_symbol">"✓"</span>
+        <span class="bp_code_link_label">"L∃∀N"</span>
+      </span>
+    }}
+
+def renderCodeCountSummaryIndicator (count : Nat) : Output.Html :=
+  open Verso.Output.Html in
+  if count == 0 then
+    .empty
+  else
+    {{
+      <span class="bp_code_summary_indicator">
+        <span class="bp_external_status_badge bp_external_status_badge_summary bp_external_status_ok"
+            title={{s!"Lean declarations: {count} available"}}>
+          <span class="bp_external_status_icon bp_external_status_ok">"●"</span>
+          <span class="bp_external_status_badge_text">
+            {{.text true s!"{count} {codeCountNoun count}"}}
+          </span>
+        </span>
+      </span>
+    }}
+
+/--
+Render a code-status chip whose hover body is supplied by the shared preview
+manifest rather than an inline template.
+-/
+def renderManifestCodeStatusChip (count : Nat) (previewId previewTitle : String)
+    (previewKey? : Option String) (previewRefClassExtra : String := "")
+    (ariaLabel : String := "Lean declarations") : Output.Html :=
+  open Verso.Output.Html in
+  if count == 0 then
+    .empty
+  else
+    let chip := renderCodeCountStatusBadge count
+    let body : Output.Html :=
+      match previewKey? with
+      | some key =>
+        let refClass :=
+          if previewRefClassExtra.isEmpty then
+            "bp_inline_preview_ref"
+          else
+            "bp_inline_preview_ref " ++ previewRefClassExtra
+        .tag "span"
+          #[ ("class", refClass)
+           , ("data-bp-preview-id", previewId)
+           , ("data-bp-preview-title", previewTitle)
+           , ("data-bp-preview-key", key)
+           , ("tabindex", "0")
+           , ("role", "button")
+           , ("aria-label", ariaLabel)
+           ]
+          chip
+      | none => chip
+    {{
+      <span class="bp_code_summary_preview_root">{{body}}</span>
+    }}
+
 private def renderCodeEntryNode (href : Option String) (title : String) (visual : CodeEntryVisual)
     (renderHealth : ExternalRenderHealth := {}) : Output.Html :=
   open Verso.Output.Html in
