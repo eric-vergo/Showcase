@@ -147,12 +147,24 @@
 }
 
 .bp_slide_node .bp_relation_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
   max-height: 14rem;
+  padding: 0;
+}
+
+.bp_slide_node .bp_relation_item {
+  display: block;
 }
 
 .bp_slide_node .bp_relation_target {
+  box-sizing: border-box;
   color: inherit !important;
   padding: 0.28rem 0.34rem;
+  width: 100%;
 }
 
 .bp_slide_node .bp_relation_target_title {
