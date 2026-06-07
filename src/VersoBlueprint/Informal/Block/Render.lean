@@ -331,6 +331,7 @@ structure InformalBlockRenderContext where
   numberText : String
   captionText? : Option String := none
   attrs : Array (String × String) := #[]
+  titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
   folded : Bool := false
 
@@ -417,6 +418,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       numberText := ctx.numberText
       captionText := ctx.captionText?.getD style.kindText
       attrs := ctx.attrs
+      titleRowAttrs? := ctx.titleRowAttrs?
       headerExtras
       metadataPanel
       folded := ctx.folded

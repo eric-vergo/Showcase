@@ -91,6 +91,26 @@ private def entryTitle
   let label := ((titleOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
   { caption, label }
 
+private def entryBlockKind (entry : Entry) : Informal.Data.InProgressKind :=
+  if entry.facet == .proof then
+    .proof
+  else
+    .statement (entry.kind.getD .theorem)
+
+private def entryBlockData (entry : Entry) : Informal.BlockData :=
+  {
+    kind := entryBlockKind entry
+    label := entry.label
+    parent := entry.parent
+    count := 0
+    statementDeps := entry.statementDeps
+    proofDeps := entry.proofDeps
+    ownerDisplayName := entry.ownerDisplayName
+    tags := entry.tags
+    effort := entry.effort
+    priority := entry.priority
+  }
+
 private def renderRelatedPanel
     (cfg : RelationPanelsConfig)
     (kind : RelationPanelKind)
@@ -215,31 +235,27 @@ def render
     (entry : Entry)
     (opts : RenderOptions := {}) :
     Html :=
-  let isProof := entry.facet == .proof
-  let renderKind :=
-    if isProof then
-      Informal.Data.InProgressKind.proof
-    else
-      .statement (entry.kind.getD .theorem)
-  let style := Informal.BlockKindRenderStyle.ofInProgressKind renderKind
+  let blockData := entryBlockData entry
   let title := entryTitle entry opts.titleOverride?
   let codeCount := if opts.compact then 0 else index.codeEntryCount entry
   let codeEntries := if opts.compact then #[] else index.codeEntries entry
   let blockShell :=
-    Informal.renderInformalBlockShell
+    Informal.renderInformalBlockHtml
+      blockData
       {
-        style
-        labelText := entry.label.toString
         numberText := title.label
-        captionText := if isProof then "Proof" else title.caption
+        captionText? :=
+          match blockData.kind with
+          | .proof => some entry.title
+          | .statement _ => some title.caption
         titleRowAttrs? := cfg.titleRowAttrs? entry
         headerExtras :=
-          if isProof then
-            {}
-          else
+          match blockData.kind with
+          | .proof => {}
+          | .statement _ =>
             renderHeaderExtras cfg.relationPanels entry codeEntries codeCount
       }
-      (htmlFragment entry.html)
+      #[htmlFragment entry.html]
   let codePanel := renderCodePanel cfg title entry codeEntries codeCount
   Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
 

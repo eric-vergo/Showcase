@@ -14,6 +14,9 @@ open VersoSlides
 
 namespace Verso.VersoBlueprintTests.BlueprintSlides
 
+open Verso
+open Verso.Genre.Manual
+open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
@@ -29,6 +32,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 # Static Blueprint Node
 
 {blueprint_node "def:code.preview" (siteBase := "blueprint")}
+:::::::
+
+#docs (Genre.Manual) slideMetadataPanelDoc "Slide Metadata Panel" :=
+:::::::
+:::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
+Manifest-backed slide rendering should use the standard Blueprint block renderer.
+:::
 :::::::
 
 private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideNode where
@@ -208,6 +218,26 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         hasSubstr rendered "data-bp-site-base=\"blueprint\"" &&
         hasSubstr rendered "href=\"#--informal-preview" &&
         !hasSubstr rendered "Loading Blueprint node"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideMetadataPanelDoc
+    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
+    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+      (blueprintNode "def:slide.meta.panel" key)
+    let rendered := renderedHtml.asString
+    pure <|
+      hasSubstr rendered "class=\"bp_metadata_panel\"" &&
+        hasSubstr rendered "slides" &&
+        hasSubstr rendered "renderer" &&
+        hasSubstr rendered "Effort" &&
+        hasSubstr rendered "small" &&
+        hasSubstr rendered "Priority" &&
+        hasSubstr rendered "high"
 
 /-- info: true -/
 #guard_msgs in
