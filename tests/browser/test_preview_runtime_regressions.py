@@ -2,9 +2,15 @@ import json
 import re
 import urllib.request
 
-from playwright.sync_api import expect, Page
+from playwright.sync_api import expect, Locator, Page
 
 from support import assert_no_runtime_errors, record_runtime_errors
+
+
+def require_box(locator: Locator):
+    box = locator.bounding_box()
+    assert box is not None
+    return box
 
 
 class TestPreviewRuntimeRegressions:
@@ -582,12 +588,9 @@ class TestPreviewRuntimeRegressions:
 
         chip = wrap.locator("button.bp_relation_chip").first
         expect(chip).to_have_text("uses 2")
-        statement_uses_box = statement_uses_chip.bounding_box()
-        caption_box = proof.locator(".bp_caption").first.bounding_box()
-        chip_box = chip.bounding_box()
-        assert statement_uses_box is not None
-        assert caption_box is not None
-        assert chip_box is not None
+        statement_uses_box = require_box(statement_uses_chip)
+        caption_box = require_box(proof.locator(".bp_caption").first)
+        chip_box = require_box(chip)
         assert abs(statement_uses_box["x"] - chip_box["x"]) < 1
         assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
         chip.hover()
@@ -620,6 +623,52 @@ class TestPreviewRuntimeRegressions:
             "(el) => !!el && el.textContent.includes('Auxiliary target statement for multi-use proof previews.')",
             arg=body.element_handle(),
         )
+
+        assert_no_runtime_errors(errors)
+
+    def test_grouped_statement_and_proof_uses_columns_align(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_grouped_proof_panel"]'
+        ).first
+        expect(statement.locator(".bp_extra_slot_group .bp_relation_chip").first).to_have_text(
+            "group"
+        )
+        statement_uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses_chip).to_have_text("uses 0")
+        expect(statement.locator(".bp_extra_slot_used_by .bp_relation_chip").first).to_have_text(
+            "used by 1"
+        )
+        expect(statement.locator(".bp_extra_slot_code .bp_code_link")).to_have_count(1)
+
+        proof = page.locator(
+            '.bp_wrapper.bp_kind_proof_wrapper[title="used_grouped_proof_panel"]'
+        ).first
+        expect(proof.locator(".bp_extra_slot_group")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_used_by")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_code")).to_have_count(0)
+
+        chip = proof.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(chip).to_have_text("uses 2")
+
+        group_box = require_box(statement.locator(".bp_extra_slot_group").first)
+        statement_uses_box = require_box(statement_uses_chip)
+        used_by_box = require_box(statement.locator(".bp_extra_slot_used_by").first)
+        code_box = require_box(statement.locator(".bp_extra_slot_code").first)
+        proof_caption_box = require_box(proof.locator(".bp_caption").first)
+        proof_uses_box = require_box(chip)
+
+        assert group_box["x"] < statement_uses_box["x"] < used_by_box["x"] < code_box["x"]
+        assert abs(statement_uses_box["x"] - proof_uses_box["x"]) < 1
+        assert abs(
+            (proof_caption_box["y"] + proof_caption_box["height"])
+            - (proof_uses_box["y"] + proof_uses_box["height"])
+        ) < 1
 
         assert_no_runtime_errors(errors)
 

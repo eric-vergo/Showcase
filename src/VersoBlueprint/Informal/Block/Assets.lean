@@ -68,30 +68,42 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras {
+  --bp-extra-group-col: minmax(5rem, max-content);
+  --bp-extra-uses-col: minmax(4.2rem, max-content);
+  --bp-extra-used-by-col: minmax(7.2rem, max-content);
+  --bp-extra-code-col: max-content;
+  --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
   display: inline-grid;
   align-items: baseline;
   justify-content: end;
   column-gap: 0.55rem;
-  grid-template-columns: minmax(7.2rem, max-content) max-content;
+  grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
   grid-template-areas: "used code";
   margin-left: auto;
 }
 
 .bp_extras_with_uses {
-  grid-template-columns: minmax(4.2rem, max-content) minmax(7.2rem, max-content) max-content;
+  grid-template-columns:
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "uses used code";
 }
 
 .bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
+  /* Keep proof-only uses aligned with the statement uses column. */
   grid-template-columns:
-    minmax(4.2rem, max-content)
-    minmax(7.2rem, max-content)
-    minmax(3.35rem, max-content);
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-placeholder-col);
   grid-template-areas: "uses . .";
 }
 
 .bp_extras_with_group {
-  grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
+  grid-template-columns:
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "group used code";
 }
 
@@ -111,10 +123,10 @@ span[class$="_thmlabel"]::after {
 
 .bp_extras_with_group.bp_extras_with_uses {
   grid-template-columns:
-    minmax(5rem, max-content)
-    minmax(4.2rem, max-content)
-    minmax(7.2rem, max-content)
-    max-content;
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "group uses used code";
 }
 
