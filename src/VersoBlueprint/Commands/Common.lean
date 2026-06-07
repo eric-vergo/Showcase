@@ -950,6 +950,10 @@ def inlinePreviewCss : String := r##"
   z-index: 71;
 }
 
+.bp_inline_preview_panel[hidden] {
+  display: none;
+}
+
 .bp_inline_preview_panel[data-bp-preview-placement="anchored"]::before {
   content: "";
   position: absolute;
