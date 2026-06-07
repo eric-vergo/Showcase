@@ -162,7 +162,10 @@ class TestPreviewRuntimeRegressions:
         page.route("**/-verso-data/blueprint-html-cache.json", count_cache_fetch)
         page.goto(f"{server}/Preview-Relationships/")
         page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
-        page.locator('.bp_wrapper[title="used_target"] .bp_relation_wrap').first.wait_for()
+        used_by_wrap = page.locator(
+            '.bp_wrapper[title="used_target"] .bp_extra_slot_used_by .bp_relation_wrap'
+        ).first
+        used_by_wrap.wait_for()
         page.wait_for_timeout(250)
 
         status = page.evaluate(
@@ -174,7 +177,7 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] == 0
         assert status["state"] == "idle"
 
-        page.locator('.bp_wrapper[title="used_target"] .bp_relation_chip').first.hover()
+        used_by_wrap.locator(".bp_relation_chip").first.hover()
         page.wait_for_function(
             """() => {
                 const utils = window.bpPreviewUtils;
