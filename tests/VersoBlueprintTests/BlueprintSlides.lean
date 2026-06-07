@@ -162,11 +162,15 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
     pure <|
-      blockEntry.leanCodePreviewKeys.contains codeKey &&
+      file.traverseState.isSome &&
+        blockEntry.leanCodePreviewKeys.contains codeKey &&
+        blockEntry.codeData.isSome &&
+        !blockEntry.blocks.isEmpty &&
         blockEntry.displayCaption == some "Definition" &&
         blockEntry.displayLabel.any (fun label => !label.trimAscii.isEmpty) &&
         file.previews.any (fun entry =>
           entry.key == codeKey &&
+            entry.leanCode.isSome &&
             match entry.targetKind with
             | .leanDecl => true
             | _ => false)
@@ -207,7 +211,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
     let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
-    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+    let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
     pure <|
@@ -227,7 +231,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
     let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
-    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+    let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
     let rendered := renderedHtml.asString
     pure <|
@@ -262,7 +266,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
     let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
-    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+    let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
     pure <|
@@ -290,7 +294,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
       | some group => !group.declared && group.entries.size == 1
       | none => false
     let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
-    let renderedHtml := Informal.Slides.renderBlueprintSlideNode ctx
+    let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString
     pure <|

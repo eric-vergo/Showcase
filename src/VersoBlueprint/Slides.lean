@@ -27,7 +27,7 @@ open Verso Doc Elab
       match container with
       | .wrap attrs =>
         match renderBlueprintSlideNodeFromAttrs? renderContext attrs with
-        | some html => pure html
+        | some render => render
         | none => defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
       | _ =>
         defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
@@ -41,14 +41,17 @@ constructor tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
     (manifest? : Option Informal.PreviewManifest.File)
+    (manualImpls : Verso.Genre.Manual.ExtensionImpls)
     (doc : Verso.Doc.Part VersoSlides.Slides)
     (quiet : Bool := false) : IO UInt32 := do
   let assetPlan ← collectSlideAssets config
-  let renderContext := Informal.Slides.RenderContext.ofManifest? manifest?
   let hasError ← IO.mkRef false
   let logError (msg : String) : IO Unit := do
     hasError.set true
     IO.eprintln msg
+  let renderContext := Informal.Slides.RenderContext.ofManifest? manifest?
+    (manualImpls := manualImpls)
+    (logError := logError)
   let (doc, traverseState) ←
     (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
   let ctx : Verso.Doc.Html.HtmlT.Context VersoSlides.Slides IO := {
@@ -94,10 +97,11 @@ public def slidesMainWithBlueprintPreviews
     (config : VersoSlides.Config := {})
     (previewManifest? : Option System.FilePath := none)
     (doc : Verso.Doc.Part VersoSlides.Slides)
+    (manualImpls : Verso.Genre.Manual.ExtensionImpls := by exact extension_impls%)
     (quiet : Bool := false) : IO UInt32 := do
   let config := withBlueprintSlidesAssets config
   let manifest? ← previewManifest?.mapM readBlueprintPreviewManifest
-  let rc ← slidesMainWithBlueprintRenderer config manifest? doc (quiet := quiet)
+  let rc ← slidesMainWithBlueprintRenderer config manifest? manualImpls doc (quiet := quiet)
   if rc == 0 then
     writeBlueprintSlidesJs config.outputDir
     if let some previewManifest := previewManifest? then

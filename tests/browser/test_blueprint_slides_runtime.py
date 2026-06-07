@@ -131,6 +131,7 @@ class TestBlueprintSlidesRuntime:
             f"{slides_server}/-verso-data/blueprint-preview-manifest.json"
         ) as response:
             manifest = json.load(response)
+        assert manifest["traverseState"]
         collatz_entry = next(
             entry
             for entry in manifest["previews"]
@@ -143,7 +144,16 @@ class TestBlueprintSlidesRuntime:
         assert [entry["label"] for entry in collatz_entry["usedBy"]] == ["collatz_conjecture"]
         assert collatz_entry["group"]["label"] == "collatz_core"
         assert len(collatz_entry["leanCodePreviewKeys"]) == 2
+        assert collatz_entry["codeData"]
+        assert collatz_entry["blocks"]
         assert "bp_math inline" in collatz_entry["html"]
+        code_entries = [
+            entry
+            for entry in manifest["previews"]
+            if entry["key"] in collatz_entry["leanCodePreviewKeys"]
+        ]
+        assert len(code_entries) == 2
+        assert all(entry["leanCode"] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
         page.wait_for_function(
@@ -193,24 +203,28 @@ class TestBlueprintSlidesRuntime:
         code_panel = page.locator(".bp_code_summary_preview_panel").first
         expect(code_panel).to_be_visible()
         expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text("collatz_step")
-        expect(code_panel.locator(".bp_code_hover_label")).to_have_text("Lean code")
-        expect(code_panel.locator(".bp_manifest_code_preview_code code.hl.lean.block")).to_have_count(1)
-        assert code_panel.locator(".bp_manifest_code_preview_code .keyword.token").count() >= 2
-        expect(code_panel.locator(".bp_manifest_code_preview_code")).to_contain_text("def collatzStep")
-        expect(code_panel.locator(".bp_manifest_code_preview_code")).to_contain_text(
-            "def collatzTerminatesAtOne"
+        expect(code_panel.locator(".bp_code_hover_label")).to_have_text(
+            "Associated Lean declarations"
+        )
+        expect(code_panel.locator(".bp_code_decl_item")).to_have_count(2)
+        decl_items = code_panel.locator(".bp_code_decl_item").all_inner_texts()
+        assert any("collatzStep" in item and "[complete]" in item for item in decl_items)
+        assert any(
+            "collatzTerminatesAtOne" in item and "[complete]" in item
+            for item in decl_items
         )
         code_panel_metrics = code_panel.evaluate(
             """panel => {
               const panelBox = panel.getBoundingClientRect();
               const bodyBox = panel.querySelector(".bp_code_summary_preview_body").getBoundingClientRect();
-              const code = panel.querySelector(".bp_manifest_code_preview_code code.hl.lean.block");
-              const codeBox = code.getBoundingClientRect();
+              const item = panel.querySelector(".bp_code_decl_item");
+              const itemBox = item.getBoundingClientRect();
+              const code = item.querySelector("code");
               return {
                 panelRight: panelBox.right,
                 viewportWidth: window.innerWidth,
-                codeLeft: codeBox.left,
-                codeRight: codeBox.right,
+                itemLeft: itemBox.left,
+                itemRight: itemBox.right,
                 bodyLeft: bodyBox.left,
                 bodyRight: bodyBox.right,
                 codeFontSize: parseFloat(getComputedStyle(code).fontSize)
@@ -218,13 +232,14 @@ class TestBlueprintSlidesRuntime:
             }"""
         )
         assert code_panel_metrics["panelRight"] <= code_panel_metrics["viewportWidth"] - 8
-        assert code_panel_metrics["codeLeft"] >= code_panel_metrics["bodyLeft"]
-        assert code_panel_metrics["codeRight"] <= code_panel_metrics["bodyRight"] + 1
+        assert code_panel_metrics["itemLeft"] >= code_panel_metrics["bodyLeft"]
+        assert code_panel_metrics["itemRight"] <= code_panel_metrics["bodyRight"] + 1
         assert code_panel_metrics["codeFontSize"] >= 12
         expect(page.locator("#bp-inline-preview-panel")).to_be_hidden()
-        expect(node.locator(".bp_code_panel_wrapper .bp_external_status_badge_text")).to_have_text(
-            "2 declarations"
-        )
+        expect(node.locator(".bp_code_panel_wrapper .bp_code_progress")).to_have_count(1)
+        expect(
+            node.locator(".bp_code_panel_wrapper .bp_code_progress_segment_ok")
+        ).to_have_count(2)
         expect(node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(1)
         assert node.locator(".bp_slide_code_body .keyword.token").count() >= 2
         expect(node.locator(".bp_slide_code_body")).to_contain_text("collatzStep")

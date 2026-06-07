@@ -46,6 +46,7 @@ open Informal.PreviewManifest
         displayCaptionJson.getObjValAs? String "description" |>.toOption
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
         !fileProps.contains "version" &&
+        fileProps.contains "traverseState" &&
         fileProps.contains "previews" &&
         entryProps.contains "key" &&
         entryProps.contains "targetKind" &&
@@ -67,6 +68,9 @@ open Informal.PreviewManifest
         useRefProps.contains "intent" &&
         !useRefProps.contains "intents" &&
         entryProps.contains "leanCodePreviewKeys" &&
+        entryProps.contains "codeData" &&
+        entryProps.contains "blocks" &&
+        entryProps.contains "leanCode" &&
         entryProps.contains "uses" &&
         entryProps.contains "usedBy" &&
         entryProps.contains "group" &&
