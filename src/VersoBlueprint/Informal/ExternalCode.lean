@@ -395,8 +395,10 @@ structure RenderParts where
 /--
 Render the canonical hover-preview body for external Lean code references.
 
-This path deliberately uses self-contained declaration snippets because preview
-payloads may be consumed outside the page that originally generated them.
+This is shared by the external code panel and the HTML-cache-backed code-preview
+path used by explicit Lean-code links. It deliberately uses self-contained
+declaration snippets because preview payloads may be consumed outside the page
+that originally generated them.
 -/
 def renderPreviewHtml
     (externalDecls : Array Data.ExternalRef)

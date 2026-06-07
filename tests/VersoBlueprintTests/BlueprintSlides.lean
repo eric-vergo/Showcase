@@ -195,7 +195,8 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let cache ← Informal.PreviewManifest.buildHtmlCacheFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let cache := files.htmlCache
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
     let some codeHtml := cache.findHtml? codeKey
@@ -210,7 +211,8 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let file := files.manifest
     let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:used.target") .statement
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget

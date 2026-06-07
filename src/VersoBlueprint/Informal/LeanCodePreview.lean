@@ -19,7 +19,7 @@ open Lean
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 
 /--
-Dedicated traversal domain for manifest-backed Lean declaration previews.
+Dedicated traversal domain for Lean declaration previews emitted as preview data.
 
 Unlike `PreviewCache`, this domain is only for previews attached to links that
 target Lean declarations/definitions.
@@ -28,7 +28,7 @@ def domainName : Name := Informal.LeanDeclPreviewKey.domainName
 /--
 Canonical internal preview target for one Lean declaration.
 
-The preview namespace mirrors regular Lean names so the manifest keys stay
+The preview namespace mirrors regular Lean names so the preview-data keys stay
 declaration-centric rather than blueprint-label-centric.
 -/
 def targetName (decl : Name) : Name :=
