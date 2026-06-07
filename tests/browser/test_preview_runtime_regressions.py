@@ -447,31 +447,30 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_uses_panel_loads_manifest_backed_preview(self, server: str, page: Page):
+    def test_uses_single_dependency_loads_manifest_backed_inline_preview(
+        self, server: str, page: Page
+    ):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
 
         slot = page.locator('.bp_wrapper[title="used_statement"] .bp_extra_slot_uses').first
-        wrap = slot.locator(".bp_relation_wrap").first
-        expect(wrap).to_have_count(1)
+        trigger = slot.locator(".bp_inline_preview_ref").first
+        expect(trigger).to_have_count(1)
+        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
+        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
         assert "bp_relation_preview_fallback_tpl" not in page.content()
 
-        chip = wrap.locator(".bp_relation_chip").first
+        chip = trigger.locator(".bp_relation_chip").first
         expect(chip).to_have_text("uses 1")
-        chip.hover()
+        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
+        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
+        trigger.hover()
 
-        panel = wrap.locator(".bp_relation_panel").first
+        panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Uses 1")
-        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Dependency previews")
-        expect(panel.locator(".bp_relation_item")).to_have_count(1)
-        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("used_target")
-        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("statement")
-        expect(panel.locator(".bp_relation_item")).to_have_attribute(
-            "data-bp-relation-preview-id", re.compile(r"^bp-uses-")
-        )
 
-        body = panel.locator(".bp_relation_preview_body")
+        body = panel.locator(".bp_inline_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
