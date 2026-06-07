@@ -569,9 +569,8 @@ class TestPreviewRuntimeRegressions:
         statement = page.locator(
             '.bp_wrapper.bp_kind_theorem_wrapper[title="used_proof_panel"]'
         ).first
-        expect(statement.locator(".bp_extra_slot_uses .bp_relation_chip").first).to_have_text(
-            "uses 0"
-        )
+        statement_uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses_chip).to_have_text("uses 0")
 
         proof = page.locator(
             '.bp_wrapper.bp_kind_proof_wrapper[title="used_proof_panel"]'
@@ -583,13 +582,13 @@ class TestPreviewRuntimeRegressions:
 
         chip = wrap.locator("button.bp_relation_chip").first
         expect(chip).to_have_text("uses 2")
+        statement_uses_box = statement_uses_chip.bounding_box()
         caption_box = proof.locator(".bp_caption").first.bounding_box()
-        slot_box = slot.bounding_box()
         chip_box = chip.bounding_box()
+        assert statement_uses_box is not None
         assert caption_box is not None
-        assert slot_box is not None
         assert chip_box is not None
-        assert abs((slot_box["x"] + slot_box["width"]) - (chip_box["x"] + chip_box["width"])) < 1
+        assert abs(statement_uses_box["x"] - chip_box["x"]) < 1
         assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
         chip.hover()
 

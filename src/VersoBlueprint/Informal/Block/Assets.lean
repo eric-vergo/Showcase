@@ -83,8 +83,11 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
-  grid-template-columns: minmax(4.2rem, max-content);
-  grid-template-areas: "uses";
+  grid-template-columns:
+    minmax(4.2rem, max-content)
+    minmax(7.2rem, max-content)
+    minmax(3.35rem, max-content);
+  grid-template-areas: "uses . .";
 }
 
 .bp_extras_with_group {
@@ -135,10 +138,6 @@ span[class$="_thmlabel"]::after {
 .bp_extra_slot_uses {
   grid-area: uses;
   justify-content: flex-start;
-}
-
-.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) .bp_extra_slot_uses {
-  justify-content: flex-end;
 }
 
 .bp_extra_slot_used_by {
