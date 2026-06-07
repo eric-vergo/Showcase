@@ -222,6 +222,18 @@ structure InlinePreviewTarget where
   headerHref? : Option String := none
   footerHtml? : Option String := none
 
+/-- Attributes consumed by the shared preview-header label-link renderer. -/
+def previewHeaderLinkAttrs
+    (headerLabel? : Option String := none)
+    (headerHref? : Option String := none) :
+    Array (String × String) := Id.run do
+  let mut attrs := #[]
+  if let some label := headerLabel? then
+    attrs := attrs.push ("data-bp-preview-header-label", label)
+  if let some href := headerHref? then
+    attrs := attrs.push ("data-bp-preview-header-href", href)
+  pure attrs
+
 /-- Build a target whose trigger id and manifest lookup key are the same. -/
 def InlinePreviewTarget.manifestBacked
     (lookupKey title : String)
@@ -280,10 +292,8 @@ private def inlinePreviewRefAttrs
     attrs := attrs.push ("data-bp-preview-fallback-label", label)
   if let some detail := previewFallbackDetail? then
     attrs := attrs.push ("data-bp-preview-fallback-detail", detail)
-  if let some label := previewHeaderLabel? then
-    attrs := attrs.push ("data-bp-preview-header-label", label)
-  if let some href := previewHeaderHref? then
-    attrs := attrs.push ("data-bp-preview-header-href", href)
+  for attr in previewHeaderLinkAttrs previewHeaderLabel? previewHeaderHref? do
+    attrs := attrs.push attr
   if let some footerHtml := previewFooterHtml? then
     attrs := attrs.push ("data-bp-preview-footer-html", footerHtml)
   pure attrs

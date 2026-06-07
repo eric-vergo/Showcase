@@ -1005,7 +1005,7 @@ def inlinePreviewCss : String := r##"
   background: var(--bp-color-surface-muted);
 }
 
-.bp_inline_preview_panel_heading {
+.bp_preview_header_heading {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -1019,7 +1019,7 @@ def inlinePreviewCss : String := r##"
   color: var(--bp-color-text-strong);
 }
 
-.bp_inline_preview_panel_label {
+.bp_preview_header_label {
   color: var(--bp-color-text-muted);
   font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   font-size: 0.72rem;
@@ -1027,12 +1027,12 @@ def inlinePreviewCss : String := r##"
   text-decoration: none;
 }
 
-.bp_inline_preview_panel_label[href]:hover {
+.bp_preview_header_label[href]:hover {
   color: var(--bp-color-link);
   text-decoration: underline;
 }
 
-.bp_inline_preview_panel_label[hidden] {
+.bp_preview_header_label[hidden] {
   display: none;
 }
 
@@ -1188,9 +1188,9 @@ def inlineLinkPreviewJs : String := r##"(function () {
     panel.hidden = true;
     panel.innerHTML =
       '<div class="bp_inline_preview_panel_header">' +
-      '<div class="bp_inline_preview_panel_heading">' +
+      '<div class="bp_inline_preview_panel_heading bp_preview_header_heading">' +
       '<div class="bp_inline_preview_panel_title"></div>' +
-      '<a class="bp_inline_preview_panel_label" hidden></a>' +
+      '<a class="bp_inline_preview_panel_label bp_preview_header_label" hidden></a>' +
       "</div>" +
       '<button type="button" class="bp_inline_preview_panel_close" aria-label="Close inline preview">Close</button>' +
       "</div>" +
