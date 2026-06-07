@@ -108,6 +108,13 @@ private def renderLeanCodeBodies
   else
     (ctx.index.codeEntries entry).mapM (renderLeanCodeEntry ctx)
 
+private def renderEntryContent
+    (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
+    IO Informal.PreviewManifest.BlockRender.RenderedContent := do
+  let body ← renderEntryBody ctx entry
+  let codeBodies ← renderLeanCodeBodies ctx node entry
+  pure { body, codeBodies }
+
 public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : IO Html := do
   match ctx.manifest? with
   | none =>
@@ -118,13 +125,13 @@ public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlide
     | none =>
       pure <| renderMissingNode node "Blueprint node not found" node.key
     | some entry =>
-      let body ← renderEntryBody ctx entry
-      let codeBodies ← renderLeanCodeBodies ctx node entry
+      let content ← renderEntryContent ctx node entry
       pure <| .tag "div" node.renderedAttrs <|
-        Informal.PreviewManifest.BlockRender.renderWithContent slideManifestBlockConfig entry
+        Informal.PreviewManifest.BlockRender.renderWithRenderedContent
+          slideManifestBlockConfig
+          entry
+          content
           { titleOverride? := node.title?, compact := node.compact }
-          body
-          codeBodies
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
