@@ -133,6 +133,10 @@ span[class$="_thmlabel"]::after {
   justify-content: flex-start;
 }
 
+.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) .bp_extra_slot_uses {
+  justify-content: flex-end;
+}
+
 .bp_extra_slot_used_by {
   grid-area: used;
   justify-content: flex-start;
