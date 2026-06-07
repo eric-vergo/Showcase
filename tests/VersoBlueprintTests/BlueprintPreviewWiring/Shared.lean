@@ -58,6 +58,29 @@ Proof depends on {uses "def:used.target"}[].
 :::
 :::::::
 
+#docs (Genre.Manual) usesPreviewDoc "Blueprint Uses Preview Wiring" :=
+:::::::
+:::definition "def:uses.hidden"
+Metadata-only dependency target.
+:::
+
+:::definition "def:uses.inline"
+Inline dependency target.
+:::
+
+:::definition "def:uses.proof"
+Proof dependency target.
+:::
+
+:::theorem "thm:uses.panel" (uses := "def:uses.hidden") (uses_origin := "automatic") (uses_intent := "technical")
+Statement depends on {uses "def:uses.inline" (intent := "auxiliary")}[].
+:::
+
+:::proof "thm:uses.panel"
+Proof depends on {uses "def:uses.proof"}[].
+:::
+:::::::
+
 #docs (Genre.Manual) usedBySinglePreviewDoc "Blueprint Used-By Single Preview Wiring" :=
 :::::::
 :::definition "def:used.single"
@@ -108,6 +131,21 @@ Statement with an associated Lean declaration link in the summary.
 :::
 
 {blueprint_summary}
+:::::::
+
+namespace ShortExternalPreview
+
+def openedSummaryDecl : Nat := 0
+
+end ShortExternalPreview
+
+open ShortExternalPreview
+
+#docs (Genre.Manual) shortExternalNamePreviewDoc "Blueprint Short External Name Preview Wiring" :=
+:::::::
+:::definition "def:code.short_external" (lean := "openedSummaryDecl")
+Statement with a namespace-opened external declaration name.
+:::
 :::::::
 
 /-- External declaration docstring dedup marker for repeated preview refs. -/

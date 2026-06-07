@@ -76,7 +76,15 @@ Normalized declaration summary row shared by inline and external Lean summary UI
 `present = false` is used only for external references that failed to resolve.
 -/
 structure DeclSummaryItem where
-  name : Name
+  /-- Name shown in the code-summary panel. -/
+  displayName : Name
+  /--
+  Canonical declaration name used to look up the shared Lean-code preview.
+
+  External references may be written with an opened or namespace-local name, but
+  traversal stores rendered Lean-code previews under the resolved canonical name.
+  -/
+  previewName : Name
   href : Option String := none
   kind : DeclSummaryKind := .definition
   status : Data.ProvedStatus := .proved
@@ -110,12 +118,12 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
   open Verso.Output.Html in
   items.map fun item =>
     let nameNode : Output.Html :=
-      let txt := {{<code>{{.text true s!"{item.name}"}}</code>}}
+      let txt := {{<code>{{.text true s!"{item.displayName}"}}</code>}}
       match item.href with
       | some href =>
         Informal.LeanCodeLink.renderResolved
-          item.name txt "" (some href)
-          (previewTitle := s!"{item.name}")
+          item.previewName txt "" (some href)
+          (previewTitle := s!"{item.displayName}")
       | none => txt
     {{
       <li class="bp_code_decl_item">
@@ -169,14 +177,16 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   let defs := definedDefs.map fun decl =>
     {
-      name := decl.name
+      displayName := decl.name
+      previewName := decl.name
       href := hrefOf decl.name
       kind := .definition
       status := decl.provedStatus
     }
   let theoremLikes := definedTheorems.map fun decl =>
     {
-      name := decl.name
+      displayName := decl.name
+      previewName := decl.name
       href := hrefOf decl.name
       kind := .theoremLike
       status := decl.provedStatus
@@ -213,7 +223,8 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
     (hrefOf : Name → Option String) : Array DeclSummaryItem :=
   decls.map fun decl =>
     {
-      name := decl.written
+      displayName := decl.written
+      previewName := decl.canonical
       href := externalDeclHref decl hrefOf
       kind := externalSummaryKind decl
       status := decl.provedStatus
@@ -483,7 +494,7 @@ private def codeSummaryText (label : Data.Label)
       if sorries.isEmpty then
         "none"
       else
-        String.intercalate ", " (sorries.toList.map fun item => s!"{item.name} [{declSummaryStatusText item}]")
+        String.intercalate ", " (sorries.toList.map fun item => s!"{item.displayName} [{declSummaryStatusText item}]")
     s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nSorries: {sorriesTxt}"
 
 private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)

@@ -7,8 +7,11 @@ Author: Emilio J. Gallego Arias
 import Lean.Elab.InfoTree.Types
 import VersoManual
 import VersoBlueprint.Data
+import VersoBlueprint.DirectiveArgParsing
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.ExternalCode
+import VersoBlueprint.Informal.LabelArg
+import VersoBlueprint.Informal.UseConfig
 import VersoBlueprint.LabelNameParsing
 
 namespace Informal
@@ -17,18 +20,45 @@ open Verso Doc Elab
 open Verso.ArgParse
 open Lean Elab
 
-/-- Raw configuration accepted by informal block directives. -/
+/--
+Raw configuration accepted by informal block directives.
+
+This is the parser boundary for block options such as `(lean := ...)`,
+`(tags := ...)`, and metadata-only dependency edges written as
+`(uses := "label1, label2")`. The optional `(uses_origin := ...)` and
+`(uses_intent := ...)` strings are parsed here with the same accepted values as
+inline `{uses ...}` metadata. Invalid dependency metadata is retained so
+`resolveForDirective` can report block-specific diagnostics at the user-written
+label while still recovering with default metadata.
+-/
 structure Config where
+  /-- The block label used for environment registration and diagnostics. -/
   label : Data.Label
+  /-- Syntax node of the original label argument. -/
   labelSyntax : Syntax := Syntax.missing
+  /-- Optional Lean/external-code references associated with statement blocks. -/
   lean : Option String := none
+  /-- Optional parent node label. -/
   parent : Option Data.Parent := none
+  /-- Raw priority option, normalized during directive resolution. -/
   priority : Option String := none
+  /-- Optional author id for statement metadata. -/
   owner : Option Data.AuthorId := none
+  /-- Normalized tag names, deduplicated in source order. -/
   tags : Array String := #[]
+  /-- Raw effort option, normalized during directive resolution. -/
   effort : Option String := none
+  /-- Optional PR URL associated with this statement. -/
   prUrl : Option String := none
+  /-- Metadata-only dependency edges declared with `(uses := ...)`. -/
+  metadataUses : Array Data.UseRef := #[]
+  /-- Invalid block-level dependency origin string, when present. -/
+  invalidMetadataUseOrigin : Option String := none
+  /-- Invalid block-level dependency intent string, when present. -/
+  invalidMetadataUseIntent : Option String := none
+  /-- Parsed external-code references from `(lean := ...)`. -/
   externalCode : Array Data.ExternalRef := #[]
+  /-- Malformed external-code reference strings ignored during resolution. -/
   invalidExternalCode : Array String := #[]
 --  hide : Bool := false
 
@@ -47,21 +77,22 @@ private def normalizeEffort? (raw : String) : Option String :=
   | _ => none
 
 private def normalizeTags (raw : String) : Array String :=
-  raw.splitOn ","
-    |>.toArray
+  DirectiveArgParsing.splitCommaSeparatedList raw
     |>.map (fun tag => tag.trimAscii.toString.toLower)
-    |>.filter (fun tag => !tag.isEmpty)
     |>.foldl (init := #[]) fun acc tag => if acc.contains tag then acc else acc.push tag
 
 section
 variable [Monad m] [MonadInfoTree m] [MonadLiftT CoreM m] [MonadEnv m] [MonadError m] [MonadFileMap m]
 
 def Config.parse : ArgParse m Config :=
-  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl =>
+  (fun (labelArg : Verso.ArgParse.WithSyntax String) lean parent priority owner tags effort prUrl
+      uses usesOrigin usesIntent =>
     let (externalCode, invalidExternalCode) := ExternalCode.parseExternalCodeList lean
+    let parsedLabel := LabelArg.parse labelArg
+    let useMetadata := UseConfig.parseMetadata usesOrigin usesIntent
     {
-      label := LabelNameParsing.parse labelArg.val
-      labelSyntax := labelArg.syntax
+      label := parsedLabel.label
+      labelSyntax := parsedLabel.labelSyntax
       lean := lean
       parent := parent.map LabelNameParsing.parse
       priority := priority
@@ -69,11 +100,15 @@ def Config.parse : ArgParse m Config :=
       tags := normalizeTags (tags.getD "")
       effort := effort
       prUrl := prUrl.map (·.trimAscii.toString)
+      metadataUses := UseConfig.refsForLabels (UseConfig.parseLabels uses) useMetadata
+      invalidMetadataUseOrigin := useMetadata.invalidOrigin
+      invalidMetadataUseIntent := useMetadata.invalidIntent
       externalCode := externalCode
       invalidExternalCode := invalidExternalCode
     }) <$> .positional `label (.withSyntax .string) <*> .named `lean .string true
         <*> .named `parent .string true <*> .named `priority .string true <*> .named `owner .string true
         <*> .named `tags .string true <*> .named `effort .string true <*> .named `pr_url .string true
+        <*> .named `uses .string true <*> .named `uses_origin .string true <*> .named `uses_intent .string true
 
 instance : FromArgs Config m where
   fromArgs := Config.parse
@@ -92,6 +127,7 @@ structure ResolvedConfig where
   tags : Array String := #[]
   effort : Option String := none
   prUrl : Option String := none
+  metadataUses : Array Data.UseRef := #[]
 
 private def resolvePriority? {m}
     [Monad m] [MonadOptions m] [MonadLog m] [AddMessageContext m] [MonadFileMap m]
@@ -190,6 +226,10 @@ def Config.resolveForDirective {m}
   let hasExternalRaw := !resolvedExternalCode.isEmpty
   if !cfg.invalidExternalCode.isEmpty then
     logWarningAt cfg.labelSyntax m!"Label {cfg.label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"
+  if let some raw := cfg.invalidMetadataUseOrigin then
+    logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '(uses_origin := \"{raw}\")'; expected one of {UseConfig.allowedOriginValues}"
+  if let some raw := cfg.invalidMetadataUseIntent then
+    logErrorAt cfg.labelSyntax m!"Label {cfg.label} has invalid '(uses_intent := \"{raw}\")'; expected one of {UseConfig.allowedIntentValues}"
   if isProof && hasExternalRaw then
     logErrorAt cfg.labelSyntax m!"Label {cfg.label} cannot use '(lean := ...)' in a proof block"
   let priority ← resolvePriority? cfg isProof
@@ -216,6 +256,7 @@ def Config.resolveForDirective {m}
     tags
     effort
     prUrl
+    metadataUses := cfg.metadataUses
   }
 
 end Informal

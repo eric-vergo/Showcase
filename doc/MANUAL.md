@@ -64,6 +64,26 @@ Use `uses` when the current node depends on the target and should add an edge to
 the graph and dependency summaries. Use `bpref` when prose should link to a
 Blueprint node without registering that relationship as a dependency.
 
+For dependencies that do not have a natural sentence-level reference, use the
+block option `(uses := "label1, label2")`. Inline uses can carry
+`(intent := "auxiliary")` or `(intent := "technical")`; metadata-only uses use
+the parallel `(uses_intent := "...")` option.
+
+Dependency use metadata options are string-valued:
+
+- `intent` / `uses_intent`: one of `"regular"`, `"auxiliary"`, or
+  `"technical"`; omitted values default to `"regular"`
+- `origin` / `uses_origin`: one of `"manual"` or `"automatic"`; omitted values
+  default to `"manual"`
+
+These metadata options are accepted only by dependency-bearing uses: inline
+`uses` roles and block-level `(uses := ...)` entries. `bpref` is link-only and
+does not accept `origin` or `intent`.
+
+Rendered statement headers include a `uses` chip that previews the node's
+declared statement and proof dependencies. Non-default dependency metadata such
+as `automatic`, `auxiliary`, and `technical` is shown in that panel.
+
 If a role such as `{uses "addition_spec"}[]`, `{bpref "addition_spec"}[]`, or a
 citation has an empty payload, Blueprint can generate the visible text
 automatically, for example `Theorem N`.
@@ -435,9 +455,9 @@ views.
 
 ### Rendered statement blocks
 
-Rendered statement headers show a Lean status badge and related metadata.
-When local or external Lean material is available, the rendered page links or
-previews the associated content.
+Rendered statement headers show related metadata chips in this order: group,
+uses, used by, then Lean status. When local or external Lean material is
+available, the rendered page links or previews the associated content.
 
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.

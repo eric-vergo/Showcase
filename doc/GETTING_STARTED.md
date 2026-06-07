@@ -48,6 +48,32 @@ Use `uses` when the current Blueprint node mathematically depends on the target
 node. Use `bpref` for prose references that should render as Blueprint links but
 should not affect the graph or dependency summaries.
 
+When a dependency has no natural prose location, add it to the block metadata:
+
+```lean
+:::theorem "addition_assoc" (uses := "addition_spec, addition_comm")
+```
+
+Use `intent` on an inline use, or `uses_intent` on metadata-only uses, to record
+whether an edge is regular, auxiliary, or technical. Allowed intent values are
+`"regular"`, `"auxiliary"`, and `"technical"`; omitted values default to
+`"regular"`:
+
+```lean
+:::theorem "addition_assoc" (uses := "addition_helper") (uses_intent := "technical")
+This depends on {uses "addition_spec" (intent := "auxiliary")}[].
+```
+
+Use `(origin := "automatic")` on inline uses, or
+`(uses_origin := "automatic")` on metadata-only uses, only when tooling needs to
+distinguish author-written edges from automatically inferred edges. Allowed
+origin values are `"manual"` and `"automatic"`; author-written dependencies
+default to `"manual"`.
+
+These metadata options are accepted only by dependency-bearing uses: inline
+`uses` roles and block-level `(uses := ...)` entries. `bpref` is link-only and
+does not accept `origin` or `intent`.
+
 If the payload of `{uses "addition_spec"}[]` or `{bpref "addition_spec"}[]` is
 empty, Blueprint can generate the visible text automatically, for example
 `Theorem N`.
