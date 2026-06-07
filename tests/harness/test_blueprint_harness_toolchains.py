@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from scripts.blueprint_harness_branches import active_release_branch
-from scripts.blueprint_harness_references import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
+from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
 import scripts.blueprint_harness_toolchains as toolchains_mod
 
 

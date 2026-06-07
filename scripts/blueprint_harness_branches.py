@@ -13,7 +13,10 @@ ROOT_WORKTREE_NAME = "root"
 CHECKOUT_ROLE_DEFAULT_DEV = "default_dev"
 CHECKOUT_ROLE_BACKPORT = "backport"
 CHECKOUT_ROLE_CHOICES = (CHECKOUT_ROLE_DEFAULT_DEV, CHECKOUT_ROLE_BACKPORT)
-NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(?:[-.A-Za-z0-9]+)?$")
+NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+$")
+LEAN_RELEASE_CANDIDATE_PATTERN = re.compile(
+    r"^v?(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?-rc(?P<rc>\d+)$"
+)
 
 
 @dataclass(frozen=True)
@@ -24,22 +27,95 @@ class BranchPolicy:
     source_path: Path
 
 
-def normalize_lean_release_ref(raw_ref: str) -> str:
+def clean_lean_ref(raw_ref: str) -> str:
     ref = raw_ref.strip()
     if ref.startswith(LEAN_TOOLCHAIN_PREFIX):
         ref = ref[len(LEAN_TOOLCHAIN_PREFIX) :]
     if not ref or any(char.isspace() for char in ref) or any(char in ref for char in {'"', "\n", "\r"}):
         raise SystemExit("[blueprint-harness] expected a Lean release ref without whitespace, quotes, or newlines")
+    return ref
+
+
+def normalize_release_candidate_name(raw_ref: str) -> str:
+    ref = clean_lean_ref(raw_ref)
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    if match is None:
+        raise SystemExit("[blueprint-harness] expected an official Lean release candidate name like `4.30-rc2`")
+
+    major = match.group("major")
+    minor = match.group("minor")
+    patch = match.group("patch")
+    rc = match.group("rc")
+    if patch is None or patch == "0":
+        return f"{major}.{minor}-rc{rc}"
+    return f"{major}.{minor}.{patch}-rc{rc}"
+
+
+def release_candidate_name_or_none(raw_ref: str) -> str | None:
+    ref = clean_lean_ref(raw_ref)
+    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is None:
+        return None
+    return normalize_release_candidate_name(ref)
+
+
+def release_candidate_ref(raw_ref: str) -> str:
+    name = normalize_release_candidate_name(raw_ref)
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(name)
+    if match is None:
+        raise AssertionError(f"normalized release candidate did not parse: {name}")
+
+    patch = match.group("patch") or "0"
+    return f"v{match.group('major')}.{match.group('minor')}.{patch}-rc{match.group('rc')}"
+
+
+def normalize_lean_release_ref(raw_ref: str) -> str:
+    ref = clean_lean_ref(raw_ref)
+    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is not None:
+        return release_candidate_ref(ref)
     if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None and not ref.startswith("v"):
         ref = f"v{ref}"
     return ref
+
+
+def release_branch_from_lean_ref(raw_ref: str) -> str:
+    ref = normalize_lean_release_ref(raw_ref)
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    if match is not None:
+        patch = match.group("patch") or "0"
+        return f"v{match.group('major')}.{match.group('minor')}.{patch}"
+    return ref
+
+
+def lean_release_order_key(raw_ref: str) -> tuple[int, int, int, int] | None:
+    ref = normalize_lean_release_ref(raw_ref)
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None:
+        version = ref[1:] if ref.startswith("v") else ref
+        major, minor, patch = (int(part) for part in version.split("."))
+        return major, minor, patch, 1_000_000
+
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    if match is None:
+        return None
+
+    patch = int(match.group("patch") or "0")
+    return int(match.group("major")), int(match.group("minor")), patch, int(match.group("rc"))
+
+
+def lean_toolchain_spec(lean_ref: str) -> str:
+    return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
+
+
+def rewrite_lean_toolchain(path: Path, lean_ref: str) -> None:
+    existing = path.read_text(encoding="utf-8")
+    suffix = "\n" if existing.endswith("\n") else ""
+    path.write_text(f"{lean_toolchain_spec(lean_ref)}{suffix}", encoding="utf-8")
 
 
 def active_release_branch(repo_root: Path) -> str:
     toolchain_path = repo_root / "lean-toolchain"
     if not toolchain_path.exists():
         raise SystemExit(f"[blueprint-harness] missing lean toolchain file: {toolchain_path}")
-    return normalize_lean_release_ref(toolchain_path.read_text(encoding="utf-8"))
+    return release_branch_from_lean_ref(toolchain_path.read_text(encoding="utf-8"))
 
 
 def branch_policy_path(checkout_root: Path) -> Path:
@@ -81,8 +157,8 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
 
     return BranchPolicy(
         version=raw_version,
-        default_dev_branch=normalize_lean_release_ref(raw_default),
-        required_backport_branches=tuple(normalize_lean_release_ref(item) for item in raw_backports),
+        default_dev_branch=release_branch_from_lean_ref(raw_default),
+        required_backport_branches=tuple(release_branch_from_lean_ref(item) for item in raw_backports),
         source_path=path,
     )
 
