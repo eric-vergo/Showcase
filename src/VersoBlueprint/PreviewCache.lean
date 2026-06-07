@@ -38,10 +38,13 @@ structure Entry where
   label : Name
   facet : Facet
   blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+  /-- HTML-cache keys for associated Lean declaration previews. -/
+  leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 def Entry.ofBlocks (label : Name) (facet : Facet)
-    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : Entry :=
-  { label, facet, blocks }
+    (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
+    (leanCodePreviewKeys : Array String := #[]) : Entry :=
+  { label, facet, blocks, leanCodePreviewKeys }
 
 end Informal.PreviewCache

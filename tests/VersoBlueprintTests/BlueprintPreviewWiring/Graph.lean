@@ -67,7 +67,7 @@ Base statement for an explicit left-to-right graph.
         hasSubstr graphJs "function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr)" &&
         hasSubstr graphJs "function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior)" &&
         hasSubstr graphJs "const previewKey = nodeId ? (previewKeys.get(nodeId) || \"\") : \"\";" &&
-        hasSubstr graphJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
+        hasSubstr graphJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "previewUtils.hydratePreviewSubtree(body)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&

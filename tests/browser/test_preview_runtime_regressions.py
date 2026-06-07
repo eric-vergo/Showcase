@@ -146,14 +146,14 @@ class TestPreviewRuntimeRegressions:
         expect(hover.locator("strong").filter(has_text="Bold text").first).to_be_visible()
         assert not any("cloneNode" in err for err in errors), "\n".join(errors)
 
-    def test_used_by_panel_loads_manifest_only_when_opened(self, server: str, page: Page):
+    def test_used_by_panel_loads_html_cache_only_when_opened(self, server: str, page: Page):
         attempts = {"count": 0}
 
-        def count_manifest_fetch(route):
+        def count_cache_fetch(route):
             attempts["count"] += 1
             route.continue_()
 
-        page.route("**/-verso-data/blueprint-preview-manifest.json", count_manifest_fetch)
+        page.route("**/-verso-data/blueprint-html-cache.json", count_cache_fetch)
         page.goto(f"{server}/Preview-Relationships/")
         page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
         page.locator('.bp_wrapper[title="used_target"] .bp_relation_wrap').first.wait_for()
@@ -162,7 +162,7 @@ class TestPreviewRuntimeRegressions:
         status = page.evaluate(
             """() => {
                 const utils = window.bpPreviewUtils;
-                return utils.readSharedPreviewManifestStatus();
+                return utils.readBlueprintHtmlCacheStatus();
             }"""
         )
         assert attempts["count"] == 0
@@ -172,10 +172,32 @@ class TestPreviewRuntimeRegressions:
         page.wait_for_function(
             """() => {
                 const utils = window.bpPreviewUtils;
-                return utils.readSharedPreviewManifestStatus().state === "ready";
+                return utils.readBlueprintHtmlCacheStatus().state === "ready";
             }"""
         )
         assert attempts["count"] == 1
+
+    def test_html_cache_rejects_legacy_array_shape(self, server: str, page: Page):
+        def legacy_array_cache(route):
+            route.fulfill(
+                status=200,
+                body='[{"key":"used_source--statement","html":"<p>stale</p>"}]',
+                content_type="application/json",
+            )
+
+        page.route("**/-verso-data/blueprint-html-cache.json", legacy_array_cache)
+        page.goto(f"{server}/Preview-Relationships/")
+
+        status = page.evaluate(
+            """async () => {
+                const utils = window.bpPreviewUtils;
+                await utils.loadBlueprintHtmlCacheEntry("used_source--statement");
+                return utils.readBlueprintHtmlCacheStatus();
+            }"""
+        )
+
+        assert status["state"] == "error"
+        assert "object with an entries array" in status["lastError"]
 
     def test_code_summary_preview_opens_from_keyboard_focus_for_nonlink_trigger(
         self, server: str, page: Page
@@ -193,9 +215,7 @@ class TestPreviewRuntimeRegressions:
 
         trigger.focus()
 
-        panel = page.locator(
-            '.bp_wrapper[title="used_target"] .bp_extra_slot_code .bp_code_summary_preview_panel'
-        ).first
+        panel = page.locator(".bp_code_summary_preview_panel").first
         expect(panel).to_be_visible()
         expect(panel.locator(".bp_code_summary_preview_title")).to_have_text("used_target")
         expect(panel.locator(".bp_code_decl_item")).to_have_count(1)
@@ -262,7 +282,7 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_blueprint_summary_decl_link_hover_loads_manifest_backed_code_preview(
+    def test_blueprint_summary_decl_link_hover_loads_html_cache_backed_code_preview(
         self, server: str, page: Page
     ):
         errors = record_runtime_errors(page)
@@ -301,27 +321,36 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_exact_manifest_keys_keep_statement_and_proof_previews_distinct(self, server: str, page: Page):
+    def test_exact_cache_keys_keep_statement_and_proof_previews_distinct(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
 
         previews = page.evaluate(
             """async () => {
                 const utils = window.bpPreviewUtils;
-                const statement = await utils.loadSharedPreviewEntry("preview_facets--statement");
-                const proof = await utils.loadSharedPreviewEntry("preview_facets--proof");
+                const manifestResp = await fetch("-verso-data/blueprint-manifest.json");
+                const manifest = await manifestResp.json();
+                const metaByKey = new Map(
+                  Array.isArray(manifest.previews)
+                    ? manifest.previews.map((entry) => [entry.key, entry])
+                    : []
+                );
+                const statement = await utils.loadBlueprintHtmlCacheEntry("preview_facets--statement");
+                const proof = await utils.loadBlueprintHtmlCacheEntry("preview_facets--proof");
+                const statementMeta = metaByKey.get("preview_facets--statement") || null;
+                const proofMeta = metaByKey.get("preview_facets--proof") || null;
                 return {
                     statement: {
                         html: utils.readPreviewTemplate(statement),
-                        label: statement ? statement.label : null,
-                        facet: statement ? statement.facet : null,
-                        href: statement ? statement.href : null
+                        label: statementMeta ? statementMeta.label : null,
+                        facet: statementMeta ? statementMeta.facet : null,
+                        href: statementMeta ? statementMeta.href : null
                     },
                     proof: {
                         html: utils.readPreviewTemplate(proof),
-                        label: proof ? proof.label : null,
-                        facet: proof ? proof.facet : null,
-                        href: proof ? proof.href : null
+                        label: proofMeta ? proofMeta.label : null,
+                        facet: proofMeta ? proofMeta.facet : null,
+                        href: proofMeta ? proofMeta.href : null
                     }
                 };
             }"""
@@ -341,7 +370,7 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_summary_preview_retries_after_manifest_fetch_failure(self, server: str, page: Page):
+    def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         attempts = {"count": 0}
 
@@ -350,16 +379,16 @@ class TestPreviewRuntimeRegressions:
             if attempts["count"] == 1:
                 route.fulfill(
                     status=503,
-                    body="preview manifest temporarily unavailable",
+                    body="preview HTML cache temporarily unavailable",
                     content_type="application/json",
                 )
             else:
                 route.continue_()
 
-        page.route("**/-verso-data/blueprint-preview-manifest.json", fail_once)
+        page.route("**/-verso-data/blueprint-html-cache.json", fail_once)
         page.goto(f"{server}/Blueprint-Summary/")
 
-        manifest = page.evaluate(
+        cache = page.evaluate(
             """async () => {
                 const utils = window.bpPreviewUtils;
                 const trigger = document.querySelector(
@@ -369,10 +398,10 @@ class TestPreviewRuntimeRegressions:
                     trigger instanceof Element
                         ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
                         : "";
-                const first = await utils.loadSharedPreviewEntry(previewKey);
-                const statusAfterFirst = utils.readSharedPreviewManifestStatus();
-                const second = await utils.loadSharedPreviewEntry(previewKey);
-                const statusAfterSecond = utils.readSharedPreviewManifestStatus();
+                const first = await utils.loadBlueprintHtmlCacheEntry(previewKey);
+                const statusAfterFirst = utils.readBlueprintHtmlCacheStatus();
+                const second = await utils.loadBlueprintHtmlCacheEntry(previewKey);
+                const statusAfterSecond = utils.readBlueprintHtmlCacheStatus();
                 return {
                     previewKey: previewKey,
                     firstHtml: utils.readPreviewTemplate(first),
@@ -383,17 +412,17 @@ class TestPreviewRuntimeRegressions:
             }"""
         )
 
-        assert manifest["previewKey"]
-        assert manifest["firstHtml"] == ""
-        assert manifest["statusAfterFirst"]["state"] == "error"
-        assert "503" in manifest["statusAfterFirst"]["lastError"]
-        assert "<p" in manifest["secondHtml"]
-        assert manifest["statusAfterSecond"]["state"] == "ready"
-        assert manifest["statusAfterSecond"]["attempts"] >= 2
+        assert cache["previewKey"]
+        assert cache["firstHtml"] == ""
+        assert cache["statusAfterFirst"]["state"] == "error"
+        assert "503" in cache["statusAfterFirst"]["lastError"]
+        assert "<p" in cache["secondHtml"]
+        assert cache["statusAfterSecond"]["state"] == "ready"
+        assert cache["statusAfterSecond"]["attempts"] >= 2
         assert attempts["count"] > 1
         assert_no_runtime_errors(errors)
 
-    def test_used_by_panel_loads_manifest_backed_preview(self, server: str, page: Page):
+    def test_used_by_panel_loads_html_cache_backed_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
 

@@ -24,7 +24,7 @@ open Lean Elab
 This module intentionally owns the high-level overview for one informal node:
 status marks, declaration-summary tooltips, and code-panel indicators.
 
-It does not own manifest-backed code-preview hovers for explicit links to code;
+It does not own HTML-cache-backed code-preview hovers for explicit links to code;
 that narrower responsibility lives in `Informal.LeanCodeLink` /
 `Informal.LeanCodePreview`.
 

@@ -6,6 +6,7 @@ open Lake DSL
 -- require verso from "../verso"
 -- TODO: return to a release tag after leanprover/verso#859 lands.
 require verso from git "https://github.com/leanprover/verso"@"fae12939cd56081d6cbb3cbe195bad6680ea2d1c"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"2b5ce1ffa9f22743057068128e20aee96a798976"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
 package VersoBlueprint where
@@ -40,6 +41,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintMathLint,
     `VersoBlueprintTests.BlueprintMetadataPanel,
     `VersoBlueprintTests.BlueprintNumbering,
+    `VersoBlueprintTests.BlueprintSlides,
     `VersoBlueprintTests.BlueprintPreviewPanels,
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,

@@ -32,11 +32,11 @@ predictable across graph, summary, code, citation, and widget surfaces.
 Current shape:
 
 1. Blueprint generators call
-   `Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest`.
+   `Informal.PreviewManifest.blueprintMainWithPreviewData`.
 2. Verso still owns traversal, TeX, word counts, search, page shell, and HTML
    emission.
-3. Blueprint owns asset injection, public-xref filtering, shared-preview
-   manifest emission, and local compatibility rewrites.
+3. Blueprint owns asset injection, public-xref filtering, preview-data
+   emission, and local compatibility rewrites.
 
 Work:
 
@@ -100,8 +100,8 @@ Work:
    practical release mechanism
 2. replace the mtime workaround with a durable generated-or-staged Lean
    dependency edge for browser assets
-3. keep graph, summary, bibliography, block, and shared static-web assets under
-   one inventory so asset ownership is not rediscovered per feature
+3. keep graph, summary, bibliography, slides, block, and shared static-web
+   assets under one inventory so asset ownership is not rediscovered per feature
 4. add a build-level or generated-output check that fails when emitted browser
    assets drift from their source files
 
