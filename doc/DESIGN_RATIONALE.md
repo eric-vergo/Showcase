@@ -199,7 +199,7 @@ rather than page-local template bodies:
    relationship topology from ad hoc manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
-relationship panels are now manifest callers: the rendered page carries the
+relationship panels are now preview-data callers: the rendered page carries the
 stable lookup key, while the preview body comes from the HTML cache. Those
 surfaces deliberately avoid page-local fallback templates so preview content has
 one generated source of truth. If the cache is unavailable or missing an entry,

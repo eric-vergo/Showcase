@@ -207,7 +207,7 @@ def summaryPreviewWrap
 All attributes needed to bind one inline preview trigger to its runtime panel.
 
 `triggerId` is the page-local UI id used for hover state. `lookupKey?` is the
-shared preview-manifest key used to load the preview body; the two are often but
+shared preview-data key used to load the preview body; the two are often but
 not always the same value.
 -/
 structure InlinePreviewTarget where

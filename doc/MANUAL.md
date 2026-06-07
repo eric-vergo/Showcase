@@ -19,7 +19,7 @@ If you are starting a first project, read
 - [Math and TeX](#math-and-tex)
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
 - [Rendering Surface](#rendering-surface)
-- [Metadata Export and Preview Manifest](#metadata-export-and-preview-manifest)
+- [Metadata Export and Preview Data](#metadata-export-and-preview-data)
 - [The Generator Entry Point](#the-generator-entry-point)
 - [Blueprint Options](#blueprint-options)
 - [Experimental Widget](#experimental-widget)
