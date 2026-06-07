@@ -104,10 +104,11 @@ private structure UsesScopeText where
   lowercase : String
   titlecase : String
 
-private def usesScopeText (data : BlockData) : UsesScopeText :=
-  match data.kind with
-  | .proof => { lowercase := "proof", titlecase := "Proof" }
-  | .statement _ => { lowercase := "statement", titlecase := "Statement" }
+private def usesScopeText (isProof : Bool) : UsesScopeText :=
+  if isProof then
+    { lowercase := "proof", titlecase := "Proof" }
+  else
+    { lowercase := "statement", titlecase := "Statement" }
 
 /-- Standard reverse-dependency panel presentation. -/
 def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig := {
@@ -127,7 +128,9 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
 }
 
 /-- Standard forward-dependency panel presentation for statement and proof uses. -/
-def usesPanelConfig (sourceLabel : Data.Label) (scope : UsesScopeText) : PanelConfig := {
+def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig :=
+  let scope := usesScopeText isProof
+  {
   chipText := fun n => s!"uses {n}"
   chipTitle := fun n =>
     if n == 0 then
@@ -564,7 +567,10 @@ def renderUsesExtra {m}
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries ctx data
-  let scope := usesScopeText data
+  let isProof :=
+    match data.kind with
+    | .proof => true
+    | .statement _ => false
   let panelEntries ← entries.mapM fun entry => do
     let badgesHtml := {{
       {{renderUseAxisBadges entry}}
@@ -579,7 +585,7 @@ def renderUsesExtra {m}
       mkLabelEntry ctx entry.label
         (usesPreviewId data.label entry.label)
         (badgesHtml := badgesHtml)
-  pure <| renderPanel (usesPanelConfig data.label scope) panelEntries
+  pure <| renderPanel (usesPanelConfig data.label isProof) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
