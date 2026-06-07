@@ -948,6 +948,42 @@ def previewHoverUtilsJs : String := r##"(function () {
   };
 })();"##
 
+def previewHeaderCss : String := r##"
+.bp_preview_header_heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bp_preview_header_heading > *:first-child {
+  min-width: 0;
+}
+
+.bp_preview_header_label {
+  margin-left: auto;
+  max-width: 100%;
+  color: var(--bp-color-text-muted);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-align: right;
+  text-decoration: none;
+}
+
+.bp_preview_header_label[href]:hover {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+.bp_preview_header_label[hidden] {
+  display: none;
+}
+"##
+
 def inlinePreviewCss : String := r##"
 .bp_inline_preview_ref {
   cursor: help;
@@ -1005,35 +1041,10 @@ def inlinePreviewCss : String := r##"
   background: var(--bp-color-surface-muted);
 }
 
-.bp_preview_header_heading {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.42rem;
-  min-width: 0;
-}
-
 .bp_inline_preview_panel_title {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
-}
-
-.bp_preview_header_label {
-  color: var(--bp-color-text-muted);
-  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.bp_preview_header_label[href]:hover {
-  color: var(--bp-color-link);
-  text-decoration: underline;
-}
-
-.bp_preview_header_label[hidden] {
-  display: none;
 }
 
 .bp_inline_preview_panel_close {
@@ -1749,10 +1760,10 @@ def withPreviewPanelCssAssets (extras : List String := []) : List String :=
   withBlueprintCssAssets ([previewPanelCss] ++ extras)
 
 def withInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withBlueprintCssAssets (extras ++ [inlinePreviewCss])
+  withBlueprintCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
 
 def withPreviewPanelInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withPreviewPanelCssAssets (extras ++ [inlinePreviewCss])
+  withPreviewPanelCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
 
 def previewRuntimeJsAssets : List String :=
   [previewHoverUtilsJs]
