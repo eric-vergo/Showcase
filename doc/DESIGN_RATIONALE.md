@@ -192,11 +192,11 @@ rather than page-local template bodies:
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
-5. `VersoBlueprint.Slides` consumes the semantic manifest and rendered HTML
-   cache during slide generation to render `{blueprint_node}` shells into the
-   deck HTML. Browser JavaScript then hydrates links, math, and related-entry
-   preview panels; it does not reconstruct Blueprint block markup or
-   relationship topology from ad hoc manifest scans.
+5. On the v4.30 line, `VersoBlueprint.Slides` consumes the semantic manifest
+   and rendered HTML cache during slide generation to render `{blueprint_node}`
+   shells into the deck HTML. The v4.29 backport keeps the shared manifest/cache
+   data model but does not build the Slides module, because the required Verso
+   Slides rendering hooks are not available on that release line.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
@@ -433,8 +433,8 @@ cannot rely on page-global hover tables. That is why Blueprint sometimes
 rewrites hover payloads into self-contained HTML. Generated preview-cache
 fragments are not treated as isolated snippets: they keep normal
 `data-verso-hover` attributes and carry hover payloads as cache side data, so
-generated pages and Slides can use the standard Verso hover path without
-duplicating hover HTML into every fragment.
+generated pages and other cache-aware generators can use the standard Verso
+hover path without duplicating hover HTML into every fragment.
 
 ### Server-Mode Lean Elaboration
 

@@ -587,8 +587,7 @@ consumers: direct uses, reverse uses, group-panel entries, code-preview keys,
 ownership, tags, priority, and effort. Rendered preview bodies are stored in the
 HTML cache under the same keys. The cache also carries the Verso hover payloads
 referenced by those rendered fragments; generated Blueprint pages merge them into
-`-verso-docs.json`, and Slides preloads them when rendering a deck. This keeps
-cross-toolchain consumers such as Slides from needing to deserialize Manual
+`-verso-docs.json`. This keeps HTML consumers from needing to deserialize Manual
 blocks or re-run the Blueprint toolchain.
 
 After building the relevant Lean targets, useful inspection flags on a
@@ -608,61 +607,13 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## Blueprint Nodes in Verso Slides
+## Verso Slides Integration
 
-`VersoBlueprint.Slides` adds a `{blueprint_node ...}` block command for Verso
-Slides decks. It renders an entry from the semantic manifest plus rendered HTML
-cache emitted by a Blueprint site. The slide deck generator reads those files
-and writes the Blueprint node shell into the generated slide HTML; it does not
-re-traverse the Blueprint source document itself.
-
-Slide source:
-
-```lean
-import VersoBlueprint.Slides
-
-open VersoSlides
-
-#docs (Slides) deck "Talk" :=
-:::::::
-# Key statement
-
-{blueprint_node "addition_assoc" (siteBase := "blueprint")}
-:::::::
-```
-
-The `siteBase` option is useful when links in the manifest should open
-against a Blueprint site hosted next to, or below, the slide deck. Omit it when
-the manifest links are already correct relative to the deck.
-
-Use `displayLabel` only when a slide needs a talk-specific heading label. It
-overrides the displayed label/number in the Blueprint shell, not the semantic
-manifest title.
-
-Use the Blueprint slide wrapper in the deck generator:
-
-```lean
-import VersoBlueprint.Slides
-import MyTalk.Deck
-
-def main : IO UInt32 :=
-  Informal.Slides.slidesMainWithBlueprintPreviews
-    { outputDir := "_out/slides" }
-    (previewManifest? := some "_out/site/html-multi/-verso-data/blueprint-manifest.json")
-    (%doc MyTalk.Deck.deck)
-```
-
-When `previewHtmlCache?` is omitted, the wrapper looks for
-`blueprint-html-cache.json` next to the provided manifest. Pass
-`previewHtmlCache?` explicitly if the cache lives elsewhere.
-
-This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
-blocks into static slide HTML from the provided manifest/cache pair, writes the
-slide interaction JavaScript file, and optionally copies both files to the deck
-output under `-verso-data/` so related-entry and Lean-code hover previews can
-load their bodies. The slide generator also seeds the deck's Verso hover table
-from the cache, so cached Lean fragments keep the usual `data-verso-hover`
-markup instead of embedding duplicate hover payloads into each code token.
+The v4.29 backport does not build `VersoBlueprint.Slides`, because the required
+Verso Slides rendering hooks are only available on the v4.30 line. The semantic
+manifest and rendered HTML cache described above are still emitted on v4.29 so
+the shared preview-data refactorings remain available and future patches apply
+cleanly. Use v4.30 or newer for `{blueprint_node}` support in slide decks.
 
 ## The Generator Entry Point
 
