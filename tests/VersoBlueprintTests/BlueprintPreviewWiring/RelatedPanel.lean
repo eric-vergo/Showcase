@@ -38,6 +38,14 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out ">automatic</span>" &&
       hasSubstr out ">technical</span>" &&
       hasSubstr out ">auxiliary</span>" &&
+      hasSubstr out "bp_relation_badge_statement" &&
+      hasSubstr out "bp_relation_badge_proof" &&
+      hasSubstr out "bp_relation_badge_origin_automatic" &&
+      hasSubstr out "bp_relation_badge_intent_technical" &&
+      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
+      hasExtraCss st ".bp_relation_badge_origin::before" &&
+      hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
@@ -102,6 +110,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out ">automatic</span>" &&
       hasSubstr out ">technical</span>" &&
       hasSubstr out ">auxiliary</span>" &&
+      hasSubstr out "bp_relation_badge_statement" &&
+      hasSubstr out "bp_relation_badge_proof" &&
+      hasSubstr out "bp_relation_badge_origin_automatic" &&
+      hasSubstr out "bp_relation_badge_intent_technical" &&
+      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
