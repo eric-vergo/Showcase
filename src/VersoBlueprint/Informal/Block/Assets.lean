@@ -826,11 +826,36 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-text-faint);
 }
 
+.bp_relation_preview_heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
 .bp_relation_preview_title {
   margin-top: 0.16rem;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
+}
+
+.bp_relation_preview_header_label {
+  color: var(--bp-color-text-muted);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_relation_preview_header_label[href]:hover {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+.bp_relation_preview_header_label[hidden] {
+  display: none;
 }
 
 .bp_relation_preview_body {
@@ -1607,8 +1632,9 @@ def relationPanelJs : String := r##"(function () {
     const wrap = panel.closest(".bp_relation_wrap");
     const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
     const title = panel.querySelector(".bp_relation_preview_title");
+    const headerLabel = panel.querySelector(".bp_relation_preview_header_label");
     const body = panel.querySelector(".bp_relation_preview_body");
-    if (!(title instanceof Element) || !(body instanceof Element)) return;
+    if (!(title instanceof Element) || !(headerLabel instanceof Element) || !(body instanceof Element)) return;
 
     const defaultTitle = (title.textContent || "").trim() || "Relation preview";
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
@@ -1643,6 +1669,9 @@ def relationPanelJs : String := r##"(function () {
         }
       });
       title.textContent = itemTitle;
+      if (previewUtils && typeof previewUtils.setPreviewHeaderLink === "function") {
+        previewUtils.setPreviewHeaderLink(headerLabel, item);
+      }
       body.innerHTML = "";
     }
 

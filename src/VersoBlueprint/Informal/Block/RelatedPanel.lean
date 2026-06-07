@@ -456,14 +456,18 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
         {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
       else
         {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
-    {{
-      <li class={{itemClass}}
-          "data-bp-relation-preview-id"={{entry.previewId}}
-          "data-bp-relation-preview-key"={{entry.previewKey}}
-          "data-bp-relation-preview-title"={{entry.previewTitle}}>
-        {{rowNode}}
-      </li>
-    }}
+    let attrs := Id.run do
+      let mut attrs := #[
+        ("class", itemClass),
+        ("data-bp-relation-preview-id", entry.previewId),
+        ("data-bp-relation-preview-key", entry.previewKey),
+        ("data-bp-relation-preview-title", entry.previewTitle),
+        ("data-bp-preview-header-label", s!"{entry.label}")
+      ]
+      if let some href := entry.href then
+        attrs := attrs.push ("data-bp-preview-header-href", href)
+      pure attrs
+    .tag "li" attrs rowNode
   let previewTitle :=
     match selectedEntry? with
     | some entry => entry.previewTitle
@@ -484,7 +488,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           <div class="bp_relation_preview_surface">
             <div class="bp_relation_preview_header">
               <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+              <div class="bp_relation_preview_heading">
+                <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+                <a class="bp_relation_preview_header_label" hidden></a>
+              </div>
             </div>
             <div class="bp_relation_preview_body">
               {{previewBody}}
