@@ -35,8 +35,8 @@ Current shape:
    `Informal.PreviewManifest.blueprintMainWithPreviewData`.
 2. Verso still owns traversal, TeX, word counts, search, page shell, and HTML
    emission.
-3. Blueprint owns asset injection, public-xref filtering, shared-preview
-   manifest emission, and local compatibility rewrites.
+3. Blueprint owns asset injection, public-xref filtering, preview-data
+   emission, and local compatibility rewrites.
 
 Work:
 
