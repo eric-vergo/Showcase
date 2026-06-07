@@ -585,9 +585,11 @@ useful for:
 For informal blocks, the manifest contains semantic metadata needed by generated
 consumers: direct uses, reverse uses, group-panel entries, code-preview keys,
 ownership, tags, priority, and effort. Rendered preview bodies are stored in the
-HTML cache under the same keys. This keeps cross-toolchain consumers such as
-Slides from needing to deserialize Manual blocks or re-run the Blueprint
-toolchain.
+HTML cache under the same keys. The cache also carries the Verso hover payloads
+referenced by those rendered fragments; generated Blueprint pages merge them into
+`-verso-docs.json`, and Slides preloads them when rendering a deck. This keeps
+cross-toolchain consumers such as Slides from needing to deserialize Manual
+blocks or re-run the Blueprint toolchain.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
@@ -654,7 +656,9 @@ This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
 blocks into static slide HTML from the provided manifest/cache pair, writes the
 slide interaction JavaScript file, and optionally copies both files to the deck
 output under `-verso-data/` so related-entry and Lean-code hover previews can
-load their bodies.
+load their bodies. The slide generator also seeds the deck's Verso hover table
+from the cache, so cached Lean fragments keep the usual `data-verso-hover`
+markup instead of embedding duplicate hover payloads into each code token.
 
 ## The Generator Entry Point
 

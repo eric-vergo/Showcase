@@ -181,7 +181,9 @@ rather than page-local template bodies:
    preview payloads under their own preview-data keys.
 2. `PreviewManifest.lean` owns the Blueprint generator entry point and emits
    two files consumed by generated sites: the semantic Blueprint manifest and
-   the rendered HTML cache. It also emits informal-block relationship topology,
+   the rendered HTML cache. The cache stores rendered fragments plus their
+   Verso hover side table, while generated pages merge those hover payloads into
+   `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
    is still available.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
@@ -423,12 +425,16 @@ would remain the public link surface, while internal indexes, runtime caches,
 and accumulators could move to the new backend without changing rendering
 callers.
 
-### Self-Contained Snippet Rendering
+### Portable Snippet Rendering
 
 Some previews are rendered inside a full page, while others are rendered in
 isolated contexts such as editor or LSP hovers. Isolated renderers therefore
 cannot rely on page-global hover tables. That is why Blueprint sometimes
-rewrites hover payloads into self-contained HTML.
+rewrites hover payloads into self-contained HTML. Generated preview-cache
+fragments are not treated as isolated snippets: they keep normal
+`data-verso-hover` attributes and carry hover payloads as cache side data, so
+generated pages and Slides can use the standard Verso hover path without
+duplicating hover HTML into every fragment.
 
 ### Server-Mode Lean Elaboration
 
