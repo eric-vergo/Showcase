@@ -86,6 +86,31 @@ def release_branch_from_lean_ref(raw_ref: str) -> str:
     return ref
 
 
+def lean_release_order_key(raw_ref: str) -> tuple[int, int, int, int] | None:
+    ref = normalize_lean_release_ref(raw_ref)
+    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None:
+        version = ref[1:] if ref.startswith("v") else ref
+        major, minor, patch = (int(part) for part in version.split("."))
+        return major, minor, patch, 1_000_000
+
+    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
+    if match is None:
+        return None
+
+    patch = int(match.group("patch") or "0")
+    return int(match.group("major")), int(match.group("minor")), patch, int(match.group("rc"))
+
+
+def lean_toolchain_spec(lean_ref: str) -> str:
+    return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
+
+
+def rewrite_lean_toolchain(path: Path, lean_ref: str) -> None:
+    existing = path.read_text(encoding="utf-8")
+    suffix = "\n" if existing.endswith("\n") else ""
+    path.write_text(f"{lean_toolchain_spec(lean_ref)}{suffix}", encoding="utf-8")
+
+
 def active_release_branch(repo_root: Path) -> str:
     toolchain_path = repo_root / "lean-toolchain"
     if not toolchain_path.exists():

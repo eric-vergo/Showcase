@@ -14,7 +14,7 @@ TEMPLATE_ROOT = PACKAGE_ROOT / "project_template"
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
-from scripts.blueprint_harness_references import rewrite_local_blueprint_dependency
+from scripts.blueprint_harness_project_commands import rewrite_local_blueprint_dependency
 
 
 def run(command: list[str], *, cwd: Path) -> None:

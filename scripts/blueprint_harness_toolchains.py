@@ -6,12 +6,13 @@ import subprocess
 from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
-    LEAN_TOOLCHAIN_PREFIX,
+    lean_toolchain_spec,
     normalize_lean_release_ref,
     release_branch_from_lean_ref,
+    rewrite_lean_toolchain,
 )
-from scripts.blueprint_harness_references import (
-    maybe_rewrite_in_repo_blueprint_dependency,
+from scripts.blueprint_harness_project_commands import (
+    maybe_in_repo_blueprint_dependency_override,
     rewrite_pinned_blueprint_dependency,
 )
 from scripts.blueprint_harness_utils import lean_low_priority_command, run
@@ -37,22 +38,12 @@ class ToolchainBumpResult:
     verso_tag_oid: str
 
 
-def lean_toolchain_spec(lean_ref: str) -> str:
-    return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
-
-
 def managed_toolchain_project_dirs(package_root: Path) -> tuple[Path, ...]:
     return (
         package_root,
         package_root / "project_template",
         package_root / "tests" / "test_blueprints" / "preview_runtime_showcase",
     )
-
-
-def rewrite_lean_toolchain(path: Path, lean_ref: str) -> None:
-    existing = path.read_text(encoding="utf-8")
-    suffix = "\n" if existing.endswith("\n") else ""
-    path.write_text(f"{lean_toolchain_spec(lean_ref)}{suffix}", encoding="utf-8")
 
 
 def _require_official_verso_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
@@ -111,12 +102,8 @@ def resolve_remote_verso_tag_oid(package_root: Path, ref: str) -> str | None:
 
 
 def refresh_managed_manifest(package_root: Path, project_dir: Path) -> None:
-    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, package_root)
-    try:
+    with maybe_in_repo_blueprint_dependency_override(project_dir, package_root):
         run(lean_low_priority_command(package_root, "lake", "update"), cwd=project_dir)
-    finally:
-        if rewritten_lakefile is not None and original_lakefile_text is not None:
-            rewritten_lakefile.write_text(original_lakefile_text, encoding="utf-8")
 
 
 def validate_bumped_toolchain(package_root: Path) -> None:
