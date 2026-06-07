@@ -352,30 +352,6 @@ span[class$="_thmlabel"]::after {
   list-style: none;
 }
 
-.bp_manifest_code_preview_content {
-  gap: 0.45rem;
-}
-
-.bp_manifest_code_preview_code {
-  display: grid;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.bp_manifest_code_preview_code code.hl.lean.block {
-  display: block;
-  margin: 0;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--bp-color-border-soft);
-  border-radius: var(--bp-radius-sm);
-  background: var(--bp-color-surface-muted);
-  color: var(--bp-color-text-strong);
-  font-size: 0.78rem;
-  line-height: 1.45;
-  overflow-x: auto;
-  white-space: pre;
-}
-
 .bp_code_decl_item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
