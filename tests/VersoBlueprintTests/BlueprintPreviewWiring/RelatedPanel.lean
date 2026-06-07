@@ -86,6 +86,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
       hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out "data-bp-preview-footer-html=" &&
       hasSubstr out "data-bp-preview-key="
     )

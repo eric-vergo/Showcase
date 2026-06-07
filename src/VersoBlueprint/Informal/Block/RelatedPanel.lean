@@ -66,8 +66,9 @@ structure PanelEntry where
   previewId : String
   previewKey : String
   previewTitle : String
+  label : Data.Label
   href : Option String := none
-  metaHtml : Output.Html := .empty
+  badgesHtml : Output.Html := .empty
   previewFallbackLabel? : Option String := none
   active : Bool := false
 
@@ -363,7 +364,7 @@ private def mkBlockEntry {m}
     [Monad m]
     (ctx : Context)
     (source : BlockData) (previewId : String)
-    (metaHtml : Output.Html := .empty) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
   let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
@@ -371,8 +372,9 @@ private def mkBlockEntry {m}
     previewId
     previewKey := previewLookupKey source
     previewTitle
+    label := source.label
     href
-    metaHtml
+    badgesHtml
     previewFallbackLabel? := some s!"{source.label}"
   }
 
@@ -380,15 +382,16 @@ private def mkLabelEntry {m}
     [Monad m]
     (ctx : Context)
     (label : Data.Label) (previewId : String)
-    (metaHtml : Output.Html := .empty) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := s!"{label}"
   pure {
     previewId
     previewKey := PreviewCache.key label .statement
     previewTitle
+    label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
-    metaHtml
+    badgesHtml
     previewFallbackLabel? := some s!"{label}"
   }
 
@@ -421,12 +424,14 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     let previewFooterHtml? :=
-      let html := entry.metaHtml.asString
+      let html := entry.badgesHtml.asString
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
       (previewLookupKey? := some entry.previewKey)
       (previewFallbackLabel? := entry.previewFallbackLabel?)
+      (previewHeaderLabel? := some s!"{entry.label}")
+      (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
   let selectedEntry? := selectedPanelEntry? cfg entries
   let renderRow (entry : PanelEntry) : Output.Html :=
@@ -443,7 +448,8 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
       let metaNode := {{
         <span class="bp_relation_target_meta">
-          {{entry.metaHtml}}
+          <code>s!"{entry.label}"</code>
+          {{entry.badgesHtml}}
         </span>
       }}
       if let some href := entry.href then
@@ -517,8 +523,7 @@ def renderUsedByExtra {m}
     let panelEntries ← entries.mapM fun entry =>
       mkBlockEntry ctx entry.source
         (usedByPreviewId data.label entry.source.label)
-        (metaHtml := {{
-          <code>s!"{entry.source.label}"</code>
+        (badgesHtml := {{
           {{renderUsedByAxisBadges entry}}
           {{renderUseMetadataBadges entry.origins entry.intents}}
         }})
@@ -535,8 +540,7 @@ def renderUsesExtra {m}
   | .statement _ =>
     let entries := collectUsesEntries ctx data
     let panelEntries ← entries.mapM fun entry => do
-      let metaHtml := {{
-        <code>s!"{entry.label}"</code>
+      let badgesHtml := {{
         {{renderUseAxisBadges entry}}
         {{renderUseMetadataBadges entry.origins entry.intents}}
       }}
@@ -544,11 +548,11 @@ def renderUsesExtra {m}
       | some target =>
         mkBlockEntry ctx target
           (usesPreviewId data.label entry.label)
-          (metaHtml := metaHtml)
+          (badgesHtml := badgesHtml)
       | none =>
         mkLabelEntry ctx entry.label
           (usesPreviewId data.label entry.label)
-          (metaHtml := metaHtml)
+          (badgesHtml := badgesHtml)
     pure <| renderPanel usesPanelConfig panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
@@ -567,7 +571,6 @@ def renderGroupExtra {m}
     let panelEntries ← siblings.mapM fun source =>
       mkBlockEntry ctx source
         (groupPreviewId data.label source.label)
-        (metaHtml := {{<code>s!"{source.label}"</code>}})
     let cfg := groupPanelConfig group.label group.title group.declared
     pure <| some (renderPanel cfg panelEntries)
 
