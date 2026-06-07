@@ -461,6 +461,11 @@ available, the rendered page links or previews the associated content.
 Rows in the uses and used-by panels show statement/proof badges plus any
 non-default dependency origin or intent badges.
 
+Relation previews show the human title and a right-aligned concrete Blueprint
+label in the preview header; the label links to the target statement. Single
+uses or used-by entries use the same inline preview chrome, with relation
+metadata badges shown in the preview footer.
+
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.
 
