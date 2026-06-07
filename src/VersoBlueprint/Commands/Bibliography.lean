@@ -103,10 +103,10 @@ block_extension Block.bibliography (biblio : BibliographyData) where
                     PreviewCache.key theoremCtx.label (PreviewCache.Facet.ofInProgressKind theoremCtx.kind)
                   let previewId :=
                     s!"bp-bib-use-{Informal.HoverRender.previewKey use.href}"
-                  Informal.HoverRender.inlinePreviewRef
-                    lineNode previewId summaryText
-                    (previewLookupKey? := some previewKey)
-                    (previewFallbackLabel? := some s!"{theoremCtx.label}")
+                  let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
+                    previewId summaryText previewKey
+                    (fallbackLabel? := some s!"{theoremCtx.label}")
+                  Informal.HoverRender.inlinePreviewTargetNode lineNode previewTarget
                 | Option.none => lineNode
               {{<li class="bp_bibliography_use_item">
                 {{previewLine}}

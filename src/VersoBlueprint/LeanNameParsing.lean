@@ -33,15 +33,4 @@ def parseE (s : String) : Except String Name :=
     | some n => .ok n
     | none => .error s!"invalid Lean name '{normalized}'"
 
-/--
-Temporary workaround for directive args:
-`(lean := "...")` currently receives a single string, so we split on commas.
-TODO: remove this when Verso supports list-valued directive arguments.
--/
-def splitCommaSeparatedList (s : String) : Array String :=
-  s.splitOn ","
-  |>.toArray
-  |>.map normalize
-  |>.filter (fun p => !p.isEmpty)
-
 end Informal.LeanNameParsing

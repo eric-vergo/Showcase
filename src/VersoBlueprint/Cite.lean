@@ -574,10 +574,10 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
           pure linkNode
         else
           let previewKey := citationPreviewKey item cfg.style cfg.kind cfg.index
-          pure <| Informal.HoverRender.inlinePreviewNode
-            linkNode previewKey (citationPreviewTitle item)
-            (previewLookupKey? := some previewKey)
-            (previewFallbackDetail? := locatorText cfg.kind cfg.index)
+          let previewTarget := Informal.HoverRender.InlinePreviewTarget.manifestBacked
+            previewKey (citationPreviewTitle item)
+            (fallbackDetail? := locatorText cfg.kind cfg.index)
+          pure <| Informal.HoverRender.inlinePreviewTargetNode linkNode previewTarget
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links
       let locatorHtml? := (locatorText cfg.kind cfg.index).map (fun loc => {{<span>{{.text true loc}}</span>}})

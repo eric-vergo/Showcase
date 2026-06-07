@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.DirectiveArgParsing
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.LeanCodeLink
@@ -47,7 +48,7 @@ def parseExternalCodeList (lean : Option String) :
   match lean with
   | none => (#[], #[])
   | some s =>
-    (LeanNameParsing.splitCommaSeparatedList s).foldl (init := (#[], #[])) fun (acc, invalid) ref =>
+    (DirectiveArgParsing.splitCommaSeparatedList s).foldl (init := (#[], #[])) fun (acc, invalid) ref =>
       match LeanNameParsing.parseE ref with
       | .ok name =>
         let extRef := Data.ExternalRef.ofName name .directiveLean

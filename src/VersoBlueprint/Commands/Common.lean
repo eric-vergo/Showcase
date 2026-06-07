@@ -1196,12 +1196,12 @@ def inlineLinkPreviewJs : String := r##"(function () {
 
     function readInlinePreviewHost(trigger) {
       if (!(trigger instanceof Element)) return null;
-      const host = trigger.closest(".bp_used_by_panel, .bp_graph_preview, .bp_group_hover_preview");
+      const host = trigger.closest(".bp_relation_panel, .bp_graph_preview, .bp_group_hover_preview");
       if (!(host instanceof Element)) return null;
       if (panel.contains(host)) return null;
       let kind = "generic";
-      if (host.matches(".bp_used_by_panel")) {
-        kind = "used-by";
+      if (host.matches(".bp_relation_panel")) {
+        kind = "relation";
       } else if (host.matches(".bp_graph_preview")) {
         kind = "graph";
       } else if (host.matches(".bp_group_hover_preview")) {

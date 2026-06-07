@@ -49,6 +49,10 @@ export.
 
 When roles such as `{uses "foo"}[]` or citations have an empty payload,
 Blueprint can automatically render text such as `Theorem N`.
+Metadata-only dependencies can be written on a block with
+`(uses := "foo, bar")`; inline and metadata-only uses can also carry intent tags
+such as `"regular"`, `"technical"`, or `"auxiliary"`, plus an origin of
+`"manual"` or `"automatic"`.
 
 Typical directives look like:
 

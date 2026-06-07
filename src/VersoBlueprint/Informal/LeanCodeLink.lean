@@ -26,8 +26,16 @@ the responsibility of `Informal.CodeSummary`.
 private def previewLookupKey (decl : Name) : String :=
   Informal.LeanDeclPreviewKey.lookupKey decl
 
-private def previewId (decl : Name) : String :=
-  s!"bp-lean-code-{Informal.HoverRender.previewKey (previewLookupKey decl)}"
+private def previewTarget
+    (decl : Name) (previewTitle : String) (previewDetail? : Option String) :
+    Informal.HoverRender.InlinePreviewTarget :=
+  let lookupKey := previewLookupKey decl
+  {
+    triggerId := s!"bp-lean-code-{Informal.HoverRender.previewKey lookupKey}"
+    title := previewTitle
+    lookupKey? := some lookupKey
+    fallbackDetail? := previewDetail?
+  }
 
 private def renderLinkNode
     (node : Verso.Output.Html) (href? : Option String)
@@ -54,11 +62,8 @@ def renderResolved
     (previewTitle : String := s!"Lean declaration {decl}")
     (previewDetail? : Option String := none) : Verso.Output.Html :=
   let linkNode := renderLinkNode node href? className linkTitle?
-  Informal.HoverRender.inlinePreviewNode
+  Informal.HoverRender.inlinePreviewTargetNode
     linkNode
-    (previewId decl)
-    previewTitle
-    (previewLookupKey? := some (previewLookupKey decl))
-    (previewFallbackDetail? := previewDetail?)
+    (previewTarget decl previewTitle previewDetail?)
 
 end Informal.LeanCodeLink
