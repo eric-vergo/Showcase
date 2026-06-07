@@ -66,7 +66,7 @@ open Informal.PreviewManifest
         entryProps.contains "html" &&
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, or citation label." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
-        kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
+        kindDesc? == some "Kind (definition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
