@@ -72,11 +72,15 @@ Inline dependency target.
 Proof dependency target.
 :::
 
+:::definition "def:uses.proof.extra"
+Proof metadata-only dependency target.
+:::
+
 :::theorem "thm:uses.panel" (uses := "def:uses.hidden") (uses_origin := "automatic") (uses_intent := "technical")
 Statement depends on {uses "def:uses.inline" (intent := "auxiliary")}[].
 :::
 
-:::proof "thm:uses.panel"
+:::proof "thm:uses.panel" (uses := "def:uses.proof.extra")
 Proof depends on {uses "def:uses.proof"}[].
 :::
 :::::::

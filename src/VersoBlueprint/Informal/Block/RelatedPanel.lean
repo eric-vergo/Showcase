@@ -99,6 +99,16 @@ structure PanelConfig where
 def usedByChipText (count : Nat) : String :=
   s!"used by {count}"
 
+/-- Human-facing statement/proof wording for forward dependency previews. -/
+private structure UsesScopeText where
+  lowercase : String
+  titlecase : String
+
+private def usesScopeText (data : BlockData) : UsesScopeText :=
+  match data.kind with
+  | .proof => { lowercase := "proof", titlecase := "Proof" }
+  | .statement _ => { lowercase := "statement", titlecase := "Statement" }
+
 /-- Standard reverse-dependency panel presentation. -/
 def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig := {
   chipText := usedByChipText
@@ -117,43 +127,23 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
 }
 
 /-- Standard forward-dependency panel presentation for statement and proof uses. -/
-def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig := {
+def usesPanelConfig (sourceLabel : Data.Label) (scope : UsesScopeText) : PanelConfig := {
   chipText := fun n => s!"uses {n}"
   chipTitle := fun n =>
     if n == 0 then
-      if isProof then
-        "No declared proof dependencies"
-      else
-        "No declared statement dependencies"
-    else if isProof then
-      s!"Proof dependencies used by {sourceLabel}"
+      s!"No declared {scope.lowercase} dependencies"
     else
-      s!"Statement dependencies used by {sourceLabel}"
+      s!"{scope.titlecase} dependencies used by {sourceLabel}"
   singleTitle := fun entry =>
-    if isProof then
-      s!"Proof dependency: {entry.previewTitle}"
-    else
-      s!"Statement dependency: {entry.previewTitle}"
+    s!"{scope.titlecase} dependency: {entry.previewTitle}"
   panelTitle := fun n =>
-    if isProof then
-      s!"Proof uses {n}"
-    else
-      s!"Statement uses {n}"
+    s!"{scope.titlecase} uses {n}"
   panelMeta :=
-    if isProof then
-      "Proof dependency previews"
-    else
-      "Statement dependency previews"
+    s!"{scope.titlecase} dependency previews"
   previewDefaultTitle :=
-    if isProof then
-      "Proof dependency preview"
-    else
-      "Statement dependency preview"
+    s!"{scope.titlecase} dependency preview"
   previewEmptyText :=
-    if isProof then
-      "Proof dependency preview content is loaded from the Blueprint HTML cache."
-    else
-      "Statement dependency preview content is loaded from the Blueprint HTML cache."
+    s!"{scope.titlecase} dependency preview content is loaded from the Blueprint HTML cache."
   chipClass := "bp_relation_chip bp_uses_chip"
   emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
 }
@@ -574,10 +564,7 @@ def renderUsesExtra {m}
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries ctx data
-  let isProof :=
-    match data.kind with
-    | .proof => true
-    | .statement _ => false
+  let scope := usesScopeText data
   let panelEntries ← entries.mapM fun entry => do
     let badgesHtml := {{
       {{renderUseAxisBadges entry}}
@@ -592,7 +579,7 @@ def renderUsesExtra {m}
       mkLabelEntry ctx entry.label
         (usesPreviewId data.label entry.label)
         (badgesHtml := badgesHtml)
-  pure <| renderPanel (usesPanelConfig data.label isProof) panelEntries
+  pure <| renderPanel (usesPanelConfig data.label scope) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
