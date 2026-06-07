@@ -12,7 +12,7 @@ from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_e
 
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
 OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.30.0"'
+    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.29.0"'
 )
 OFFICIAL_BLUEPRINT_URL_PATTERNS = (
     rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
@@ -122,9 +122,9 @@ def project_lake_update_command(package_root: Path, project_dir: Path) -> list[s
     if manifest is not None:
         print(
             "[blueprint-harness] committed lake-manifest.json detected; "
-            "running full `lake update` from committed pins"
+            "updating `VersoBlueprint` only to keep existing release-line pins"
         )
-        return lean_low_priority_command(package_root, "lake", "update")
+        return lean_low_priority_command(package_root, "lake", "update", "VersoBlueprint")
 
     print(
         "[blueprint-harness] no committed lake-manifest.json detected; "

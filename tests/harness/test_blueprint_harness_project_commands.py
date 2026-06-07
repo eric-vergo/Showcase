@@ -157,7 +157,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
 
             self.assertTrue(manifest.exists())
 
-    def test_project_lake_update_command_uses_full_update_when_manifest_is_committed(self) -> None:
+    def test_project_lake_update_command_updates_blueprint_only_when_manifest_is_committed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
             self.init_git_repo(project_dir)
@@ -173,7 +173,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
 
             command = project_lake_update_command(PACKAGE_ROOT, project_dir)
 
-            self.assertEqual(command[-2:], ["lake", "update"])
+            self.assertEqual(command[-3:], ["lake", "update", "VersoBlueprint"])
 
     def test_project_lake_update_command_falls_back_to_full_update_without_tracked_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
