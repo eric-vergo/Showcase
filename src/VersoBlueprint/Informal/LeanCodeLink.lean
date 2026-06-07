@@ -18,7 +18,7 @@ open Verso.Output.Html
 
 /--
 `LeanCodeLink` is the narrow HTML helper for links that target Lean
-declarations/definitions and should carry a manifest-backed hover preview.
+declarations/definitions and should carry an HTML-cache-backed hover preview.
 
 It intentionally does not compute blueprint/code-status summaries; that remains
 the responsibility of `Informal.CodeSummary`.

@@ -1195,20 +1195,6 @@ def buildPreviewDataFiles
     htmlCache := { entries := htmlEntries }
   }
 
-/-- Build the semantic Blueprint manifest from a completed Manual traversal state. -/
-def buildManifestFile
-    (impls : ExtensionImpls)
-    (logError : String → IO Unit)
-    (state : TraverseState) : IO File := do
-  pure (← buildPreviewDataFiles impls logError state).manifest
-
-/-- Build the rendered Blueprint HTML cache from a completed Manual traversal state. -/
-def buildHtmlCacheFile
-    (impls : ExtensionImpls)
-    (logError : String → IO Unit)
-    (state : TraverseState) : IO HtmlCache.File := do
-  pure (← buildPreviewDataFiles impls logError state).htmlCache
-
 private def parseRenderConfigOptions (config : RenderConfig := {}) :
     List String → ReaderT ExtensionImpls IO RenderConfig
   | ("--output"::dir::more) => parseRenderConfigOptions { config with destination := dir } more

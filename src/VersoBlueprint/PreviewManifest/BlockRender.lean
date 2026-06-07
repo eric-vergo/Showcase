@@ -21,7 +21,7 @@ open Verso.Output.Html
 def htmlFragment (html : String) : Html :=
   .text false html
 
-/-- Related-entry panel positions available in a manifest-backed block header. -/
+/-- Related-entry panel positions available in a preview-data-backed block header. -/
 inductive RelationPanelKind where
   | group
   | uses
@@ -37,14 +37,14 @@ def key : RelationPanelKind → String
 
 end RelationPanelKind
 
-/-- Genre-specific presentation for manifest-backed related-entry panels. -/
+/-- Genre-specific presentation for preview-data-backed related-entry panels. -/
 structure RelationPanelsConfig where
   wrapClass : RelationPanelKind → String :=
-    fun kind => s!"bp_relation_wrap bp_manifest_{kind.key}_wrap"
+    fun kind => s!"bp_relation_wrap bp_preview_data_{kind.key}_wrap"
   panelAttrs : RelationPanelKind → Array (String × String) := fun _ => #[]
   singleMode : RelationPanelKind → Informal.RelatedPanel.PanelSingleMode := fun _ => .panel
   idPrefix : RelationPanelKind → Entry → String :=
-    fun kind entry => s!"bp-manifest-{kind.key}-{entry.label}"
+    fun kind entry => s!"bp-preview-data-{kind.key}-{entry.label}"
 
 private def RelationPanelsConfig.apply
     (cfg : RelationPanelsConfig)
@@ -57,15 +57,15 @@ private def RelationPanelsConfig.apply
     singleMode := cfg.singleMode kind
   }
 
-/-- Genre-specific presentation knobs for rendering a manifest-backed Blueprint block. -/
+/-- Genre-specific presentation knobs for rendering a preview-data-backed Blueprint block. -/
 structure RenderConfig where
-  wrapperClass : String := "bp_manifest_node_blueprint"
-  codeBodyClass : String := "bp_manifest_code_body"
+  wrapperClass : String := "bp_preview_data_node_blueprint"
+  codeBodyClass : String := "bp_preview_data_code_body"
   titleRowAttrs? :
     Entry → Option (Array (String × String)) := fun _ => none
   relationPanels : RelationPanelsConfig := {}
 
-/-- Per-node render options for a manifest-backed Blueprint block. -/
+/-- Per-node render options for a preview-data-backed Blueprint block. -/
 structure RenderOptions where
   titleOverride? : Option String := none
   compact : Bool := false
