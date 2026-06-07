@@ -507,6 +507,58 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_proof_uses_single_dependency_loads_from_proof_header(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_proof"]'
+        ).first
+        statement_uses = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses).to_have_text("uses 0")
+
+        proof = page.locator('.bp_wrapper.bp_kind_proof_wrapper[title="used_proof"]').first
+        slot = proof.locator(".bp_extra_slot_uses").first
+        trigger = slot.locator(".bp_inline_preview_ref").first
+        expect(trigger).to_have_count(1)
+        expect(proof.locator(".bp_extra_slot_used_by")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_code")).to_have_count(0)
+        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
+        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
+
+        chip = trigger.locator(".bp_relation_chip").first
+        expect(chip).to_have_text("uses 1")
+        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
+        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
+        trigger.hover()
+
+        panel = page.locator("#bp-inline-preview-panel")
+        expect(panel).to_be_visible()
+
+        body = panel.locator(".bp_inline_preview_panel_body")
+        page.wait_for_function(
+            "(el) => !!el && el.innerHTML.includes('<p')",
+            arg=body.element_handle(),
+        )
+        expect(body).to_contain_text("Target statement with associated Lean code.")
+
+        header_label = panel.locator(".bp_inline_preview_panel_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
+        footer = panel.locator(".bp_inline_preview_panel_footer")
+        expect(footer).to_be_visible()
+        expect(footer).to_contain_text("proof")
+
+        page.mouse.move(0, 0)
+        expect(panel).to_be_hidden(timeout=1000)
+
+        assert_no_runtime_errors(errors)
+
     def test_bibliography_hover_does_not_throw_and_opens_panel(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Inline-Hover-Previews/")

@@ -78,6 +78,11 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "uses used code";
 }
 
+.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
+  grid-template-columns: minmax(4.2rem, max-content);
+  grid-template-areas: "uses";
+}
+
 .bp_extras_with_group {
   grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
   grid-template-areas: "group used code";
