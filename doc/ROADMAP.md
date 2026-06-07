@@ -32,7 +32,7 @@ predictable across graph, summary, code, citation, and widget surfaces.
 Current shape:
 
 1. Blueprint generators call
-   `Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest`.
+   `Informal.PreviewManifest.blueprintMainWithPreviewData`.
 2. Verso still owns traversal, TeX, word counts, search, page shell, and HTML
    emission.
 3. Blueprint owns asset injection, public-xref filtering, shared-preview

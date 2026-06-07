@@ -488,8 +488,8 @@
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
     const previewUtils = window.bpPreviewUtils;
-    const canResolveSharedPreview =
-      previewUtils && typeof previewUtils.loadSharedPreviewEntry === "function";
+    const canResolveHtmlCache =
+      previewUtils && typeof previewUtils.loadBlueprintHtmlCacheEntry === "function";
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
     const hoverLifetime = bindHoverablePanelLifetime(
@@ -503,7 +503,7 @@
       previewController.hide();
       return;
     }
-    if (!previewController.title || !previewController.body || (previewMap.size === 0 && !canResolveSharedPreview)) {
+    if (!previewController.title || !previewController.body || (previewMap.size === 0 && !canResolveHtmlCache)) {
       previewController.hide();
       return;
     }
@@ -512,9 +512,9 @@
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
       let html = parsePreviewEntry(previewMap.get(label));
-      if (!html && canResolveSharedPreview && previewKey) {
-        const sharedEntry = await previewUtils.loadSharedPreviewEntry(previewKey);
-        html = parsePreviewEntry(sharedEntry);
+      if (!html && canResolveHtmlCache && previewKey) {
+        const cacheEntry = await previewUtils.loadBlueprintHtmlCacheEntry(previewKey);
+        html = parsePreviewEntry(cacheEntry);
       }
       if (requestToken !== graphState.previewRequestToken) return;
       if (!html) return;
@@ -526,7 +526,7 @@
       const label = graphNodeLabel(node);
       const nodeId = graphNodeId(node);
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      if (!label || (!previewMap.has(label) && !(canResolveSharedPreview && previewKey))) return;
+      if (!label || (!previewMap.has(label) && !(canResolveHtmlCache && previewKey))) return;
       node.style.cursor = "pointer";
       node.setAttribute("tabindex", "0");
       const titleNode = node.querySelector("title");

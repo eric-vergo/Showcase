@@ -23,7 +23,7 @@ def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
   if title.isEmpty then entry.displayLabel else title
 
 def RelationAxis.badgeHtml (axis : RelationAxis) : Html :=
-  {{<span class="bp_used_by_axis_badge">{{Html.ofString axis.display}}</span>}}
+  {{<span class="bp_relation_axis_badge">{{Html.ofString axis.display}}</span>}}
 
 def RelatedEntry.metaHtml (entry : RelatedEntry) : Html :=
   .seq <| #[

@@ -728,13 +728,15 @@ projects keep their committed dependency pointed at an approved upstream repo,
 while the harness swaps in a local path dependency ephemerally during
 validation.
 
-## Shared Preview Artifact
+## Preview Data Artifacts
 
-Each generated Blueprint site includes a shared preview manifest at:
+Each generated Blueprint site includes semantic preview data and rendered HTML
+cache files at:
 
-`html-multi/-verso-data/blueprint-preview-manifest.json`
+- `html-multi/-verso-data/blueprint-manifest.json`
+- `html-multi/-verso-data/blueprint-html-cache.json`
 
-See [`MANUAL.md`](./MANUAL.md) for the manifest semantics and executable
+See [`MANUAL.md`](./MANUAL.md) for the file semantics and executable
 inspection flags.
 
 ## Project-Local Option Policy

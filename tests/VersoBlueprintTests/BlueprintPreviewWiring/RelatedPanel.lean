@@ -42,7 +42,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
         hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
         hasSubstr relationJs "body.innerHTML = loadingPreviewHtml();" &&
-        hasSubstr relationJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
         !hasSubstr relationJs "fallbackTemplates" &&
         hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
         hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
@@ -104,7 +104,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
         hasSubstr relationJs "selectItem(initialItem)"
       | none => false
     )
@@ -135,7 +135,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadSharedPreviewEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
         hasSubstr relationJs "selectItem(initialItem)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false

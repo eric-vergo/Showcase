@@ -19,20 +19,21 @@ namespace Verso.VersoBlueprintTests.BlueprintSlidesRuntime
 :::::::
 
 private def usage : IO UInt32 := do
-  IO.eprintln "usage: lake env lean --run tests/browser/BlueprintSlidesRuntime.lean <output-dir> <preview-manifest>"
+  IO.eprintln "usage: lake env lean --run tests/browser/BlueprintSlidesRuntime.lean <output-dir> <blueprint-manifest> <blueprint-html-cache>"
   pure 1
 
 def run (args : List String) : IO UInt32 := do
   match args with
-  | [outputDirArg, manifestArg] =>
+  | [outputDirArg, manifestArg, htmlCacheArg] =>
     let outputDir := System.FilePath.mk outputDirArg
     let manifestPath := System.FilePath.mk manifestArg
+    let htmlCachePath := System.FilePath.mk htmlCacheArg
     IO.FS.createDirAll outputDir
     Informal.Slides.slidesMainWithBlueprintPreviews
       { outputDir := outputDir }
       (previewManifest? := some manifestPath)
       slidesRuntimeFixture.toPart
-      (manualImpls := by exact extension_impls%)
+      (previewHtmlCache? := some htmlCachePath)
       (quiet := true)
   | _ => usage
 

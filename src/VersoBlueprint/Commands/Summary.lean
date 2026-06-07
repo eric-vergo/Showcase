@@ -783,7 +783,7 @@ def summaryPreviewJs : String := r##"(function () {
       previewRoot: root,
       triggerRoot: root,
       panel: panel,
-      allowSharedManifest: true,
+      allowHtmlCache: true,
       templateSelector: "template.bp_summary_preview_tpl[data-bp-preview-label]",
       triggerSelector: ".bp_summary_preview_wrap_active[data-bp-preview-label]",
       titleSelector: ".bp_summary_preview_panel_title",

@@ -37,7 +37,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       | some summaryJs, some previewUtilsJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
         hasSubstr summaryJs "previewUtils.bindTemplatePreview({" &&
-        hasSubstr summaryJs "allowSharedManifest: true" &&
+        hasSubstr summaryJs "allowHtmlCache: true" &&
         hasSubstr summaryJs "templateSelector: \"template.bp_summary_preview_tpl[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "triggerSelector: \".bp_summary_preview_wrap_active[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
@@ -45,9 +45,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewUtilsJs "function shouldKeepOpen(nextTarget, trigger, panel)" &&
         hasSubstr previewUtilsJs "function readPanelBehavior(panel, defaults)" &&
         hasSubstr previewUtilsJs "function configureCloseButton(closeButton, onClose, behavior)" &&
-        !hasSubstr previewUtilsJs "function readSharedPreviewEntryByLabel(label)" &&
+        !hasSubstr previewUtilsJs "function readBlueprintHtmlCacheEntryByLabel(label)" &&
         hasSubstr previewUtilsJs "function statementPreviewKey(label)" &&
-        hasSubstr previewUtilsJs "function loadSharedPreviewEntry(previewKey)" &&
+        hasSubstr previewUtilsJs "function loadBlueprintHtmlCacheEntry(previewKey)" &&
         hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
         hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
         hasSubstr previewUtilsJs "window.setTimeout(function () {" &&

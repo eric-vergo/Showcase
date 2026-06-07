@@ -17,11 +17,7 @@ open Lean
 open Verso.Output
 open Verso.Output.Html
 
-/--
-Manifest entries store HTML that was already rendered by Verso during
-generation. Re-inject it as HTML, not escaped text, when another genre consumes
-the manifest.
--/
+/-- Re-inject already-rendered HTML fragments as HTML, not escaped text. -/
 def htmlFragment (html : String) : Html :=
   .text false html
 
@@ -44,7 +40,7 @@ end RelationPanelKind
 /-- Genre-specific presentation for manifest-backed related-entry panels. -/
 structure RelationPanelsConfig where
   wrapClass : RelationPanelKind → String :=
-    fun kind => s!"bp_used_by_wrap bp_manifest_{kind.key}_wrap"
+    fun kind => s!"bp_relation_wrap bp_manifest_{kind.key}_wrap"
   panelAttrs : RelationPanelKind → Array (String × String) := fun _ => #[]
   singleMode : RelationPanelKind → Informal.RelatedPanel.PanelSingleMode := fun _ => .panel
   idPrefix : RelationPanelKind → Entry → String :=
@@ -123,8 +119,8 @@ private def entryBlockData (entry : Entry) : Informal.BlockData :=
     label := entry.label
     parent := entry.parent
     count := 0
-    statementDeps := entry.statementDeps
-    proofDeps := entry.proofDeps
+    statementUses := entry.statementUses
+    proofUses := entry.proofUses
     ownerDisplayName := entry.ownerDisplayName
     tags := entry.tags
     effort := entry.effort
@@ -271,16 +267,5 @@ def renderWithRenderedContent
       else
         renderCodePanel cfg title entry content.codeBodies
     Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
-
-def render
-    (index : Index)
-    (cfg : RenderConfig)
-    (entry : Entry)
-    (opts : RenderOptions := {}) :
-    Html :=
-  let codeEntries := if opts.compact then #[] else index.codeEntries entry
-  renderWithRenderedContent cfg entry
-    (RenderedContent.ofHtmlStrings entry.html (codeEntries.map (·.html)))
-    opts
 
 end Informal.PreviewManifest.BlockRender

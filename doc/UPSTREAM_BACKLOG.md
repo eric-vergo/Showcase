@@ -48,8 +48,7 @@ pull requests unless that upstream write action is explicitly requested.
     `HtmlAssets`, plus a way to customize the xref payload used by both
     `xref.json` and the find page
   - still-useful lower-priority hook:
-    a post-emit extra step for downstream files such as Blueprint's shared
-    preview manifest
+    a post-emit extra step for downstream files such as Blueprint preview data
   - preserved branch:
     `ejgallego/verso-manual-extra-step-upstream-20260313`
   - PR shortcut:
@@ -71,7 +70,7 @@ pull requests unless that upstream write action is explicitly requested.
   - current Blueprint workaround:
     `VersoBlueprint.Slides.slidesMainWithBlueprintRenderer` supplies a local
     `GenreHtml Slides IO` instance so `{blueprint_node}` blocks render from the
-    Blueprint preview manifest before the HTML document is serialized; because
+    Blueprint manifest/cache data before the HTML document is serialized; because
     `VersoSlides.slidesMain` owns both rendering and file emission, Blueprint
     also mirrors the small config-asset plan and write loop
   - desired upstream behavior:

@@ -168,9 +168,10 @@ contribute automatically to the reported progress state.
 
 ### Metadata export
 
-Blueprint can dump structured metadata for other tools, including the shared
-preview manifest and its schema. These are command-line flags passed to the
-generator binary, such as `--dump-manifest` and `--dump-schema`.
+Blueprint can dump structured metadata for other tools, including the semantic
+manifest, its schema, and the rendered HTML cache used by preview consumers.
+These are command-line flags passed to the generator binary, such as
+`--dump-manifest`, `--dump-html-cache`, and `--dump-schema`.
 
 ### Widget
 

@@ -49,12 +49,15 @@ private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideN
   compact := false
   siteBase? := some "blueprint"
 
-private def manifestCodeEntry (key html : String) : Informal.PreviewManifest.Entry where
+private def manifestCodeEntry (key : String) : Informal.PreviewManifest.Entry where
   key := key
   targetKind := .leanDecl
   label := Lean.Name.mkSimple key
   facet := .statement
   title := key
+
+private def htmlCacheEntry (key html : String) : Informal.PreviewManifest.HtmlCache.Entry where
+  key := key
   html := html
 
 private def manifestBlockEntry (key : String) (codeKeys : Array String) :
@@ -65,7 +68,6 @@ private def manifestBlockEntry (key : String) (codeKeys : Array String) :
   facet := .statement
   title := key
   leanCodePreviewKeys := codeKeys
-  html := ""
 
 private def dummySlidesCss (filename body : String) : VersoSlides.CssFile where
   filename
@@ -85,7 +87,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   let js := Informal.Slides.blueprintSlidesJs
-  hasSubstr js "function bindUsedByPanel(panel)" &&
+  hasSubstr js "function bindRelationPanel(panel)" &&
     hasSubstr js "function hydrate(root)" &&
     hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
     hasSubstr js "data-bp-slide-href" &&
@@ -112,14 +114,22 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   let file : Informal.PreviewManifest.File := {
     previews := #[
       blockEntry,
-      manifestCodeEntry "a" "<pre>same</pre>",
-      manifestCodeEntry "b" "<pre>same</pre>",
-      manifestCodeEntry "c" "<pre>different</pre>"
+      manifestCodeEntry "a",
+      manifestCodeEntry "b",
+      manifestCodeEntry "c"
+    ]
+  }
+  let cache : Informal.PreviewManifest.HtmlCache.File := {
+    entries := #[
+      htmlCacheEntry "a" "<pre>same</pre>",
+      htmlCacheEntry "b" "<pre>same</pre>",
+      htmlCacheEntry "c" "<pre>different</pre>"
     ]
   }
   let index := file.index
   index.codeEntryCount blockEntry == 3 &&
-    (index.codeEntries blockEntry).map (·.key) == #["a", "c"]
+    (index.codeEntries blockEntry).map (·.key) == #["a", "b", "c"] &&
+    cache.codeHtmlBodies blockEntry == #["<pre>same</pre>", "<pre>different</pre>"]
 
 /-- info: true -/
 #guard_msgs in
@@ -156,21 +166,26 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let file := files.manifest
+    let cache := files.htmlCache
     let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
+    let some blockHtml := cache.findHtml? blockKey
+      | return false
+    let some codeHtml := cache.findHtml? codeKey
+      | return false
     pure <|
-      file.traverseState.isSome &&
         blockEntry.leanCodePreviewKeys.contains codeKey &&
         blockEntry.codeData.isSome &&
-        !blockEntry.blocks.isEmpty &&
+        hasSubstr blockHtml "Statement with an associated Lean declaration link" &&
+        hasSubstr codeHtml "bp_external_decl_rendered" &&
         blockEntry.displayCaption == some "Definition" &&
         blockEntry.displayLabel.any (fun label => !label.trimAscii.isEmpty) &&
         file.previews.any (fun entry =>
           entry.key == codeKey &&
-            entry.leanCode.isSome &&
             match entry.targetKind with
             | .leanDecl => true
             | _ => false)
@@ -180,15 +195,15 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let cache ← Informal.PreviewManifest.buildHtmlCacheFile manualImpls (fun _ => pure ()) st
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
-    let some codeEntry := file.previews.find? (fun entry => entry.key == codeKey)
+    let some codeHtml := cache.findHtml? codeKey
       | return false
     pure <|
-      hasSubstr codeEntry.html "class=\"hl lean block\"" &&
-        hasSubstr codeEntry.html "examples" &&
-        !hasSubstr codeEntry.html "<pre>def "
+      hasSubstr codeHtml "class=\"hl lean block\"" &&
+        hasSubstr codeHtml "examples" &&
+        !hasSubstr codeHtml "<pre>def "
 
 /-- info: true -/
 #guard_msgs in
@@ -208,9 +223,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
-    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
@@ -228,9 +243,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideMetadataPanelDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
-    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
     let rendered := renderedHtml.asString
@@ -248,7 +263,8 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let file := files.manifest
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.target") .statement
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
@@ -265,7 +281,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         entry.usedBy.size == 1 &&
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
@@ -277,7 +293,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
         hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
         hasSubstr rendered "Group: Preview group title. (2)" &&
-        hasSubstr rendered "bp_used_by_item_active" &&
+        hasSubstr rendered "bp_relation_item_active" &&
         !hasSubstr rendered "Loading Blueprint node"
 
 /-- info: true -/
@@ -285,7 +301,8 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls missingGroupPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let file := files.manifest
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.missing.target") .statement
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
@@ -293,14 +310,14 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
       match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofManifest? (some file)
+    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString
     pure <|
       groupManifestOk &&
         hasSubstr rendered "bp_extra_slot_group" &&
-        hasSubstr rendered "bp_used_by_chip_warn" &&
+        hasSubstr rendered "bp_relation_chip_warn" &&
         hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
         hasSubstr rendered "Undeclared group"
 
@@ -309,13 +326,15 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   show IO Bool from do
     let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let file ← Informal.PreviewManifest.buildManifestFile manualImpls (fun _ => pure ()) st
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
     let root ← freshSlidesSmokeRoot
     let outDir := root / "slides"
     let manifestPath := root / Informal.PreviewManifest.manifestFilename
+    let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
     if !(← root.pathExists) then
       IO.FS.createDirAll root
-    IO.FS.writeFile manifestPath (Lean.toJson file).compress
+    IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
+    IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
     let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
       { outputDir := outDir }
       (previewManifest? := some manifestPath)
@@ -327,10 +346,12 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     if !(← indexPath.pathExists) then
       return false
     let index ← IO.FS.readFile indexPath
-    let copiedManifest := Informal.Slides.blueprintSlidesPreviewManifestPath outDir
+    let copiedManifest := Informal.Slides.blueprintSlidesManifestPath outDir
+    let copiedHtmlCache := Informal.Slides.blueprintSlidesHtmlCachePath outDir
     let normalizedKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
     pure <|
       (← copiedManifest.pathExists) &&
+        (← copiedHtmlCache.pathExists) &&
         hasSubstr index "data-bp-rendered=\"static\"" &&
         hasSubstr index "bp_slide_node_blueprint" &&
         hasSubstr index "bp_extra_slot_code" &&
