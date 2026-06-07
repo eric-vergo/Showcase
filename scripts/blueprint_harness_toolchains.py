@@ -24,6 +24,10 @@ OFFICIAL_VERSO_URL_PATTERNS = (
     r"git@github\.com:leanprover/verso\.git",
     r"ssh://git@github\.com/leanprover/verso\.git",
 )
+TEMPORARY_VERSO_FIX_URL_PATTERNS = (
+    r"https://github\.com/ejgallego/verso(?:\.git)?",
+)
+MANAGED_VERSO_URL_PATTERNS = OFFICIAL_VERSO_URL_PATTERNS + TEMPORARY_VERSO_FIX_URL_PATTERNS
 VERSO_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>\s*)require\s+verso\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
     re.MULTILINE,
@@ -46,7 +50,11 @@ def managed_toolchain_project_dirs(package_root: Path) -> tuple[Path, ...]:
     )
 
 
-def _require_official_verso_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
+def _matches_any(patterns: tuple[str, ...], value: str) -> bool:
+    return any(re.fullmatch(pattern, value) for pattern in patterns)
+
+
+def _require_managed_verso_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
         raise SystemExit(f"[blueprint-harness] missing lakefile: {lakefile}")
@@ -56,14 +64,14 @@ def _require_official_verso_git_dependency(project_dir: Path, *, action: str) ->
         (
             candidate
             for candidate in VERSO_REQUIRE_PATTERN.finditer(text)
-            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in OFFICIAL_VERSO_URL_PATTERNS)
+            if _matches_any(MANAGED_VERSO_URL_PATTERNS, candidate.group("url"))
         ),
         None,
     )
     if match is None:
         raise SystemExit(
             "[blueprint-harness] expected the managed project to declare `verso` in `lakefile.lean` "
-            "from the official `leanprover/verso` Git source; cannot "
+            "from the official `leanprover/verso` Git source or a recognized temporary fix fork; cannot "
             f"{action}."
         )
     return lakefile, text, match
@@ -73,11 +81,13 @@ def rewrite_pinned_verso_dependency(project_dir: Path, ref: str) -> tuple[Path, 
     if not ref or any(char.isspace() for char in ref) or any(char in ref for char in {'"', "\n", "\r"}):
         raise SystemExit("[blueprint-harness] expected a non-empty `verso` ref without whitespace, quotes, or newlines")
 
-    lakefile, text, match = _require_official_verso_git_dependency(
+    lakefile, text, match = _require_managed_verso_git_dependency(
         project_dir,
         action="rewrite the pinned `verso` ref automatically",
     )
-    replacement = f'{match.group("indent")}require verso from git "{match.group("url")}"@"{ref}"'
+    url = match.group("url")
+    replacement_url = url if _matches_any(OFFICIAL_VERSO_URL_PATTERNS, url) else VERSO_REPOSITORY_URL
+    replacement = f'{match.group("indent")}require verso from git "{replacement_url}"@"{ref}"'
     rewritten = text[: match.start()] + replacement + text[match.end() :]
     lakefile.write_text(rewritten, encoding="utf-8")
     return lakefile, match.group("ref")

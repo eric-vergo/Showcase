@@ -43,6 +43,34 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.assertEqual(previous_ref, "main")
             self.assertIn('require verso from git "https://github.com/leanprover/verso"@"v4.29.0"', lakefile.read_text(encoding="utf-8"))
 
+    def test_rewrite_pinned_verso_dependency_canonicalizes_temporary_fix_fork(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                '\n'.join(
+                    [
+                        "import Lake",
+                        "open Lake DSL",
+                        (
+                            'require verso from git "https://github.com/ejgallego/verso"'
+                            '@"a61eb8993e8d1a617a60c502020f95f3525e6c9d"'
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result, previous_ref = toolchains_mod.rewrite_pinned_verso_dependency(project_dir, "v4.30.0")
+
+            self.assertEqual(result, lakefile)
+            self.assertEqual(previous_ref, "a61eb8993e8d1a617a60c502020f95f3525e6c9d")
+            self.assertIn(
+                'require verso from git "https://github.com/leanprover/verso"@"v4.30.0"',
+                lakefile.read_text(encoding="utf-8"),
+            )
+
     def test_bump_toolchain_checkout_updates_managed_files_and_preserves_inherited_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package_root = Path(tmp)
