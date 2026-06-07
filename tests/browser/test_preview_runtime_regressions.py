@@ -477,9 +477,13 @@ class TestPreviewRuntimeRegressions:
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
 
+        header_label = panel.locator(".bp_inline_preview_panel_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
         footer = panel.locator(".bp_inline_preview_panel_footer")
         expect(footer).to_be_visible()
-        expect(footer).to_contain_text("used_target")
         expect(footer).to_contain_text("statement")
 
         page.mouse.move(0, 0)

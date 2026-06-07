@@ -979,10 +979,35 @@ def inlinePreviewCss : String := r##"
   background: var(--bp-color-surface-muted);
 }
 
+.bp_inline_preview_panel_heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
 .bp_inline_preview_panel_title {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
+}
+
+.bp_inline_preview_panel_label {
+  color: var(--bp-color-text-muted);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_inline_preview_panel_label[href]:hover {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+.bp_inline_preview_panel_label[hidden] {
+  display: none;
 }
 
 .bp_inline_preview_panel_close {
@@ -1137,7 +1162,10 @@ def inlineLinkPreviewJs : String := r##"(function () {
     panel.hidden = true;
     panel.innerHTML =
       '<div class="bp_inline_preview_panel_header">' +
+      '<div class="bp_inline_preview_panel_heading">' +
       '<div class="bp_inline_preview_panel_title"></div>' +
+      '<a class="bp_inline_preview_panel_label" hidden></a>' +
+      "</div>" +
       '<button type="button" class="bp_inline_preview_panel_close" aria-label="Close inline preview">Close</button>' +
       "</div>" +
       '<div class="bp_inline_preview_panel_body"></div>' +
@@ -1183,17 +1211,20 @@ def inlineLinkPreviewJs : String := r##"(function () {
 
     const panel = getPanel("bp-inline-preview-panel", "");
     const title = panel.querySelector(".bp_inline_preview_panel_title");
+    const headerLabel = panel.querySelector(".bp_inline_preview_panel_label");
     const body = panel.querySelector(".bp_inline_preview_panel_body");
     const footer = panel.querySelector(".bp_inline_preview_panel_footer");
     const close = panel.querySelector(".bp_inline_preview_panel_close");
     const childPanel = getPanel("bp-inline-preview-child-panel", "bp_inline_preview_panel_child");
     const childTitle = childPanel.querySelector(".bp_inline_preview_panel_title");
+    const childHeaderLabel = childPanel.querySelector(".bp_inline_preview_panel_label");
     const childBody = childPanel.querySelector(".bp_inline_preview_panel_body");
     const childFooter = childPanel.querySelector(".bp_inline_preview_panel_footer");
     const childClose = childPanel.querySelector(".bp_inline_preview_panel_close");
     if (
-      !(title instanceof Element) || !(body instanceof Element) || !(footer instanceof Element) ||
-      !(close instanceof Element) || !(childTitle instanceof Element) ||
+      !(title instanceof Element) || !(headerLabel instanceof Element) ||
+      !(body instanceof Element) || !(footer instanceof Element) || !(close instanceof Element) ||
+      !(childTitle instanceof Element) || !(childHeaderLabel instanceof Element) ||
       !(childBody instanceof Element) || !(childFooter instanceof Element) ||
       !(childClose instanceof Element)
     ) {
@@ -1241,6 +1272,31 @@ def inlineLinkPreviewJs : String := r##"(function () {
       if (childHideTimer !== null) {
         clearTimeout(childHideTimer);
         childHideTimer = null;
+      }
+    }
+
+    function setPanelHeaderLink(labelNode, trigger) {
+      if (!(labelNode instanceof Element)) return;
+      const label =
+        trigger instanceof Element
+          ? (trigger.getAttribute("data-bp-preview-header-label") || "").trim()
+          : "";
+      const href =
+        trigger instanceof Element
+          ? (trigger.getAttribute("data-bp-preview-header-href") || "").trim()
+          : "";
+      if (label.length > 0) {
+        labelNode.textContent = label;
+        if (href.length > 0) {
+          labelNode.setAttribute("href", href);
+        } else {
+          labelNode.removeAttribute("href");
+        }
+        labelNode.hidden = false;
+      } else {
+        labelNode.textContent = "";
+        labelNode.removeAttribute("href");
+        labelNode.hidden = true;
       }
     }
 
@@ -1414,6 +1470,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       });
       clearPanelSizeLock();
       previewUtils.hidePanelContent(panel, title, body);
+      setPanelHeaderLink(headerLabel, null);
       setPanelFooter(footer, null);
       activeTrigger = null;
       activeHost = null;
@@ -1425,6 +1482,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childShowRequestToken += 1;
       previewUtils.hidePanelContent(childPanel, childTitle, childBody);
+      setPanelHeaderLink(childHeaderLabel, null);
       setPanelFooter(childFooter, null);
       childActiveTrigger = null;
       childPreviewKey = "";
@@ -1500,6 +1558,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childPreviewKey = key;
       childActiveTrigger = trigger;
+      setPanelHeaderLink(childHeaderLabel, trigger);
       setPanelFooter(childFooter, trigger);
       previewUtils.showPanelContent(childPanel, childTitle, childBody, heading, html, childBehavior, trigger, 12, 10);
     }
@@ -1541,6 +1600,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
         activeTrigger = null;
         ignoreNextPanelExit = true;
         title.textContent = heading;
+        setPanelHeaderLink(headerLabel, trigger);
         setPanelFooter(footer, trigger);
         body.innerHTML = html;
         previewUtils.hydratePreviewSubtree(body);
@@ -1556,6 +1616,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
         hideChildPanel();
         clearPanelSizeLock();
         activeTrigger = trigger;
+        setPanelHeaderLink(headerLabel, trigger);
         setPanelFooter(footer, trigger);
         previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10);
         if (behavior.isDocked && activeHost) {

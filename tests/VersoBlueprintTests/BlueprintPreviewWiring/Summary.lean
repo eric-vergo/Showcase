@@ -31,6 +31,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "bp_summary_preview_wrap_active" &&
       hasSubstr out "data-bp-preview-key=\"«def:preview.base»--statement\"" &&
       hasExtraCss st ".bp_inline_preview_panel[hidden]" &&
+      hasExtraCss st ".bp_inline_preview_panel_label" &&
       hasExtraCss st ".bp_inline_preview_panel_footer" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
@@ -58,6 +59,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
+        hasSubstr inlineJs "function setPanelHeaderLink(labelNode, trigger)" &&
+        hasSubstr inlineJs "data-bp-preview-header-label" &&
         hasSubstr inlineJs "function setPanelFooter(footerNode, trigger)" &&
         hasSubstr inlineJs "data-bp-preview-footer-html" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
