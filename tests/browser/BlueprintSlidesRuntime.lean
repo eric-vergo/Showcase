@@ -16,6 +16,12 @@ namespace Verso.VersoBlueprintTests.BlueprintSlidesRuntime
 # Blueprint Slides Runtime
 
 {blueprint_node "collatz_step" (siteBase := "blueprint")}
+
+# Theorem, Proof, and Code
+
+{blueprint_node "multiplication_one_right" (siteBase := "blueprint")}
+
+{blueprint_node "multiplication_one_right" +compact (facet := "proof") (siteBase := "blueprint")}
 :::::::
 
 private def usage : IO UInt32 := do

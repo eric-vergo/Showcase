@@ -964,8 +964,10 @@ private def blockHeadingParts? (state : TraverseState) (label : Name)
         | none => numberText
       some { caption := "Proof", label }
 
-private def blockHref (state : TraverseState) (label : Name) : Option String :=
-  Informal.TraversalIndex.Nodes.href? state label
+private def blockHref (state : TraverseState) (label : Name)
+    (facet : PreviewCache.Facet := .statement) : Option String :=
+  Informal.TraversalIndex.TraversalPreviews.hrefFor? state label facet <|>
+    Informal.TraversalIndex.Nodes.href? state label
 
 private def blockKind? (blockData? : Option Informal.BlockData) : Option Informal.Data.NodeKind :=
   match blockData? with
@@ -1149,7 +1151,7 @@ private def buildTraversalEntries
         title := blockTitle state entry.label entry.facet blockData?
         displayCaption := headingParts?.map (·.caption)
         displayLabel := headingParts?.map (·.label)
-        href := blockHref state entry.label
+        href := blockHref state entry.label entry.facet
         parent := blockData?.bind (·.parent)
         parentTitle := blockParentTitle? state blockData?
         statementUses := blockData?.map (·.statementUses) |>.getD #[]
