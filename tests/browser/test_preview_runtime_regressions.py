@@ -583,11 +583,14 @@ class TestPreviewRuntimeRegressions:
 
         chip = wrap.locator("button.bp_relation_chip").first
         expect(chip).to_have_text("uses 2")
+        caption_box = proof.locator(".bp_caption").first.bounding_box()
         slot_box = slot.bounding_box()
         chip_box = chip.bounding_box()
+        assert caption_box is not None
         assert slot_box is not None
         assert chip_box is not None
         assert abs((slot_box["x"] + slot_box["width"]) - (chip_box["x"] + chip_box["width"])) < 1
+        assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
         chip.hover()
 
         expect(wrap.locator(".bp_relation_panel .bp_relation_panel_title")).to_have_text(

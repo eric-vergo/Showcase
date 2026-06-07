@@ -36,6 +36,10 @@ def css : String := r##"
   gap: 0.35rem;
 }
 
+.bp_kind_proof_heading {
+  align-items: baseline;
+}
+
 .bp_heading_title_row_statement {
   display: inline-grid;
   grid-template-columns: 11ch 3ch;
