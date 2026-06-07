@@ -116,15 +116,44 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
   previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
 }
 
-/-- Standard forward-dependency panel presentation. -/
-def usesPanelConfig : PanelConfig := {
+/-- Standard forward-dependency panel presentation for statement and proof uses. -/
+def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig := {
   chipText := fun n => s!"uses {n}"
-  chipTitle := fun _ => "Statement and proof dependencies"
-  singleTitle := fun _ => "Statement and proof dependencies"
-  panelTitle := fun n => s!"Uses {n}"
-  panelMeta := "Dependency previews"
-  previewDefaultTitle := "Dependency preview"
-  previewEmptyText := "Dependency preview content is loaded from the Blueprint HTML cache."
+  chipTitle := fun n =>
+    if n == 0 then
+      if isProof then
+        "No declared proof dependencies"
+      else
+        "No declared statement dependencies"
+    else if isProof then
+      s!"Proof dependencies used by {sourceLabel}"
+    else
+      s!"Statement dependencies used by {sourceLabel}"
+  singleTitle := fun entry =>
+    if isProof then
+      s!"Proof dependency: {entry.previewTitle}"
+    else
+      s!"Statement dependency: {entry.previewTitle}"
+  panelTitle := fun n =>
+    if isProof then
+      s!"Proof uses {n}"
+    else
+      s!"Statement uses {n}"
+  panelMeta :=
+    if isProof then
+      "Proof dependency previews"
+    else
+      "Statement dependency previews"
+  previewDefaultTitle :=
+    if isProof then
+      "Proof dependency preview"
+    else
+      "Statement dependency preview"
+  previewEmptyText :=
+    if isProof then
+      "Proof dependency preview content is loaded from the Blueprint HTML cache."
+    else
+      "Statement dependency preview content is loaded from the Blueprint HTML cache."
   chipClass := "bp_relation_chip bp_uses_chip"
   emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
 }
@@ -272,11 +301,14 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
 private def collectUsesEntries
     (ctx : Context) (data : BlockData) : Array UsesEntry :=
   let source := (storedBlockByLabel? ctx data.label).getD data
-  let entries :=
-    source.statementUses.foldl (init := #[]) fun acc useRef =>
-      addUsesEntry ctx acc useRef false
-  source.proofUses.foldl (init := entries) fun acc useRef =>
-    addUsesEntry ctx acc useRef true
+  let isProof :=
+    match data.kind with
+    | .proof => true
+    | .statement _ => false
+  let sourceUses :=
+    if isProof then source.proofUses else source.statementUses
+  sourceUses.foldl (init := #[]) (fun acc useRef =>
+    addUsesEntry ctx acc useRef isProof)
   |>.qsort usesEntryLess
 
 private def collectGroupEntries
@@ -535,31 +567,32 @@ def renderUsedByExtra {m}
         }})
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
 
-/-- Render the forward-dependency header extra for a statement block. -/
+/-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
     (ctx : Context)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  match data.kind with
-  | .proof => pure .empty
-  | .statement _ =>
-    let entries := collectUsesEntries ctx data
-    let panelEntries ← entries.mapM fun entry => do
-      let badgesHtml := {{
-        {{renderUseAxisBadges entry}}
-        {{renderUseMetadataBadges entry.origins entry.intents}}
-      }}
-      match entry.target? with
-      | some target =>
-        mkBlockEntry ctx target
-          (usesPreviewId data.label entry.label)
-          (badgesHtml := badgesHtml)
-      | none =>
-        mkLabelEntry ctx entry.label
-          (usesPreviewId data.label entry.label)
-          (badgesHtml := badgesHtml)
-    pure <| renderPanel usesPanelConfig panelEntries
+  let entries := collectUsesEntries ctx data
+  let isProof :=
+    match data.kind with
+    | .proof => true
+    | .statement _ => false
+  let panelEntries ← entries.mapM fun entry => do
+    let badgesHtml := {{
+      {{renderUseAxisBadges entry}}
+      {{renderUseMetadataBadges entry.origins entry.intents}}
+    }}
+    match entry.target? with
+    | some target =>
+      mkBlockEntry ctx target
+        (usesPreviewId data.label entry.label)
+        (badgesHtml := badgesHtml)
+    | none =>
+      mkLabelEntry ctx entry.label
+        (usesPreviewId data.label entry.label)
+        (badgesHtml := badgesHtml)
+  pure <| renderPanel (usesPanelConfig data.label isProof) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}

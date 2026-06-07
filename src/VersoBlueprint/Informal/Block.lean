@@ -139,6 +139,19 @@ block_extension Block.informal (data : BlockData) where
           match data.kind with
           | .proof => data.foldProofBlock
           | .statement _ => false
+        let headerExtras : HeaderExtras :=
+          match data.kind with
+          | .proof =>
+            {
+              uses? := some <| HeaderExtra.uses usesEntry
+            }
+          | .statement _ =>
+            {
+              group? := groupEntry.map HeaderExtra.group
+              uses? := some <| HeaderExtra.uses usesEntry
+              usedBy? := some <| HeaderExtra.usedBy usedByEntry
+              code? := some <| HeaderExtra.code codeEntry
+            }
         let informalBlock :=
           renderInformalBlockHtml data {
             numberText := data.displayNumber s
@@ -147,12 +160,7 @@ block_extension Block.informal (data : BlockData) where
               | .proof => some (data.displayTitle s)
               | .statement _ => none
             attrs
-            headerExtras := {
-              group? := groupEntry.map HeaderExtra.group
-              uses? := some <| HeaderExtra.uses usesEntry
-              usedBy? := some <| HeaderExtra.usedBy usedByEntry
-              code? := some <| HeaderExtra.code codeEntry
-            }
+            headerExtras
             folded := foldInformalBlock
           } content
         return .seq #[informalBlock, externalPanel]

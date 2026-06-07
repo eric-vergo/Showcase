@@ -104,15 +104,18 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
     let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
     pure (
-      hasSubstr out "uses 3" &&
+      hasSubstr out "uses 2" &&
+      hasSubstr out "uses 1" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       hasSubstr out "class=\"bp_relation_chip bp_uses_chip\"" &&
       hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "Uses 3" &&
-      hasSubstr out "Dependency previews" &&
+      hasSubstr out "Statement uses 2" &&
+      hasSubstr out "Statement dependency previews" &&
+      hasSubstr out "Proof dependency:" &&
       !hasSubstr out "Hover a dependency to preview it." &&
       hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
+      hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-header-label=" &&
       hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out "def:uses.hidden" &&

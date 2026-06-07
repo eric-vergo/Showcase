@@ -80,9 +80,9 @@ These metadata options are accepted only by dependency-bearing uses: inline
 `uses` roles and block-level `(uses := ...)` entries. `bpref` is link-only and
 does not accept `origin` or `intent`.
 
-Rendered statement headers include a `uses` chip that previews the node's
-declared statement and proof dependencies. Non-default dependency metadata such
-as `automatic`, `auxiliary`, and `technical` is shown in that panel.
+Rendered statement and proof headers include separate `uses` chips that preview
+their own declared dependencies. Non-default dependency metadata such as
+`automatic`, `auxiliary`, and `technical` is shown in those previews.
 
 If a role such as `{uses "addition_spec"}[]`, `{bpref "addition_spec"}[]`, or a
 citation has an empty payload, Blueprint can generate the visible text
@@ -456,10 +456,12 @@ views.
 ### Rendered statement blocks
 
 Rendered statement headers show related metadata chips in this order: group,
-uses, used by, then Lean status. When local or external Lean material is
-available, the rendered page links or previews the associated content.
-Rows in the uses and used-by panels show statement/proof badges plus any
-non-default dependency origin or intent badges.
+uses, used by, then Lean status. The statement `uses` chip shows statement-side
+dependencies; proof headers show their own `uses` chip for proof-side
+dependencies. When local or external Lean material is available, the rendered
+page links or previews the associated content. Rows in the uses and used-by
+panels show statement/proof badges plus any non-default dependency origin or
+intent badges.
 
 Relation previews show the human title and a right-aligned concrete Blueprint
 label in the preview header; the label links to the target statement. Single
