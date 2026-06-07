@@ -165,6 +165,30 @@ class TestBlueprintSlidesRuntime:
         assert "blocks" not in collatz_entry
         assert "html" not in collatz_entry
         assert "bp_math inline" in html_by_key[collatz_entry["key"]]
+        multiplication_entry = next(
+            entry
+            for entry in manifest["previews"]
+            if entry["key"] == "multiplication_one_right--statement"
+        )
+        multiplication_proof_entry = next(
+            entry
+            for entry in manifest["previews"]
+            if entry["key"] == "multiplication_one_right--proof"
+        )
+        assert multiplication_entry["title"] == "Theorem 2.2"
+        assert multiplication_proof_entry["title"] == "Proof for Theorem 2.2"
+        assert multiplication_entry["leanCodePreviewKeys"] == [
+            "Informal.LeanCodePreview.multiplication_one_right"
+        ]
+        assert (
+            multiplication_proof_entry["leanCodePreviewKeys"]
+            == multiplication_entry["leanCodePreviewKeys"]
+        )
+        assert "n * 1 = n" in html_by_key[multiplication_entry["key"]]
+        assert "Unfold the definition of multiplication" in html_by_key[
+            multiplication_proof_entry["key"]
+        ]
+        assert "simp" in html_by_key[multiplication_entry["leanCodePreviewKeys"][0]]
         code_entries = [
             entry
             for entry in manifest["previews"]
@@ -269,7 +293,7 @@ class TestBlueprintSlidesRuntime:
             .first
         )
         lean_token.hover()
-        lean_hover = page.locator(".tippy-box[data-theme~='lean']").first
+        lean_hover = page.locator(".tippy-box[data-theme~='lean'][data-state='visible']")
         expect(lean_hover).to_be_visible()
         expect(lean_hover).not_to_contain_text("Failed to load")
         expect(lean_hover).to_contain_text("collatzStep")
@@ -297,6 +321,79 @@ class TestBlueprintSlidesRuntime:
             ".bp_extra_slot_used_by .bp_relation_target",
             "Collatz/#--informal-preview-collatz_conjecture--statement",
             "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
+        )
+
+        page.evaluate("window.Reveal.slide(1)")
+        page.wait_for_function("() => window.Reveal.getIndices().h === 1")
+        theorem_node = page.locator(
+            ".bp_slide_node[data-bp-label='multiplication_one_right']"
+            "[data-bp-facet='statement']"
+        )
+        proof_node = page.locator(
+            ".bp_slide_node[data-bp-label='multiplication_one_right']"
+            "[data-bp-facet='proof']"
+        )
+        expect(theorem_node).to_be_visible()
+        expect(proof_node).to_be_visible()
+        expect(
+            theorem_node.locator(".bp_kind_theorem_heading .bp_heading_title_row > .bp_caption")
+        ).to_have_text("Theorem")
+        expect(
+            theorem_node.locator(".bp_kind_theorem_heading .bp_heading_title_row > .bp_label")
+        ).to_have_text("2.2")
+        expect(theorem_node).to_contain_text("multiplying by one on the right")
+        expect(theorem_node.locator(".bp_content .bp_math.inline")).to_have_count(2)
+        expect(theorem_node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(
+            1
+        )
+        expect(theorem_node.locator(".bp_slide_code_body")).to_contain_text(
+            "theorem multiplication_one_right"
+        )
+        expect(theorem_node.locator(".bp_slide_code_body")).to_contain_text("simp")
+        expect(proof_node).to_contain_text("Proof for Theorem 2.2")
+        expect(proof_node).to_contain_text("Unfold the definition of multiplication")
+        expect(proof_node.locator(".bp_code_panel_wrapper")).to_have_count(0)
+        theorem_code_chip = theorem_node.locator(
+            ".bp_extra_slot_code .bp_code_summary_preview_wrap_active"
+        )
+        expect(theorem_code_chip).to_have_count(1)
+        theorem_code_chip.hover()
+        theorem_code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])")
+        expect(theorem_code_panel).to_be_visible()
+        expect(theorem_code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+            "multiplication_one_right"
+        )
+        expect(theorem_code_panel.locator(".bp_code_decl_item")).to_have_count(1)
+        expect(theorem_code_panel.locator(".bp_code_decl_item")).to_contain_text(
+            "multiplication_one_right"
+        )
+        page.mouse.move(20, 20)
+        expect(theorem_code_panel).to_be_hidden()
+        theorem_lean_token = (
+            theorem_node.locator(".bp_slide_code_body .const.token")
+            .filter(has_text="multiplication_one_right")
+            .first
+        )
+        theorem_lean_token.hover()
+        theorem_lean_hover = page.locator(
+            ".tippy-box[data-theme~='lean'][data-state='visible']"
+        )
+        expect(theorem_lean_hover).to_be_visible()
+        expect(theorem_lean_hover).not_to_contain_text("Failed to load")
+        expect(theorem_lean_hover).to_contain_text("multiplication_one_right")
+        expect_slide_link(
+            page,
+            ".bp_slide_node[data-bp-label='multiplication_one_right']"
+            "[data-bp-facet='statement'] .bp_slide_node_heading_link",
+            "Multiplication/#--informal-preview-multiplication_one_right--statement",
+            "/blueprint/Multiplication/#--informal-preview-multiplication_one_right--statement",
+        )
+        expect_slide_link(
+            page,
+            ".bp_slide_node[data-bp-label='multiplication_one_right']"
+            "[data-bp-facet='proof'] .bp_slide_node_heading_link",
+            "Multiplication/#--informal-preview-multiplication_one_right--proof",
+            "/blueprint/Multiplication/#--informal-preview-multiplication_one_right--proof",
         )
 
         page.evaluate("window.bpSlideNodeRuntime.hydrate(document)")

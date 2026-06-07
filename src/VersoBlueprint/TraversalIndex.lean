@@ -180,6 +180,13 @@ def object? (state : TraverseState) (previewKey : String) : Option Verso.Multi.O
 def entry? (state : TraverseState) (previewKey : String) : Option PreviewCache.Entry :=
   objectData? state domainName previewKey
 
+def href? (state : TraverseState) (previewKey : String) : Option String :=
+  Resolve.resolveDomainHref? state domainName previewKey
+
+def hrefFor? (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
+    Option String :=
+  href? state (key label facet)
+
 def saveId
     (state : TraverseState) (previewKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName previewKey id
