@@ -826,36 +826,11 @@ span[class$="_thmlabel"]::after {
   color: var(--bp-color-text-faint);
 }
 
-.bp_relation_preview_heading {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.42rem;
-  min-width: 0;
-}
-
 .bp_relation_preview_title {
   margin-top: 0.16rem;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--bp-color-text-strong);
-}
-
-.bp_relation_preview_header_label {
-  color: var(--bp-color-text-muted);
-  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.bp_relation_preview_header_label[href]:hover {
-  color: var(--bp-color-link);
-  text-decoration: underline;
-}
-
-.bp_relation_preview_header_label[hidden] {
-  display: none;
 }
 
 .bp_relation_preview_body {

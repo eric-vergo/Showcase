@@ -31,7 +31,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Reverse dependency previews" &&
       !hasSubstr out "Hover a use site to preview it." &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      hasSubstr out "class=\"bp_relation_preview_header_label\"" &&
+      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id" &&
       hasSubstr out "data-bp-relation-preview-key" &&
       hasSubstr out "data-bp-preview-header-label=" &&
@@ -47,7 +47,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "bp_relation_badge_intent_technical" &&
       hasSubstr out "bp_relation_badge_intent_auxiliary" &&
       hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
-      hasExtraCss st ".bp_relation_preview_header_label" &&
+      hasExtraCss st ".bp_preview_header_label" &&
       hasExtraCss st ".bp_relation_badge_origin::before" &&
       hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
@@ -111,7 +111,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Uses 3" &&
       hasSubstr out "Dependency previews" &&
       !hasSubstr out "Hover a dependency to preview it." &&
-      hasSubstr out "class=\"bp_relation_preview_header_label\"" &&
+      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-header-label=" &&
       hasSubstr out "data-bp-preview-header-href=" &&

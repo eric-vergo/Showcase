@@ -31,7 +31,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "bp_summary_preview_wrap_active" &&
       hasSubstr out "data-bp-preview-key=\"«def:preview.base»--statement\"" &&
       hasExtraCss st ".bp_inline_preview_panel[hidden]" &&
-      hasExtraCss st ".bp_inline_preview_panel_label" &&
+      hasExtraCss st ".bp_preview_header_label" &&
       hasExtraCss st ".bp_inline_preview_panel_footer" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&

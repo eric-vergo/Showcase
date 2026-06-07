@@ -461,11 +461,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
         ("class", itemClass),
         ("data-bp-relation-preview-id", entry.previewId),
         ("data-bp-relation-preview-key", entry.previewKey),
-        ("data-bp-relation-preview-title", entry.previewTitle),
-        ("data-bp-preview-header-label", s!"{entry.label}")
+        ("data-bp-relation-preview-title", entry.previewTitle)
       ]
-      if let some href := entry.href then
-        attrs := attrs.push ("data-bp-preview-header-href", href)
+      for attr in Informal.HoverRender.previewHeaderLinkAttrs (some s!"{entry.label}") entry.href do
+        attrs := attrs.push attr
       pure attrs
     .tag "li" attrs rowNode
   let previewTitle :=
@@ -488,9 +487,9 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           <div class="bp_relation_preview_surface">
             <div class="bp_relation_preview_header">
               <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_heading">
+              <div class="bp_relation_preview_heading bp_preview_header_heading">
                 <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
-                <a class="bp_relation_preview_header_label" hidden></a>
+                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
               </div>
             </div>
             <div class="bp_relation_preview_body">

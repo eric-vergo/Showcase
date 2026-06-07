@@ -450,6 +450,17 @@ class TestPreviewRuntimeRegressions:
         )
         expect(body).to_contain_text("Statement depends on")
 
+        second_item = wrap.locator(".bp_relation_item").nth(1)
+        second_item.hover()
+        expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(header_label).to_contain_text("used_proof")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_proof"))
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Statement facet marker for preview relationships.')",
+            arg=body.element_handle(),
+        )
+        expect(body).to_contain_text("Statement facet marker for preview relationships.")
+
         assert_no_runtime_errors(errors)
 
     def test_uses_single_dependency_loads_manifest_backed_inline_preview(
