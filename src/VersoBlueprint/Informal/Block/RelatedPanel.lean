@@ -420,10 +420,14 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           </a>}}
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
+    let previewFooterHtml? :=
+      let html := entry.metaHtml.asString
+      if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
       (previewLookupKey? := some entry.previewKey)
       (previewFallbackLabel? := entry.previewFallbackLabel?)
+      (previewFooterHtml? := previewFooterHtml?)
   let selectedEntry? := selectedPanelEntry? cfg entries
   let renderRow (entry : PanelEntry) : Output.Html :=
     let itemClass :=
