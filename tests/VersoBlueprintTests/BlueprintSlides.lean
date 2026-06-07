@@ -45,7 +45,7 @@ private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideN
   label := label
   facet := "statement"
   key := key
-  title? := none
+  displayLabel? := none
   compact := false
   siteBase? := some "blueprint"
 
@@ -106,6 +106,16 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #eval
   let node := blueprintNode "def:code.preview" "def:code.preview--statement"
   Informal.Slides.BlueprintSlideNode.fromAttrs? node.toAttrs == some node
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
+    displayLabel? := some "Custom slide label" }
+  let attrs := node.toAttrs
+  Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
+    attrs.contains ("data-bp-display-label", "Custom slide label") &&
+    !(attrs.any (fun attr => attr.1 == "data-bp-title"))
 
 /-- info: true -/
 #guard_msgs in

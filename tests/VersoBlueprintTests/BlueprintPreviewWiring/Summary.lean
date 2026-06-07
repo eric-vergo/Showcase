@@ -48,6 +48,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         !hasSubstr previewUtilsJs "function readBlueprintHtmlCacheEntryByLabel(label)" &&
         hasSubstr previewUtilsJs "function statementPreviewKey(label)" &&
         hasSubstr previewUtilsJs "function loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr previewUtilsJs "Blueprint HTML cache must be an object with an entries array" &&
+        hasSubstr previewUtilsJs "Blueprint HTML cache contains duplicate key " &&
         hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
         hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
         hasSubstr previewUtilsJs "window.setTimeout(function () {" &&

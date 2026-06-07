@@ -636,6 +636,10 @@ The `siteBase` option is useful when links in the manifest should open
 against a Blueprint site hosted next to, or below, the slide deck. Omit it when
 the manifest links are already correct relative to the deck.
 
+Use `displayLabel` only when a slide needs a talk-specific heading label. It
+overrides the displayed label/number in the Blueprint shell, not the semantic
+manifest title.
+
 Use the Blueprint slide wrapper in the deck generator:
 
 ```lean

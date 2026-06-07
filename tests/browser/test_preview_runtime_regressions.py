@@ -177,6 +177,28 @@ class TestPreviewRuntimeRegressions:
         )
         assert attempts["count"] == 1
 
+    def test_html_cache_rejects_legacy_array_shape(self, server: str, page: Page):
+        def legacy_array_cache(route):
+            route.fulfill(
+                status=200,
+                body='[{"key":"used_source--statement","html":"<p>stale</p>"}]',
+                content_type="application/json",
+            )
+
+        page.route("**/-verso-data/blueprint-html-cache.json", legacy_array_cache)
+        page.goto(f"{server}/Preview-Relationships/")
+
+        status = page.evaluate(
+            """async () => {
+                const utils = window.bpPreviewUtils;
+                await utils.loadBlueprintHtmlCacheEntry("used_source--statement");
+                return utils.readBlueprintHtmlCacheStatus();
+            }"""
+        )
+
+        assert status["state"] == "error"
+        assert "object with an entries array" in status["lastError"]
+
     def test_code_summary_preview_opens_from_keyboard_focus_for_nonlink_trigger(
         self, server: str, page: Page
     ):

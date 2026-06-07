@@ -256,18 +256,31 @@ def previewHoverUtilsJs : String := r##"(function () {
   }
 
   function decodeBlueprintHtmlCache(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Blueprint HTML cache must be an object with an entries array");
+    }
+    if (!Array.isArray(data.entries)) {
+      throw new Error("Blueprint HTML cache is missing entries array");
+    }
     const map = new Map();
-    const entries =
-      Array.isArray(data)
-        ? data
-        : data && typeof data === "object" && Array.isArray(data.entries)
-          ? data.entries
-          : [];
-    entries.forEach(function (entry) {
-      if (!entry || typeof entry !== "object") return;
-      const key = String(entry.key || "").trim();
-      const html = typeof entry.html === "string" ? entry.html.trim() : "";
-      if (!key || !html) return;
+    data.entries.forEach(function (entry, index) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error("Blueprint HTML cache entry " + index + " must be an object");
+      }
+      const key = typeof entry.key === "string" ? entry.key.trim() : "";
+      if (!key) {
+        throw new Error("Blueprint HTML cache entry " + index + " is missing key");
+      }
+      if (typeof entry.html !== "string") {
+        throw new Error("Blueprint HTML cache entry " + index + " is missing html");
+      }
+      const html = entry.html.trim();
+      if (!html) {
+        throw new Error("Blueprint HTML cache entry " + index + " has empty html");
+      }
+      if (map.has(key)) {
+        throw new Error("Blueprint HTML cache contains duplicate key " + key);
+      }
       map.set(key, entry);
     });
     return map;

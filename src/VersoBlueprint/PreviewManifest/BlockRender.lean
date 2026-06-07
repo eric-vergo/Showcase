@@ -67,7 +67,7 @@ structure RenderConfig where
 
 /-- Per-node render options for a preview-data-backed Blueprint block. -/
 structure RenderOptions where
-  titleOverride? : Option String := none
+  displayLabelOverride? : Option String := none
   compact : Bool := false
 
 /--
@@ -95,7 +95,7 @@ private structure EntryTitle where
 
 private def entryTitle
     (entry : Entry)
-    (titleOverride? : Option String) :
+    (displayLabelOverride? : Option String) :
     EntryTitle :=
   let kindText :=
     match entry.kind with
@@ -103,7 +103,7 @@ private def entryTitle
     | none => "Blueprint"
   let caption := (entry.displayCaption.getD kindText).trimAscii.toString
   let fallbackLabel := entry.label.toString
-  let label := ((titleOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
+  let label := ((displayLabelOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
   { caption, label }
 
 private def entryBlockKind (entry : Entry) : Informal.Data.InProgressKind :=
@@ -243,7 +243,7 @@ def renderWithRenderedContent
     (opts : RenderOptions := {}) :
     Html :=
     let blockData := entryBlockData entry
-    let title := entryTitle entry opts.titleOverride?
+    let title := entryTitle entry opts.displayLabelOverride?
     let blockShell :=
       Informal.renderInformalBlockHtml
         blockData

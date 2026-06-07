@@ -113,7 +113,7 @@ public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlide
               slideManifestBlockConfig
               entry
               content
-              { titleOverride? := node.title?, compact := node.compact }
+              { displayLabelOverride? := node.displayLabel?, compact := node.compact }
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
