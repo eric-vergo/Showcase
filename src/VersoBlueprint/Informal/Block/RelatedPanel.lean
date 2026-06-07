@@ -304,16 +304,40 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 private def previewLookupKey (source : BlockData) : String :=
   PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
-private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
+/-- Render a relation-row badge with both legacy and semantic styling classes. -/
+private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
+  {{<span class={{className}} title={{title}}>{{.text true text}}</span>}}
+
+private def useOriginBadgeClass : Data.UseOrigin → String
+  | .manual =>
+    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_manual"
+  | .automatic =>
+    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_automatic"
+
+private def useIntentBadgeClass : Data.UseIntent → String
+  | .regular =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_regular"
+  | .auxiliary =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_auxiliary"
+  | .technical =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_technical"
+
+private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let statementBadge : Array Output.Html :=
     if inStatement then
-      #[{{<span class="bp_relation_axis_badge">"statement"</span>}}]
+      #[relationBadge
+          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_statement"
+          "Declared in the statement"
+          "statement"]
     else
       #[]
   let proofBadge : Array Output.Html :=
     if inProof then
-      #[{{<span class="bp_relation_axis_badge">"proof"</span>}}]
+      #[relationBadge
+          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_proof"
+          "Declared in the proof"
+          "proof"]
     else
       #[]
   .seq (statementBadge ++ proofBadge)
@@ -326,13 +350,14 @@ private def renderUseAxisBadges (entry : UsesEntry) : Output.Html :=
 
 private def renderUseMetadataBadges
     (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Output.Html :=
-  open Verso.Output.Html in
   let originBadges :=
     origins.filter (· != .manual) |>.map fun origin =>
-      {{<span class="bp_relation_axis_badge bp_uses_origin_badge">{{.text true (toString origin)}}</span>}}
+      let text := toString origin
+      relationBadge (useOriginBadgeClass origin) s!"Origin: {text}" text
   let intentBadges :=
     intents.filter (· != .regular) |>.map fun intent =>
-      {{<span class="bp_relation_axis_badge bp_uses_intent_badge">{{.text true (toString intent)}}</span>}}
+      let text := toString intent
+      relationBadge (useIntentBadgeClass intent) s!"Intent: {text}" text
   .seq (originBadges ++ intentBadges)
 
 private def mkBlockEntry {m}
