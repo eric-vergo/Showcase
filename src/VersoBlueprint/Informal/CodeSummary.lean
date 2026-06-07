@@ -325,77 +325,6 @@ private def renderCodeHeadingRenderHealthBadge (health : ExternalRenderHealth) :
   else
     {{<span class="bp_render_warning_badge bp_code_render_warning_badge" title={{health.summaryText}}>"!"</span>}}
 
-def codeCountTitle (count : Nat) : String :=
-  s!"Lean declarations (available: {count})"
-
-private def codeCountNoun (count : Nat) : String :=
-  if count == 1 then "theorem" else "declarations"
-
-def renderCodeCountStatusBadge (count : Nat) : Output.Html :=
-  open Verso.Output.Html in
-  if count == 0 then
-    .empty
-  else
-    {{
-      <span class="bp_code_link bp_code_link_status bp_code_link_status_proved"
-          title={{codeCountTitle count}}>
-        <span class="bp_code_status_symbol">"✓"</span>
-        <span class="bp_code_link_label">"L∃∀N"</span>
-      </span>
-    }}
-
-def renderCodeCountSummaryIndicator (count : Nat) : Output.Html :=
-  open Verso.Output.Html in
-  if count == 0 then
-    .empty
-  else
-    {{
-      <span class="bp_code_summary_indicator">
-        <span class="bp_external_status_badge bp_external_status_badge_summary bp_external_status_ok"
-            title={{s!"Lean declarations: {count} available"}}>
-          <span class="bp_external_status_icon bp_external_status_ok">"●"</span>
-          <span class="bp_external_status_badge_text">
-            {{.text true s!"{count} {codeCountNoun count}"}}
-          </span>
-        </span>
-      </span>
-    }}
-
-/--
-Render a manifest-backed Lean code panel with the same shell and declaration
-count indicator as ordinary Blueprint code panels.
--/
-def renderManifestCodePanel
-    (header : CodePanelHeader) (summaryTitle : String)
-    (codeCount : Nat) (body : Output.Html)
-    (attrs : Array (String × String) := #[])
-    (folded : Bool := false) : Output.Html :=
-  if codeCount == 0 then
-    .empty
-  else
-    mkCodePanel header summaryTitle (renderCodeCountSummaryIndicator codeCount)
-      body attrs (folded := folded)
-
-/--
-Render the manifest-backed Lean-code preview body used by generated slide
-chips. The entries are already display-deduplicated by the manifest index.
--/
-def renderManifestCodePreviewBody (codeBodies : Array Output.Html) : Output.Html :=
-  open Verso.Output.Html in
-  if codeBodies.isEmpty then
-    .empty
-  else
-    {{
-      <div class="bp_code_summary_preview_content bp_manifest_code_preview_content">
-        <div class="bp_code_hover_section bp_manifest_code_preview_section">
-          <span class="bp_code_hover_label">"Lean code"</span>
-          <div class="bp_manifest_code_preview_code">
-            {{.seq codeBodies}}
-          </div>
-        </div>
-      </div>
-    }}
-
 private def renderCodeEntryNode (href : Option String) (title : String) (visual : CodeEntryVisual)
     (renderHealth : ExternalRenderHealth := {}) : Output.Html :=
   open Verso.Output.Html in
@@ -440,23 +369,6 @@ private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.H
       {{Informal.HoverRender.codeSummaryPreviewUi.panel}}
     </span>
   }}
-
-/--
-Render a manifest-backed code-status chip with the same hover panel used by
-ordinary Blueprint code-summary chips.
--/
-def renderManifestCodeStatusChip (count : Nat) (previewTitle : String) (previewBody : Output.Html)
-    (ariaLabel : String := "Lean declarations") : Output.Html :=
-  if count == 0 then
-    .empty
-  else if previewBody == .empty then
-    renderCodeCountStatusBadge count
-  else
-    renderCodeSummaryPreview previewTitle
-      (renderCodeCountStatusBadge count)
-      previewBody
-      (focusable := true)
-      (ariaLabel? := some ariaLabel)
 
 private def renderCodeEntryWrap (href : Option String) (title previewTitle : String)
     (previewBody : Output.Html) (visual : CodeEntryVisual)
