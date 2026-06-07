@@ -83,7 +83,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_relation_chip bp_relation_chip_empty\"" &&
       hasSubstr out "class=\"bp_inline_preview_ref\"" &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\" data-bp-preview-id=\"bp-used-by-" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
+      hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-key="
     )
 

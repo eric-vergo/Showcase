@@ -126,7 +126,6 @@ def usesPanelConfig : PanelConfig := {
   previewEmptyText := "Dependency preview content is loaded from the Blueprint HTML cache."
   chipClass := "bp_relation_chip bp_uses_chip"
   emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
-  singleMode := .panel
 }
 
 private def groupChipClass (declared : Bool) : String :=
