@@ -255,13 +255,13 @@ def previewHoverUtilsJs : String := r##"(function () {
       .replaceAll("'", "&#39;");
   }
 
-  function decodeSharedPreviewManifest(data) {
+  function decodeBlueprintHtmlCache(data) {
     const map = new Map();
     const entries =
       Array.isArray(data)
         ? data
-        : data && typeof data === "object" && Array.isArray(data.previews)
-          ? data.previews
+        : data && typeof data === "object" && Array.isArray(data.entries)
+          ? data.entries
           : [];
     entries.forEach(function (entry) {
       if (!entry || typeof entry !== "object") return;
@@ -273,25 +273,25 @@ def previewHoverUtilsJs : String := r##"(function () {
     return map;
   }
 
-  function readSharedPreviewManifestStatus() {
-    const status = window.bpSharedPreviewManifestStatus;
+  function readBlueprintHtmlCacheStatus() {
+    const status = window.bpBlueprintHtmlCacheStatus;
     if (status && typeof status === "object") return status;
     return {
       state: "idle",
       attempts: 0,
-      url: sharedPreviewManifestUrl(),
+      url: blueprintHtmlCacheUrl(),
       lastError: "",
       entryCount: 0
     };
   }
 
-  function setSharedPreviewManifestStatus(status) {
-    window.bpSharedPreviewManifestStatus = status;
+  function setBlueprintHtmlCacheStatus(status) {
+    window.bpBlueprintHtmlCacheStatus = status;
     return status;
   }
 
-  function sharedPreviewManifestDiagnosticHtml(previewKey) {
-    const status = readSharedPreviewManifestStatus();
+  function blueprintHtmlCacheDiagnosticHtml(previewKey) {
+    const status = readBlueprintHtmlCacheStatus();
     const trimmedKey = typeof previewKey === "string" ? previewKey.trim() : "";
     const keyHtml = trimmedKey ? "<code>" + escapeHtml(trimmedKey) + "</code>" : "this preview";
     if (status.state === "error") {
@@ -299,9 +299,9 @@ def previewHoverUtilsJs : String := r##"(function () {
         ? "<p>Last load error: <code>" + escapeHtml(status.lastError) + "</code></p>"
         : "";
       return (
-        "<div class=\"bp_manifest_preview_notice\">" +
-        "<p><strong>Preview manifest unavailable.</strong></p>" +
-        "<p>Blueprint previews require <code>-verso-data/blueprint-preview-manifest.json</code>. " +
+        "<div class=\"bp_html_cache_preview_notice\">" +
+        "<p><strong>Preview HTML cache unavailable.</strong></p>" +
+        "<p>Blueprint previews require <code>-verso-data/blueprint-html-cache.json</code>. " +
         "Rebuild the site or retry after the current build finishes.</p>" +
         "<p>Requested preview: " + keyHtml + "</p>" +
         errorHtml +
@@ -310,17 +310,17 @@ def previewHoverUtilsJs : String := r##"(function () {
     }
     if (status.state === "ready" && trimmedKey) {
       return (
-        "<div class=\"bp_manifest_preview_notice\">" +
-        "<p><strong>Preview entry missing from manifest.</strong></p>" +
+        "<div class=\"bp_html_cache_preview_notice\">" +
+        "<p><strong>Preview entry missing from HTML cache.</strong></p>" +
         "<p>Requested preview: " + keyHtml + "</p>" +
-        "<p>The site emitted a manifest, but this preview key was not present.</p>" +
+        "<p>The site emitted a rendered HTML cache, but this preview key was not present.</p>" +
         "</div>"
       );
     }
     return "";
   }
 
-  function sharedPreviewManifestUrl() {
+  function blueprintHtmlCacheUrl() {
     try {
       const url = new URL(window.location.href);
       const markers = ["/html-multi/", "/html-single/"];
@@ -328,14 +328,14 @@ def previewHoverUtilsJs : String := r##"(function () {
         const idx = url.pathname.indexOf(marker);
         if (idx >= 0) {
           const rootPath = url.pathname.slice(0, idx + marker.length);
-          return rootPath + "-verso-data/blueprint-preview-manifest.json";
+          return rootPath + "-verso-data/blueprint-html-cache.json";
         }
       }
     } catch (_err) {}
-    return "-verso-data/blueprint-preview-manifest.json";
+    return "-verso-data/blueprint-html-cache.json";
   }
 
-  function fetchSharedPreviewManifestJson(url) {
+  function fetchBlueprintHtmlCacheJson(url) {
     return fetch(url).then(function (resp) {
       if (!resp.ok) {
         throw new Error("HTTP " + resp.status + " while loading " + url);
@@ -344,25 +344,25 @@ def previewHoverUtilsJs : String := r##"(function () {
     });
   }
 
-  function fetchSharedPreviewManifestData() {
-    const jsonUrl = sharedPreviewManifestUrl();
-    return fetchSharedPreviewManifestJson(jsonUrl).then(function (data) {
+  function fetchBlueprintHtmlCacheData() {
+    const jsonUrl = blueprintHtmlCacheUrl();
+    return fetchBlueprintHtmlCacheJson(jsonUrl).then(function (data) {
       return { data: data, url: jsonUrl };
     });
   }
 
-  function loadSharedPreviewManifest() {
-    if (window.bpSharedPreviewManifest instanceof Map) {
-      return Promise.resolve(window.bpSharedPreviewManifest);
+  function loadBlueprintHtmlCache() {
+    if (window.bpBlueprintHtmlCache instanceof Map) {
+      return Promise.resolve(window.bpBlueprintHtmlCache);
     }
-    if (window.bpSharedPreviewManifestPromise) {
-      return window.bpSharedPreviewManifestPromise;
+    if (window.bpBlueprintHtmlCachePromise) {
+      return window.bpBlueprintHtmlCachePromise;
     }
-    const url = sharedPreviewManifestUrl();
-    const previousStatus = readSharedPreviewManifestStatus();
+    const url = blueprintHtmlCacheUrl();
+    const previousStatus = readBlueprintHtmlCacheStatus();
     const attempts =
       Number.isFinite(previousStatus.attempts) ? previousStatus.attempts + 1 : 1;
-    setSharedPreviewManifestStatus({
+    setBlueprintHtmlCacheStatus({
       state: "loading",
       attempts: attempts,
       url: url,
@@ -370,11 +370,11 @@ def previewHoverUtilsJs : String := r##"(function () {
       entryCount: 0
     });
     let promise = null;
-    promise = fetchSharedPreviewManifestData()
+    promise = fetchBlueprintHtmlCacheData()
       .then(function (result) {
-        const map = decodeSharedPreviewManifest(result.data);
-        window.bpSharedPreviewManifest = map;
-        setSharedPreviewManifestStatus({
+        const map = decodeBlueprintHtmlCache(result.data);
+        window.bpBlueprintHtmlCache = map;
+        setBlueprintHtmlCacheStatus({
           state: "ready",
           attempts: attempts,
           url: result.url,
@@ -388,21 +388,21 @@ def previewHoverUtilsJs : String := r##"(function () {
           err && typeof err.message === "string" && err.message.length > 0
             ? err.message
             : String(err);
-        window.bpSharedPreviewManifest = null;
-        setSharedPreviewManifestStatus({
+        window.bpBlueprintHtmlCache = null;
+        setBlueprintHtmlCacheStatus({
           state: "error",
           attempts: attempts,
           url: url,
           lastError: message,
           entryCount: 0
         });
-        previewDebug("sharedManifest.loadFailed", {
+        previewDebug("htmlCache.loadFailed", {
           url: url,
           attempts: attempts,
           error: message
         });
         try {
-          console.error("[bp-preview] shared preview manifest load failed", {
+          console.error("[bp-preview] Blueprint HTML cache load failed", {
             url: url,
             error: message
           });
@@ -410,18 +410,18 @@ def previewHoverUtilsJs : String := r##"(function () {
         return new Map();
       })
       .then(function (map) {
-        if (window.bpSharedPreviewManifestPromise === promise) {
-          window.bpSharedPreviewManifestPromise = null;
+        if (window.bpBlueprintHtmlCachePromise === promise) {
+          window.bpBlueprintHtmlCachePromise = null;
         }
         return map;
       });
-    window.bpSharedPreviewManifestPromise = promise;
+    window.bpBlueprintHtmlCachePromise = promise;
     return promise;
   }
 
-  function readSharedPreviewEntry(previewKey) {
+  function readBlueprintHtmlCacheEntry(previewKey) {
     if (typeof previewKey !== "string" || previewKey.length === 0) return null;
-    const map = window.bpSharedPreviewManifest;
+    const map = window.bpBlueprintHtmlCache;
     if (!(map instanceof Map)) return null;
     return map.get(previewKey) || null;
   }
@@ -431,13 +431,13 @@ def previewHoverUtilsJs : String := r##"(function () {
     return trimmed ? trimmed + "--statement" : "";
   }
 
-  async function loadSharedPreviewEntry(previewKey) {
-    const exact = readSharedPreviewEntry(previewKey);
+  async function loadBlueprintHtmlCacheEntry(previewKey) {
+    const exact = readBlueprintHtmlCacheEntry(previewKey);
     if (exact) return exact;
-    const manifest = await loadSharedPreviewManifest();
-    if (!(manifest instanceof Map)) return null;
-    if (typeof previewKey === "string" && previewKey.length > 0 && manifest.has(previewKey)) {
-      return manifest.get(previewKey) || null;
+    const cache = await loadBlueprintHtmlCache();
+    if (!(cache instanceof Map)) return null;
+    if (typeof previewKey === "string" && previewKey.length > 0 && cache.has(previewKey)) {
+      return cache.get(previewKey) || null;
     }
     return null;
   }
@@ -715,7 +715,7 @@ def previewHoverUtilsJs : String := r##"(function () {
             if (!(trigger instanceof Element)) return "";
             return (trigger.getAttribute("data-bp-preview-key") || "").trim();
           };
-    const allowSharedManifest = !!(options && options.allowSharedManifest);
+    const allowHtmlCache = !!(options && options.allowHtmlCache);
 
     const previewMap = collectPreviewTemplates(previewRoot, templateSelector, keyAttr);
     const triggers = triggerRoot.querySelectorAll(triggerSelector);
@@ -725,7 +725,7 @@ def previewHoverUtilsJs : String := r##"(function () {
     const title = panel ? panel.querySelector(titleSelector) : null;
     const body = panel ? panel.querySelector(bodySelector) : null;
     const close = panel ? panel.querySelector(closeSelector) : null;
-    if (!panel || !(title instanceof Element) || !(body instanceof Element) || (!allowSharedManifest && previewMap.size === 0)) {
+    if (!panel || !(title instanceof Element) || !(body instanceof Element) || (!allowHtmlCache && previewMap.size === 0)) {
       if (panel) hidePanelContent(panel, title, body);
       return null;
     }
@@ -789,15 +789,15 @@ def previewHoverUtilsJs : String := r##"(function () {
       const localEntry = previewMap.get(key);
       const localHtml = readPreviewTemplate(localEntry);
       if (localHtml) return localHtml;
-      if (!allowSharedManifest) return "";
+      if (!allowHtmlCache) return "";
       const lookupKey = readLookupKey(trigger, key, localEntry);
-      const sharedEntry =
-        typeof loadSharedPreviewEntry === "function"
-          ? await loadSharedPreviewEntry(lookupKey)
+      const cacheEntry =
+        typeof loadBlueprintHtmlCacheEntry === "function"
+          ? await loadBlueprintHtmlCacheEntry(lookupKey)
           : null;
-      const sharedHtml = readPreviewTemplate(sharedEntry);
-      if (sharedHtml) return sharedHtml;
-      return sharedPreviewManifestDiagnosticHtml(lookupKey || key);
+      const cacheHtml = readPreviewTemplate(cacheEntry);
+      if (cacheHtml) return cacheHtml;
+      return blueprintHtmlCacheDiagnosticHtml(lookupKey || key);
     }
 
     async function showFromTrigger(trigger) {
@@ -886,11 +886,11 @@ def previewHoverUtilsJs : String := r##"(function () {
     collectPreviewTemplates: collectPreviewTemplates,
     readPreviewTemplate: readPreviewTemplate,
     escapeHtml: escapeHtml,
-    loadSharedPreviewManifest: loadSharedPreviewManifest,
-    readSharedPreviewManifestStatus: readSharedPreviewManifestStatus,
-    readSharedPreviewEntry: readSharedPreviewEntry,
+    loadBlueprintHtmlCache: loadBlueprintHtmlCache,
+    readBlueprintHtmlCacheStatus: readBlueprintHtmlCacheStatus,
+    readBlueprintHtmlCacheEntry: readBlueprintHtmlCacheEntry,
     statementPreviewKey: statementPreviewKey,
-    loadSharedPreviewEntry: loadSharedPreviewEntry,
+    loadBlueprintHtmlCacheEntry: loadBlueprintHtmlCacheEntry,
     renderMath: renderMath,
     bindCloseOnce: bindCloseOnce,
     positionAnchoredPanel: positionAnchoredPanel,
@@ -1399,17 +1399,17 @@ def inlineLinkPreviewJs : String := r##"(function () {
           ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
           : "";
       if (previewLookupKey) {
-        const manifestEntry =
-          typeof previewUtils.readSharedPreviewEntry === "function"
-            ? previewUtils.readSharedPreviewEntry(previewLookupKey)
+        const cacheEntry =
+          typeof previewUtils.readBlueprintHtmlCacheEntry === "function"
+            ? previewUtils.readBlueprintHtmlCacheEntry(previewLookupKey)
             : null;
-        const manifestHtml = previewUtils.readPreviewTemplate(manifestEntry);
-        if (manifestHtml) return manifestHtml;
-        if (typeof previewUtils.loadSharedPreviewManifest === "function") {
-          const manifest = await previewUtils.loadSharedPreviewManifest();
+        const cacheHtml = previewUtils.readPreviewTemplate(cacheEntry);
+        if (cacheHtml) return cacheHtml;
+        if (typeof previewUtils.loadBlueprintHtmlCache === "function") {
+          const cache = await previewUtils.loadBlueprintHtmlCache();
           const asyncHtml =
-            manifest instanceof Map
-              ? previewUtils.readPreviewTemplate(manifest.get(previewLookupKey))
+            cache instanceof Map
+              ? previewUtils.readPreviewTemplate(cache.get(previewLookupKey))
               : "";
           if (asyncHtml) return asyncHtml;
         }

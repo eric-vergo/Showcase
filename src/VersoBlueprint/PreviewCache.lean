@@ -38,7 +38,7 @@ structure Entry where
   label : Name
   facet : Facet
   blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  /-- Shared-preview manifest keys for associated Lean declaration previews. -/
+  /-- HTML-cache keys for associated Lean declaration previews. -/
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 

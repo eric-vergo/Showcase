@@ -22,7 +22,7 @@ from scripts.blueprint_harness_references import (
 from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
 
 
-def generate_project_template_manifest(manifest_path: Path) -> None:
+def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path]:
     project_dir = PACKAGE_ROOT / "project_template"
     manifest_snapshot = snapshot_tracked_project_manifest(project_dir)
     rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(
@@ -40,7 +40,7 @@ def generate_project_template_manifest(manifest_path: Path) -> None:
             cwd=project_dir,
             check=True,
         )
-        result = subprocess.run(
+        subprocess.run(
             lean_low_priority_command(
                 PACKAGE_ROOT,
                 "lake",
@@ -48,16 +48,20 @@ def generate_project_template_manifest(manifest_path: Path) -> None:
                 "lean",
                 "--run",
                 "ProjectTemplateMain.lean",
-                "--dump-manifest",
+                "--output",
+                str(output_dir),
                 "--without-html-single",
-                "--without-html-multi",
+                "--with-html-multi",
             ),
             cwd=project_dir,
             check=True,
-            stdout=subprocess.PIPE,
-            text=True,
         )
-        manifest_path.write_text(result.stdout, encoding="utf-8")
+        data_dir = output_dir / "html-multi" / "-verso-data"
+        manifest_path = data_dir / "blueprint-manifest.json"
+        html_cache_path = data_dir / "blueprint-html-cache.json"
+        assert manifest_path.exists()
+        assert html_cache_path.exists()
+        return manifest_path, html_cache_path
     finally:
         if rewritten_lakefile is not None and original_lakefile_text is not None:
             rewritten_lakefile.write_text(original_lakefile_text, encoding="utf-8")
@@ -67,8 +71,9 @@ def generate_project_template_manifest(manifest_path: Path) -> None:
 @pytest.fixture(scope="session")
 def slides_server(tmp_path_factory):
     output_dir = tmp_path_factory.mktemp("blueprint-slides-runtime")
-    manifest_path = output_dir / "project-template-preview-manifest.json"
-    generate_project_template_manifest(manifest_path)
+    manifest_path, html_cache_path = generate_project_template_preview_data(
+        output_dir / "project-template-blueprint"
+    )
     rebuild_embedded_asset_owners(PACKAGE_ROOT)
     subprocess.run(
         ["scripts/lean-low-priority", "lake", "build", "VersoBlueprint.Slides"],
@@ -85,6 +90,7 @@ def slides_server(tmp_path_factory):
             "tests/browser/BlueprintSlidesRuntime.lean",
             str(output_dir),
             str(manifest_path),
+            str(html_cache_path),
         ],
         cwd=PACKAGE_ROOT,
         check=True,
@@ -128,10 +134,15 @@ class TestBlueprintSlidesRuntime:
         errors = record_runtime_errors(page)
 
         with urllib.request.urlopen(
-            f"{slides_server}/-verso-data/blueprint-preview-manifest.json"
+            f"{slides_server}/-verso-data/blueprint-manifest.json"
         ) as response:
             manifest = json.load(response)
-        assert manifest["traverseState"]
+        with urllib.request.urlopen(
+            f"{slides_server}/-verso-data/blueprint-html-cache.json"
+        ) as response:
+            html_cache = json.load(response)
+        html_by_key = {entry["key"]: entry["html"] for entry in html_cache["entries"]}
+        assert "traverseState" not in manifest
         collatz_entry = next(
             entry
             for entry in manifest["previews"]
@@ -145,15 +156,17 @@ class TestBlueprintSlidesRuntime:
         assert collatz_entry["group"]["label"] == "collatz_core"
         assert len(collatz_entry["leanCodePreviewKeys"]) == 2
         assert collatz_entry["codeData"]
-        assert collatz_entry["blocks"]
-        assert "bp_math inline" in collatz_entry["html"]
+        assert "blocks" not in collatz_entry
+        assert "html" not in collatz_entry
+        assert "bp_math inline" in html_by_key[collatz_entry["key"]]
         code_entries = [
             entry
             for entry in manifest["previews"]
             if entry["key"] in collatz_entry["leanCodePreviewKeys"]
         ]
         assert len(code_entries) == 2
-        assert all(entry["leanCode"] for entry in code_entries)
+        assert all("leanCode" not in entry for entry in code_entries)
+        assert all("class=\"hl lean block\"" in html_by_key[entry["key"]] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
         page.wait_for_function(
@@ -168,10 +181,10 @@ class TestBlueprintSlidesRuntime:
         expect(node).to_contain_text("3 * n + 1")
         expect(node).not_to_contain_text("Loading Blueprint node")
         expect(node.locator(".bp_content .bp_math.inline")).to_have_count(3)
-        expect(node.locator(".bp_extra_slot_group .bp_used_by_chip")).to_have_text("group")
-        expect(node.locator(".bp_extra_slot_uses .bp_used_by_chip")).to_have_text("uses 2")
+        expect(node.locator(".bp_extra_slot_group .bp_relation_chip")).to_have_text("group")
+        expect(node.locator(".bp_extra_slot_uses .bp_relation_chip")).to_have_text("uses 2")
         expect(node.locator(".bp_extra_slot_code .bp_code_link")).to_have_count(1)
-        expect(node.locator(".bp_extra_slot_used_by .bp_used_by_chip")).to_have_text("used by 1")
+        expect(node.locator(".bp_extra_slot_used_by .bp_relation_chip")).to_have_text("used by 1")
         assert node.locator(".bp_extras > .bp_extra_slot").evaluate_all(
             """slots => slots.map(slot => {
               if (slot.classList.contains("bp_extra_slot_group")) return "group";
@@ -185,9 +198,9 @@ class TestBlueprintSlidesRuntime:
             """extras => getComputedStyle(extras).gridTemplateAreas"""
         ) == '"group uses used code"'
         chip_boxes = node.locator(
-            ".bp_extra_slot_group .bp_used_by_chip,"
-            ".bp_extra_slot_uses .bp_used_by_chip,"
-            ".bp_extra_slot_used_by .bp_used_by_chip,"
+            ".bp_extra_slot_group .bp_relation_chip,"
+            ".bp_extra_slot_uses .bp_relation_chip,"
+            ".bp_extra_slot_used_by .bp_relation_chip,"
             ".bp_extra_slot_code .bp_code_link"
         ).evaluate_all(
             """chips => chips.map(chip => {
@@ -258,13 +271,13 @@ class TestBlueprintSlidesRuntime:
         )
         expect_slide_link(
             page,
-            ".bp_extra_slot_group .bp_used_by_target",
+            ".bp_extra_slot_group .bp_relation_target",
             "Collatz/#--informal-preview-collatz_conjecture--statement",
             "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
         )
         expect_slide_link(
             page,
-            ".bp_extra_slot_used_by .bp_used_by_target",
+            ".bp_extra_slot_used_by .bp_relation_target",
             "Collatz/#--informal-preview-collatz_conjecture--statement",
             "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
         )

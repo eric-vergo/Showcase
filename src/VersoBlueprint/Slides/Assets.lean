@@ -37,7 +37,7 @@ def blueprintSlidesJs : String :=
   String.intercalate "\n\n" <|
     Informal.Commands.inlinePreviewJsAssets ++
       [ Informal.Block.Assets.codeSummaryPreviewJs
-      , Informal.Block.Assets.usedByPanelJs
+      , Informal.Block.Assets.relationPanelJs
       , slideNodeHydrationJs
       ]
 
@@ -129,14 +129,24 @@ public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : Verso
 public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
   writeTextFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
 
-/-- Output path where slide decks expect the shared Blueprint preview manifest. -/
-public def blueprintSlidesPreviewManifestPath (outputDir : System.FilePath) : System.FilePath :=
+/-- Output path where slide decks expect the semantic Blueprint manifest. -/
+public def blueprintSlidesManifestPath (outputDir : System.FilePath) : System.FilePath :=
   outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
 
-/-- Copy a generated Blueprint shared preview manifest into a slide deck output directory. -/
-public def copyBlueprintPreviewManifest
+/-- Output path where slide decks expect the rendered Blueprint HTML cache. -/
+public def blueprintSlidesHtmlCachePath (outputDir : System.FilePath) : System.FilePath :=
+  outputDir / "-verso-data" / Informal.PreviewManifest.htmlCacheFilename
+
+/-- Copy a generated semantic Blueprint manifest into a slide deck output directory. -/
+public def copyBlueprintManifest
     (outputDir source : System.FilePath) : IO Unit := do
   let contents ← IO.FS.readFile source
-  writeTextFileWithDirs (blueprintSlidesPreviewManifestPath outputDir) contents
+  writeTextFileWithDirs (blueprintSlidesManifestPath outputDir) contents
+
+/-- Copy a generated rendered Blueprint HTML cache into a slide deck output directory. -/
+public def copyBlueprintHtmlCache
+    (outputDir source : System.FilePath) : IO Unit := do
+  let contents ← IO.FS.readFile source
+  writeTextFileWithDirs (blueprintSlidesHtmlCachePath outputDir) contents
 
 end Informal.Slides

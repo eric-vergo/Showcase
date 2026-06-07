@@ -41,7 +41,7 @@ constructor tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
     (manifest? : Option Informal.PreviewManifest.File)
-    (manualImpls : Verso.Genre.Manual.ExtensionImpls)
+    (htmlCache? : Option Informal.PreviewManifest.HtmlCache.File)
     (doc : Verso.Doc.Part VersoSlides.Slides)
     (quiet : Bool := false) : IO UInt32 := do
   let assetPlan ← collectSlideAssets config
@@ -49,8 +49,7 @@ private def slidesMainWithBlueprintRenderer
   let logError (msg : String) : IO Unit := do
     hasError.set true
     IO.eprintln msg
-  let renderContext := Informal.Slides.RenderContext.ofManifest? manifest?
-    (manualImpls := manualImpls)
+  let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
   let (doc, traverseState) ←
     (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
@@ -88,24 +87,29 @@ private def slidesMainWithBlueprintRenderer
 /--
 Generate a slide deck with Blueprint preview-node assets enabled.
 
-When `previewManifest?` is provided, the manifest is read during slide
-generation so `{blueprint_node}` blocks render as static Blueprint shells. The
-same manifest is also copied to the deck's
-`-verso-data/blueprint-preview-manifest.json` path after the deck is written.
+When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
+rendered HTML cache are read during slide generation so `{blueprint_node}`
+blocks render as static Blueprint shells. Both files are also copied to the
+deck's `-verso-data/` directory after the deck is written.
 -/
 public def slidesMainWithBlueprintPreviews
     (config : VersoSlides.Config := {})
     (previewManifest? : Option System.FilePath := none)
     (doc : Verso.Doc.Part VersoSlides.Slides)
-    (manualImpls : Verso.Genre.Manual.ExtensionImpls := by exact extension_impls%)
+    (previewHtmlCache? : Option System.FilePath := none)
     (quiet : Bool := false) : IO UInt32 := do
   let config := withBlueprintSlidesAssets config
-  let manifest? ← previewManifest?.mapM readBlueprintPreviewManifest
-  let rc ← slidesMainWithBlueprintRenderer config manifest? manualImpls doc (quiet := quiet)
+  let htmlCachePath? := previewHtmlCache? <|> previewManifest?.map (fun path =>
+    path.parent.getD "." / Informal.PreviewManifest.htmlCacheFilename)
+  let manifest? ← previewManifest?.mapM readBlueprintManifest
+  let htmlCache? ← htmlCachePath?.mapM readBlueprintHtmlCache
+  let rc ← slidesMainWithBlueprintRenderer config manifest? htmlCache? doc (quiet := quiet)
   if rc == 0 then
     writeBlueprintSlidesJs config.outputDir
     if let some previewManifest := previewManifest? then
-      copyBlueprintPreviewManifest config.outputDir previewManifest
+      copyBlueprintManifest config.outputDir previewManifest
+    if let some previewHtmlCache := htmlCachePath? then
+      copyBlueprintHtmlCache config.outputDir previewHtmlCache
   pure rc
 
 end Informal.Slides
@@ -113,7 +117,7 @@ end Informal.Slides
 open Verso Doc Elab
 
 /--
-Render a Blueprint preview-manifest entry by label inside a Verso Slides deck.
+Render a Blueprint manifest/cache entry by label inside a Verso Slides deck.
 
 Use {name}`Informal.Slides.slidesMainWithBlueprintPreviews` in the deck
 generator, or add {name}`Informal.Slides.withBlueprintSlidesAssets` to the

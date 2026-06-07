@@ -84,13 +84,13 @@ structure PanelConfig where
   singleTitle : PanelEntry → String
   panelTitle : Nat → String
   panelMeta : String
-  panelMetaClass : String := "bp_used_by_panel_meta"
+  panelMetaClass : String := "bp_relation_panel_meta"
   previewDefaultTitle : String := "Hover an entry"
   previewEmptyText : String := "Hover an entry to preview it."
-  chipClass : String := "bp_used_by_chip"
-  emptyChipClass : String := "bp_used_by_chip bp_used_by_chip_empty"
-  wrapClass : String := "bp_used_by_wrap"
-  panelClass : String := "bp_used_by_panel"
+  chipClass : String := "bp_relation_chip"
+  emptyChipClass : String := "bp_relation_chip bp_relation_chip_empty"
+  wrapClass : String := "bp_relation_wrap"
+  panelClass : String := "bp_relation_panel"
   panelAttrs : Array (String × String) := #[]
   singleMode : PanelSingleMode := .inlinePreview
   selectFirst : Bool := true
@@ -110,9 +110,9 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
       | none => "Reverse dependencies"
   singleTitle := fun entry => s!"Reverse dependency: {entry.previewTitle}"
   panelTitle := fun n => s!"Used by {n}"
-  panelMeta := "Hover a use site to preview it."
-  previewDefaultTitle := "Hover a use site"
-  previewEmptyText := "Hover a use site to preview it."
+  panelMeta := "Reverse dependency previews"
+  previewDefaultTitle := "Reverse dependency preview"
+  previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
 }
 
 /-- Standard forward-dependency panel presentation. -/
@@ -121,27 +121,29 @@ def usesPanelConfig : PanelConfig := {
   chipTitle := fun _ => "Statement and proof dependencies"
   singleTitle := fun _ => "Statement and proof dependencies"
   panelTitle := fun n => s!"Uses {n}"
-  panelMeta := "Hover a dependency to preview it."
-  previewDefaultTitle := "Hover a dependency"
-  previewEmptyText := "Hover a dependency to preview it."
+  panelMeta := "Dependency previews"
+  previewDefaultTitle := "Dependency preview"
+  previewEmptyText := "Dependency preview content is loaded from the Blueprint HTML cache."
+  chipClass := "bp_relation_chip bp_uses_chip"
+  emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
   singleMode := .panel
 }
 
 private def groupChipClass (declared : Bool) : String :=
   if declared then
-    "bp_used_by_chip"
+    "bp_relation_chip"
   else
-    "bp_used_by_chip bp_used_by_chip_warn"
+    "bp_relation_chip bp_relation_chip_warn"
 
 private def groupEmptyChipClass (declared : Bool) : String :=
   if declared then
-    "bp_used_by_chip bp_used_by_chip_empty"
+    "bp_relation_chip bp_relation_chip_empty"
   else
-    "bp_used_by_chip bp_used_by_chip_empty bp_used_by_chip_warn"
+    "bp_relation_chip bp_relation_chip_empty bp_relation_chip_warn"
 
 private def groupPanelMeta (groupLabel : Data.Label) (declared : Bool) : String :=
   if declared then
-    "Hover another entry in this group to preview it."
+    "Group member previews"
   else
     s!"No :::group declaration was found for parent '{groupLabel}'; showing entries that share this parent label."
 
@@ -168,11 +170,11 @@ def groupPanelConfig (groupLabel : Data.Label) (groupTitle : String) (declared :
   panelMeta := groupPanelMeta groupLabel declared
   panelMetaClass :=
     if declared then
-      "bp_used_by_panel_meta"
+      "bp_relation_panel_meta"
     else
-      "bp_used_by_panel_meta bp_used_by_chip_warn"
-  previewDefaultTitle := "Hover a group entry"
-  previewEmptyText := "Hover a group entry to preview it."
+      "bp_relation_panel_meta bp_relation_chip_warn"
+  previewDefaultTitle := "Group member preview"
+  previewEmptyText := "Group member preview content is loaded from the Blueprint HTML cache."
   chipClass := groupChipClass declared
   emptyChipClass := groupEmptyChipClass declared
 }
@@ -281,12 +283,12 @@ private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   open Verso.Output.Html in
   let statementBadge : Array Output.Html :=
     if inStatement then
-      #[{{<span class="bp_used_by_axis_badge">"statement"</span>}}]
+      #[{{<span class="bp_relation_axis_badge">"statement"</span>}}]
     else
       #[]
   let proofBadge : Array Output.Html :=
     if inProof then
-      #[{{<span class="bp_used_by_axis_badge">"proof"</span>}}]
+      #[{{<span class="bp_relation_axis_badge">"proof"</span>}}]
     else
       #[]
   .seq (statementBadge ++ proofBadge)
@@ -301,10 +303,10 @@ private def renderUseMetadataBadges (entry : UsesEntry) : Output.Html :=
   open Verso.Output.Html in
   let originBadges :=
     entry.origins.filter (· != .manual) |>.map fun origin =>
-      {{<span class="bp_used_by_axis_badge bp_uses_origin_badge">{{.text true (toString origin)}}</span>}}
+      {{<span class="bp_relation_axis_badge bp_uses_origin_badge">{{.text true (toString origin)}}</span>}}
   let intentBadges :=
     entry.intents.filter (· != .regular) |>.map fun intent =>
-      {{<span class="bp_used_by_axis_badge bp_uses_intent_badge">{{.text true (toString intent)}}</span>}}
+      {{<span class="bp_relation_axis_badge bp_uses_intent_badge">{{.text true (toString intent)}}</span>}}
   .seq (originBadges ++ intentBadges)
 
 private def mkBlockEntry {m}
@@ -343,9 +345,9 @@ private def mkLabelEntry {m}
 private def loadingBody (detail : String) : Output.Html :=
   open Verso.Output.Html in
   {{
-    <div class="bp_used_by_preview_message" "data-bp-preview-message"="loading">
-      <div class="bp_used_by_preview_message_title">"Loading preview"</div>
-      <div class="bp_used_by_preview_message_detail">{{.text true detail}}</div>
+    <div class="bp_relation_preview_message" "data-bp-preview-message"="loading">
+      <div class="bp_relation_preview_message_title">"Loading preview"</div>
+      <div class="bp_relation_preview_message_detail">{{.text true detail}}</div>
     </div>
   }}
 
@@ -378,27 +380,27 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       match selectedEntry? with
       | some selected =>
         if samePanelEntry selected entry then
-          "bp_used_by_item bp_used_by_item_active"
+          "bp_relation_item bp_relation_item_active"
         else
-          "bp_used_by_item"
+          "bp_relation_item"
       | none =>
-        if entry.active then "bp_used_by_item bp_used_by_item_active" else "bp_used_by_item"
+        if entry.active then "bp_relation_item bp_relation_item_active" else "bp_relation_item"
     let rowNode : Output.Html :=
-      let titleNode := {{<span class="bp_used_by_target_title">{{.text true entry.previewTitle}}</span>}}
+      let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
       let metaNode := {{
-        <span class="bp_used_by_target_meta">
+        <span class="bp_relation_target_meta">
           {{entry.metaHtml}}
         </span>
       }}
       if let some href := entry.href then
-        {{<a class="bp_used_by_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
+        {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
       else
-        {{<span class="bp_used_by_target">{{titleNode}}{{metaNode}}</span>}}
+        {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
     {{
       <li class={{itemClass}}
-          "data-bp-used-preview-id"={{entry.previewId}}
-          "data-bp-used-preview-key"={{entry.previewKey}}
-          "data-bp-used-preview-title"={{entry.previewTitle}}>
+          "data-bp-relation-preview-id"={{entry.previewId}}
+          "data-bp-relation-preview-key"={{entry.previewKey}}
+          "data-bp-relation-preview-title"={{entry.previewTitle}}>
         {{rowNode}}
       </li>
     }}
@@ -411,20 +413,20 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
   let panel : Output.Html :=
     .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
       {{
-        <div class="bp_used_by_panel_header">
-          <div class="bp_used_by_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
+        <div class="bp_relation_panel_header">
+          <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
           <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
         </div>
-        <div class="bp_used_by_panel_body">
-          <ul class="bp_used_by_list">
+        <div class="bp_relation_panel_body">
+          <ul class="bp_relation_list">
             {{rows}}
           </ul>
-          <div class="bp_used_by_preview_surface">
-            <div class="bp_used_by_preview_header">
-              <div class="bp_used_by_preview_label">"Preview"</div>
-              <div class="bp_used_by_preview_title">{{.text true previewTitle}}</div>
+          <div class="bp_relation_preview_surface">
+            <div class="bp_relation_preview_header">
+              <div class="bp_relation_preview_label">"Preview"</div>
+              <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
             </div>
-            <div class="bp_used_by_preview_body">
+            <div class="bp_relation_preview_body">
               {{previewBody}}
             </div>
           </div>

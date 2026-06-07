@@ -484,7 +484,9 @@ private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
 private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
   state.modifyHtmlAssets patchBlueprintHtmlAssets
 
-def manifestFilename : String := "blueprint-preview-manifest.json"
+def manifestFilename : String := "blueprint-manifest.json"
+
+def htmlCacheFilename : String := "blueprint-html-cache.json"
 
 inductive EntryKind where
   | block
@@ -510,7 +512,7 @@ structure RelatedEntry where
   title : String
   /-- Canonical link target for the related informal node, if available. -/
   href : Option String := none
-  /-- Shared-preview manifest key for this related node's statement preview. -/
+  /-- HTML-cache key for this related node's statement preview. -/
   previewKey : String
   /-- Statement/proof dependency axes through which this related node is connected. -/
   axes : Array RelationAxis := #[]
@@ -555,14 +557,10 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
-  /-- Shared-preview manifest keys for Lean declaration previews associated with this entry. -/
+  /-- HTML-cache keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
-  /-- Structured Manual blocks for this preview entry. `html` is a compatibility fallback. -/
-  blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
-  /-- Structured Lean declaration preview data for `leanDecl` entries. -/
-  leanCode : Option Informal.LeanCodePreview.Entry := none
   /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
@@ -577,15 +575,83 @@ structure Entry where
   priority : Option String := none
   /-- Declared effort estimate for this informal node, if any. -/
   effort : Option String := none
-  /-- Rendered HTML body for this preview. -/
+deriving Inhabited, Repr, ToJson, FromJson
+
+structure File where
+  /-- Semantic preview entries keyed by `PreviewCache`, Lean preview key, or citation key. -/
+  previews : Array Entry := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+namespace HtmlCache
+
+structure Entry where
+  /-- Composite preview lookup key for this rendered HTML fragment. -/
+  key : String
+  /-- Rendered HTML fragment for this preview/cache entry. -/
   html : String
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure File where
-  /-- Manual traversal state used to regenerate structured preview blocks. -/
-  traverseState : Option TraverseState := none
-  previews : Array Entry := #[]
+  /-- Rendered HTML fragments keyed by preview/cache entry key. -/
+  entries : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
+
+structure Index where
+  entriesByKey : Std.HashMap String Entry := {}
+deriving Inhabited
+
+def Index.ofFile (file : File) : Index := {
+  entriesByKey := file.entries.foldl (fun entries entry => entries.insert entry.key entry) {}
+}
+
+def File.index (file : File) : Index :=
+  Index.ofFile file
+
+def Index.findEntry? (index : Index) (key : String) : Option Entry :=
+  index.entriesByKey.get? key
+
+def Index.findHtml? (index : Index) (key : String) : Option String :=
+  (index.findEntry? key).map (·.html)
+
+def File.findEntry? (file : File) (key : String) : Option Entry :=
+  file.index.findEntry? key
+
+def File.findHtml? (file : File) (key : String) : Option String :=
+  file.index.findHtml? key
+
+private def pushDistinctHtml (values : Array String) (html : String) : Array String :=
+  if values.contains html then values else values.push html
+
+/--
+Rendered Lean-code preview bodies for an informal entry, deduplicated by the
+actual rendered HTML fragment.
+-/
+def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
+    Array String :=
+  entry.leanCodePreviewKeys.foldl (init := #[]) fun bodies key =>
+    match index.findHtml? key with
+    | some html => pushDistinctHtml bodies html
+    | none => bodies
+
+def File.codeHtmlBodies (file : File) (entry : _root_.Informal.PreviewManifest.Entry) :
+    Array String :=
+  file.index.codeHtmlBodies entry
+
+def readFile (path : System.FilePath) : IO File := do
+  let json ←
+    match Json.parse (← IO.FS.readFile path) with
+    | .ok json => pure json
+    | .error err => throw <| IO.userError s!"could not parse Blueprint HTML cache {path}: {err}"
+  match fromJson? (α := File) json with
+  | .ok file => pure file
+  | .error err => throw <| IO.userError s!"could not decode Blueprint HTML cache {path}: {err}"
+
+end HtmlCache
+
+structure Files where
+  manifest : File := {}
+  htmlCache : HtmlCache.File := {}
+deriving Inhabited, Repr
 
 structure Index where
   entriesByKey : Std.HashMap String Entry := {}
@@ -604,35 +670,26 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
-private def pushDistinctCodeEntry (entries : Array Entry) (entry : Entry) : Array Entry :=
-  if entries.any (fun existing => existing.html == entry.html) then
-    entries
-  else
-    entries.push entry
-
 /-- Count available Lean-code preview entries before display-level deduplication. -/
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
   (entry.leanCodePreviewKeys.filterMap index.findEntry?).size
 
 /--
-Lean-code preview keys are declaration-granular, but several declarations from
-one literate code block can render to the same HTML. Return distinct display
-bodies while keeping `codeEntryCount` available for declaration counts.
+Lean-code preview keys are declaration-granular. Return the semantic entries in
+key order while keeping display-level rendered-HTML deduplication in
+`HtmlCache.Index.codeHtmlBodies`.
 -/
 def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
-  entry.leanCodePreviewKeys.foldl (init := #[]) fun entries key =>
-    match index.findEntry? key with
-    | some codeEntry => pushDistinctCodeEntry entries codeEntry
-    | none => entries
+  entry.leanCodePreviewKeys.filterMap index.findEntry?
 
 def readFile (path : System.FilePath) : IO File := do
   let json ←
     match Json.parse (← IO.FS.readFile path) with
     | .ok json => pure json
-    | .error err => throw <| IO.userError s!"could not parse Blueprint preview manifest {path}: {err}"
+    | .error err => throw <| IO.userError s!"could not parse Blueprint manifest {path}: {err}"
   match fromJson? (α := File) json with
   | .ok file => pure file
-  | .error err => throw <| IO.userError s!"could not decode Blueprint preview manifest {path}: {err}"
+  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}
@@ -769,7 +826,7 @@ def schemaString : String :=
 def schemaJson : Json :=
   match Json.parse schemaString with
   | .ok json => json
-  | .error err => panic! s!"Invalid generated preview manifest schema: {err}"
+  | .error err => panic! s!"Invalid generated Blueprint manifest schema: {err}"
 
 private def jsonPretty (json : Json) : String :=
   json.render.pretty 80
@@ -1004,15 +1061,16 @@ private def buildGroupRelation?
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry) := do
+    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
   let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
-    | return #[]
+    | return (#[], #[])
   let storedBlocks := Informal.collectStoredBlocks state
   let mut entries := #[]
+  let mut htmlEntries := #[]
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := PreviewCache.Entry) obj.data with
     | .error err =>
-      logError s!"Preview manifest: malformed preview entry {obj.canonicalName}: {err}"
+      logError s!"Blueprint manifest: malformed preview entry {obj.canonicalName}: {err}"
     | .ok entry =>
       if entry.blocks.isEmpty then
         continue
@@ -1040,7 +1098,6 @@ private def buildTraversalEntries
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
         leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
         codeData
-        blocks := entry.blocks
         uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
         usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
         group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1048,22 +1105,23 @@ private def buildTraversalEntries
         tags := blockData?.map (·.tags) |>.getD #[]
         priority := blockData?.bind (·.priority)
         effort := blockData?.bind (·.effort)
-        html
       }
       entries := entries.push manifestEntry
-  pure entries
+      htmlEntries := htmlEntries.push { key, html }
+  pure (entries, htmlEntries)
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry) := do
+    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
   let some domain := Informal.TraversalIndex.LeanCodePreviews.domain? state
-    | return #[]
+    | return (#[], #[])
   let mut entries := #[]
+  let mut htmlEntries := #[]
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
     | .error err =>
-      logError s!"Preview manifest: malformed Lean-code preview entry {obj.canonicalName}: {err}"
+      logError s!"Blueprint manifest: malformed Lean-code preview entry {obj.canonicalName}: {err}"
     | .ok entry =>
       let html ← Output.Html.asString <$> Informal.LeanCodePreview.renderHtmlWithState entry impls state
         (logError := logError)
@@ -1075,11 +1133,10 @@ private def buildLeanCodeEntries
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target
-        leanCode := some entry
-        html
       }
       entries := entries.push manifestEntry
-  pure entries
+      htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+  pure (entries, htmlEntries)
 
 private def renderCitationEntryHtml
     (impls : ExtensionImpls)
@@ -1095,14 +1152,15 @@ private def renderCitationEntryHtml
 private def buildCitationEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry) := do
+    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
   let some domain := Informal.TraversalIndex.CitationPreviews.domain? state
-    | return #[]
+    | return (#[], #[])
   let mut entries := #[]
+  let mut htmlEntries := #[]
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := Informal.Cite.CitationPreviewData) obj.data with
     | .error err =>
-      logError s!"Preview manifest: malformed citation preview entry {obj.canonicalName}: {err}"
+      logError s!"Blueprint manifest: malformed citation preview entry {obj.canonicalName}: {err}"
     | .ok citation =>
       let html ← renderCitationEntryHtml impls logError state citation
       if html.trimAscii.isEmpty then
@@ -1114,24 +1172,42 @@ private def buildCitationEntries
         facet := .statement
         title := Informal.Cite.citationPreviewTitle citation.item
         href := Informal.TraversalIndex.Bibliography.href? state citation.item.label
-        html
       }
       entries := entries.push manifestEntry
-  pure entries
+      htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
+  pure (entries, htmlEntries)
 
 /--
-Build the canonical shared preview manifest from a completed Manual traversal
-state.
+Build the semantic Blueprint manifest and rendered HTML cache from a completed
+Manual traversal state.
 -/
+def buildPreviewDataFiles
+    (impls : ExtensionImpls)
+    (logError : String → IO Unit)
+    (state : TraverseState) : IO Files := do
+  let (traversalPreviews, traversalHtml) ← buildTraversalEntries impls logError state
+  let (leanCodePreviews, leanCodeHtml) ← buildLeanCodeEntries impls logError state
+  let (citationPreviews, citationHtml) ← buildCitationEntries impls logError state
+  let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
+  let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  pure {
+    manifest := { previews }
+    htmlCache := { entries := htmlEntries }
+  }
+
+/-- Build the semantic Blueprint manifest from a completed Manual traversal state. -/
 def buildManifestFile
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO File := do
-  let traversalPreviews ← buildTraversalEntries impls logError state
-  let leanCodePreviews ← buildLeanCodeEntries impls logError state
-  let citationPreviews ← buildCitationEntries impls logError state
-  let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
-  pure { traverseState := some state, previews }
+  pure (← buildPreviewDataFiles impls logError state).manifest
+
+/-- Build the rendered Blueprint HTML cache from a completed Manual traversal state. -/
+def buildHtmlCacheFile
+    (impls : ExtensionImpls)
+    (logError : String → IO Unit)
+    (state : TraverseState) : IO HtmlCache.File := do
+  pure (← buildPreviewDataFiles impls logError state).htmlCache
 
 private def parseRenderConfigOptions (config : RenderConfig := {}) :
     List String → ReaderT ExtensionImpls IO RenderConfig
@@ -1188,37 +1264,52 @@ private def dumpManifest
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
   let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
-  let file ← buildManifestFile extensionImpls logError traverseState
-  IO.println <| jsonPretty <| toJson file
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  IO.println <| jsonPretty <| toJson files.manifest
+  if (← errorCount.get) == 0 then pure 0 else pure 1
+
+private def dumpHtmlCache
+    (text : Part Manual)
+    (options : List String)
+    (extensionImpls : ExtensionImpls)
+    (config : RenderConfig := {}) : IO UInt32 := do
+  let errorCount : IO.Ref Nat ← IO.mkRef 0
+  let logError msg := do
+    errorCount.modify (· + 1)
+    IO.eprintln msg
+  let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
+  let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
 /--
-Emit the canonical shared blueprint preview manifest file.
+Emit the canonical Blueprint manifest and rendered HTML cache files.
 
-The shared manifest contains:
-- traversal-cached statement/proof previews keyed by `PreviewCache`, including
-  uses, reverse uses, and group-panel relation metadata.
-- dedicated Lean-code previews keyed by `Informal.LeanCodePreview`.
-- citation previews keyed by citation label, style, and locator.
+The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
+or citation key. The HTML cache contains the corresponding rendered HTML
+fragments for browser hover previews and file-mode consumers such as slides.
 -/
-def emitSharedPreviewManifest (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
-  let file ← buildManifestFile extensionImpls logError state
+def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
+  let files ← buildPreviewDataFiles extensionImpls logError state
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
   IO.FS.createDirAll dataDir
-  let json := (toJson file).compress
-  IO.FS.writeFile (dataDir / manifestFilename) json
+  IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
+  IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
   emitPublicXref mode logError cfg state
 
 def dumpSchemaFlag : String := "--dump-schema"
 def dumpManifestFlag : String := "--dump-manifest"
+def dumpHtmlCacheFlag : String := "--dump-html-cache"
 def helpFlag : String := "--help"
 
 def helpText : String := String.intercalate "\n" [
-  "Blueprint preview manifest options:",
-  s!"  {dumpSchemaFlag}    Print the preview manifest JSON Schema and exit.",
-  s!"  {dumpManifestFlag}  Print the generated preview manifest JSON and exit.",
-  s!"  {helpFlag}           Show this help text and exit.",
+  "Blueprint manifest/cache options:",
+  s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
+  s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
+  s!"  {dumpHtmlCacheFlag}  Print the generated rendered HTML cache JSON and exit.",
+  s!"  {helpFlag}              Show this help text and exit.",
   "",
   "Standard manual rendering options:",
   "  --output <dir>",
@@ -1253,6 +1344,10 @@ def handleCliFlags
   else if options.contains dumpManifestFlag then
     let options := stripFlag dumpManifestFlag options
     let code ← dumpManifest text options extensionImpls config
+    pure (some code, options)
+  else if options.contains dumpHtmlCacheFlag then
+    let options := stripFlag dumpHtmlCacheFlag options
+    let code ← dumpHtmlCache text options extensionImpls config
     pure (some code, options)
   else
     handleDumpSchemaFlag options
@@ -1337,7 +1432,7 @@ where
         IO.eprintln s!"{n} errors were encountered!"
         return 1
 
-def blueprintMainWithSharedPreviewManifest
+def blueprintMainWithPreviewData
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
@@ -1348,14 +1443,14 @@ def blueprintMainWithSharedPreviewManifest
   if let some code := dumped? then
     return code
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
-    (extraSteps := emitSharedPreviewManifest extensionImpls :: extraSteps)
+    (extraSteps := emitBlueprintPreviewData extensionImpls :: extraSteps)
 
-def manualMainWithSharedPreviewManifest
+def manualMainWithPreviewData
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
     (extraSteps : List ExtraStep := []) : IO UInt32 :=
-  blueprintMainWithSharedPreviewManifest text options extensionImpls config extraSteps
+  blueprintMainWithPreviewData text options extensionImpls config extraSteps
 
 end Informal.PreviewManifest

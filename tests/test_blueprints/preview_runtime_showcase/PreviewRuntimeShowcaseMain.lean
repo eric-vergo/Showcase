@@ -6,7 +6,7 @@ open Verso Doc
 open Verso.Genre Manual
 
 def main (args : List String) : IO UInt32 :=
-  Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest
+  Informal.PreviewManifest.blueprintMainWithPreviewData
     (%doc PreviewRuntimeShowcase.Blueprint)
     args
     (extensionImpls := by exact extension_impls%)

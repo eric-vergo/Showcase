@@ -7,7 +7,6 @@ Author: Emilio J. Gallego Arias
 import Verso.Output.Html
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewManifest.BlockRender
-import VersoBlueprint.PreviewRender
 import VersoBlueprint.Slides.Node
 
 namespace Informal.Slides
@@ -19,22 +18,18 @@ open Verso.Output.Html
 public structure RenderContext where
   manifest? : Option Informal.PreviewManifest.File := none
   index : Informal.PreviewManifest.Index := {}
-  manualImpls : Verso.Genre.Manual.ExtensionImpls
-  traverseState : Verso.Genre.Manual.TraverseState :=
-    Verso.Genre.Manual.TraverseState.initialize {}
+  htmlCacheIndex : Informal.PreviewManifest.HtmlCache.Index := {}
   logError : String → IO Unit := fun _ => pure ()
 
-def RenderContext.ofManifest?
+def RenderContext.ofPreviewData?
     (manifest? : Option Informal.PreviewManifest.File)
-    (manualImpls : Verso.Genre.Manual.ExtensionImpls := by exact extension_impls%)
+    (htmlCache? : Option Informal.PreviewManifest.HtmlCache.File := none)
     (logError : String → IO Unit := fun _ => pure ()) : RenderContext :=
+  let htmlCache := htmlCache?.getD {}
   {
     manifest?
     index := manifest?.map (·.index) |>.getD {}
-    manualImpls
-    traverseState :=
-      manifest?.bind (·.traverseState) |>.getD
-        (Verso.Genre.Manual.TraverseState.initialize {})
+    htmlCacheIndex := htmlCache.index
     logError
   }
 
@@ -56,7 +51,7 @@ private def slideManifestBlockConfig : Informal.PreviewManifest.BlockRender.Rend
          , ("title", "Open Blueprint node")
          ]
     relationPanels := {
-      wrapClass := fun kind => "bp_used_by_wrap bp_slide_" ++ kind.key ++ "_wrap"
+      wrapClass := fun kind => "bp_relation_wrap bp_slide_" ++ kind.key ++ "_wrap"
       panelAttrs := fun kind => #[("data-bp-slide-panel", kind.key)]
       idPrefix := fun kind entry =>
         match kind with
@@ -77,43 +72,27 @@ private def renderNotice (kind title detail : String) : Html :=
 private def renderMissingNode (node : BlueprintSlideNode) (title detail : String) : Html :=
   .tag "div" node.renderedAttrs (renderNotice "error" title detail)
 
-private def renderEntryBody (ctx : RenderContext) (entry : Informal.PreviewManifest.Entry) :
-    IO Html := do
-  if entry.blocks.isEmpty then
-    pure <| Informal.PreviewManifest.BlockRender.htmlFragment entry.html
-  else
-    Informal.renderManualBlocksHtmlWithState
-      entry.blocks
-      ctx.manualImpls
-      ctx.traverseState
-      (logError := ctx.logError)
-
-private def renderLeanCodeEntry (ctx : RenderContext) (entry : Informal.PreviewManifest.Entry) :
-    IO Html := do
-  match entry.leanCode with
-  | some leanCode =>
-      Informal.LeanCodePreview.renderHtmlWithState
-        leanCode
-        ctx.manualImpls
-        ctx.traverseState
-        (logError := ctx.logError)
-  | none =>
-      pure <| Informal.PreviewManifest.BlockRender.htmlFragment entry.html
-
 private def renderLeanCodeBodies
     (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
-    IO (Array Html) := do
+    Array Html :=
   if node.compact then
-    pure #[]
+    #[]
   else
-    (ctx.index.codeEntries entry).mapM (renderLeanCodeEntry ctx)
+    (ctx.htmlCacheIndex.codeHtmlBodies entry).map
+      Informal.PreviewManifest.BlockRender.htmlFragment
 
 private def renderEntryContent
     (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
-    IO Informal.PreviewManifest.BlockRender.RenderedContent := do
-  let body ← renderEntryBody ctx entry
-  let codeBodies ← renderLeanCodeBodies ctx node entry
-  pure { body, codeBodies }
+    IO (Option Informal.PreviewManifest.BlockRender.RenderedContent) := do
+  match ctx.htmlCacheIndex.findHtml? entry.key with
+  | none =>
+      ctx.logError s!"Blueprint HTML cache: missing rendered body for {entry.key}"
+      pure none
+  | some bodyHtml =>
+      pure <| some {
+        body := Informal.PreviewManifest.BlockRender.htmlFragment bodyHtml
+        codeBodies := renderLeanCodeBodies ctx node entry
+      }
 
 public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : IO Html := do
   match ctx.manifest? with
@@ -125,13 +104,16 @@ public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlide
     | none =>
       pure <| renderMissingNode node "Blueprint node not found" node.key
     | some entry =>
-      let content ← renderEntryContent ctx node entry
-      pure <| .tag "div" node.renderedAttrs <|
-        Informal.PreviewManifest.BlockRender.renderWithRenderedContent
-          slideManifestBlockConfig
-          entry
-          content
-          { titleOverride? := node.title?, compact := node.compact }
+      match ← renderEntryContent ctx node entry with
+      | none =>
+          pure <| renderMissingNode node "Blueprint HTML cache entry not found" entry.key
+      | some content =>
+          pure <| .tag "div" node.renderedAttrs <|
+            Informal.PreviewManifest.BlockRender.renderWithRenderedContent
+              slideManifestBlockConfig
+              entry
+              content
+              { titleOverride? := node.title?, compact := node.compact }
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
@@ -143,8 +125,12 @@ public def renderBlueprintSlideNodeFromAttrs?
   let node ← BlueprintSlideNode.fromAttrs? attrs
   some (renderBlueprintSlideNode ctx node)
 
-def readBlueprintPreviewManifest (path : System.FilePath) :
+def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=
   Informal.PreviewManifest.readFile path
+
+def readBlueprintHtmlCache (path : System.FilePath) :
+    IO Informal.PreviewManifest.HtmlCache.File :=
+  Informal.PreviewManifest.HtmlCache.readFile path
 
 end Informal.Slides

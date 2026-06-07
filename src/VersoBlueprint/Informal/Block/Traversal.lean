@@ -35,7 +35,7 @@ private def externalDeclsOfBlock (blockData : BlockData) : Array Data.ExternalRe
   | .statement _, some codeData => codeData.externalDecls
   | _, _ => #[]
 
-/-- Store the rendered block body used by hover previews and preview manifests. -/
+/-- Store the rendered block body used by hover previews and Blueprint preview data. -/
 def registerBlockPreviewData
     {m}
     [Monad m]
