@@ -208,7 +208,8 @@ All attributes needed to bind one inline preview trigger to its runtime panel.
 
 `triggerId` is the page-local UI id used for hover state. `lookupKey?` is the
 shared preview-data key used to load the preview body; the two are often but
-not always the same value.
+not always the same value. `footerHtml?` carries optional, already-rendered
+metadata for the inline preview chrome below the preview body.
 -/
 structure InlinePreviewTarget where
   triggerId : String
@@ -216,38 +217,44 @@ structure InlinePreviewTarget where
   lookupKey? : Option String := none
   fallbackLabel? : Option String := none
   fallbackDetail? : Option String := none
+  footerHtml? : Option String := none
 
 /-- Build a target whose trigger id and manifest lookup key are the same. -/
 def InlinePreviewTarget.manifestBacked
     (lookupKey title : String)
     (fallbackLabel? : Option String := none)
-    (fallbackDetail? : Option String := none) : InlinePreviewTarget :=
+    (fallbackDetail? : Option String := none)
+    (footerHtml? : Option String := none) : InlinePreviewTarget :=
   {
     triggerId := lookupKey
     title
     lookupKey? := some lookupKey
     fallbackLabel?
     fallbackDetail?
+    footerHtml?
   }
 
 /-- Build a target with a distinct trigger id and manifest lookup key. -/
 def InlinePreviewTarget.withLookupKey
     (triggerId title lookupKey : String)
     (fallbackLabel? : Option String := none)
-    (fallbackDetail? : Option String := none) : InlinePreviewTarget :=
+    (fallbackDetail? : Option String := none)
+    (footerHtml? : Option String := none) : InlinePreviewTarget :=
   {
     triggerId
     title
     lookupKey? := some lookupKey
     fallbackLabel?
     fallbackDetail?
+    footerHtml?
   }
 
 private def inlinePreviewRefAttrs
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
     (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none) :
+    (previewFallbackDetail? : Option String := none)
+    (previewFooterHtml? : Option String := none) :
     Array (String × String) := Id.run do
   let mut attrs := #[
     ("class", "bp_inline_preview_ref"),
@@ -260,6 +267,8 @@ private def inlinePreviewRefAttrs
     attrs := attrs.push ("data-bp-preview-fallback-label", label)
   if let some detail := previewFallbackDetail? then
     attrs := attrs.push ("data-bp-preview-fallback-detail", detail)
+  if let some footerHtml := previewFooterHtml? then
+    attrs := attrs.push ("data-bp-preview-footer-html", footerHtml)
   pure attrs
 
 def inlinePreviewRef
@@ -267,10 +276,12 @@ def inlinePreviewRef
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
     (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none) :
+    (previewFallbackDetail? : Option String := none)
+    (previewFooterHtml? : Option String := none) :
     Verso.Output.Html :=
   .tag "span"
-    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?)
+    (inlinePreviewRefAttrs previewId previewTitle previewLookupKey? previewFallbackLabel?
+      previewFallbackDetail? previewFooterHtml?)
     node
 
 /--
@@ -284,13 +295,15 @@ def inlinePreviewNode (node : Verso.Output.Html)
     (previewId previewTitle : String)
     (previewLookupKey? : Option String := none)
     (previewFallbackLabel? : Option String := none)
-    (previewFallbackDetail? : Option String := none) : Verso.Output.Html :=
-  inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel? previewFallbackDetail?
+    (previewFallbackDetail? : Option String := none)
+    (previewFooterHtml? : Option String := none) : Verso.Output.Html :=
+  inlinePreviewRef node previewId previewTitle previewLookupKey? previewFallbackLabel?
+    previewFallbackDetail? previewFooterHtml?
 
 /-- Render one inline preview trigger from a bundled preview target. -/
 def inlinePreviewTargetNode
     (node : Verso.Output.Html) (target : InlinePreviewTarget) : Verso.Output.Html :=
   inlinePreviewNode node target.triggerId target.title target.lookupKey?
-    target.fallbackLabel? target.fallbackDetail?
+    target.fallbackLabel? target.fallbackDetail? target.footerHtml?
 
 end Informal.HoverRender

@@ -477,6 +477,11 @@ class TestPreviewRuntimeRegressions:
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
 
+        footer = panel.locator(".bp_inline_preview_panel_footer")
+        expect(footer).to_be_visible()
+        expect(footer).to_contain_text("used_target")
+        expect(footer).to_contain_text("statement")
+
         assert_no_runtime_errors(errors)
 
     def test_bibliography_hover_does_not_throw_and_opens_panel(self, server: str, page: Page):
