@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprint
 import VersoBlueprint.Slides
 
 open VersoSlides
@@ -31,6 +32,7 @@ def run (args : List String) : IO UInt32 := do
       { outputDir := outputDir }
       (previewManifest? := some manifestPath)
       slidesRuntimeFixture.toPart
+      (manualImpls := by exact extension_impls%)
       (quiet := true)
   | _ => usage
 

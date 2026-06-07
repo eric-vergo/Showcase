@@ -100,6 +100,7 @@ private def entryBlockKind (entry : Entry) : Informal.Data.InProgressKind :=
 private def entryBlockData (entry : Entry) : Informal.BlockData :=
   {
     kind := entryBlockKind entry
+    codeData := entry.codeData
     label := entry.label
     parent := entry.parent
     count := 0
@@ -158,22 +159,14 @@ private def renderUsesExtra?
         entry
         Name.anonymous
 
-private def renderCodeExtra?
-    (entry : Entry)
-    (codeEntries : Array Entry)
-    (codeCount : Nat) :
+private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
     Option Informal.HeaderExtra :=
-  if codeCount == 0 then
-    none
-  else
-    let previewBody :=
-      codeEntries.map (fun codeEntry => htmlFragment codeEntry.html)
-        |> Informal.CodeSummary.renderManifestCodePreviewBody
-    some <| Informal.HeaderExtra.code <|
-      Informal.CodeSummary.renderManifestCodeStatusChip
-        codeCount
-        entry.label.toString
-        previewBody
+  entry.codeData.map fun codeData =>
+    let parts := Informal.CodeSummary.renderParts
+      blockData
+      { source := some codeData }
+      (fun _ => none)
+    Informal.HeaderExtra.code parts.codeEntry
 
 private def renderUsedByExtra?
     (cfg : RelationPanelsConfig)
@@ -194,13 +187,12 @@ private def renderUsedByExtra?
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
     (entry : Entry)
-    (codeEntries : Array Entry)
-    (codeCount : Nat) :
+    (blockData : Informal.BlockData) :
     Informal.HeaderExtras :=
   {
     group? := renderGroupExtra? cfg entry
     uses? := renderUsesExtra? cfg entry
-    code? := renderCodeExtra? entry codeEntries codeCount
+    code? := renderCodeExtra? entry blockData
     usedBy? := renderUsedByExtra? cfg entry
   }
 
@@ -211,52 +203,68 @@ private def renderCodePanel
     (cfg : RenderConfig)
     (title : EntryTitle)
     (entry : Entry)
-    (codeEntries : Array Entry)
-    (codeCount : Nat) :
+    (codeBodies : Array Html) :
     Html :=
-  if codeEntries.isEmpty then
+  if codeBodies.isEmpty then
     .empty
   else
-    let codeHtml := .seq <| codeEntries.map (fun codeEntry => htmlFragment codeEntry.html)
+    let panelSummary := Informal.CodeSummary.renderPanelIndicator
+      entry.label
+      { source := entry.codeData }
+      (fun _ => none)
+    let codeHtml := .seq codeBodies
     let body := Html.tag "div" (attrsForClass cfg.codeBodyClass) codeHtml
-    Informal.CodeSummary.renderManifestCodePanel
+    Informal.mkCodePanel
       { caption := s!"Lean code for {title.caption}", number? := some title.label }
-      ("Lean code for " ++ entry.label.toString)
-      codeCount
+      panelSummary.summaryTitle
+      panelSummary.indicator
       body
 
 /--
 Render a Blueprint block from a preview-manifest entry using the shared block
 shell. Consumers supply only genre-specific wrappers and per-node options.
 -/
+def renderWithContent
+    (cfg : RenderConfig)
+    (entry : Entry)
+    (opts : RenderOptions := {}) :
+    Html → Array Html → Html :=
+  fun bodyHtml codeBodies =>
+    let blockData := entryBlockData entry
+    let title := entryTitle entry opts.titleOverride?
+    let blockShell :=
+      Informal.renderInformalBlockHtml
+        blockData
+        {
+          numberText := title.label
+          captionText? :=
+            match blockData.kind with
+            | .proof => some entry.title
+            | .statement _ => some title.caption
+          titleRowAttrs? := cfg.titleRowAttrs? entry
+          headerExtras :=
+            match blockData.kind with
+            | .proof => {}
+            | .statement _ =>
+              renderHeaderExtras cfg.relationPanels entry blockData
+        }
+        #[bodyHtml]
+    let codePanel :=
+      if opts.compact then
+        .empty
+      else
+        renderCodePanel cfg title entry codeBodies
+    Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
+
 def render
     (index : Index)
     (cfg : RenderConfig)
     (entry : Entry)
     (opts : RenderOptions := {}) :
     Html :=
-  let blockData := entryBlockData entry
-  let title := entryTitle entry opts.titleOverride?
-  let codeCount := if opts.compact then 0 else index.codeEntryCount entry
   let codeEntries := if opts.compact then #[] else index.codeEntries entry
-  let blockShell :=
-    Informal.renderInformalBlockHtml
-      blockData
-      {
-        numberText := title.label
-        captionText? :=
-          match blockData.kind with
-          | .proof => some entry.title
-          | .statement _ => some title.caption
-        titleRowAttrs? := cfg.titleRowAttrs? entry
-        headerExtras :=
-          match blockData.kind with
-          | .proof => {}
-          | .statement _ =>
-            renderHeaderExtras cfg.relationPanels entry codeEntries codeCount
-      }
-      #[htmlFragment entry.html]
-  let codePanel := renderCodePanel cfg title entry codeEntries codeCount
-  Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
+  renderWithContent cfg entry opts
+    (htmlFragment entry.html)
+    (codeEntries.map (fun codeEntry => htmlFragment codeEntry.html))
 
 end Informal.PreviewManifest.BlockRender

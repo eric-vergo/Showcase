@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Verso.Output.Html
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewManifest.BlockRender
+import VersoBlueprint.PreviewRender
 import VersoBlueprint.Slides.Node
 
 namespace Informal.Slides
@@ -18,9 +19,24 @@ open Verso.Output.Html
 public structure RenderContext where
   manifest? : Option Informal.PreviewManifest.File := none
   index : Informal.PreviewManifest.Index := {}
+  manualImpls : Verso.Genre.Manual.ExtensionImpls
+  traverseState : Verso.Genre.Manual.TraverseState :=
+    Verso.Genre.Manual.TraverseState.initialize {}
+  logError : String → IO Unit := fun _ => pure ()
 
-def RenderContext.ofManifest? (manifest? : Option Informal.PreviewManifest.File) : RenderContext :=
-  { manifest? := manifest?, index := manifest?.map (·.index) |>.getD {} }
+def RenderContext.ofManifest?
+    (manifest? : Option Informal.PreviewManifest.File)
+    (manualImpls : Verso.Genre.Manual.ExtensionImpls := by exact extension_impls%)
+    (logError : String → IO Unit := fun _ => pure ()) : RenderContext :=
+  {
+    manifest?
+    index := manifest?.map (·.index) |>.getD {}
+    manualImpls
+    traverseState :=
+      manifest?.bind (·.traverseState) |>.getD
+        (Verso.Genre.Manual.TraverseState.initialize {})
+    logError
+  }
 
 private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
     Option Informal.PreviewManifest.Entry :=
@@ -61,19 +77,54 @@ private def renderNotice (kind title detail : String) : Html :=
 private def renderMissingNode (node : BlueprintSlideNode) (title detail : String) : Html :=
   .tag "div" node.renderedAttrs (renderNotice "error" title detail)
 
-public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : Html :=
+private def renderEntryBody (ctx : RenderContext) (entry : Informal.PreviewManifest.Entry) :
+    IO Html := do
+  if entry.blocks.isEmpty then
+    pure <| Informal.PreviewManifest.BlockRender.htmlFragment entry.html
+  else
+    Informal.renderManualBlocksHtmlWithState
+      entry.blocks
+      ctx.manualImpls
+      ctx.traverseState
+      (logError := ctx.logError)
+
+private def renderLeanCodeEntry (ctx : RenderContext) (entry : Informal.PreviewManifest.Entry) :
+    IO Html := do
+  match entry.leanCode with
+  | some leanCode =>
+      Informal.LeanCodePreview.renderHtmlWithState
+        leanCode
+        ctx.manualImpls
+        ctx.traverseState
+        (logError := ctx.logError)
+  | none =>
+      pure <| Informal.PreviewManifest.BlockRender.htmlFragment entry.html
+
+private def renderLeanCodeBodies
+    (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
+    IO (Array Html) := do
+  if node.compact then
+    pure #[]
+  else
+    (ctx.index.codeEntries entry).mapM (renderLeanCodeEntry ctx)
+
+public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : IO Html := do
   match ctx.manifest? with
   | none =>
-    renderMissingNode node "Preview manifest unavailable"
+    pure <| renderMissingNode node "Preview manifest unavailable"
       "Pass previewManifest? to slidesMainWithBlueprintPreviews so Blueprint slide nodes can be rendered during slide generation."
   | some _manifest =>
     match ctx.findEntry? node.key with
     | none =>
-      renderMissingNode node "Blueprint node not found" node.key
+      pure <| renderMissingNode node "Blueprint node not found" node.key
     | some entry =>
-      .tag "div" node.renderedAttrs <|
-        Informal.PreviewManifest.BlockRender.render ctx.index slideManifestBlockConfig entry
+      let body ← renderEntryBody ctx entry
+      let codeBodies ← renderLeanCodeBodies ctx node entry
+      pure <| .tag "div" node.renderedAttrs <|
+        Informal.PreviewManifest.BlockRender.renderWithContent slideManifestBlockConfig entry
           { titleOverride? := node.title?, compact := node.compact }
+          body
+          codeBodies
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
@@ -81,7 +132,7 @@ Render a Blueprint slide node from the structured attributes carried by the
 -/
 public def renderBlueprintSlideNodeFromAttrs?
     (ctx : RenderContext)
-    (attrs : Array (String × String)) : Option Html := do
+    (attrs : Array (String × String)) : Option (IO Html) := do
   let node ← BlueprintSlideNode.fromAttrs? attrs
   some (renderBlueprintSlideNode ctx node)
 

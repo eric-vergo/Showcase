@@ -557,6 +557,12 @@ structure Entry where
   proofUses : Array Informal.Data.UseRef := #[]
   /-- Shared-preview manifest keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
+  /-- Canonical Lean code data associated with this informal node, if any. -/
+  codeData : Option Informal.BlockCodeData := none
+  /-- Structured Manual blocks for this preview entry. `html` is a compatibility fallback. -/
+  blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+  /-- Structured Lean declaration preview data for `leanDecl` entries. -/
+  leanCode : Option Informal.LeanCodePreview.Entry := none
   /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
@@ -576,6 +582,8 @@ structure Entry where
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure File where
+  /-- Manual traversal state used to regenerate structured preview blocks. -/
+  traverseState : Option TraverseState := none
   previews : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -722,7 +730,12 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
             for ctorName in info.ctors do
               let ctorInfo ← getConstInfoCtor ctorName
               unless ctorInfo.numFields == 0 do
-                throwError "Schema generation currently supports only nullary inductives, but '{name}' has constructor '{ctorName}' with fields"
+                let schema := Json.mkObj [
+                  ("type", Json.str "object"),
+                  ("description", Json.str s!"Derived JSON representation for '{name}'.")
+                ]
+                modify fun st => { st with defs := st.defs.push (name.toString, schema) }
+                return jsonSchemaRef name
               enumVals := enumVals.push (Json.str ctorName.getString!)
             let schema := Json.mkObj [
               ("type", Json.str "string"),
@@ -882,6 +895,31 @@ private def blockLeanCodePreviewKeys
     (init := entry.leanCodePreviewKeys)
     (fun keys key => pushUnique keys key)
 
+private def externalDeclsFromLeanPreviewKeys
+    (state : TraverseState)
+    (keys : Array String) : Array Informal.Data.ExternalRef :=
+  keys.filterMap fun key =>
+    match Informal.TraversalIndex.LeanCodePreviews.object? state key with
+    | none => none
+    | some obj =>
+        match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
+        | .ok { source := .externalDecl decl, .. } => some decl
+        | _ => none
+
+private def blockCodeData?
+    (state : TraverseState)
+    (label : Name)
+    (entry : PreviewCache.Entry)
+    (blockData? : Option Informal.BlockData) : Option Informal.BlockCodeData :=
+  let inline? := Informal.TraversalIndex.InlineCode.data? state label
+  let externalDecls := externalDeclsFromLeanPreviewKeys state entry.leanCodePreviewKeys
+  let external? :=
+    if externalDecls.isEmpty then
+      blockData?.bind (·.codeData)
+    else
+      some (Informal.BlockCodeData.external externalDecls)
+  Informal.BlockCodeData.ofHintAndInline external? inline?
+
 private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
   let axes : Array RelationAxis :=
     if source.statementDeps.contains target then #[.statement] else #[]
@@ -985,6 +1023,7 @@ private def buildTraversalEntries
       let blockData? := blockInfo? state entry.label
       let key := PreviewCache.key entry.label entry.facet
       let headingParts? := blockHeadingParts? state entry.label entry.facet blockData?
+      let codeData := blockCodeData? state entry.label entry blockData?
       let manifestEntry : Entry := {
         key
         targetKind := .block
@@ -1000,6 +1039,8 @@ private def buildTraversalEntries
         statementUses := blockData?.map (·.statementUses) |>.getD #[]
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
         leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
+        codeData
+        blocks := entry.blocks
         uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
         usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
         group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1034,6 +1075,7 @@ private def buildLeanCodeEntries
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target
+        leanCode := some entry
         html
       }
       entries := entries.push manifestEntry
@@ -1089,7 +1131,7 @@ def buildManifestFile
   let leanCodePreviews ← buildLeanCodeEntries impls logError state
   let citationPreviews ← buildCitationEntries impls logError state
   let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
-  pure { previews }
+  pure { traverseState := some state, previews }
 
 private def parseRenderConfigOptions (config : RenderConfig := {}) :
     List String → ReaderT ExtensionImpls IO RenderConfig
