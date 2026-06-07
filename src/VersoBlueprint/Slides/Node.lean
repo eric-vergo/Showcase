@@ -25,7 +25,7 @@ public structure BlueprintSlideNode where
   label : String
   facet : String := "statement"
   key : String
-  title? : Option String := none
+  displayLabel? : Option String := none
   compact : Bool := false
   siteBase? : Option String := none
 deriving Repr, BEq
@@ -47,7 +47,7 @@ def BlueprintSlideNode.toAttrs (node : BlueprintSlideNode) : Array (String × St
      , ("data-bp-preview-key", node.key)
      , ("data-bp-compact", if node.compact then "true" else "false")
      ] ++
-    (node.title?.map (fun title => #[("data-bp-title", title)] ) |>.getD #[]) ++
+    (node.displayLabel?.map (fun label => #[("data-bp-display-label", label)] ) |>.getD #[]) ++
     (node.siteBase?.map (fun siteBase => #[("data-bp-site-base", siteBase)] ) |>.getD #[])
 
 def BlueprintSlideNode.fromAttrs? (attrs : Array (String × String)) : Option BlueprintSlideNode := do
@@ -56,10 +56,10 @@ def BlueprintSlideNode.fromAttrs? (attrs : Array (String × String)) : Option Bl
   let label ← attrValue? attrs "data-bp-label"
   let facet := attrValue? attrs "data-bp-facet" |>.getD "statement"
   let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
-  let title? := attrValue? attrs "data-bp-title"
+  let displayLabel? := attrValue? attrs "data-bp-display-label"
   let compact := attrValue? attrs "data-bp-compact" == some "true"
   let siteBase? := attrValue? attrs "data-bp-site-base"
-  some { label, facet, key, title?, compact, siteBase? }
+  some { label, facet, key, displayLabel?, compact, siteBase? }
 
 def BlueprintSlideNode.renderedAttrs (node : BlueprintSlideNode) : Array (String × String) :=
   node.toAttrs ++ #[("data-bp-rendered", "static")]
@@ -70,7 +70,7 @@ def BlueprintSlideNode.fallbackText (node : BlueprintSlideNode) : String :=
 public structure BlueprintNodeConfig where
   label : String
   facet : Option String := none
-  title : Option String := none
+  displayLabel : Option String := none
   compact : Bool := false
   siteBase : Option String := none
 
@@ -79,7 +79,7 @@ public meta instance : FromArgs BlueprintNodeConfig DocElabM where
     BlueprintNodeConfig.mk <$>
       .positional `label .string <*>
       .named `facet .string true <*>
-      .named `title .string true <*>
+      .named `displayLabel .string true <*>
       .flag `compact false <*>
       .named `siteBase .string true
 
@@ -96,7 +96,7 @@ def BlueprintNodeConfig.toSlideNode (cfg : BlueprintNodeConfig) : BlueprintSlide
     label := cfg.label
     facet
     key := previewKey cfg.label facet
-    title? := cfg.title
+    displayLabel? := cfg.displayLabel
     compact := cfg.compact
     siteBase? := cfg.siteBase
   }
