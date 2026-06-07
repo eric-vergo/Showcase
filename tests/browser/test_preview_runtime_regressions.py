@@ -482,6 +482,9 @@ class TestPreviewRuntimeRegressions:
         expect(footer).to_contain_text("used_target")
         expect(footer).to_contain_text("statement")
 
+        page.mouse.move(0, 0)
+        expect(panel).to_be_hidden(timeout=1000)
+
         assert_no_runtime_errors(errors)
 
     def test_bibliography_hover_does_not_throw_and_opens_panel(self, server: str, page: Page):
