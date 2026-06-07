@@ -183,6 +183,8 @@ private structure UsedByEntry where
   source : BlockData
   inStatement : Bool := false
   inProof : Bool := false
+  origins : Array Data.UseOrigin := #[]
+  intents : Array Data.UseIntent := #[]
 
 private structure UsesEntry where
   label : Data.Label
@@ -196,21 +198,44 @@ private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry 
   entries.qsort fun a b =>
     BlockData.traversalOrderLess a.source b.source
 
+private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
+
+private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    UsedByEntry :=
+  {
+    existing with
+      inStatement := existing.inStatement || !isProof
+      inProof := existing.inProof || isProof
+      origins := pushUnique existing.origins useRef.origin
+      intents := pushUnique existing.intents useRef.intent
+  }
+
+private def addUsedByEntry
+    (acc : Array UsedByEntry) (source : BlockData) (useRef : Data.UseRef) (isProof : Bool)
+    (target : Data.Label) : Array UsedByEntry :=
+  if useRef.label != target then
+    acc
+  else if acc.any (·.source.label == source.label) then
+    acc.map fun entry =>
+      if entry.source.label == source.label then
+        mergeUsedByEntry entry useRef isProof
+      else
+        entry
+  else
+    acc.push <| mergeUsedByEntry { source } useRef isProof
+
 private def collectUsedByEntries
     (ctx : Context) (target : Data.Label) : Array UsedByEntry :=
   sortUsedByEntries <| ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target then
       acc
     else
-      let inStatement := source.statementDeps.contains target
-      let inProof := source.proofDeps.contains target
-      if !inStatement && !inProof then
-        acc
-      else
-        acc.push { source, inStatement, inProof }
-
-private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
+      let acc :=
+        source.statementUses.foldl (init := acc) fun acc useRef =>
+          addUsedByEntry acc source useRef false target
+      source.proofUses.foldl (init := acc) fun acc useRef =>
+        addUsedByEntry acc source useRef true target
 
 private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     UsesEntry :=
@@ -299,13 +324,14 @@ private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
 private def renderUseAxisBadges (entry : UsesEntry) : Output.Html :=
   renderAxisBadges entry.inStatement entry.inProof
 
-private def renderUseMetadataBadges (entry : UsesEntry) : Output.Html :=
+private def renderUseMetadataBadges
+    (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Output.Html :=
   open Verso.Output.Html in
   let originBadges :=
-    entry.origins.filter (· != .manual) |>.map fun origin =>
+    origins.filter (· != .manual) |>.map fun origin =>
       {{<span class="bp_relation_axis_badge bp_uses_origin_badge">{{.text true (toString origin)}}</span>}}
   let intentBadges :=
-    entry.intents.filter (· != .regular) |>.map fun intent =>
+    intents.filter (· != .regular) |>.map fun intent =>
       {{<span class="bp_relation_axis_badge bp_uses_intent_badge">{{.text true (toString intent)}}</span>}}
   .seq (originBadges ++ intentBadges)
 
@@ -466,6 +492,7 @@ def renderUsedByExtra {m}
         (metaHtml := {{
           <code>s!"{entry.source.label}"</code>
           {{renderUsedByAxisBadges entry}}
+          {{renderUseMetadataBadges entry.origins entry.intents}}
         }})
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
 
@@ -483,7 +510,7 @@ def renderUsesExtra {m}
       let metaHtml := {{
         <code>s!"{entry.label}"</code>
         {{renderUseAxisBadges entry}}
-        {{renderUseMetadataBadges entry}}
+        {{renderUseMetadataBadges entry.origins entry.intents}}
       }}
       match entry.target? with
       | some target =>

@@ -46,7 +46,7 @@ def usedByPreviewTarget : Nat := 0
 ```
 
 :::lemma_ "lem:used.statement"
-Statement depends on {uses "def:used.target"}[].
+Statement depends on {uses "def:used.target" (origin := "automatic") (intent := "technical")}[].
 :::
 
 :::theorem "thm:used.proof"
@@ -54,7 +54,7 @@ Separate theorem with a proof-only dependency.
 :::
 
 :::proof "thm:used.proof"
-Proof depends on {uses "def:used.target"}[].
+Proof depends on {uses "def:used.target" (intent := "auxiliary")}[].
 :::
 :::::::
 

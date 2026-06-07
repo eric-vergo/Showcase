@@ -35,6 +35,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "data-bp-relation-preview-key" &&
       hasSubstr out ">statement</span>" &&
       hasSubstr out ">proof</span>" &&
+      hasSubstr out ">automatic</span>" &&
+      hasSubstr out ">technical</span>" &&
+      hasSubstr out ">auxiliary</span>" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with

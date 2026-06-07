@@ -459,6 +459,8 @@ views.
 Rendered statement headers show related metadata chips in this order: group,
 uses, used by, then Lean status. When local or external Lean material is
 available, the rendered page links or previews the associated content.
+Rows in the uses and used-by panels show statement/proof badges plus any
+non-default dependency origin or intent badges.
 
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.
