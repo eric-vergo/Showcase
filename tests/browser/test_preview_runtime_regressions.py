@@ -559,6 +559,63 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_proof_uses_multiple_dependencies_loads_panel_previews(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_proof_panel"]'
+        ).first
+        expect(statement.locator(".bp_extra_slot_uses .bp_relation_chip").first).to_have_text(
+            "uses 0"
+        )
+
+        proof = page.locator(
+            '.bp_wrapper.bp_kind_proof_wrapper[title="used_proof_panel"]'
+        ).first
+        slot = proof.locator(".bp_extra_slot_uses").first
+        wrap = slot.locator(".bp_relation_wrap").first
+        expect(wrap).to_have_count(1)
+        expect(slot.locator(".bp_inline_preview_ref")).to_have_count(0)
+
+        chip = wrap.locator("button.bp_relation_chip").first
+        expect(chip).to_have_text("uses 2")
+        chip.hover()
+
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_title")).to_have_text(
+            "Proof uses 2"
+        )
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
+            "Proof dependency previews"
+        )
+        expect(wrap.locator(".bp_relation_badge_proof").first).to_be_visible()
+
+        header_label = wrap.locator(".bp_relation_preview_header_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
+        body = wrap.locator(".bp_relation_preview_body")
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
+            arg=body.element_handle(),
+        )
+
+        second_item = wrap.locator(".bp_relation_item").nth(1)
+        second_item.hover()
+        expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(header_label).to_contain_text("used_aux_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_aux_target"))
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Auxiliary target statement for multi-use proof previews.')",
+            arg=body.element_handle(),
+        )
+
+        assert_no_runtime_errors(errors)
+
     def test_bibliography_hover_does_not_throw_and_opens_panel(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Inline-Hover-Previews/")

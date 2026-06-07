@@ -84,6 +84,15 @@ Rendered statement and proof headers include separate `uses` chips that preview
 their own declared dependencies. Non-default dependency metadata such as
 `automatic`, `auxiliary`, and `technical` is shown in those previews.
 
+Proof directives accept the same dependency options, so proof-only
+prerequisites can stay attached to the proof header:
+
+```lean
+:::proof "addition_right_identity" (uses := "induction_setup, zero_simplifier") (uses_intent := "auxiliary")
+Induct on `n`, then discharge the zero case with the simplifier.
+:::
+```
+
 If a role such as `{uses "addition_spec"}[]`, `{bpref "addition_spec"}[]`, or a
 citation has an empty payload, Blueprint can generate the visible text
 automatically, for example `Theorem N`.
