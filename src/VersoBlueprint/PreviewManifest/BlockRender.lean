@@ -74,6 +74,25 @@ structure RenderOptions where
   titleOverride? : Option String := none
   compact : Bool := false
 
+/--
+Rendered content for a Blueprint block shell.
+
+The shell renderer intentionally receives already-rendered HTML here: file-mode
+consumers can populate it from a rendered-preview cache, while same-toolchain
+consumers can first render stored Manual blocks through the regular Manual/VBP
+path and then pass the result through this same assembly path.
+-/
+structure RenderedContent where
+  body : Html
+  codeBodies : Array Html := #[]
+
+def RenderedContent.ofHtmlStrings (bodyHtml : String) (codeHtml : Array String := #[]) :
+    RenderedContent :=
+  {
+    body := htmlFragment bodyHtml
+    codeBodies := codeHtml.map htmlFragment
+  }
+
 private structure EntryTitle where
   caption : String
   label : String
@@ -220,16 +239,13 @@ private def renderCodePanel
       panelSummary.indicator
       body
 
-/--
-Render a Blueprint block from a preview-manifest entry using the shared block
-shell. Consumers supply only genre-specific wrappers and per-node options.
--/
-def renderWithContent
+/-- Render a Blueprint block shell from semantic entry data and rendered content. -/
+def renderWithRenderedContent
     (cfg : RenderConfig)
     (entry : Entry)
+    (content : RenderedContent)
     (opts : RenderOptions := {}) :
-    Html → Array Html → Html :=
-  fun bodyHtml codeBodies =>
+    Html :=
     let blockData := entryBlockData entry
     let title := entryTitle entry opts.titleOverride?
     let blockShell :=
@@ -248,12 +264,12 @@ def renderWithContent
             | .statement _ =>
               renderHeaderExtras cfg.relationPanels entry blockData
         }
-        #[bodyHtml]
+        #[content.body]
     let codePanel :=
       if opts.compact then
         .empty
       else
-        renderCodePanel cfg title entry codeBodies
+        renderCodePanel cfg title entry content.codeBodies
     Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
 
 def render
@@ -263,8 +279,8 @@ def render
     (opts : RenderOptions := {}) :
     Html :=
   let codeEntries := if opts.compact then #[] else index.codeEntries entry
-  renderWithContent cfg entry opts
-    (htmlFragment entry.html)
-    (codeEntries.map (fun codeEntry => htmlFragment codeEntry.html))
+  renderWithRenderedContent cfg entry
+    (RenderedContent.ofHtmlStrings entry.html (codeEntries.map (·.html)))
+    opts
 
 end Informal.PreviewManifest.BlockRender
