@@ -204,6 +204,9 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     pure <|
       hasSubstr codeHtml "class=\"hl lean block\"" &&
         hasSubstr codeHtml "examples" &&
+        hasSubstr codeHtml "data-verso-hover=" &&
+        !files.htmlCache.hoverDocs.isEmpty &&
+        files.htmlCache.hoverDocs.all (fun doc => doc.id >= Informal.PreviewManifest.HtmlCache.hoverIdStart) &&
         !hasSubstr codeHtml "<pre>def "
 
 /-- info: true -/

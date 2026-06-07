@@ -141,8 +141,14 @@ class TestBlueprintSlidesRuntime:
             f"{slides_server}/-verso-data/blueprint-html-cache.json"
         ) as response:
             html_cache = json.load(response)
+        with urllib.request.urlopen(f"{slides_server}/-verso-docs.json") as response:
+            verso_docs = json.load(response)
         html_by_key = {entry["key"]: entry["html"] for entry in html_cache["entries"]}
+        hover_docs = html_cache["hoverDocs"]
         assert "traverseState" not in manifest
+        assert hover_docs
+        assert all(doc["id"] >= 1_000_000 for doc in hover_docs)
+        assert any(str(doc["id"]) in verso_docs for doc in hover_docs)
         collatz_entry = next(
             entry
             for entry in manifest["previews"]
@@ -167,6 +173,7 @@ class TestBlueprintSlidesRuntime:
         assert len(code_entries) == 2
         assert all("leanCode" not in entry for entry in code_entries)
         assert all("class=\"hl lean block\"" in html_by_key[entry["key"]] for entry in code_entries)
+        assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
         page.wait_for_function(
@@ -256,6 +263,16 @@ class TestBlueprintSlidesRuntime:
         expect(node.locator(".bp_slide_code_body code.hl.lean.block")).to_have_count(1)
         assert node.locator(".bp_slide_code_body .keyword.token").count() >= 2
         expect(node.locator(".bp_slide_code_body")).to_contain_text("collatzStep")
+        lean_token = (
+            node.locator(".bp_slide_code_body .const.token")
+            .filter(has_text="collatzStep")
+            .first
+        )
+        lean_token.hover()
+        lean_hover = page.locator(".tippy-box[data-theme~='lean']").first
+        expect(lean_hover).to_be_visible()
+        expect(lean_hover).not_to_contain_text("Failed to load")
+        expect(lean_hover).to_contain_text("collatzStep")
 
         expect_slide_link(
             page,

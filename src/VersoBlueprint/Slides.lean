@@ -61,10 +61,11 @@ private def slidesMainWithBlueprintRenderer
     linkTargets := {}
     codeOptions := {}
   }
+  let initialHoverState := htmlCache?.map (·.hoverState) |>.getD {}
   let (slidesHtml, hoverState) ←
     (let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
         blueprintSlidesGenreHtml renderContext
-     (VersoSlides.renderDocument config doc).run ctx |>.run {})
+     (VersoSlides.renderDocument config doc).run ctx |>.run initialHoverState)
   let title := VersoSlides.inlinesToPlainText doc.title
   let fullHtml := VersoSlides.renderFullHtml config title slidesHtml traverseState.cssBlocks
   let dir := config.outputDir

@@ -584,6 +584,24 @@ deriving Inhabited, Repr, ToJson, FromJson
 
 namespace HtmlCache
 
+/--
+First hover id reserved for cache-rendered fragments.
+
+Verso writes page-local hover tables after rendering the main document. Cache
+fragments are rendered separately and then merged into that table, so their ids
+must live outside the normal small page-local range unless the HTML fragments are
+structurally remapped. Keeping a reserved range preserves normal
+`data-verso-hover` markup without duplicating hover payloads into each fragment.
+-/
+def hoverIdStart : Nat := 1000000
+
+structure HoverDoc where
+  /-- Numeric `data-verso-hover` id reserved for a cached rendered fragment. -/
+  id : Nat
+  /-- Rendered hover payload HTML for this id. -/
+  html : String
+deriving Inhabited, Repr, ToJson, FromJson
+
 structure Entry where
   /-- Composite preview lookup key for this rendered HTML fragment. -/
   key : String
@@ -594,6 +612,8 @@ deriving Inhabited, Repr, ToJson, FromJson
 structure File where
   /-- Rendered HTML fragments keyed by preview/cache entry key. -/
   entries : Array Entry := #[]
+  /-- Verso hover payloads referenced by the rendered HTML fragments. -/
+  hoverDocs : Array HoverDoc := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure Index where
@@ -618,6 +638,39 @@ def File.findEntry? (file : File) (key : String) : Option Entry :=
 
 def File.findHtml? (file : File) (key : String) : Option String :=
   file.index.findHtml? key
+
+def initialHoverState : Verso.Code.Hover.State Output.Html :=
+  { dedup := { ({} : Verso.Code.Hover.Dedup Output.Html) with nextId := hoverIdStart }
+    idSupply := {} }
+
+def HoverDoc.ofDedup (dedup : Verso.Code.Hover.Dedup Output.Html) : Array HoverDoc :=
+  dedup.contentId.toArray.map (fun (id, html) => {
+    id
+    html := html.asString
+  }) |>.qsort (fun a b => a.id < b.id)
+
+def HoverDoc.toHtml (doc : HoverDoc) : Output.Html :=
+  Output.Html.text false doc.html
+
+def File.hoverDocsJson (file : File) : Json :=
+  file.hoverDocs.foldl (init := Json.mkObj []) fun out doc =>
+    out.setObjVal! (toString doc.id) (Json.str doc.html)
+
+def File.hoverDedup (file : File) : Verso.Code.Hover.Dedup Output.Html :=
+  let nextId :=
+    file.hoverDocs.foldl (init := 0) fun next doc =>
+      Nat.max next (doc.id + 1)
+  let contentId :=
+    file.hoverDocs.foldl (init := {}) fun content doc =>
+      content.insert doc.id doc.toHtml
+  let idContent :=
+    file.hoverDocs.foldl (init := {}) fun ids doc =>
+      ids.insert doc.toHtml doc.id
+  { nextId, contentId, idContent }
+
+def File.hoverState (file : File) : Verso.Code.Hover.State Output.Html :=
+  { dedup := file.hoverDedup
+    idSupply := {} }
 
 private def pushDistinctHtml (values : Array String) (html : String) : Array String :=
   if values.contains html then values else values.push html
@@ -1061,12 +1114,15 @@ private def buildGroupRelation?
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
+    (state : TraverseState)
+    (hoverState : Verso.Code.Hover.State Output.Html) :
+    IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
-    | return (#[], #[])
+    | return (#[], #[], hoverState)
   let storedBlocks := Informal.collectStoredBlocks state
   let mut entries := #[]
   let mut htmlEntries := #[]
+  let mut hoverState := hoverState
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := PreviewCache.Entry) obj.data with
     | .error err =>
@@ -1074,8 +1130,10 @@ private def buildTraversalEntries
     | .ok entry =>
       if entry.blocks.isEmpty then
         continue
-      let html ← Output.Html.asString <$> Informal.renderManualBlocksHtmlWithState entry.blocks impls state
-        (logError := logError)
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
+        (logError := logError) (hoverState := hoverState)
+      hoverState := rendered.hoverState
+      let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
       let blockData? := blockInfo? state entry.label
@@ -1108,23 +1166,28 @@ private def buildTraversalEntries
       }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key, html }
-  pure (entries, htmlEntries)
+  pure (entries, htmlEntries, hoverState)
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
+    (state : TraverseState)
+    (hoverState : Verso.Code.Hover.State Output.Html) :
+    IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let some domain := Informal.TraversalIndex.LeanCodePreviews.domain? state
-    | return (#[], #[])
+    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
+  let mut hoverState := hoverState
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
     | .error err =>
       logError s!"Blueprint manifest: malformed Lean-code preview entry {obj.canonicalName}: {err}"
     | .ok entry =>
-      let html ← Output.Html.asString <$> Informal.LeanCodePreview.renderHtmlWithState entry impls state
-        (logError := logError)
+      let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
+        (logError := logError) (hoverState := hoverState)
+      hoverState := rendered.hoverState
+      let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
       let manifestEntry : Entry := {
@@ -1136,33 +1199,39 @@ private def buildLeanCodeEntries
       }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
-  pure (entries, htmlEntries)
+  pure (entries, htmlEntries, hoverState)
 
 private def renderCitationEntryHtml
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (entry : Informal.Cite.CitationPreviewData) : IO String := do
-  let citationHtml ← Informal.renderManualHtmlWithState
+    (entry : Informal.Cite.CitationPreviewData)
+    (hoverState : Verso.Code.Hover.State Output.Html) :
+    IO (String × Verso.Code.Hover.State Output.Html) := do
+  let rendered ← Informal.renderManualHtmlWithStateAndHovers
     (entry.item.citation.bibHtml (Verso.Doc.Html.ToHtml.toHtml (genre := Verso.Genre.Manual)))
-    impls state (logError := logError)
-  let body := Informal.Cite.citationPreviewBody citationHtml entry.kind entry.index
-  pure <| Output.Html.asString body
+    impls state (logError := logError) (hoverState := hoverState)
+  let body := Informal.Cite.citationPreviewBody rendered.html entry.kind entry.index
+  pure (Output.Html.asString body, rendered.hoverState)
 
 private def buildCitationEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Entry × Array HtmlCache.Entry) := do
+    (state : TraverseState)
+    (hoverState : Verso.Code.Hover.State Output.Html) :
+    IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let some domain := Informal.TraversalIndex.CitationPreviews.domain? state
-    | return (#[], #[])
+    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
+  let mut hoverState := hoverState
   for (_key, obj) in domain.objects.toArray do
     match fromJson? (α := Informal.Cite.CitationPreviewData) obj.data with
     | .error err =>
       logError s!"Blueprint manifest: malformed citation preview entry {obj.canonicalName}: {err}"
     | .ok citation =>
-      let html ← renderCitationEntryHtml impls logError state citation
+      let (html, hoverState') ← renderCitationEntryHtml impls logError state citation hoverState
+      hoverState := hoverState'
       if html.trimAscii.isEmpty then
         continue
       let manifestEntry : Entry := {
@@ -1175,7 +1244,7 @@ private def buildCitationEntries
       }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
-  pure (entries, htmlEntries)
+  pure (entries, htmlEntries, hoverState)
 
 /--
 Build the semantic Blueprint manifest and rendered HTML cache from a completed
@@ -1185,14 +1254,18 @@ def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState) : IO Files := do
-  let (traversalPreviews, traversalHtml) ← buildTraversalEntries impls logError state
-  let (leanCodePreviews, leanCodeHtml) ← buildLeanCodeEntries impls logError state
-  let (citationPreviews, citationHtml) ← buildCitationEntries impls logError state
+  let hoverState := HtmlCache.initialHoverState
+  let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
+  let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
+  let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
   let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   pure {
     manifest := { previews }
-    htmlCache := { entries := htmlEntries }
+    htmlCache := {
+      entries := htmlEntries
+      hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
+    }
   }
 
 private def parseRenderConfigOptions (config : RenderConfig := {}) :
@@ -1269,6 +1342,21 @@ private def dumpHtmlCache
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
+private def readJsonFileOrEmptyObject (path : System.FilePath) : IO Json := do
+  if !(← path.pathExists) then
+    pure <| Json.mkObj []
+  else
+    match Json.parse (← IO.FS.readFile path) with
+    | .ok json => pure json
+    | .error err => throw <| IO.userError s!"could not parse JSON file {path}: {err}"
+
+private def mergeHtmlCacheHoverDocsIntoVersoDocs
+    (docsPath : System.FilePath) (htmlCache : HtmlCache.File) : IO Unit := do
+  if htmlCache.hoverDocs.isEmpty then
+    return
+  let docs ← readJsonFileOrEmptyObject docsPath
+  IO.FS.writeFile docsPath (toString <| docs.mergeObj htmlCache.hoverDocsJson)
+
 /--
 Emit the canonical Blueprint manifest and rendered HTML cache files.
 
@@ -1283,6 +1371,7 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.createDirAll dataDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
+  mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 
 def dumpSchemaFlag : String := "--dump-schema"

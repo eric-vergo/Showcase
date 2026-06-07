@@ -62,15 +62,25 @@ def Entry.ofExternalDecl (target : Name) (decl : Informal.Data.ExternalRef) : En
 def title (decl : Name) : String :=
   s!"Lean declaration {decl}"
 
+def renderWithState
+    (entry : Entry)
+    (impls : Verso.Genre.Manual.ExtensionImpls)
+    (state : Verso.Genre.Manual.TraverseState)
+    (logError : String → IO Unit := fun _ => pure ())
+    (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
+    IO Informal.RenderedManualHtml := do
+  match entry.source with
+  | .inlineBlocks blocks =>
+    Informal.renderManualBlocksHtmlWithStateAndHovers blocks impls state
+      (logError := logError) (hoverState := hoverState)
+  | .externalDecl decl =>
+    pure { html := Informal.ExternalCode.renderPreviewHtml #[decl], hoverState }
+
 def renderHtmlWithState
     (entry : Entry)
     (impls : Verso.Genre.Manual.ExtensionImpls)
     (state : Verso.Genre.Manual.TraverseState)
     (logError : String → IO Unit := fun _ => pure ()) : IO Verso.Output.Html := do
-  match entry.source with
-  | .inlineBlocks blocks =>
-    Informal.renderManualBlocksHtmlWithState blocks impls state (logError := logError)
-  | .externalDecl decl =>
-    pure <| Informal.ExternalCode.renderPreviewHtml #[decl]
+  return (← renderWithState entry impls state (logError := logError)).html
 
 end Informal.LeanCodePreview

@@ -169,8 +169,9 @@ contribute automatically to the reported progress state.
 ### Metadata export
 
 Blueprint can dump structured metadata for other tools, including the semantic
-manifest, its schema, and the rendered HTML cache used by preview consumers.
-These are command-line flags passed to the generator binary, such as
+manifest, its schema, and the rendered HTML cache used by preview consumers. The
+cache includes the hover payloads needed by cached Lean fragments. These are
+command-line flags passed to the generator binary, such as
 `--dump-manifest`, `--dump-html-cache`, and `--dump-schema`.
 
 ### Widget
