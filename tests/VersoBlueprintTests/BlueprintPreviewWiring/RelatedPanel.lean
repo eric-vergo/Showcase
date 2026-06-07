@@ -31,8 +31,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Reverse dependency previews" &&
       !hasSubstr out "Hover a use site to preview it." &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
+      hasSubstr out "class=\"bp_relation_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id" &&
       hasSubstr out "data-bp-relation-preview-key" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out ">statement</span>" &&
       hasSubstr out ">proof</span>" &&
       hasSubstr out ">automatic</span>" &&
@@ -44,6 +47,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "bp_relation_badge_intent_technical" &&
       hasSubstr out "bp_relation_badge_intent_auxiliary" &&
       hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
+      hasExtraCss st ".bp_relation_preview_header_label" &&
       hasExtraCss st ".bp_relation_badge_origin::before" &&
       hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
@@ -58,6 +62,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
         hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
         hasSubstr relationJs "function loadActivePreview()" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })" &&
         hasSubstr relationJs "item.addEventListener(\"mouseenter\"" &&
@@ -106,7 +111,10 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Uses 3" &&
       hasSubstr out "Dependency previews" &&
       !hasSubstr out "Hover a dependency to preview it." &&
+      hasSubstr out "class=\"bp_relation_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
       hasSubstr out "def:uses.proof" &&
@@ -126,6 +134,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
         hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)"
       | none => false
     )

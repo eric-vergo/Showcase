@@ -55,12 +55,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewUtilsJs "Blueprint HTML cache contains duplicate key " &&
         hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
         hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
+        hasSubstr previewUtilsJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
+        hasSubstr previewUtilsJs "data-bp-preview-header-label" &&
         hasSubstr previewUtilsJs "window.setTimeout(function () {" &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
-        hasSubstr inlineJs "function setPanelHeaderLink(labelNode, trigger)" &&
-        hasSubstr inlineJs "data-bp-preview-header-label" &&
+        hasSubstr inlineJs "previewUtils.setPreviewHeaderLink(headerLabel, trigger)" &&
         hasSubstr inlineJs "function setPanelFooter(footerNode, trigger)" &&
         hasSubstr inlineJs "data-bp-preview-footer-html" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&

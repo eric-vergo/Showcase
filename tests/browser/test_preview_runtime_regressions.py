@@ -438,6 +438,11 @@ class TestPreviewRuntimeRegressions:
         )
         expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
+        header_label = wrap.locator(".bp_relation_preview_header_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_statement")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_statement"))
+
         body = wrap.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",

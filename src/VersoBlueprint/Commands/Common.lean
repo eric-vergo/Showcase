@@ -642,6 +642,31 @@ def previewHoverUtilsJs : String := r##"(function () {
     if (bodyNode instanceof Element) bodyNode.innerHTML = "";
   }
 
+  function setPreviewHeaderLink(labelNode, sourceNode) {
+    if (!(labelNode instanceof Element)) return;
+    const label =
+      sourceNode instanceof Element
+        ? (sourceNode.getAttribute("data-bp-preview-header-label") || "").trim()
+        : "";
+    const href =
+      sourceNode instanceof Element
+        ? (sourceNode.getAttribute("data-bp-preview-header-href") || "").trim()
+        : "";
+    if (label.length > 0) {
+      labelNode.textContent = label;
+      if (href.length > 0) {
+        labelNode.setAttribute("href", href);
+      } else {
+        labelNode.removeAttribute("href");
+      }
+      labelNode.hidden = false;
+    } else {
+      labelNode.textContent = "";
+      labelNode.removeAttribute("href");
+      labelNode.hidden = true;
+    }
+  }
+
   function showPanelContent(panel, titleNode, bodyNode, heading, html, behavior, anchor, margin, offset) {
     if (!(panel instanceof Element) || !(titleNode instanceof Element) || !(bodyNode instanceof Element)) {
       return false;
@@ -917,6 +942,7 @@ def previewHoverUtilsJs : String := r##"(function () {
     previewDebug: previewDebug,
     previewDebugLabel: previewDebugLabel,
     hidePanelContent: hidePanelContent,
+    setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
     bindTemplatePreview: bindTemplatePreview
   };
@@ -1192,6 +1218,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       typeof previewUtils.readPanelBehavior !== "function" ||
       typeof previewUtils.showPanelContent !== "function" ||
       typeof previewUtils.hidePanelContent !== "function" ||
+      typeof previewUtils.setPreviewHeaderLink !== "function" ||
       typeof previewUtils.shouldKeepOpen !== "function" ||
       typeof previewUtils.escapeHtml !== "function" ||
       typeof previewUtils.configureCloseButton !== "function" ||
@@ -1272,31 +1299,6 @@ def inlineLinkPreviewJs : String := r##"(function () {
       if (childHideTimer !== null) {
         clearTimeout(childHideTimer);
         childHideTimer = null;
-      }
-    }
-
-    function setPanelHeaderLink(labelNode, trigger) {
-      if (!(labelNode instanceof Element)) return;
-      const label =
-        trigger instanceof Element
-          ? (trigger.getAttribute("data-bp-preview-header-label") || "").trim()
-          : "";
-      const href =
-        trigger instanceof Element
-          ? (trigger.getAttribute("data-bp-preview-header-href") || "").trim()
-          : "";
-      if (label.length > 0) {
-        labelNode.textContent = label;
-        if (href.length > 0) {
-          labelNode.setAttribute("href", href);
-        } else {
-          labelNode.removeAttribute("href");
-        }
-        labelNode.hidden = false;
-      } else {
-        labelNode.textContent = "";
-        labelNode.removeAttribute("href");
-        labelNode.hidden = true;
       }
     }
 
@@ -1470,7 +1472,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       });
       clearPanelSizeLock();
       previewUtils.hidePanelContent(panel, title, body);
-      setPanelHeaderLink(headerLabel, null);
+      previewUtils.setPreviewHeaderLink(headerLabel, null);
       setPanelFooter(footer, null);
       activeTrigger = null;
       activeHost = null;
@@ -1482,7 +1484,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childShowRequestToken += 1;
       previewUtils.hidePanelContent(childPanel, childTitle, childBody);
-      setPanelHeaderLink(childHeaderLabel, null);
+      previewUtils.setPreviewHeaderLink(childHeaderLabel, null);
       setPanelFooter(childFooter, null);
       childActiveTrigger = null;
       childPreviewKey = "";
@@ -1558,7 +1560,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childPreviewKey = key;
       childActiveTrigger = trigger;
-      setPanelHeaderLink(childHeaderLabel, trigger);
+      previewUtils.setPreviewHeaderLink(childHeaderLabel, trigger);
       setPanelFooter(childFooter, trigger);
       previewUtils.showPanelContent(childPanel, childTitle, childBody, heading, html, childBehavior, trigger, 12, 10);
     }
@@ -1600,7 +1602,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
         activeTrigger = null;
         ignoreNextPanelExit = true;
         title.textContent = heading;
-        setPanelHeaderLink(headerLabel, trigger);
+        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
         setPanelFooter(footer, trigger);
         body.innerHTML = html;
         previewUtils.hydratePreviewSubtree(body);
@@ -1616,7 +1618,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
         hideChildPanel();
         clearPanelSizeLock();
         activeTrigger = trigger;
-        setPanelHeaderLink(headerLabel, trigger);
+        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
         setPanelFooter(footer, trigger);
         previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10);
         if (behavior.isDocked && activeHost) {
