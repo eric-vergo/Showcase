@@ -6,11 +6,12 @@ import subprocess
 from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
-    LEAN_TOOLCHAIN_PREFIX,
+    lean_toolchain_spec,
     normalize_lean_release_ref,
+    rewrite_lean_toolchain,
 )
-from scripts.blueprint_harness_references import (
-    maybe_rewrite_in_repo_blueprint_dependency,
+from scripts.blueprint_harness_project_commands import (
+    maybe_in_repo_blueprint_dependency_override,
     rewrite_pinned_blueprint_dependency,
 )
 from scripts.blueprint_harness_utils import lean_low_priority_command, run
@@ -22,6 +23,10 @@ OFFICIAL_VERSO_URL_PATTERNS = (
     r"git@github\.com:leanprover/verso\.git",
     r"ssh://git@github\.com/leanprover/verso\.git",
 )
+TEMPORARY_VERSO_FIX_URL_PATTERNS = (
+    r"https://github\.com/ejgallego/verso(?:\.git)?",
+)
+MANAGED_VERSO_URL_PATTERNS = OFFICIAL_VERSO_URL_PATTERNS + TEMPORARY_VERSO_FIX_URL_PATTERNS
 VERSO_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>\s*)require\s+verso\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
     re.MULTILINE,
@@ -36,10 +41,6 @@ class ToolchainBumpResult:
     verso_tag_oid: str
 
 
-def lean_toolchain_spec(lean_ref: str) -> str:
-    return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
-
-
 def managed_toolchain_project_dirs(package_root: Path) -> tuple[Path, ...]:
     return (
         package_root,
@@ -48,13 +49,11 @@ def managed_toolchain_project_dirs(package_root: Path) -> tuple[Path, ...]:
     )
 
 
-def rewrite_lean_toolchain(path: Path, lean_ref: str) -> None:
-    existing = path.read_text(encoding="utf-8")
-    suffix = "\n" if existing.endswith("\n") else ""
-    path.write_text(f"{lean_toolchain_spec(lean_ref)}{suffix}", encoding="utf-8")
+def _matches_any(patterns: tuple[str, ...], value: str) -> bool:
+    return any(re.fullmatch(pattern, value) for pattern in patterns)
 
 
-def _require_official_verso_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
+def _require_managed_verso_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
     lakefile = project_dir / "lakefile.lean"
     if not lakefile.exists():
         raise SystemExit(f"[blueprint-harness] missing lakefile: {lakefile}")
@@ -64,14 +63,14 @@ def _require_official_verso_git_dependency(project_dir: Path, *, action: str) ->
         (
             candidate
             for candidate in VERSO_REQUIRE_PATTERN.finditer(text)
-            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in OFFICIAL_VERSO_URL_PATTERNS)
+            if _matches_any(MANAGED_VERSO_URL_PATTERNS, candidate.group("url"))
         ),
         None,
     )
     if match is None:
         raise SystemExit(
             "[blueprint-harness] expected the managed project to declare `verso` in `lakefile.lean` "
-            "from the official `leanprover/verso` Git source; cannot "
+            "from the official `leanprover/verso` Git source or a recognized temporary fix fork; cannot "
             f"{action}."
         )
     return lakefile, text, match
@@ -81,11 +80,13 @@ def rewrite_pinned_verso_dependency(project_dir: Path, ref: str) -> tuple[Path, 
     if not ref or any(char.isspace() for char in ref) or any(char in ref for char in {'"', "\n", "\r"}):
         raise SystemExit("[blueprint-harness] expected a non-empty `verso` ref without whitespace, quotes, or newlines")
 
-    lakefile, text, match = _require_official_verso_git_dependency(
+    lakefile, text, match = _require_managed_verso_git_dependency(
         project_dir,
         action="rewrite the pinned `verso` ref automatically",
     )
-    replacement = f'{match.group("indent")}require verso from git "{match.group("url")}"@"{ref}"'
+    url = match.group("url")
+    replacement_url = url if _matches_any(OFFICIAL_VERSO_URL_PATTERNS, url) else VERSO_REPOSITORY_URL
+    replacement = f'{match.group("indent")}require verso from git "{replacement_url}"@"{ref}"'
     rewritten = text[: match.start()] + replacement + text[match.end() :]
     lakefile.write_text(rewritten, encoding="utf-8")
     return lakefile, match.group("ref")
@@ -110,12 +111,8 @@ def resolve_remote_verso_tag_oid(package_root: Path, ref: str) -> str | None:
 
 
 def refresh_managed_manifest(package_root: Path, project_dir: Path) -> None:
-    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, package_root)
-    try:
+    with maybe_in_repo_blueprint_dependency_override(project_dir, package_root):
         run(lean_low_priority_command(package_root, "lake", "update"), cwd=project_dir)
-    finally:
-        if rewritten_lakefile is not None and original_lakefile_text is not None:
-            rewritten_lakefile.write_text(original_lakefile_text, encoding="utf-8")
 
 
 def validate_bumped_toolchain(package_root: Path) -> None:

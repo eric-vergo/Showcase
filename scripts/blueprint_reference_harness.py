@@ -28,9 +28,9 @@ from scripts.blueprint_harness_projects import (
     resolve_projects_for_release,
     resolve_release_target,
 )
+from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_URL_PATTERNS
 from scripts.blueprint_harness_references import (
     bump_reference_project,
-    OFFICIAL_BLUEPRINT_URL_PATTERNS,
     clone_git_project,
     generate_in_repo_command_project,
     generate_git_project,

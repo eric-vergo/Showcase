@@ -1,27 +1,35 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 import tomllib
 
+from scripts.blueprint_harness_branches import (
+    lean_release_order_key,
+    lean_toolchain_spec,
+    normalize_lean_release_ref,
+    release_branch_from_lean_ref,
+    rewrite_lean_toolchain,
+)
 from scripts.blueprint_harness_projects import HarnessProject
-from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners, run
+from scripts.blueprint_harness_project_commands import (
+    discard_untracked_project_manifest,
+    local_blueprint_dependency_override,
+    maybe_in_repo_blueprint_dependency_override,
+    project_lake_update_command,
+    rebuild_and_log_embedded_asset_owners,
+    restore_tracked_project_manifest,
+    rewrite_pinned_blueprint_dependency,
+    run_project_update_build_generate,
+    snapshot_tracked_project_manifest,
+    tracked_project_manifest_path,
+)
+from scripts.blueprint_harness_utils import lean_low_priority_command, run
 
 
-OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
-OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.29.0"'
-)
-OFFICIAL_BLUEPRINT_URL_PATTERNS = (
-    rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
-    rf"git@github\.com:{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
-    rf"ssh://git@github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
-)
-OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = f"`{OFFICIAL_BLUEPRINT_REPOSITORY}`"
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "-c",
@@ -30,10 +38,6 @@ GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "url.https://github.com/.insteadOf=ssh://git@github.com/",
 )
 REFERENCE_HARNESS_CONFIG = "verso-harness.toml"
-OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
-    r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
-    re.MULTILINE,
-)
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,32 @@ class ReferenceProjectBumpResult:
     committed: bool
     pushed: bool
     output_dir: Path | None
+
+
+@dataclass(frozen=True)
+class ReferenceToolchainCandidate:
+    path: Path
+    lean_ref: str
+    release_branch: str
+    order_key: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
+class ReferenceToolchainReconciliationResult:
+    selected_ref: str | None
+    release_branch: str | None
+    changed_paths: tuple[Path, ...]
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.changed_paths)
+
+
+@dataclass(frozen=True)
+class ReferenceLakeUpdateResult:
+    command: list[str]
+    reconciliation: ReferenceToolchainReconciliationResult
+
 
 def output_dir_for(project: HarnessProject, output_root: Path) -> Path:
     return output_root / project.project_id
@@ -67,8 +97,82 @@ def reference_edit_checkout_dir(layout, project: HarnessProject) -> Path:
     return layout.reference_project_edit_root / project.project_id
 
 
-def use_shared_reference_checkout() -> bool:
-    return os.getenv("BP_REFERENCE_CHECKOUT_MODE") == "shared"
+def lake_packages_dir(project_dir: Path) -> Path:
+    return project_dir / ".lake" / "packages"
+
+
+def read_reference_toolchain_candidate(path: Path) -> ReferenceToolchainCandidate | None:
+    if not path.exists():
+        return None
+    try:
+        lean_ref = normalize_lean_release_ref(path.read_text(encoding="utf-8"))
+    except SystemExit:
+        return None
+
+    order_key = lean_release_order_key(lean_ref)
+    if order_key is None:
+        return None
+    return ReferenceToolchainCandidate(
+        path=path,
+        lean_ref=lean_ref,
+        release_branch=release_branch_from_lean_ref(lean_ref),
+        order_key=order_key,
+    )
+
+
+def reference_dependency_toolchain_paths(project_dir: Path) -> list[Path]:
+    packages = lake_packages_dir(project_dir)
+    if not packages.exists():
+        return []
+    return sorted(path / "lean-toolchain" for path in packages.iterdir() if (path / "lean-toolchain").exists())
+
+
+def reconcile_reference_toolchains(package_root: Path, project_dir: Path) -> ReferenceToolchainReconciliationResult:
+    package_candidate = read_reference_toolchain_candidate(package_root / "lean-toolchain")
+    project_candidate = read_reference_toolchain_candidate(project_dir / "lean-toolchain")
+    if package_candidate is None or project_candidate is None:
+        return ReferenceToolchainReconciliationResult(
+            selected_ref=None,
+            release_branch=None,
+            changed_paths=(),
+        )
+    if package_candidate.release_branch != project_candidate.release_branch:
+        return ReferenceToolchainReconciliationResult(
+            selected_ref=None,
+            release_branch=None,
+            changed_paths=(),
+        )
+
+    common_branch = package_candidate.release_branch
+    candidates = [package_candidate, project_candidate]
+    for path in reference_dependency_toolchain_paths(project_dir):
+        candidate = read_reference_toolchain_candidate(path)
+        if candidate is not None and candidate.release_branch == common_branch:
+            candidates.append(candidate)
+
+    selected = max(candidates, key=lambda candidate: candidate.order_key)
+    package_toolchain_path = package_candidate.path.resolve()
+    changed_paths: list[Path] = []
+    for candidate in candidates:
+        # The package checkout is the source for the run; reconcile only the
+        # disposable reference checkout files.
+        if candidate.path.resolve() == package_toolchain_path:
+            continue
+        if candidate.lean_ref == selected.lean_ref:
+            continue
+        rewrite_lean_toolchain(candidate.path, selected.lean_ref)
+        changed_paths.append(candidate.path)
+
+    if changed_paths:
+        print(
+            "[blueprint-harness] reconciled reference Lean toolchain to "
+            f"{lean_toolchain_spec(selected.lean_ref)} for {len(changed_paths)} file(s) sharing {common_branch}"
+        )
+    return ReferenceToolchainReconciliationResult(
+        selected_ref=selected.lean_ref,
+        release_branch=common_branch,
+        changed_paths=tuple(changed_paths),
+    )
 
 
 def short_git_ref(ref: str) -> str:
@@ -299,128 +403,24 @@ def prepare_reference_edit_checkout(
     return edit_dir, target_branch, target_base_ref
 
 
-def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
-    lakefile = project_dir / "lakefile.lean"
-    if not lakefile.exists():
-        raise SystemExit(f"[blueprint-harness] missing lakefile for cloned project: {lakefile}")
-
-    text = lakefile.read_text(encoding="utf-8")
-    match = next(
-        (
-            candidate
-            for candidate in OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text)
-            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in OFFICIAL_BLUEPRINT_URL_PATTERNS)
-        ),
-        None,
-    )
-    if match is None:
-        raise SystemExit(
-            "[blueprint-harness] expected the cloned project to declare `VersoBlueprint` in "
-            "`lakefile.lean` from an approved `VersoBlueprint` Git source "
-            f"({OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION}); cannot {action}."
+def run_reference_lake_update(
+    package_root: Path,
+    project_dir: Path,
+    *,
+    reconcile_toolchains: bool = True,
+) -> ReferenceLakeUpdateResult:
+    reconciliation = (
+        reconcile_reference_toolchains(package_root, project_dir)
+        if reconcile_toolchains
+        else ReferenceToolchainReconciliationResult(
+            selected_ref=None,
+            release_branch=None,
+            changed_paths=(),
         )
-    return lakefile, text, match
-
-
-def rewrite_local_blueprint_dependency(project_dir: Path, package_root: Path) -> Path:
-    lakefile, text, match = _require_official_blueprint_git_dependency(
-        project_dir,
-        action="inject the local path override automatically",
     )
-    relative_path = os.path.relpath(package_root, start=project_dir)
-    replacement = f'{match.group("indent")}require VersoBlueprint from "{relative_path}"'
-    rewritten = text[: match.start()] + replacement + text[match.end() :]
-    lakefile.write_text(rewritten, encoding="utf-8")
-    return lakefile
-
-
-def rewrite_pinned_blueprint_dependency(project_dir: Path, ref: str) -> tuple[Path, str | None]:
-    if not ref or any(char in ref for char in ('"', "\n", "\r")):
-        raise SystemExit("[blueprint-harness] expected a non-empty `VersoBlueprint` ref without quotes or newlines")
-
-    lakefile, text, match = _require_official_blueprint_git_dependency(
-        project_dir,
-        action="rewrite the pinned `VersoBlueprint` ref automatically",
-    )
-    replacement = (
-        f'{match.group("indent")}require VersoBlueprint from git "{match.group("url")}"@"{ref}"'
-    )
-    rewritten = text[: match.start()] + replacement + text[match.end() :]
-    lakefile.write_text(rewritten, encoding="utf-8")
-    return lakefile, match.group("ref")
-
-
-def git_tracks_file(project_dir: Path, relative_path: str) -> bool:
-    return (
-        subprocess.run(
-            ["git", "ls-files", "--error-unmatch", relative_path],
-            cwd=project_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0
-    )
-
-
-def tracked_project_manifest_path(project_dir: Path) -> Path | None:
-    manifest = project_dir / "lake-manifest.json"
-    if not manifest.exists():
-        return None
-    if not git_tracks_file(project_dir, manifest.name):
-        return None
-    return manifest
-
-
-def discard_untracked_project_manifest(project_dir: Path) -> None:
-    manifest = project_dir / "lake-manifest.json"
-    if manifest.exists() and tracked_project_manifest_path(project_dir) is None:
-        manifest.unlink()
-
-
-def snapshot_tracked_project_manifest(project_dir: Path) -> tuple[Path, str] | None:
-    manifest = tracked_project_manifest_path(project_dir)
-    if manifest is None:
-        return None
-    return manifest, manifest.read_text(encoding="utf-8")
-
-
-def restore_tracked_project_manifest(snapshot: tuple[Path, str] | None) -> None:
-    if snapshot is None:
-        return
-    manifest, original_text = snapshot
-    manifest.write_text(original_text, encoding="utf-8")
-
-
-def reference_update_command(package_root: Path, project_dir: Path) -> list[str]:
-    manifest = tracked_project_manifest_path(project_dir)
-    if manifest is not None:
-        print(
-            "[blueprint-harness] committed lake-manifest.json detected; "
-            "updating `VersoBlueprint` only to keep `verso` pinned"
-        )
-        return lean_low_priority_command(package_root, "lake", "update", "VersoBlueprint")
-
-    print(
-        "[blueprint-harness] no committed lake-manifest.json detected; "
-        "falling back to full `lake update`"
-    )
-    return lean_low_priority_command(package_root, "lake", "update")
-
-
-def maybe_rewrite_in_repo_blueprint_dependency(project_dir: Path, package_root: Path) -> tuple[Path | None, str | None]:
-    lakefile = project_dir / "lakefile.lean"
-    if not lakefile.exists():
-        return None, None
-
-    text = lakefile.read_text(encoding="utf-8")
-    if 'require VersoBlueprint from "' in text:
-        return None, None
-    if "require VersoBlueprint from git" not in text:
-        return None, None
-
-    rewrite_local_blueprint_dependency(project_dir, package_root)
-    return lakefile, text
+    command = project_lake_update_command(package_root, project_dir)
+    run(command, cwd=project_dir)
+    return ReferenceLakeUpdateResult(command=command, reconciliation=reconciliation)
 
 
 def project_checkout_pathspec(checkout_root: Path, project_dir: Path) -> str:
@@ -510,7 +510,7 @@ def bump_reference_project(
 
     project_dir = edit_dir / project.project_root
     _lakefile, previous_ref = rewrite_pinned_blueprint_dependency(project_dir, ref)
-    run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
+    run_reference_lake_update(layout.package_root, project_dir)
 
     generated_output: Path | None = None
     command_output_root = output_root or (layout.artifact_root / "reference-blueprints-edit")
@@ -583,15 +583,10 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
     project_dir = cache_dir / project.project_root
     discard_untracked_project_manifest(project_dir)
     bootstrap_reference_checkout(project_dir=project_dir)
-    cache_lakefile = project_dir / "lakefile.lean"
-    original_text = cache_lakefile.read_text(encoding="utf-8")
-    rewrite_local_blueprint_dependency(project_dir, layout.repo_root)
-    try:
-        run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
+    with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=True):
+        run_reference_lake_update(layout.package_root, project_dir)
         if warm_build and project.build_command is not None:
             run(lean_low_priority_command(layout.package_root, *project.build_command), cwd=project_dir)
-    finally:
-        cache_lakefile.write_text(original_text, encoding="utf-8")
     return cache_dir
 
 
@@ -624,103 +619,65 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
 
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
-    rebuilt = rebuild_embedded_asset_owners(layout.package_root)
-    for target in rebuilt:
-        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
+    rebuild_and_log_embedded_asset_owners(layout.package_root)
     discard_untracked_project_manifest(project_dir)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
-    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, layout.package_root)
-    if rewritten_lakefile is not None:
-        print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
     try:
-        run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
-        if not skip_build and project.build_command is not None:
-            run(
-                lean_low_priority_command(
-                    layout.package_root,
-                    *format_external_command(
-                        project.build_command,
-                        project=project,
-                        package_root=layout.package_root,
-                        checkout_root=project_dir,
-                        project_dir=project_dir,
-                        output_dir=output_dir,
-                    ),
-                ),
-                cwd=project_dir,
-            )
-        run(
-            lean_low_priority_command(
+        with maybe_in_repo_blueprint_dependency_override(project_dir, layout.package_root, log=True):
+            run_project_update_build_generate(
                 layout.package_root,
-                *format_external_command(
-                    project.generate_command or (),
+                project_dir,
+                update_project=lambda: run_reference_lake_update(
+                    layout.package_root,
+                    project_dir,
+                    reconcile_toolchains=False,
+                ),
+                build_command=project.build_command,
+                generate_command=project.generate_command or (),
+                format_command=lambda command: format_external_command(
+                    command,
                     project=project,
                     package_root=layout.package_root,
                     checkout_root=project_dir,
                     project_dir=project_dir,
                     output_dir=output_dir,
                 ),
-            ),
-            cwd=project_dir,
-        )
+                skip_build=skip_build,
+            )
     finally:
         restore_tracked_project_manifest(original_manifest)
-        if rewritten_lakefile is not None and original_lakefile_text is not None:
-            rewritten_lakefile.write_text(original_lakefile_text, encoding="utf-8")
 
 
 def generate_git_project(layout, output_root: Path, project: HarnessProject, *, skip_build: bool) -> None:
-    # Shared cache warm builds run against `layout.repo_root` so linked worktree
-    # validations must skip them here and build only after rewriting the local
-    # checkout dependency to `layout.package_root`.
-    cache_warm_build = (not skip_build) and use_shared_reference_checkout()
-    rebuilt = rebuild_embedded_asset_owners(layout.package_root)
-    for target in rebuilt:
-        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
-    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=cache_warm_build)
-    checkout_root = cache_dir if use_shared_reference_checkout() else sync_reference_local_checkout(layout, project, cache_dir)
+    rebuild_and_log_embedded_asset_owners(layout.package_root)
+    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False)
+    checkout_root = sync_reference_local_checkout(layout, project, cache_dir)
     project_dir = checkout_root / project.project_root
     discard_untracked_project_manifest(project_dir)
     output_dir = output_dir_for(project, output_root)
     output_dir.mkdir(parents=True, exist_ok=True)
-    original_text = (project_dir / "lakefile.lean").read_text(encoding="utf-8") if use_shared_reference_checkout() else None
-    try:
-        bootstrap_reference_checkout(project_dir=project_dir)
-        rewritten_lakefile = rewrite_local_blueprint_dependency(project_dir, layout.package_root)
-        print(f"[blueprint-harness] local package override: rewrote {rewritten_lakefile}")
-        run(reference_update_command(layout.package_root, project_dir), cwd=project_dir)
-        if not skip_build and project.build_command is not None:
-            run(
-                lean_low_priority_command(
-                    layout.package_root,
-                    *format_external_command(
-                        project.build_command,
-                        project=project,
-                        package_root=layout.package_root,
-                        checkout_root=checkout_root,
-                        project_dir=project_dir,
-                        output_dir=output_dir,
-                    ),
-                ),
-                cwd=project_dir,
-            )
-        run(
-            lean_low_priority_command(
+    bootstrap_reference_checkout(project_dir=project_dir)
+    with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
+        run_project_update_build_generate(
+            layout.package_root,
+            project_dir,
+            update_project=lambda: run_reference_lake_update(
                 layout.package_root,
-                *format_external_command(
-                    project.generate_command or (),
-                    project=project,
-                    package_root=layout.package_root,
-                    checkout_root=checkout_root,
-                    project_dir=project_dir,
-                    output_dir=output_dir,
-                ),
+                project_dir,
+                reconcile_toolchains=True,
             ),
-            cwd=project_dir,
+            build_command=project.build_command,
+            generate_command=project.generate_command or (),
+            format_command=lambda command: format_external_command(
+                command,
+                project=project,
+                package_root=layout.package_root,
+                checkout_root=checkout_root,
+                project_dir=project_dir,
+                output_dir=output_dir,
+            ),
+            skip_build=skip_build,
         )
-    finally:
-        if original_text is not None:
-            (project_dir / "lakefile.lean").write_text(original_text, encoding="utf-8")
 
 
 def sync_reference_blueprints(layout, projects: list[HarnessProject], *, warm_build: bool, prepare_local_checkout: bool) -> None:
