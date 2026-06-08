@@ -19,24 +19,23 @@ from scripts.blueprint_harness_projects import (
     resolve_release_target,
 )
 from scripts.emit_reference_deploy_matrix import deploy_matrix_from_controller_catalog
-from scripts.blueprint_harness_references import (
+from scripts.blueprint_harness_project_commands import (
     OFFICIAL_BLUEPRINT_REQUIRE,
+    tracked_project_manifest_path,
+)
+from scripts.blueprint_harness_references import (
     bootstrap_reference_checkout,
     bump_reference_project,
     clone_git_project,
     default_reference_bump_branch,
-    discard_untracked_project_manifest,
     default_reference_edit_base,
     generate_git_project,
-    reference_update_command,
     reference_submodule_update_command,
+    reconcile_reference_toolchains,
     require_reference_harness_layout,
-    rewrite_local_blueprint_dependency,
-    rewrite_pinned_blueprint_dependency,
     seed_reference_edit_checkout_lake,
     seed_lake_packages_from_dependency_cache,
     store_lake_packages_in_dependency_cache,
-    tracked_project_manifest_path,
     update_git_checkout,
 )
 
@@ -726,174 +725,81 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate project id"):
                 load_project_catalog(manifest)
 
-    def test_rewrite_local_blueprint_dependency_replaces_official_git_require(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                "\n".join(
-                    [
-                        "import Lake",
-                        "open Lake DSL",
-                        OFFICIAL_BLUEPRINT_REQUIRE,
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-
-            result = rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
-            self.assertEqual(result, lakefile)
-            text = lakefile.read_text(encoding="utf-8")
-            self.assertNotIn(OFFICIAL_BLUEPRINT_REQUIRE, text)
-            self.assertIn('require VersoBlueprint from "', text)
-
-    def test_rewrite_local_blueprint_dependency_accepts_official_repo_with_non_main_ref(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"v1.2.3"\n',
-                encoding="utf-8",
-            )
-
-            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
-            text = lakefile.read_text(encoding="utf-8")
-            self.assertIn('require VersoBlueprint from "', text)
-            self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
-
-    def test_rewrite_local_blueprint_dependency_rejects_unofficial_source(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/example/verso-blueprint.git"@"v1.2.3"\n',
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(SystemExit, "approved `VersoBlueprint` Git source"):
-                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
-    def test_rewrite_local_blueprint_dependency_rejects_unexpected_require_shape(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/example/fork"@"main"\n',
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(SystemExit, "approved `VersoBlueprint` Git source"):
-                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
-    def test_rewrite_pinned_blueprint_dependency_updates_ref_and_preserves_repo_url(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"old-ref"\n',
-                encoding="utf-8",
-            )
-
-            result_path, previous_ref = rewrite_pinned_blueprint_dependency(project_dir, "v1.2.3")
-
-            self.assertEqual(result_path, lakefile)
-            self.assertEqual(previous_ref, "old-ref")
-            self.assertEqual(
-                lakefile.read_text(encoding="utf-8").strip(),
-                'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint.git"@"v1.2.3"',
-            )
-
     def test_default_reference_bump_branch_shortens_commit_hash(self) -> None:
         self.assertEqual(
             default_reference_bump_branch("9b50e39c17434ee1a574fd27ed97006adfdc5dc1"),
             "chore/bump-verso-blueprint-9b50e39c1743",
         )
 
-    def test_tracked_project_manifest_path_accepts_git_tracked_manifest(self) -> None:
+    def test_reconcile_reference_toolchains_promotes_same_release_branch_to_newest_ref(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-            manifest = project_dir / "lake-manifest.json"
-            manifest.write_text("{}\n", encoding="utf-8")
-            subprocess.run(
-                ["git", "add", "lake-manifest.json"],
-                cwd=project_dir,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            mathlib_dir = project_dir / ".lake" / "packages" / "mathlib"
+            other_dir = project_dir / ".lake" / "packages" / "other"
+            package_root.mkdir()
+            mathlib_dir.mkdir(parents=True)
+            other_dir.mkdir(parents=True)
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+            (project_dir / "lean-toolchain").write_text("leanprover/lean4:4.30-rc1\n", encoding="utf-8")
+            (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.30.0-rc2", encoding="utf-8")
+            (other_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+
+            result = reconcile_reference_toolchains(package_root, project_dir)
+
+            self.assertTrue(result.changed)
+            self.assertEqual(result.selected_ref, "v4.30.0")
+            self.assertEqual(result.release_branch, "v4.30.0")
+            self.assertEqual(
+                set(result.changed_paths),
+                {
+                    project_dir / "lean-toolchain",
+                    mathlib_dir / "lean-toolchain",
+                },
+            )
+            self.assertEqual(
+                (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
+                "leanprover/lean4:v4.30.0\n",
+            )
+            self.assertEqual(
+                (mathlib_dir / "lean-toolchain").read_text(encoding="utf-8"),
+                "leanprover/lean4:v4.30.0",
+            )
+            self.assertEqual(
+                (other_dir / "lean-toolchain").read_text(encoding="utf-8"),
+                "leanprover/lean4:v4.29.0\n",
             )
 
-            self.assertEqual(tracked_project_manifest_path(project_dir), manifest)
-
-    def test_tracked_project_manifest_path_ignores_untracked_manifest(self) -> None:
+    def test_reconcile_reference_toolchains_leaves_different_release_branches_alone(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-            manifest = project_dir / "lake-manifest.json"
-            manifest.write_text("{}\n", encoding="utf-8")
+            root = Path(tmp)
+            package_root = root / "pkg"
+            project_dir = root / "external"
+            mathlib_dir = project_dir / ".lake" / "packages" / "mathlib"
+            package_root.mkdir()
+            mathlib_dir.mkdir(parents=True)
+            (package_root / "lean-toolchain").write_text("leanprover/lean4:v4.30.0\n", encoding="utf-8")
+            (project_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
+            (mathlib_dir / "lean-toolchain").write_text("leanprover/lean4:v4.29.0\n", encoding="utf-8")
 
-            self.assertIsNone(tracked_project_manifest_path(project_dir))
+            result = reconcile_reference_toolchains(package_root, project_dir)
 
-    def test_discard_untracked_project_manifest_removes_generated_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-            manifest = project_dir / "lake-manifest.json"
-            manifest.write_text("{}\n", encoding="utf-8")
-
-            discard_untracked_project_manifest(project_dir)
-
-            self.assertFalse(manifest.exists())
-
-    def test_discard_untracked_project_manifest_preserves_tracked_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-            manifest = project_dir / "lake-manifest.json"
-            manifest.write_text("{}\n", encoding="utf-8")
-            subprocess.run(
-                ["git", "add", "lake-manifest.json"],
-                cwd=project_dir,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            self.assertFalse(result.changed)
+            self.assertIsNone(result.selected_ref)
+            self.assertIsNone(result.release_branch)
+            self.assertEqual(result.changed_paths, ())
+            self.assertEqual(
+                (project_dir / "lean-toolchain").read_text(encoding="utf-8"),
+                "leanprover/lean4:v4.29.0\n",
             )
-
-            discard_untracked_project_manifest(project_dir)
-
-            self.assertTrue(manifest.exists())
-
-    def test_reference_update_command_uses_full_update_when_manifest_is_committed(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-            manifest = project_dir / "lake-manifest.json"
-            manifest.write_text("{}\n", encoding="utf-8")
-            subprocess.run(
-                ["git", "add", "lake-manifest.json"],
-                cwd=project_dir,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            self.assertEqual(
+                (mathlib_dir / "lean-toolchain").read_text(encoding="utf-8"),
+                "leanprover/lean4:v4.29.0\n",
             )
-
-            command = reference_update_command(PACKAGE_ROOT, project_dir)
-
-            self.assertEqual(command[-2:], ["lake", "update"])
-
-    def test_reference_update_command_falls_back_to_full_update_without_tracked_manifest(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            self.init_git_repo(project_dir)
-
-            command = reference_update_command(PACKAGE_ROOT, project_dir)
-
-            self.assertEqual(command[-2:], ["lake", "update"])
 
     def test_reference_cache_checkout_uses_current_package_root_override(self) -> None:
+        import scripts.blueprint_harness_project_commands as commands_mod
         import scripts.blueprint_harness_references as refs_mod
 
         project = HarnessProject(
@@ -929,10 +835,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout.repo_root.mkdir()
 
             originals = {
+                "command_rewrite_local_blueprint_dependency": commands_mod.rewrite_local_blueprint_dependency,
                 "update_git_checkout": refs_mod.update_git_checkout,
                 "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
-                "rewrite_local_blueprint_dependency": refs_mod.rewrite_local_blueprint_dependency,
-                "reference_update_command": refs_mod.reference_update_command,
+                "project_lake_update_command": refs_mod.project_lake_update_command,
                 "run": refs_mod.run,
             }
             seen: dict[str, object] = {}
@@ -944,14 +850,17 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     seen["package_root"] = package_root
                     return lakefile
 
-                refs_mod.rewrite_local_blueprint_dependency = fake_rewrite
-                refs_mod.reference_update_command = lambda _package_root, _project_dir: ["lake", "update"]
+                commands_mod.rewrite_local_blueprint_dependency = fake_rewrite
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update"]
                 refs_mod.run = lambda _command, *, cwd: None
 
                 refs_mod.sync_reference_cache_checkout(layout, project, warm_build=False)
             finally:
                 for name, value in originals.items():
-                    setattr(refs_mod, name, value)
+                    if name == "command_rewrite_local_blueprint_dependency":
+                        commands_mod.rewrite_local_blueprint_dependency = value
+                    else:
+                        setattr(refs_mod, name, value)
 
             self.assertEqual(seen["package_root"], layout.package_root)
             self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
@@ -1145,6 +1054,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(status, "")
 
     def test_generate_git_project_uses_local_checkout_without_cache_warm_build(self) -> None:
+        import scripts.blueprint_harness_project_commands as commands_mod
         import scripts.blueprint_harness_references as refs_mod
 
         project = HarnessProject(
@@ -1194,10 +1104,11 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             layout.repo_root.mkdir()
 
             originals = {
+                "command_rewrite_local_blueprint_dependency": commands_mod.rewrite_local_blueprint_dependency,
+                "command_run": commands_mod.run,
                 "sync_reference_cache_checkout": refs_mod.sync_reference_cache_checkout,
                 "sync_reference_local_checkout": refs_mod.sync_reference_local_checkout,
-                "rewrite_local_blueprint_dependency": refs_mod.rewrite_local_blueprint_dependency,
-                "reference_update_command": refs_mod.reference_update_command,
+                "project_lake_update_command": refs_mod.project_lake_update_command,
                 "run": refs_mod.run,
             }
             commands: list[list[str]] = []
@@ -1205,14 +1116,22 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             try:
                 refs_mod.sync_reference_cache_checkout = lambda _layout, _project, *, warm_build: warm_build_values.append(warm_build) or cache_dir
                 refs_mod.sync_reference_local_checkout = lambda _layout, _project, _cache_dir: local_dir
-                refs_mod.rewrite_local_blueprint_dependency = lambda _project_dir, _package_root: local_dir / "lakefile.lean"
-                refs_mod.reference_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
+                commands_mod.rewrite_local_blueprint_dependency = (
+                    lambda _project_dir, _package_root: local_dir / "lakefile.lean"
+                )
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
                 refs_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run = lambda command, *, cwd: commands.append(command)
 
                 generate_git_project(layout, output_root, project, skip_build=False)
             finally:
                 for name, value in originals.items():
-                    setattr(refs_mod, name, value)
+                    if name == "command_rewrite_local_blueprint_dependency":
+                        commands_mod.rewrite_local_blueprint_dependency = value
+                    elif name == "command_run":
+                        commands_mod.run = value
+                    else:
+                        setattr(refs_mod, name, value)
 
         self.assertEqual(warm_build_values, [False])
         self.assertEqual(commands[0], reference_submodule_update_command())
@@ -1292,7 +1211,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "prepare_reference_edit_checkout": refs_mod.prepare_reference_edit_checkout,
             "git_checkout_is_clean": refs_mod.git_checkout_is_clean,
             "rewrite_pinned_blueprint_dependency": refs_mod.rewrite_pinned_blueprint_dependency,
-            "reference_update_command": refs_mod.reference_update_command,
+            "project_lake_update_command": refs_mod.project_lake_update_command,
             "run": refs_mod.run,
             "git_has_tracked_changes": refs_mod.git_has_tracked_changes,
             "commit_project_tracked_changes": refs_mod.commit_project_tracked_changes,
@@ -1311,7 +1230,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 edit_dir / "lakefile.lean",
                 "old-ref",
             )
-            refs_mod.reference_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
+            refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
             refs_mod.run = lambda command, *, cwd: commands.append(command)
             refs_mod.git_has_tracked_changes = lambda _checkout_root, _pathspec: True
 
@@ -1382,7 +1301,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "prepare_reference_edit_checkout": refs_mod.prepare_reference_edit_checkout,
                 "git_checkout_is_clean": refs_mod.git_checkout_is_clean,
                 "rewrite_pinned_blueprint_dependency": refs_mod.rewrite_pinned_blueprint_dependency,
-                "reference_update_command": refs_mod.reference_update_command,
+                "project_lake_update_command": refs_mod.project_lake_update_command,
                 "run": refs_mod.run,
                 "git_has_tracked_changes": refs_mod.git_has_tracked_changes,
             }
@@ -1398,7 +1317,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     edit_dir / "lakefile.lean",
                     "old-ref",
                 )
-                refs_mod.reference_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update", "VersoBlueprint"]
                 refs_mod.run = lambda command, *, cwd: commands.append(command)
                 refs_mod.git_has_tracked_changes = lambda _checkout_root, _pathspec: False
 

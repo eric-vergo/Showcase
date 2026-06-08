@@ -9,10 +9,12 @@ import shutil
 import subprocess
 
 from scripts.blueprint_harness_paths import detect_harness_layout
-from scripts.blueprint_harness_references import (
-    maybe_rewrite_in_repo_blueprint_dependency,
-    reference_update_command,
+from scripts.blueprint_harness_project_commands import (
+    maybe_in_repo_blueprint_dependency_override,
+    rebuild_and_log_embedded_asset_owners,
     restore_tracked_project_manifest,
+    run_project_lake_update,
+    run_project_update_build_generate,
     snapshot_tracked_project_manifest,
 )
 from scripts.blueprint_harness_utils import (
@@ -20,7 +22,6 @@ from scripts.blueprint_harness_utils import (
     format_command,
     lean_low_priority_command,
     print_failure_summary,
-    rebuild_embedded_asset_owners,
     run,
     run_capturing_failure,
 )
@@ -598,44 +599,27 @@ def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTe
     if not project_dir.exists():
         raise SystemExit(f"[blueprint-test-blueprints] missing project root for `{fixture.slug}`: {project_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    rebuilt = rebuild_embedded_asset_owners(package_root)
-    for target in rebuilt:
-        print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
+    rebuild_and_log_embedded_asset_owners(package_root)
     original_manifest = snapshot_tracked_project_manifest(project_dir)
-    rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(project_dir, package_root)
     try:
-        run(reference_update_command(package_root, project_dir), cwd=project_dir)
-        if fixture.build_command is not None:
-            run(
-                lean_low_priority_command(
-                    package_root,
-                    *format_project_command(
-                        fixture.build_command,
-                        package_root=package_root,
-                        project_dir=project_dir,
-                        output_dir=output_dir,
-                        slug=fixture.slug,
-                    ),
-                ),
-                cwd=project_dir,
-            )
-        run(
-            lean_low_priority_command(
+        with maybe_in_repo_blueprint_dependency_override(project_dir, package_root):
+            run_project_update_build_generate(
                 package_root,
-                *format_project_command(
-                    fixture.generate_command,
+                project_dir,
+                update_project=lambda: run_project_lake_update(package_root, project_dir),
+                build_command=fixture.build_command,
+                generate_command=fixture.generate_command,
+                format_command=lambda command: format_project_command(
+                    command,
                     package_root=package_root,
                     project_dir=project_dir,
                     output_dir=output_dir,
                     slug=fixture.slug,
                 ),
-            ),
-            cwd=project_dir,
-        )
+                skip_build=False,
+            )
     finally:
         restore_tracked_project_manifest(original_manifest)
-        if rewritten_lakefile is not None and original_lakefile_text is not None:
-            rewritten_lakefile.write_text(original_lakefile_text, encoding="utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:

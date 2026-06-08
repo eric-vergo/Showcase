@@ -4,8 +4,8 @@ open Lake DSL
 -- While the split is in progress, the extracted blueprint package depends on
 -- the parent repo root, which remains a checkout of Verso.
 -- require verso from "../verso"
--- TODO: return to a release tag after leanprover/verso#859 lands.
-require verso from git "https://github.com/leanprover/verso"@"fae12939cd56081d6cbb3cbe195bad6680ea2d1c"
+-- TODO: return to a release tag after leanprover/verso#854 lands.
+require verso from git "https://github.com/ejgallego/verso"@"a61eb8993e8d1a617a60c502020f95f3525e6c9d"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"2b5ce1ffa9f22743057068128e20aee96a798976"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
