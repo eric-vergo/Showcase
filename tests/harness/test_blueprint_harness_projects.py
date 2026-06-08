@@ -130,6 +130,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.28.0"])
 
+    def test_project_catalog_requires_json_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "projects.json"
+            manifest.write_text("[]\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "expected JSON object"):
+                load_project_catalog(manifest)
+
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)

@@ -5,6 +5,14 @@ import json
 from pathlib import Path
 
 from scripts.blueprint_harness_branches import active_release_branch, normalize_lean_release_ref
+from scripts.blueprint_harness_manifest import (
+    load_json_object,
+    optional_bool as _optional_bool,
+    optional_command as _optional_command,
+    optional_string as _optional_string,
+    require_string as _require_string,
+    resolve_manifest_path as resolve_manifest_file_path,
+)
 
 
 IN_REPO_PROJECT_SOURCE_KIND = "in_repo_project"
@@ -93,45 +101,7 @@ def default_project_manifest(package_root: Path) -> Path:
 
 
 def resolve_manifest_path(path_text: str | None, package_root: Path) -> Path:
-    if path_text is None:
-        return default_project_manifest(package_root)
-
-    path = Path(path_text)
-    if path.is_absolute():
-        return path.resolve()
-    return (Path.cwd() / path).resolve()
-
-
-def _require_string(data: dict, key: str, *, context: str) -> str:
-    value = data.get(key)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{context}: expected non-empty string field `{key}`")
-    return value
-
-
-def _optional_string(data: dict, key: str) -> str | None:
-    value = data.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"expected non-empty string field `{key}`")
-    return value
-
-
-def _optional_command(data: dict, key: str, *, context: str) -> tuple[str, ...] | None:
-    value = data.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
-        raise ValueError(f"{context}: expected non-empty string list field `{key}`")
-    return tuple(value)
-
-
-def _optional_bool(data: dict, key: str, *, default: bool, context: str) -> bool:
-    value = data.get(key, default)
-    if not isinstance(value, bool):
-        raise ValueError(f"{context}: expected boolean field `{key}`")
-    return value
+    return resolve_manifest_file_path(path_text, default_project_manifest(package_root))
 
 
 def _load_release_targets(raw: dict, manifest_path: Path | str) -> tuple[HarnessReleaseTarget, ...]:
@@ -212,7 +182,7 @@ def _load_project_targets(
         if release in seen_releases:
             raise ValueError(f"{target_context}: duplicate release target `{release}`")
         seen_releases.add(release)
-        ref = _optional_string(raw_target, "ref")
+        ref = _optional_string(raw_target, "ref", context=target_context)
         if source_kind == GIT_CHECKOUT_SOURCE_KIND and ref is None:
             raise ValueError(f"{target_context}: git checkout targets must declare `ref`")
         if source_kind == IN_REPO_PROJECT_SOURCE_KIND and ref is not None:
@@ -253,22 +223,22 @@ def load_project_catalog_data(raw: dict, manifest_path: Path | str) -> HarnessPr
         if not isinstance(source, dict):
             raise ValueError(f"{context}: missing object field `source`")
         source_kind = _require_string(source, "kind", context=context)
-        project_root = _optional_string(source, "project_root") or "."
+        project_root = _optional_string(source, "project_root", context=context) or "."
 
-        build_target = _optional_string(entry, "build_target")
-        generator = _optional_string(entry, "generator")
-        repository = _optional_string(source, "repository")
-        ref = _optional_string(source, "ref")
+        build_target = _optional_string(entry, "build_target", context=context)
+        generator = _optional_string(entry, "generator", context=context)
+        repository = _optional_string(source, "repository", context=context)
+        ref = _optional_string(source, "ref", context=context)
         build_command = _optional_command(entry, "build_command", context=context)
         generate_command = _optional_command(entry, "generate_command", context=context)
 
         validation = entry.get("validation") or {}
         if not isinstance(validation, dict):
             raise ValueError(f"{context}: expected object field `validation`")
-        panel_regression_script = _optional_string(validation, "panel_regression_script")
-        browser_tests_path = _optional_string(validation, "browser_tests_path")
-        description = _optional_string(entry, "description")
-        site_subdir = _optional_string(entry, "site_subdir") or "html-multi"
+        panel_regression_script = _optional_string(validation, "panel_regression_script", context=context)
+        browser_tests_path = _optional_string(validation, "browser_tests_path", context=context)
+        description = _optional_string(entry, "description", context=context)
+        site_subdir = _optional_string(entry, "site_subdir", context=context) or "html-multi"
         targets = _load_project_targets(entry, context=context, release_ids=release_ids, source_kind=source_kind)
 
         if source_kind == IN_REPO_PROJECT_SOURCE_KIND:
@@ -372,7 +342,7 @@ def load_project_catalog_data(raw: dict, manifest_path: Path | str) -> HarnessPr
 
 
 def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw = load_json_object(manifest_path)
     return load_project_catalog_data(raw, manifest_path)
 
 

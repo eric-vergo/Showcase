@@ -56,6 +56,14 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             "tests/harness/preview_runtime_showcase/check_blueprint_code_panels.py",
         )
 
+    def test_test_blueprint_catalog_requires_json_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "test_blueprints.json"
+            manifest.write_text("[]\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "expected JSON object"):
+                load_test_blueprints_manifest(manifest)
+
     def test_duplicate_fixture_slugs_are_rejected(self) -> None:
         manifest_data = {
             "version": 1,

@@ -94,6 +94,9 @@ script map, not a second command reference.
   Local test-blueprint fixture catalog, generation, and validation CLI.
 - `blueprint_harness_cli.py`
   Shared argparse helper functions used by the harness CLIs.
+- `blueprint_harness_manifest.py`
+  Shared JSON manifest loading, path resolution, and field validators used by
+  the harness catalog loaders.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json).

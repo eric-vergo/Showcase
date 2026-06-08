@@ -17,6 +17,7 @@ from scripts.blueprint_harness_branches import (
 from scripts.blueprint_harness_projects import HarnessProject
 from scripts.blueprint_harness_project_commands import (
     discard_untracked_project_manifest,
+    format_project_command,
     local_blueprint_dependency_override,
     maybe_in_repo_blueprint_dependency_override,
     project_lake_update_command,
@@ -186,25 +187,22 @@ def default_reference_bump_branch(ref: str) -> str:
     return f"chore/bump-verso-blueprint-{slug}"
 
 
-def format_external_command(
-    command: tuple[str, ...],
-    *,
+def reference_command_placeholders(
     project: HarnessProject,
+    *,
     package_root: Path,
     checkout_root: Path,
     project_dir: Path,
     output_dir: Path,
-) -> list[str]:
-    site_dir = site_dir_for(project, output_dir.parent)
-    placeholders = {
-        "checkout_root": str(checkout_root),
-        "package_root": str(package_root),
-        "project_dir": str(project_dir),
-        "output_dir": str(output_dir),
+) -> dict[str, object]:
+    return {
+        "checkout_root": checkout_root,
+        "package_root": package_root,
+        "project_dir": project_dir,
+        "output_dir": output_dir,
         "project_id": project.project_id,
-        "site_dir": str(site_dir),
+        "site_dir": site_dir_for(project, output_dir.parent),
     }
-    return [part.format(**placeholders) for part in command]
 
 
 def reference_submodule_update_command() -> list[str]:
@@ -519,13 +517,15 @@ def bump_reference_project(
         run(
             lean_low_priority_command(
                 layout.package_root,
-                *format_external_command(
+                *format_project_command(
                     project.build_command,
-                    project=project,
-                    package_root=layout.package_root,
-                    checkout_root=edit_dir,
-                    project_dir=project_dir,
-                    output_dir=output_dir_for(project, command_output_root),
+                    reference_command_placeholders(
+                        project,
+                        package_root=layout.package_root,
+                        checkout_root=edit_dir,
+                        project_dir=project_dir,
+                        output_dir=output_dir_for(project, command_output_root),
+                    ),
                 ),
             ),
             cwd=project_dir,
@@ -537,13 +537,15 @@ def bump_reference_project(
         run(
             lean_low_priority_command(
                 layout.package_root,
-                *format_external_command(
+                *format_project_command(
                     project.generate_command or (),
-                    project=project,
-                    package_root=layout.package_root,
-                    checkout_root=edit_dir,
-                    project_dir=project_dir,
-                    output_dir=generated_output,
+                    reference_command_placeholders(
+                        project,
+                        package_root=layout.package_root,
+                        checkout_root=edit_dir,
+                        project_dir=project_dir,
+                        output_dir=generated_output,
+                    ),
                 ),
             ),
             cwd=project_dir,
@@ -634,13 +636,15 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
                 ),
                 build_command=project.build_command,
                 generate_command=project.generate_command or (),
-                format_command=lambda command: format_external_command(
+                format_command=lambda command: format_project_command(
                     command,
-                    project=project,
-                    package_root=layout.package_root,
-                    checkout_root=project_dir,
-                    project_dir=project_dir,
-                    output_dir=output_dir,
+                    reference_command_placeholders(
+                        project,
+                        package_root=layout.package_root,
+                        checkout_root=project_dir,
+                        project_dir=project_dir,
+                        output_dir=output_dir,
+                    ),
                 ),
                 skip_build=skip_build,
             )
@@ -668,13 +672,15 @@ def generate_git_project(layout, output_root: Path, project: HarnessProject, *, 
             ),
             build_command=project.build_command,
             generate_command=project.generate_command or (),
-            format_command=lambda command: format_external_command(
+            format_command=lambda command: format_project_command(
                 command,
-                project=project,
-                package_root=layout.package_root,
-                checkout_root=checkout_root,
-                project_dir=project_dir,
-                output_dir=output_dir,
+                reference_command_placeholders(
+                    project,
+                    package_root=layout.package_root,
+                    checkout_root=checkout_root,
+                    project_dir=project_dir,
+                    output_dir=output_dir,
+                ),
             ),
             skip_build=skip_build,
         )
