@@ -577,6 +577,52 @@ structure Entry where
   effort : Option String := none
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- Structured heading text for renderers that rebuild an informal block shell. -/
+structure EntryHeading where
+  /-- Heading caption, such as "Definition" or "Theorem". -/
+  caption : String
+  /-- Heading label/number text. -/
+  label : String
+deriving Inhabited, Repr
+
+/-- Informal block kind represented by this manifest entry. -/
+def Entry.blockKind (entry : Entry) : Informal.Data.InProgressKind :=
+  match entry.facet with
+  | .proof => .proof
+  | .statement => .statement (entry.kind.getD .theorem)
+
+/-- Convert manifest entry metadata to the shared informal block model. -/
+def Entry.blockData (entry : Entry) : Informal.BlockData := {
+  kind := entry.blockKind
+  codeData := entry.codeData
+  label := entry.label
+  parent := entry.parent
+  count := 0
+  statementUses := entry.statementUses
+  proofUses := entry.proofUses
+  ownerDisplayName := entry.ownerDisplayName
+  tags := entry.tags
+  effort := entry.effort
+  priority := entry.priority
+}
+
+/--
+Heading text for manifest-backed block rendering.
+
+The optional override is used by embedding surfaces such as slides that want a
+local display label without mutating the manifest entry.
+-/
+def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none) :
+    EntryHeading :=
+  let kindText :=
+    match entry.kind with
+    | some kind => toString kind
+    | none => "Blueprint"
+  let caption := (entry.displayCaption.getD kindText).trimAscii.toString
+  let fallbackLabel := entry.label.toString
+  let label := ((displayLabelOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
+  { caption, label }
+
 structure File where
   /-- Semantic preview entries keyed by `PreviewCache`, Lean preview key, or citation key. -/
   previews : Array Entry := #[]

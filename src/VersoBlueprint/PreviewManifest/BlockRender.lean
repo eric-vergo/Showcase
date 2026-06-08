@@ -89,44 +89,6 @@ def RenderedContent.ofHtmlStrings (bodyHtml : String) (codeHtml : Array String :
     codeBodies := codeHtml.map htmlFragment
   }
 
-private structure EntryTitle where
-  caption : String
-  label : String
-
-private def entryTitle
-    (entry : Entry)
-    (displayLabelOverride? : Option String) :
-    EntryTitle :=
-  let kindText :=
-    match entry.kind with
-    | some kind => toString kind
-    | none => "Blueprint"
-  let caption := (entry.displayCaption.getD kindText).trimAscii.toString
-  let fallbackLabel := entry.label.toString
-  let label := ((displayLabelOverride? <|> entry.displayLabel).getD fallbackLabel).trimAscii.toString
-  { caption, label }
-
-private def entryBlockKind (entry : Entry) : Informal.Data.InProgressKind :=
-  if entry.facet == .proof then
-    .proof
-  else
-    .statement (entry.kind.getD .theorem)
-
-private def entryBlockData (entry : Entry) : Informal.BlockData :=
-  {
-    kind := entryBlockKind entry
-    codeData := entry.codeData
-    label := entry.label
-    parent := entry.parent
-    count := 0
-    statementUses := entry.statementUses
-    proofUses := entry.proofUses
-    ownerDisplayName := entry.ownerDisplayName
-    tags := entry.tags
-    effort := entry.effort
-    priority := entry.priority
-  }
-
 private def renderRelatedPanel
     (cfg : RelationPanelsConfig)
     (kind : RelationPanelKind)
@@ -180,7 +142,7 @@ private def renderGroupExtra?
 
 /-- Select the uses-panel wording from the manifest entry facet. -/
 private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.PanelConfig :=
-  match entryBlockKind entry with
+  match entry.blockKind with
   | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
   | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
 
@@ -231,12 +193,9 @@ private def renderHeaderExtras
     usedBy? := renderUsedByExtra? cfg entry
   }
 
-private def attrsForClass (className : String) : Array (String × String) :=
-  if className.isEmpty then #[] else #[("class", className)]
-
 private def renderCodePanel
     (cfg : RenderConfig)
-    (title : EntryTitle)
+    (title : EntryHeading)
     (entry : Entry)
     (codeBodies : Array Html) :
     Html :=
@@ -248,7 +207,7 @@ private def renderCodePanel
       { source := entry.codeData }
       (fun _ => none)
     let codeHtml := .seq codeBodies
-    let body := Html.tag "div" (attrsForClass cfg.codeBodyClass) codeHtml
+    let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
     Informal.mkCodePanel
       { caption := s!"Lean code for {title.caption}", number? := some title.label }
       panelSummary.summaryTitle
@@ -262,26 +221,24 @@ def renderWithRenderedContent
     (content : RenderedContent)
     (opts : RenderOptions := {}) :
     Html :=
-    let blockData := entryBlockData entry
-    let title := entryTitle entry opts.displayLabelOverride?
-    let blockShell :=
-      Informal.renderInformalBlockHtml
-        blockData
-        {
-          numberText := title.label
-          captionText? :=
-            match blockData.kind with
-            | .proof => some entry.title
-            | .statement _ => some title.caption
-          titleRowAttrs? := cfg.titleRowAttrs? entry
-          headerExtras := renderHeaderExtras cfg.relationPanels entry blockData
-        }
-        #[content.body]
+    let blockData := entry.blockData
+    let title := entry.heading opts.displayLabelOverride?
     let codePanel :=
       if opts.compact then
         .empty
       else
         renderCodePanel cfg title entry content.codeBodies
-    Html.tag "div" (attrsForClass cfg.wrapperClass) (.seq #[blockShell, codePanel])
+    Informal.renderInformalBlockModel {
+      data := blockData
+      context := Informal.InformalBlockRenderContext.forBlock blockData
+        title.label
+        (statementCaption? := some title.caption)
+        (proofCaption? := some entry.title)
+        (titleRowAttrs? := cfg.titleRowAttrs? entry)
+        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData)
+      content := #[content.body]
+      companionPanels := #[codePanel]
+      wrapperClass? := some cfg.wrapperClass
+    }
 
 end Informal.PreviewManifest.BlockRender

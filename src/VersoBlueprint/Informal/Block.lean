@@ -152,18 +152,17 @@ block_extension Block.informal (data : BlockData) where
               usedBy? := some <| HeaderExtra.usedBy usedByEntry
               code? := some <| HeaderExtra.code codeEntry
             }
-        let informalBlock :=
-          renderInformalBlockHtml data {
-            numberText := data.displayNumber s
-            captionText? :=
-              match data.kind with
-              | .proof => some (data.displayTitle s)
-              | .statement _ => none
-            attrs
-            headerExtras
-            folded := foldInformalBlock
-          } content
-        return .seq #[informalBlock, externalPanel]
+        return renderInformalBlockModel {
+          data
+          context := InformalBlockRenderContext.forBlock data
+            (data.displayNumber s)
+            (proofCaption? := some (data.displayTitle s))
+            (attrs := attrs)
+            (headerExtras := headerExtras)
+            (folded := foldInformalBlock)
+          content
+          companionPanels := #[externalPanel]
+        }
 
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
