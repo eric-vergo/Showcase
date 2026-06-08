@@ -139,6 +139,28 @@ private def renderRelatedPanel
     Informal.PreviewManifest.relatedPanelEntries entries currentLabel (cfg.idPrefix kind entry)
   Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) panelEntries
 
+/--
+Render a preview-manifest relation panel as a header extra.
+
+Most relation kinds disappear when they have no entries; undeclared groups are
+the exception, because their empty warning chip is the whole signal.
+-/
+private def renderRelatedPanelExtra?
+    (cfg : RelationPanelsConfig)
+    (kind : RelationPanelKind)
+    (panelCfg : Informal.RelatedPanel.PanelConfig)
+    (entries : Array RelatedEntry)
+    (entry : Entry)
+    (currentLabel : Name)
+    (toExtra : Html → Informal.HeaderExtra)
+    (showWhenEmpty : Bool := false) :
+    Option Informal.HeaderExtra :=
+  if entries.isEmpty && !showWhenEmpty then
+    none
+  else
+    some <| toExtra <|
+      renderRelatedPanel cfg kind panelCfg entries entry currentLabel
+
 private def renderGroupExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
@@ -146,33 +168,34 @@ private def renderGroupExtra?
   match entry.group with
   | none => none
   | some group =>
-      if group.declared && group.entries.isEmpty then
-        none
-      else
-        some <| Informal.HeaderExtra.group <|
-          renderRelatedPanel
-            cfg
-            .group
-            (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
-            group.entries
-            entry
-            entry.label
+    renderRelatedPanelExtra?
+      cfg
+      .group
+      (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
+      group.entries
+      entry
+      entry.label
+      Informal.HeaderExtra.group
+      (showWhenEmpty := !group.declared)
+
+/-- Select the uses-panel wording from the manifest entry facet. -/
+private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.PanelConfig :=
+  match entryBlockKind entry with
+  | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
+  | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
 
 private def renderUsesExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
     Option Informal.HeaderExtra :=
-  if entry.uses.isEmpty then
-    none
-  else
-    some <| Informal.HeaderExtra.uses <|
-      renderRelatedPanel
-        cfg
-        .uses
-        (Informal.RelatedPanel.usesPanelConfig entry.label (entry.facet == .proof))
-        entry.uses
-        entry
-        Name.anonymous
+  renderRelatedPanelExtra?
+    cfg
+    .uses
+    (usesPanelConfigForEntry entry)
+    entry.uses
+    entry
+    Name.anonymous
+    Informal.HeaderExtra.uses
 
 private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
     Option Informal.HeaderExtra :=
@@ -187,17 +210,14 @@ private def renderUsedByExtra?
     (cfg : RelationPanelsConfig)
     (entry : Entry) :
     Option Informal.HeaderExtra :=
-  if entry.usedBy.isEmpty then
-    none
-  else
-    some <| Informal.HeaderExtra.usedBy <|
-      renderRelatedPanel
-        cfg
-        .usedBy
-        Informal.RelatedPanel.usedByPanelConfig
-        entry.usedBy
-        entry
-        Name.anonymous
+  renderRelatedPanelExtra?
+    cfg
+    .usedBy
+    Informal.RelatedPanel.usedByPanelConfig
+    entry.usedBy
+    entry
+    Name.anonymous
+    Informal.HeaderExtra.usedBy
 
 private def renderHeaderExtras
     (cfg : RelationPanelsConfig)
