@@ -4,12 +4,34 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewWiring.RelatedPanel
 
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
+
+private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
+  previewId := "preview"
+  previewKey := "preview-key"
+  previewTitle := "Target"
+  label := Lean.Name.mkSimple "target"
+}
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let source := Lean.Name.mkSimple "source"
+    let statementCfg := Informal.RelatedPanel.statementUsesPanelConfig source
+    let proofCfg := Informal.RelatedPanel.proofUsesPanelConfig source
+    statementCfg.panelTitle 2 == "Statement uses 2" &&
+      statementCfg.chipTitle 1 == "Statement dependencies used by source" &&
+      statementCfg.singleTitle samplePanelEntry == "Statement dependency: Target" &&
+      proofCfg.panelTitle 2 == "Proof uses 2" &&
+      proofCfg.chipTitle 1 == "Proof dependencies used by source" &&
+      proofCfg.singleTitle samplePanelEntry == "Proof dependency: Target"
 
 /-- info: true -/
 #guard_msgs in
