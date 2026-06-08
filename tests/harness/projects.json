@@ -80,7 +80,7 @@
           "ref": "3aa1a4d2f2952d5c2d7fa1e68ae9a57284149184"
         }
       ],
-      "build_command": ["lake", "build", "SpherePackingBlueprint"],
+      "build_command": ["lake", "build", "+SpherePackingBlueprint.Contents"],
       "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
