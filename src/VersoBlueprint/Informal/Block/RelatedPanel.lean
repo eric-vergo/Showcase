@@ -104,11 +104,11 @@ private structure UsesScopeText where
   lowercase : String
   titlecase : String
 
-private def usesScopeText (isProof : Bool) : UsesScopeText :=
-  if isProof then
-    { lowercase := "proof", titlecase := "Proof" }
-  else
-    { lowercase := "statement", titlecase := "Statement" }
+private def statementUsesScopeText : UsesScopeText :=
+  { lowercase := "statement", titlecase := "Statement" }
+
+private def proofUsesScopeText : UsesScopeText :=
+  { lowercase := "proof", titlecase := "Proof" }
 
 /-- Standard reverse-dependency panel presentation. -/
 def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig := {
@@ -127,10 +127,9 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
   previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
 }
 
-/-- Standard forward-dependency panel presentation for statement and proof uses. -/
-def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig :=
-  let scope := usesScopeText isProof
-  {
+/-- Standard forward-dependency panel presentation for one dependency scope. -/
+private def usesPanelConfigForScope (sourceLabel : Data.Label) (scope : UsesScopeText) :
+    PanelConfig := {
   chipText := fun n => s!"uses {n}"
   chipTitle := fun n =>
     if n == 0 then
@@ -150,6 +149,20 @@ def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig :=
   chipClass := "bp_relation_chip bp_uses_chip"
   emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
 }
+
+/-- Standard forward-dependency panel presentation for statement dependencies. -/
+def statementUsesPanelConfig (sourceLabel : Data.Label) : PanelConfig :=
+  usesPanelConfigForScope sourceLabel statementUsesScopeText
+
+/-- Standard forward-dependency panel presentation for proof dependencies. -/
+def proofUsesPanelConfig (sourceLabel : Data.Label) : PanelConfig :=
+  usesPanelConfigForScope sourceLabel proofUsesScopeText
+
+/-- Standard forward-dependency panel presentation for a concrete informal block. -/
+def usesPanelConfigForBlock (data : BlockData) : PanelConfig :=
+  match data.kind with
+  | .proof => proofUsesPanelConfig data.label
+  | .statement _ => statementUsesPanelConfig data.label
 
 private def groupChipClass (declared : Bool) : String :=
   if declared then
@@ -567,10 +580,6 @@ def renderUsesExtra {m}
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries ctx data
-  let isProof :=
-    match data.kind with
-    | .proof => true
-    | .statement _ => false
   let panelEntries ← entries.mapM fun entry => do
     let badgesHtml := {{
       {{renderUseAxisBadges entry}}
@@ -585,7 +594,7 @@ def renderUsesExtra {m}
       mkLabelEntry ctx entry.label
         (usesPreviewId data.label entry.label)
         (badgesHtml := badgesHtml)
-  pure <| renderPanel (usesPanelConfig data.label isProof) panelEntries
+  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
