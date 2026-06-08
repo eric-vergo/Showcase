@@ -75,7 +75,7 @@ def definitionWithProofGap : Node :=
   {
     kind := .definition
     statement := some (mkInformal #[])
-    code := some <| mkLiterateCode #[mkDefDecl `def_with_proof_gap 0 1] #[]
+    leanCode := #[mkLiterateCode #[mkDefDecl `def_with_proof_gap 0 1] #[]]
   }
 
 /-- info: true -/
@@ -91,9 +91,9 @@ def theoremWithHelperDefProofGap : Node :=
   {
     kind := .theorem
     statement := some (mkInformal #[])
-    code := some <| mkLiterateCode
+    leanCode := #[mkLiterateCode
       #[mkDefDecl `helper_def_with_proof_gap 0 1]
-      #[mkThmDecl `main_theorem 0 0]
+      #[mkThmDecl `main_theorem 0 0]]
   }
 
 /-- info: true -/
@@ -109,7 +109,7 @@ def theoremWithProofGapOnly : Node :=
   {
     kind := .theorem
     statement := some (mkInformal #[])
-    code := some <| mkLiterateCode #[] #[mkThmDecl `theorem_with_proof_gap 0 1]
+    leanCode := #[mkLiterateCode #[] #[mkThmDecl `theorem_with_proof_gap 0 1]]
   }
 
 /-- info: true -/

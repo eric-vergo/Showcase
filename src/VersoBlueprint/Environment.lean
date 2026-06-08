@@ -49,6 +49,7 @@ structure State where
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
   localAuthors : NameMap AuthorInfo := {}
+  leanNameLabels : NameMap (Array Label) := {}
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
   stack : List InProgress := []
@@ -82,6 +83,53 @@ inductive Entry where
   | author (label : Name) (info : AuthorInfo)
 deriving Inhabited, Repr
 
+private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
+  if labels.contains label then labels else labels.push label
+
+private def nodeLeanDecls (node : Node) : Array Name :=
+  node.leanDecls
+
+private def addLeanDeclLabel
+    (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
+  let decl := decl.eraseMacroScopes
+  let labels := leanNameLabels.getD decl #[]
+  leanNameLabels.insert decl (pushLabelUnique labels label)
+
+private def addNodeLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (label : Name) (node : Node) :
+    NameMap (Array Label) :=
+  (nodeLeanDecls node).foldl (init := leanNameLabels) fun acc decl =>
+    addLeanDeclLabel acc decl label
+
+private def addRegisteredNodeLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (data : Data) (label : Name) :
+    NameMap (Array Label) :=
+  match data.get? label with
+  | some node => addNodeLeanDeclLabels leanNameLabels label node
+  | none => leanNameLabels
+
+private def removeLeanDeclLabel
+    (leanNameLabels : NameMap (Array Label)) (label : Name) : NameMap (Array Label) :=
+  leanNameLabels.foldl (init := ({} : NameMap (Array Label))) fun acc decl labels =>
+    let labels := labels.filter (· != label)
+    if labels.isEmpty then
+      acc
+    else
+      acc.insert decl labels
+
+private def reindexRegisteredNodeLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (data : Data) (label : Name) :
+    NameMap (Array Label) :=
+  addRegisteredNodeLeanDeclLabels (removeLeanDeclLabel leanNameLabels label) data label
+
+private def State.commitDataForLabel (state : State) (label : Name) (data : Data) : State :=
+  let localData :=
+    match data.get? label with
+    | some node => state.localData.insert label node
+    | none => state.localData
+  let leanNameLabels := reindexRegisteredNodeLeanDeclLabels state.leanNameLabels data label
+  { state with data, localData, leanNameLabels }
+
 initialize informalExt : PersistentEnvExtension Entry Entry State ←
   registerPersistentEnvExtension {
     mkInitial := pure {}
@@ -90,6 +138,7 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         { state with
           data := state.data.insert label node
           localData := state.localData.insert label node
+          leanNameLabels := addNodeLeanDeclLabels state.leanNameLabels label node
         }
       | .group label header =>
         { state with
@@ -102,26 +151,33 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           localAuthors := state.localAuthors.insert label info
         }
     addImportedFn entries := do
-      let (data, groups, authors, importedConflicts) := entries.foldl
-          (init := (({} : NameMap Node), ({} : NameMap String), ({} : NameMap AuthorInfo), (#[] : Array ImportedConflict))) fun acc entry =>
-        entry.foldl (init := acc) fun (dataAcc, groupAcc, authorAcc, conflictsAcc) item =>
+      let (data, groups, authors, leanNameLabels, importedConflicts) := entries.foldl
+          (init := (
+            ({} : NameMap Node),
+            ({} : NameMap String),
+            ({} : NameMap AuthorInfo),
+            ({} : NameMap (Array Label)),
+            (#[] : Array ImportedConflict)
+          )) fun acc entry =>
+        entry.foldl (init := acc) fun (dataAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
           match item with
           | .node label node =>
             if dataAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, pushImportedConflict conflictsAcc .node label)
+              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .node label)
             else
-              (dataAcc.insert label node, groupAcc, authorAcc, conflictsAcc)
+              let leanNameAcc := addNodeLeanDeclLabels leanNameAcc label node
+              (dataAcc.insert label node, groupAcc, authorAcc, leanNameAcc, conflictsAcc)
           | .group label header =>
             if groupAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, pushImportedConflict conflictsAcc .group label)
+              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .group label)
             else
-              (dataAcc, groupAcc.insert label header, authorAcc, conflictsAcc)
+              (dataAcc, groupAcc.insert label header, authorAcc, leanNameAcc, conflictsAcc)
           | .author label info =>
             if authorAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, pushImportedConflict conflictsAcc .author label)
+              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .author label)
             else
-              (dataAcc, groupAcc, authorAcc.insert label info, conflictsAcc)
-      pure { data, groups, authors, importedConflicts := sortImportedConflicts importedConflicts }
+              (dataAcc, groupAcc, authorAcc.insert label info, leanNameAcc, conflictsAcc)
+      pure { data, groups, authors, leanNameLabels, importedConflicts := sortImportedConflicts importedConflicts }
     -- Strip transient elaboration cache before exporting nodes to the environment.
     exportEntriesFnEx env := fun state =>
       let nodeEntries := state.localData.toArray.map fun (name, node) =>
@@ -149,6 +205,11 @@ def modifyM (f : State -> m State) : m Unit := do
   let st ← f st
   modifyEnv (informalExt.setState · st)
 
+def modifyDataForLabel (label : Label) (f : Data -> m Data) : m Unit := do
+  modifyM fun state => do
+    let data ← f state.data
+    return state.commitDataForLabel label data
+
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
 
@@ -160,19 +221,26 @@ def reportImportedConflicts : m Unit := do
       logError conflict.message
     return { state with importedConflictsReported := true }
 
--- XXX: needs: test
 def checkLabelAndNesting (label : Label) (kind : Data.InProgressKind) : m Bool := do
   let { data, stack, .. } := informalExt.getState (← getEnv)
   match (kind, data.get? label, stack.isEmpty) with
   | (.statement _, none, true) => return true
   | (.statement _, some node, true) =>
-    if node.statement.isNone then
+    let statementCanBeFilled :=
+      match node.statement with
+      | none => true
+      | some statement => !statement.hasBody
+    if statementCanBeFilled then
       return true
     else do
       logError m!"Label {label} already defined"
       return false
   | (.proof, some node, true) =>
-    if node.proof.isSome then
+    let proofCanBeFilled :=
+      match node.proof with
+      | none => true
+      | some proof => !proof.hasBody
+    if !proofCanBeFilled then
       logError m!"Label {label} already has a proof"
       return false
     else if node.statement.isNone then
@@ -215,6 +283,7 @@ def State.popNested? (state : State) : Option State :=
   | [] => none
 
 def pop (ref : Syntax) : m Nat := do
+  let label? := (informalExt.getState (← getEnv)).stack.head?.map (·.label)
   modifyM fun state => do
     if let some state := state.popNested? then
       return state
@@ -232,12 +301,13 @@ def pop (ref : Syntax) : m Nat := do
         }
         let data ← state.data.register
           cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
-        let localData :=
-          match data.get? cur.label with
-          | some node => state.localData.insert cur.label node
-          | none => state.localData
-        return { state with data, localData, stack }
-  getCount
+        return { state.commitDataForLabel cur.label data with stack }
+  let state := informalExt.getState (← getEnv)
+  match label? with
+  | some label =>
+    return (state.data.get? label).map (·.count) |>.getD state.data.size
+  | none =>
+    return state.data.size
 
 def peek : m (Option InProgress) := do
   return (informalExt.getState (← getEnv)).stack.head?
@@ -280,34 +350,22 @@ def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m U
 
 def registerCode (label : Label) (code : Syntax)
     (definedDefs : Array LiterateDef := #[]) (definedTheorems : Array LiterateThm := #[]) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerCode label code definedDefs definedTheorems
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    return { state with data, localData }
+  modifyDataForLabel label fun data =>
+    data.registerCode label code definedDefs definedTheorems
 
 def registerRustCode (label : Label) (code : RustInlineCode) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerRustCode label code
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    return { state with data, localData }
+  modifyDataForLabel label fun data =>
+    data.registerRustCode label code
 
 def registerTexSource (label : Label) (slot : String) (texSource : TexSource) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerTexSource label slot texSource
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    return { state with data, localData }
+  modifyDataForLabel label fun data =>
+    data.registerTexSource label slot texSource
 
 def getNode? (label : Label) : m (Option Node) := do
   return (informalExt.getState (← getEnv)).data.get? label
+
+def labelsForLeanDecl (decl : Name) : m (Array Label) := do
+  return (informalExt.getState (← getEnv)).leanNameLabels.getD decl.eraseMacroScopes #[]
 
 def registerGroup (label : Label) (header : String) : m Unit := do
   reportImportedConflicts

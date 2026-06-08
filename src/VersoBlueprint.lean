@@ -23,6 +23,7 @@ import VersoBlueprint.Macros
 import VersoBlueprint.Math
 import VersoBlueprint.Rust
 import VersoBlueprint.Environment
+import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Attribute
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Graph

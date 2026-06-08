@@ -288,6 +288,93 @@ manual Markdown path when possible, and richer internal docstring structures are
 converted into Manual blocks directly. If no docstring is available, the node is
 still registered, but there is no imported informal statement body.
 
+Automatic dependency inference is opt-in. Enable it locally with
+`(autoDeps := true)`, or set the file/section default with:
+
+```lean
+set_option verso.blueprint.autoDeps true
+```
+
+The local argument wins over the option, so `(autoDeps := false)` disables
+inference for one node even when the file default is enabled.
+
+This is LeanArchitect-style automatic dependency inference: dependency edges are
+derived from Lean's compiled declarations instead of duplicated by hand.
+Verso Blueprint's variant is document-first and direct. LeanArchitect expands
+through untagged Lean helpers until it reaches blueprint-tagged declarations;
+Verso Blueprint scans only direct constants and then maps those constants to
+their associated Blueprint labels. This keeps immediate Blueprint edges
+predictable while still removing the routine `uses` duplication around formal
+declarations.
+
+For a compiled declaration tagged with `@[blueprint]`, write:
+
+```lean
+/-- Associativity of addition. -/
+@[blueprint "addition_assoc_compiled" (autoDeps := true)]
+theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
+  simpa [Nat.add_assoc]
+```
+
+The same local option is accepted on labeled inline Lean blocks and on informal
+statement blocks that use `(lean := "...")`:
+
+````md
+:::theorem "addition_assoc" (lean := "Nat.add_assoc") (autoDeps := true)
+For all natural numbers, addition is associative.
+:::
+
+```lean "addition_assoc_local" (autoDeps := true)
+theorem addition_assoc_local (a b c : Nat) : (a + b) + c = a + (b + c) := by
+  simpa [Nat.add_assoc]
+```
+````
+
+When inference is enabled, Blueprint scans the direct Lean constants mentioned
+by the declaration's type and compiled body. Declarations associated with
+Blueprint labels and used directly by the type become statement dependencies;
+declarations associated with Blueprint labels and used directly by the body
+become proof dependencies. A Lean declaration is associated with a Blueprint
+label by `@[blueprint "..."]`, by a labeled inline Lean code block, or by an
+informal statement block with `(lean := "...")`.
+
+Lean associations are many-to-many. One Blueprint label may be associated with
+several Lean code items, and one Lean declaration may be associated with several
+Blueprint labels. Automatic dependency inference emits all associated labels and
+then deduplicates edges by label.
+
+Untagged Lean constants are ignored and are not expanded to search for
+transitive tagged dependencies. Use string labels for ordinary Blueprint-only
+nodes. Inferred edges are stored with origin `"automatic"` so relationship
+panels can distinguish them from author-written edges. If the same label is
+both inferred and explicitly listed on the same axis, the edge is emitted once
+with manual origin. If the same label is inferred on both axes, the statement
+edge wins and the automatic proof edge is suppressed; an explicit `proofUses`
+entry can still put the label on the proof axis when that is what the Blueprint
+should say.
+
+Manual attribute dependencies can be merged with or excluded from the inferred
+set:
+
+```lean
+@[blueprint "addition_assoc_compiled"
+  (autoDeps := true)
+  (uses := ["addition_right_identity", -"addition_zero"])
+  (proofUses := [nat_add_zero_right])]
+theorem addition_assoc_compiled (a b c : Nat) : (a + b) + c = a + (b + c) := by
+  simpa [Nat.add_assoc]
+```
+
+`uses` affects statement dependencies and `proofUses` affects proof
+dependencies. Each list accepts Lean declaration names or Blueprint label
+strings. Prefix an entry with `-` to remove that inferred or explicit edge from
+the same axis after inference and manual entries have been resolved.
+
+A tagged declaration can still receive a prose statement or proof block with the
+same Blueprint label. If the attribute has only created dependency metadata for
+that statement or proof, the later block fills in the rendered body and keeps
+the inferred dependency edges.
+
 ### Existing Lean declarations
 
 Use `(lean := "Nat.add_assoc")` when Lean already owns the declaration and you
@@ -302,11 +389,18 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
 
+If the same Blueprint label also has a labeled inline Lean block, Blueprint
+keeps both Lean associations. External declaration references render with the
+informal statement block, while inline Lean blocks render at their source
+location.
+
 Notes:
 
 - `(lean := "Nat.add_assoc")` points at Lean-owned declaration names
 - `(lean := "Nat.add, Nat.succ")` supports comma-separated declaration lists
 - `@[blueprint "addition_assoc_compiled"]` registers a Lean-owned Blueprint node
+- `(autoDeps := true)` is accepted by `@[blueprint]`, labeled inline Lean blocks,
+  and statement blocks with `(lean := "...")`
 - Blueprint labels are Blueprint-owned metadata
 - Blueprint label conventions do not rewrite external Lean names
 
