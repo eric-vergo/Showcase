@@ -211,7 +211,9 @@
   min-width: min(100%, 15rem);
 }
 
-.bp_graph_direction_select {
+.bp_graph_direction_select,
+.bp_graph_preview_mode_select,
+.bp_graph_preview_placement_select {
   display: inline-block;
   width: max-content;
   min-width: 0;

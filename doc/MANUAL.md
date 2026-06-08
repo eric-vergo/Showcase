@@ -500,6 +500,8 @@ or with explicit graph layout options:
 ```lean
 {blueprint_graph (direction := LR)}
 {blueprint_graph (direction := LR) (pack := true)}
+{blueprint_graph (preview := hover)}
+{blueprint_graph (preview := hover) (previewPlacement := anchored)}
 ```
 
 Supported directions are `LR`, `RL`, `TB`, and `BT`. When `(direction := ...)`
@@ -508,6 +510,14 @@ is omitted, the command falls back to the
 The `(pack := true | false)` option controls Graphviz component packing for
 disconnected graph components. It defaults to
 `verso.blueprint.graph.defaultPack`, which is `false`.
+The `(preview := pinned | hover)` option chooses the initial graph-node preview
+behavior. The default is `pinned`: clicking a node opens a persistent preview
+panel that stays open until closed. `hover` opens a transient preview that
+disappears after the pointer leaves the node and preview panel.
+The `(previewPlacement := docked | anchored)` option chooses where the preview
+panel appears. The default is `docked`, so both click-pinned and hover previews
+open in the graph corner unless `anchored` is selected to place the panel near
+the active node.
 
 The rendered graph page is interactive:
 
@@ -515,7 +525,7 @@ The rendered graph page is interactive:
   views
 - a `Legend` button opens the current graph legend in a popover
 - a `Graph options` button exposes runtime graph options such as direction and
-  component packing
+  component packing, plus the graph-node preview behavior and placement
 - when grouped metadata produces multiple children for the same parent, the
   selector includes a synthetic group overview plus one subgraph view per group
 
@@ -524,7 +534,8 @@ The command-side options and the runtime graph controls are compatible:
 - `(direction := ...)` chooses the initial graph direction when the page first
   loads
 - the rendered `Graph options` control lets readers switch among the supported
-  directions and toggle component packing without regenerating the site
+  directions, toggle component packing, and choose between click-pinned and
+  hover previews and docked or near-node placement without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
@@ -765,6 +776,15 @@ prefixes with document-order block counts.
   - default: `false`
   - sets the fallback Graphviz component packing behavior for
     `blueprint_graph` when `(pack := ...)` is omitted
+- `verso.blueprint.graph.defaultPreviewMode`
+  - default: `pinned`
+  - sets the fallback graph-node preview behavior for `blueprint_graph` when
+    `(preview := ...)` is omitted; accepts `pinned`/`click` and `hover`
+- `verso.blueprint.graph.defaultPreviewPlacement`
+  - default: `docked`
+  - sets the fallback graph-node preview placement for `blueprint_graph` when
+    `(previewPlacement := ...)` is omitted; accepts `docked`/`fixed` and
+    `anchored`/`near-node`
 - `verso.blueprint.debug.commands`
   - default: `false`
   - emits debug info logs while elaborating Blueprint graph, summary, and

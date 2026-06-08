@@ -55,6 +55,16 @@ register_option verso.blueprint.graph.defaultPack : Bool := {
   descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
 }
 
+register_option verso.blueprint.graph.defaultPreviewMode : String := {
+  defValue := "pinned"
+  descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned`/`click` or `hover`)"
+}
+
+register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
+  defValue := "docked"
+  descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked`/`fixed` or `anchored`/`near-node`)"
+}
+
 structure GraphOptions where
   direction : GraphDirection := .TB
   /--
@@ -67,11 +77,26 @@ deriving Inhabited, BEq, FromJson, ToJson, Quote
 structure GraphBlockData where
   graph : Graph
   options : GraphOptions := {}
+  previewMode : Informal.HoverRender.PreviewMode := .pinned
+  previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
   groupTitles : Array (Name × String) := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 def graphPackAttr (pack : Bool) : String :=
   if pack then "true" else "false"
+
+def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
+  match s.trimAscii.toString.toLower with
+  | "hover" | "transient" => some .hover
+  | "pinned" | "pin" | "click" | "click-to-pin" | "click-and-stay" | "click-to-stay" =>
+      some .pinned
+  | _ => none
+
+def parseGraphPreviewPlacement? (s : String) : Option Informal.HoverRender.PreviewPlacement :=
+  match s.trimAscii.toString.toLower with
+  | "docked" | "dock" | "fixed" | "panel" => some .docked
+  | "anchored" | "anchor" | "near" | "near-node" | "node" => some .anchored
+  | _ => none
 
 /-- Common DOT header for rendered Blueprint graphs.
 
@@ -504,41 +529,20 @@ block_extension Block.graph (graphData : GraphBlockData) where
             (note? := some Informal.Graph.graphLegendGroupViewNote) (hidden := true)
         else
           .empty
-      let graphViewSelectId : String :=
-        let attrs := s.htmlId id
-        match attrs.findSome? fun
-            | ("id", value) => some s!"{value}--view"
+      let graphHtmlAttrs := s.htmlId id
+      let graphControlId (suffix : String) : String :=
+        match graphHtmlAttrs.findSome? fun
+            | ("id", value) => some s!"{value}{suffix}"
             | _ => Option.none with
         | some value => value
-        | Option.none => fallbackGraphControlId id "--view"
-      let graphDirectionSelectId : String :=
-        let attrs := s.htmlId id
-        match attrs.findSome? fun
-            | ("id", value) => some s!"{value}--direction"
-            | _ => Option.none with
-        | some value => value
-        | Option.none => fallbackGraphControlId id "--direction"
-      let graphPackInputId : String :=
-        let attrs := s.htmlId id
-        match attrs.findSome? fun
-            | ("id", value) => some s!"{value}--pack"
-            | _ => Option.none with
-        | some value => value
-        | Option.none => fallbackGraphControlId id "--pack"
-      let graphLegendPanelId : String :=
-        let attrs := s.htmlId id
-        match attrs.findSome? fun
-            | ("id", value) => some s!"{value}--legend"
-            | _ => Option.none with
-        | some value => value
-        | Option.none => fallbackGraphControlId id "--legend"
-      let graphOptionsPanelId : String :=
-        let attrs := s.htmlId id
-        match attrs.findSome? fun
-            | ("id", value) => some s!"{value}--options"
-            | _ => Option.none with
-        | some value => value
-        | Option.none => fallbackGraphControlId id "--options"
+        | Option.none => fallbackGraphControlId id suffix
+      let graphViewSelectId : String := graphControlId "--view"
+      let graphDirectionSelectId : String := graphControlId "--direction"
+      let graphPackInputId : String := graphControlId "--pack"
+      let graphPreviewModeSelectId : String := graphControlId "--preview-mode"
+      let graphPreviewPlacementSelectId : String := graphControlId "--preview-placement"
+      let graphLegendPanelId : String := graphControlId "--legend"
+      let graphOptionsPanelId : String := graphControlId "--options"
       let graphDirectionOptions : Array Output.Html :=
         allGraphDirections.map fun direction =>
           if direction == graphData.options.direction then
@@ -548,11 +552,36 @@ block_extension Block.graph (graphData : GraphBlockData) where
       let graphPackChecked : Array (String × String) :=
         if graphData.options.pack then #[("checked", "checked")] else #[]
       let graphPackDefault : String := graphPackAttr graphData.options.pack
+      let previewModeDefault : String := graphData.previewMode.dataValue
+      let graphPreviewModeOptions : Array Output.Html := #[
+        if graphData.previewMode == .pinned then
+          {{ <option value="pinned" selected>"Click to pin"</option> }}
+        else
+          {{ <option value="pinned">"Click to pin"</option> }},
+        if graphData.previewMode == .hover then
+          {{ <option value="hover" selected>"Hover"</option> }}
+        else
+          {{ <option value="hover">"Hover"</option> }}
+      ]
+      let previewPlacementDefault : String := graphData.previewPlacement.dataValue
+      let graphPreviewPlacementOptions : Array Output.Html := #[
+        if graphData.previewPlacement == .docked then
+          {{ <option value="docked" selected>"Docked"</option> }}
+        else
+          {{ <option value="docked">"Docked"</option> }},
+        if graphData.previewPlacement == .anchored then
+          {{ <option value="anchored" selected>"Near node"</option> }}
+        else
+          {{ <option value="anchored">"Near node"</option> }}
+      ]
       let fallbackDot : String :=
         match graphVariants[0]? with
         | some variant => variant.dot
         | Option.none => graphToDot graphData.graph graphData.options resolveHref resolveGroupTitle
-      let previewUi := Informal.HoverRender.graphPreviewUi
+      let previewUi :=
+        Informal.HoverRender.graphPreviewUi
+          graphData.previewMode
+          graphData.previewPlacement
       let groupHoverUi := Informal.HoverRender.graphGroupPreviewUi
       return {{
         <div class="bp_graph_fullwidth">
@@ -617,6 +646,22 @@ block_extension Block.graph (graphData : GraphBlockData) where
                   {{graphPackChecked}}/>
                 <span>"Pack disconnected components"</span>
               </label>
+              <label class="bp_graph_controls_label" for={{graphPreviewModeSelectId}}>"Preview"</label>
+              <select
+                id={{graphPreviewModeSelectId}}
+                class="bp_graph_controls_select bp_graph_preview_mode_select"
+                data-bp-graph-default-preview-mode={{previewModeDefault}}
+              >
+                {{graphPreviewModeOptions}}
+              </select>
+              <label class="bp_graph_controls_label" for={{graphPreviewPlacementSelectId}}>"Position"</label>
+              <select
+                id={{graphPreviewPlacementSelectId}}
+                class="bp_graph_controls_select bp_graph_preview_placement_select"
+                data-bp-graph-default-preview-placement={{previewPlacementDefault}}
+              >
+                {{graphPreviewPlacementOptions}}
+              </select>
             </div>
           </div>
           <div
@@ -666,15 +711,53 @@ instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
         throwError "Expected a direction identifier or string, got {toMessageData other}"
   }
 
+instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM where
+  fromArgVal := {
+    description := doc!"graph preview mode (`pinned`/`click` or `hover`)"
+    signature := CanMatch.Ident ∪ CanMatch.String
+    get := fun
+      | .name id =>
+        match parseGraphPreviewMode? id.getId.toString with
+        | some mode => pure mode
+        | none => throwErrorAt id "Expected `pinned`, `click`, or `hover`"
+      | .str s =>
+        match parseGraphPreviewMode? s.getString with
+        | some mode => pure mode
+        | none => throwErrorAt s "Expected \"pinned\", \"click\", or \"hover\""
+      | other =>
+        throwError "Expected a preview mode identifier or string, got {toMessageData other}"
+  }
+
+instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartElabM where
+  fromArgVal := {
+    description := doc!"graph preview placement (`docked`/`fixed` or `anchored`/`near-node`)"
+    signature := CanMatch.Ident ∪ CanMatch.String
+    get := fun
+      | .name id =>
+        match parseGraphPreviewPlacement? id.getId.toString with
+        | some placement => pure placement
+        | none => throwErrorAt id "Expected `docked`, `fixed`, `anchored`, or `near-node`"
+      | .str s =>
+        match parseGraphPreviewPlacement? s.getString with
+        | some placement => pure placement
+        | none => throwErrorAt s "Expected \"docked\", \"fixed\", \"anchored\", or \"near-node\""
+      | other =>
+        throwError "Expected a preview placement identifier or string, got {toMessageData other}"
+  }
+
 structure BlueprintGraphConfig where
   direction : Option GraphDirection := none
   pack : Option Bool := none
+  preview : Option Informal.HoverRender.PreviewMode := none
+  previewPlacement : Option Informal.HoverRender.PreviewPlacement := none
 
 instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
   fromArgs :=
     BlueprintGraphConfig.mk <$>
       .named' `direction true <*>
-      .named' `pack true
+      .named' `pack true <*>
+      .named' `preview true <*>
+      .named' `previewPlacement true
 
 def parseGraphDirection (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM GraphDirection := do
   match cfg.direction with
@@ -699,8 +782,40 @@ def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Gr
         verso.blueprint.graph.defaultPack.defValue
   pure { direction, pack }
 
+def parseGraphPreviewMode
+    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewMode := do
+  match cfg.preview with
+  | none =>
+    let configured :=
+      (← getOptions).get
+        verso.blueprint.graph.defaultPreviewMode.name
+        verso.blueprint.graph.defaultPreviewMode.defValue
+    match parseGraphPreviewMode? configured with
+    | some mode => pure mode
+    | none =>
+      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewMode'; expected pinned, click, or hover. Falling back to pinned."
+      pure .pinned
+  | some mode => pure mode
+
+def parseGraphPreviewPlacement
+    (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewPlacement := do
+  match cfg.previewPlacement with
+  | none =>
+    let configured :=
+      (← getOptions).get
+        verso.blueprint.graph.defaultPreviewPlacement.name
+        verso.blueprint.graph.defaultPreviewPlacement.defValue
+    match parseGraphPreviewPlacement? configured with
+    | some placement => pure placement
+    | none =>
+      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewPlacement'; expected docked, fixed, anchored, or near-node. Falling back to docked."
+      pure .docked
+  | some placement => pure placement
+
 open Verso Doc Elab Syntax in
-def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {}) :
+def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions := {})
+    (previewMode : Informal.HoverRender.PreviewMode := .pinned)
+    (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
     PartElabM FinishedPart := do
   let titlePreview := "Dependency Graph"
   let titleInlines ← `(inline | "Dependency Graph")
@@ -709,7 +824,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let (graph, groupTitles) ← buildAll
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {graph.size} nodes"
-  let graphData : GraphBlockData := { graph, options, groupTitles }
+  let graphData : GraphBlockData := { graph, options, previewMode, previewPlacement, groupTitles }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx expandedTitle titlePreview metadata #[block] subParts endPos
@@ -720,9 +835,11 @@ public meta def depGraph : PartCommand
   | stx@`(block|command{blueprint_graph $args*}) => do
     let cfg ← Verso.ArgParse.parseThe BlueprintGraphConfig (← parseArgs args)
     let options ← parseGraphOptions cfg
+    let previewMode ← parseGraphPreviewMode cfg
+    let previewPlacement ← parseGraphPreviewPlacement cfg
     let endPos := stx.getTailPos?.get!
     closePartsUntil 1 endPos
-    addPart (← mkGraphPart stx endPos options)
+    addPart (← mkGraphPart stx endPos options previewMode previewPlacement)
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
 end Informal.Commands
