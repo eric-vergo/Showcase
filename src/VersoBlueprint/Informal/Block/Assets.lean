@@ -16,6 +16,11 @@ def css : String := r##"
   margin: 0.85rem 0;
 }
 
+/* Leave scroll room for relation panels opened near the end of a page. */
+.content-wrapper > section:has(.bp_relation_panel) {
+  padding-bottom: min(18rem, 42vh);
+}
+
 .bp_heading {
   display: flex;
   align-items: center;
@@ -29,6 +34,10 @@ def css : String := r##"
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.bp_kind_proof_heading {
+  align-items: baseline;
 }
 
 .bp_heading_title_row_statement {
@@ -59,22 +68,42 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras {
+  --bp-extra-group-col: minmax(5rem, max-content);
+  --bp-extra-uses-col: minmax(4.2rem, max-content);
+  --bp-extra-used-by-col: minmax(7.2rem, max-content);
+  --bp-extra-code-col: max-content;
+  --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
   display: inline-grid;
   align-items: baseline;
   justify-content: end;
   column-gap: 0.55rem;
-  grid-template-columns: minmax(7.2rem, max-content) max-content;
+  grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
   grid-template-areas: "used code";
   margin-left: auto;
 }
 
 .bp_extras_with_uses {
-  grid-template-columns: minmax(4.2rem, max-content) minmax(7.2rem, max-content) max-content;
+  grid-template-columns:
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "uses used code";
 }
 
+.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
+  /* Keep proof-only uses aligned with the statement uses column. */
+  grid-template-columns:
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-placeholder-col);
+  grid-template-areas: "uses . .";
+}
+
 .bp_extras_with_group {
-  grid-template-columns: minmax(5rem, max-content) minmax(7.2rem, max-content) max-content;
+  grid-template-columns:
+    var(--bp-extra-group-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "group used code";
 }
 
@@ -94,10 +123,10 @@ span[class$="_thmlabel"]::after {
 
 .bp_extras_with_group.bp_extras_with_uses {
   grid-template-columns:
-    minmax(5rem, max-content)
-    minmax(4.2rem, max-content)
-    minmax(7.2rem, max-content)
-    max-content;
+    var(--bp-extra-group-col)
+    var(--bp-extra-uses-col)
+    var(--bp-extra-used-by-col)
+    var(--bp-extra-code-col);
   grid-template-areas: "group uses used code";
 }
 
@@ -728,17 +757,75 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_relation_axis_badge {
+  --bp-relation-badge-bg: var(--bp-color-surface);
+  --bp-relation-badge-border: var(--bp-color-border);
+  --bp-relation-badge-text: var(--bp-color-text-muted);
+  --bp-relation-badge-prefix: var(--bp-color-text-faint);
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--bp-color-border);
+  border: 1px solid var(--bp-relation-badge-border);
   border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface);
-  color: var(--bp-color-text-muted);
+  background: var(--bp-relation-badge-bg);
+  color: var(--bp-relation-badge-text);
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 0.08rem 0.34rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: none;
+  padding: 0.1rem 0.36rem;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.bp_relation_badge_axis {
+  font-weight: 700;
+}
+
+.bp_relation_badge_statement {
+  --bp-relation-badge-bg: rgba(37, 99, 235, 0.1);
+  --bp-relation-badge-border: rgba(37, 99, 235, 0.28);
+  --bp-relation-badge-text: #1d4ed8;
+}
+
+.bp_relation_badge_proof {
+  --bp-relation-badge-bg: rgba(5, 150, 105, 0.12);
+  --bp-relation-badge-border: rgba(5, 150, 105, 0.28);
+  --bp-relation-badge-text: #047857;
+}
+
+.bp_relation_badge_origin::before,
+.bp_relation_badge_intent::before {
+  color: var(--bp-relation-badge-prefix);
+  font-weight: 600;
+  margin-right: 0.22rem;
+}
+
+.bp_relation_badge_origin::before {
+  content: "origin";
+}
+
+.bp_relation_badge_intent::before {
+  content: "intent";
+}
+
+.bp_relation_badge_origin_automatic {
+  --bp-relation-badge-bg: rgba(124, 58, 237, 0.1);
+  --bp-relation-badge-border: rgba(124, 58, 237, 0.26);
+  --bp-relation-badge-text: #6d28d9;
+  --bp-relation-badge-prefix: #7c3aed;
+}
+
+.bp_relation_badge_intent_auxiliary {
+  --bp-relation-badge-bg: rgba(245, 158, 11, 0.14);
+  --bp-relation-badge-border: rgba(245, 158, 11, 0.32);
+  --bp-relation-badge-text: #92400e;
+  --bp-relation-badge-prefix: #b45309;
+}
+
+.bp_relation_badge_intent_technical {
+  --bp-relation-badge-bg: rgba(79, 70, 229, 0.1);
+  --bp-relation-badge-border: rgba(79, 70, 229, 0.26);
+  --bp-relation-badge-text: #4338ca;
+  --bp-relation-badge-prefix: #4f46e5;
 }
 
 .bp_relation_preview_surface {
@@ -1544,8 +1631,9 @@ def relationPanelJs : String := r##"(function () {
     const wrap = panel.closest(".bp_relation_wrap");
     const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
     const title = panel.querySelector(".bp_relation_preview_title");
+    const headerLabel = panel.querySelector(".bp_relation_preview_header_label");
     const body = panel.querySelector(".bp_relation_preview_body");
-    if (!(title instanceof Element) || !(body instanceof Element)) return;
+    if (!(title instanceof Element) || !(headerLabel instanceof Element) || !(body instanceof Element)) return;
 
     const defaultTitle = (title.textContent || "").trim() || "Relation preview";
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
@@ -1580,6 +1668,9 @@ def relationPanelJs : String := r##"(function () {
         }
       });
       title.textContent = itemTitle;
+      if (previewUtils && typeof previewUtils.setPreviewHeaderLink === "function") {
+        previewUtils.setPreviewHeaderLink(headerLabel, item);
+      }
       body.innerHTML = "";
     }
 

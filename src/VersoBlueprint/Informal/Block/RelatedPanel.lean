@@ -66,8 +66,9 @@ structure PanelEntry where
   previewId : String
   previewKey : String
   previewTitle : String
+  label : Data.Label
   href : Option String := none
-  metaHtml : Output.Html := .empty
+  badgesHtml : Output.Html := .empty
   previewFallbackLabel? : Option String := none
   active : Bool := false
 
@@ -98,6 +99,17 @@ structure PanelConfig where
 def usedByChipText (count : Nat) : String :=
   s!"used by {count}"
 
+/-- Human-facing statement/proof wording for forward dependency previews. -/
+private structure UsesScopeText where
+  lowercase : String
+  titlecase : String
+
+private def usesScopeText (isProof : Bool) : UsesScopeText :=
+  if isProof then
+    { lowercase := "proof", titlecase := "Proof" }
+  else
+    { lowercase := "statement", titlecase := "Statement" }
+
 /-- Standard reverse-dependency panel presentation. -/
 def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig := {
   chipText := usedByChipText
@@ -115,18 +127,28 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
   previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
 }
 
-/-- Standard forward-dependency panel presentation. -/
-def usesPanelConfig : PanelConfig := {
+/-- Standard forward-dependency panel presentation for statement and proof uses. -/
+def usesPanelConfig (sourceLabel : Data.Label) (isProof : Bool) : PanelConfig :=
+  let scope := usesScopeText isProof
+  {
   chipText := fun n => s!"uses {n}"
-  chipTitle := fun _ => "Statement and proof dependencies"
-  singleTitle := fun _ => "Statement and proof dependencies"
-  panelTitle := fun n => s!"Uses {n}"
-  panelMeta := "Dependency previews"
-  previewDefaultTitle := "Dependency preview"
-  previewEmptyText := "Dependency preview content is loaded from the Blueprint HTML cache."
+  chipTitle := fun n =>
+    if n == 0 then
+      s!"No declared {scope.lowercase} dependencies"
+    else
+      s!"{scope.titlecase} dependencies used by {sourceLabel}"
+  singleTitle := fun entry =>
+    s!"{scope.titlecase} dependency: {entry.previewTitle}"
+  panelTitle := fun n =>
+    s!"{scope.titlecase} uses {n}"
+  panelMeta :=
+    s!"{scope.titlecase} dependency previews"
+  previewDefaultTitle :=
+    s!"{scope.titlecase} dependency preview"
+  previewEmptyText :=
+    s!"{scope.titlecase} dependency preview content is loaded from the Blueprint HTML cache."
   chipClass := "bp_relation_chip bp_uses_chip"
   emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
-  singleMode := .panel
 }
 
 private def groupChipClass (declared : Bool) : String :=
@@ -183,6 +205,8 @@ private structure UsedByEntry where
   source : BlockData
   inStatement : Bool := false
   inProof : Bool := false
+  origins : Array Data.UseOrigin := #[]
+  intents : Array Data.UseIntent := #[]
 
 private structure UsesEntry where
   label : Data.Label
@@ -196,21 +220,44 @@ private def sortUsedByEntries (entries : Array UsedByEntry) : Array UsedByEntry 
   entries.qsort fun a b =>
     BlockData.traversalOrderLess a.source b.source
 
+private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
+  if values.contains value then values else values.push value
+
+private def mergeUsedByEntry (existing : UsedByEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    UsedByEntry :=
+  {
+    existing with
+      inStatement := existing.inStatement || !isProof
+      inProof := existing.inProof || isProof
+      origins := pushUnique existing.origins useRef.origin
+      intents := pushUnique existing.intents useRef.intent
+  }
+
+private def addUsedByEntry
+    (acc : Array UsedByEntry) (source : BlockData) (useRef : Data.UseRef) (isProof : Bool)
+    (target : Data.Label) : Array UsedByEntry :=
+  if useRef.label != target then
+    acc
+  else if acc.any (·.source.label == source.label) then
+    acc.map fun entry =>
+      if entry.source.label == source.label then
+        mergeUsedByEntry entry useRef isProof
+      else
+        entry
+  else
+    acc.push <| mergeUsedByEntry { source } useRef isProof
+
 private def collectUsedByEntries
     (ctx : Context) (target : Data.Label) : Array UsedByEntry :=
   sortUsedByEntries <| ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target then
       acc
     else
-      let inStatement := source.statementDeps.contains target
-      let inProof := source.proofDeps.contains target
-      if !inStatement && !inProof then
-        acc
-      else
-        acc.push { source, inStatement, inProof }
-
-private def pushUnique [DecidableEq α] (values : Array α) (value : α) : Array α :=
-  if values.contains value then values else values.push value
+      let acc :=
+        source.statementUses.foldl (init := acc) fun acc useRef =>
+          addUsedByEntry acc source useRef false target
+      source.proofUses.foldl (init := acc) fun acc useRef =>
+        addUsedByEntry acc source useRef true target
 
 private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     UsesEntry :=
@@ -247,11 +294,14 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
 private def collectUsesEntries
     (ctx : Context) (data : BlockData) : Array UsesEntry :=
   let source := (storedBlockByLabel? ctx data.label).getD data
-  let entries :=
-    source.statementUses.foldl (init := #[]) fun acc useRef =>
-      addUsesEntry ctx acc useRef false
-  source.proofUses.foldl (init := entries) fun acc useRef =>
-    addUsesEntry ctx acc useRef true
+  let isProof :=
+    match data.kind with
+    | .proof => true
+    | .statement _ => false
+  let sourceUses :=
+    if isProof then source.proofUses else source.statementUses
+  sourceUses.foldl (init := #[]) (fun acc useRef =>
+    addUsesEntry ctx acc useRef isProof)
   |>.qsort usesEntryLess
 
 private def collectGroupEntries
@@ -279,16 +329,40 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 private def previewLookupKey (source : BlockData) : String :=
   PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
-private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
+/-- Render a relation-row badge with both legacy and semantic styling classes. -/
+private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
+  {{<span class={{className}} title={{title}}>{{.text true text}}</span>}}
+
+private def useOriginBadgeClass : Data.UseOrigin → String
+  | .manual =>
+    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_manual"
+  | .automatic =>
+    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_automatic"
+
+private def useIntentBadgeClass : Data.UseIntent → String
+  | .regular =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_regular"
+  | .auxiliary =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_auxiliary"
+  | .technical =>
+    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_technical"
+
+private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let statementBadge : Array Output.Html :=
     if inStatement then
-      #[{{<span class="bp_relation_axis_badge">"statement"</span>}}]
+      #[relationBadge
+          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_statement"
+          "Declared in the statement"
+          "statement"]
     else
       #[]
   let proofBadge : Array Output.Html :=
     if inProof then
-      #[{{<span class="bp_relation_axis_badge">"proof"</span>}}]
+      #[relationBadge
+          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_proof"
+          "Declared in the proof"
+          "proof"]
     else
       #[]
   .seq (statementBadge ++ proofBadge)
@@ -299,21 +373,23 @@ private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
 private def renderUseAxisBadges (entry : UsesEntry) : Output.Html :=
   renderAxisBadges entry.inStatement entry.inProof
 
-private def renderUseMetadataBadges (entry : UsesEntry) : Output.Html :=
-  open Verso.Output.Html in
+private def renderUseMetadataBadges
+    (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Output.Html :=
   let originBadges :=
-    entry.origins.filter (· != .manual) |>.map fun origin =>
-      {{<span class="bp_relation_axis_badge bp_uses_origin_badge">{{.text true (toString origin)}}</span>}}
+    origins.filter (· != .manual) |>.map fun origin =>
+      let text := toString origin
+      relationBadge (useOriginBadgeClass origin) s!"Origin: {text}" text
   let intentBadges :=
-    entry.intents.filter (· != .regular) |>.map fun intent =>
-      {{<span class="bp_relation_axis_badge bp_uses_intent_badge">{{.text true (toString intent)}}</span>}}
+    intents.filter (· != .regular) |>.map fun intent =>
+      let text := toString intent
+      relationBadge (useIntentBadgeClass intent) s!"Intent: {text}" text
   .seq (originBadges ++ intentBadges)
 
 private def mkBlockEntry {m}
     [Monad m]
     (ctx : Context)
     (source : BlockData) (previewId : String)
-    (metaHtml : Output.Html := .empty) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
   let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
@@ -321,8 +397,9 @@ private def mkBlockEntry {m}
     previewId
     previewKey := previewLookupKey source
     previewTitle
+    label := source.label
     href
-    metaHtml
+    badgesHtml
     previewFallbackLabel? := some s!"{source.label}"
   }
 
@@ -330,15 +407,16 @@ private def mkLabelEntry {m}
     [Monad m]
     (ctx : Context)
     (label : Data.Label) (previewId : String)
-    (metaHtml : Output.Html := .empty) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := s!"{label}"
   pure {
     previewId
     previewKey := PreviewCache.key label .statement
     previewTitle
+    label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
-    metaHtml
+    badgesHtml
     previewFallbackLabel? := some s!"{label}"
   }
 
@@ -370,10 +448,16 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           </a>}}
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
+    let previewFooterHtml? :=
+      let html := entry.badgesHtml.asString
+      if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
       (previewLookupKey? := some entry.previewKey)
       (previewFallbackLabel? := entry.previewFallbackLabel?)
+      (previewHeaderLabel? := some s!"{entry.label}")
+      (previewHeaderHref? := entry.href)
+      (previewFooterHtml? := previewFooterHtml?)
   let selectedEntry? := selectedPanelEntry? cfg entries
   let renderRow (entry : PanelEntry) : Output.Html :=
     let itemClass :=
@@ -389,21 +473,25 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
       let metaNode := {{
         <span class="bp_relation_target_meta">
-          {{entry.metaHtml}}
+          <code>s!"{entry.label}"</code>
+          {{entry.badgesHtml}}
         </span>
       }}
       if let some href := entry.href then
         {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
       else
         {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
-    {{
-      <li class={{itemClass}}
-          "data-bp-relation-preview-id"={{entry.previewId}}
-          "data-bp-relation-preview-key"={{entry.previewKey}}
-          "data-bp-relation-preview-title"={{entry.previewTitle}}>
-        {{rowNode}}
-      </li>
-    }}
+    let attrs := Id.run do
+      let mut attrs := #[
+        ("class", itemClass),
+        ("data-bp-relation-preview-id", entry.previewId),
+        ("data-bp-relation-preview-key", entry.previewKey),
+        ("data-bp-relation-preview-title", entry.previewTitle)
+      ]
+      for attr in Informal.HoverRender.previewHeaderLinkAttrs (some s!"{entry.label}") entry.href do
+        attrs := attrs.push attr
+      pure attrs
+    .tag "li" attrs rowNode
   let previewTitle :=
     match selectedEntry? with
     | some entry => entry.previewTitle
@@ -424,7 +512,10 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           <div class="bp_relation_preview_surface">
             <div class="bp_relation_preview_header">
               <div class="bp_relation_preview_label">"Preview"</div>
-              <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+              <div class="bp_relation_preview_heading bp_preview_header_heading">
+                <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+                <a class="bp_relation_preview_header_label bp_preview_header_label" hidden></a>
+              </div>
             </div>
             <div class="bp_relation_preview_body">
               {{previewBody}}
@@ -463,38 +554,38 @@ def renderUsedByExtra {m}
     let panelEntries ← entries.mapM fun entry =>
       mkBlockEntry ctx entry.source
         (usedByPreviewId data.label entry.source.label)
-        (metaHtml := {{
-          <code>s!"{entry.source.label}"</code>
+        (badgesHtml := {{
           {{renderUsedByAxisBadges entry}}
+          {{renderUseMetadataBadges entry.origins entry.intents}}
         }})
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
 
-/-- Render the forward-dependency header extra for a statement block. -/
+/-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
     (ctx : Context)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  match data.kind with
-  | .proof => pure .empty
-  | .statement _ =>
-    let entries := collectUsesEntries ctx data
-    let panelEntries ← entries.mapM fun entry => do
-      let metaHtml := {{
-        <code>s!"{entry.label}"</code>
-        {{renderUseAxisBadges entry}}
-        {{renderUseMetadataBadges entry}}
-      }}
-      match entry.target? with
-      | some target =>
-        mkBlockEntry ctx target
-          (usesPreviewId data.label entry.label)
-          (metaHtml := metaHtml)
-      | none =>
-        mkLabelEntry ctx entry.label
-          (usesPreviewId data.label entry.label)
-          (metaHtml := metaHtml)
-    pure <| renderPanel usesPanelConfig panelEntries
+  let entries := collectUsesEntries ctx data
+  let isProof :=
+    match data.kind with
+    | .proof => true
+    | .statement _ => false
+  let panelEntries ← entries.mapM fun entry => do
+    let badgesHtml := {{
+      {{renderUseAxisBadges entry}}
+      {{renderUseMetadataBadges entry.origins entry.intents}}
+    }}
+    match entry.target? with
+    | some target =>
+      mkBlockEntry ctx target
+        (usesPreviewId data.label entry.label)
+        (badgesHtml := badgesHtml)
+    | none =>
+      mkLabelEntry ctx entry.label
+        (usesPreviewId data.label entry.label)
+        (badgesHtml := badgesHtml)
+  pure <| renderPanel (usesPanelConfig data.label isProof) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
@@ -512,7 +603,6 @@ def renderGroupExtra {m}
     let panelEntries ← siblings.mapM fun source =>
       mkBlockEntry ctx source
         (groupPreviewId data.label source.label)
-        (metaHtml := {{<code>s!"{source.label}"</code>}})
     let cfg := groupPanelConfig group.label group.title group.declared
     pure <| some (renderPanel cfg panelEntries)
 

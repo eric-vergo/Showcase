@@ -2,9 +2,15 @@ import json
 import re
 import urllib.request
 
-from playwright.sync_api import expect, Page
+from playwright.sync_api import expect, Locator, Page
 
 from support import assert_no_runtime_errors, record_runtime_errors
+
+
+def require_box(locator: Locator):
+    box = locator.bounding_box()
+    assert box is not None
+    return box
 
 
 class TestPreviewRuntimeRegressions:
@@ -156,7 +162,10 @@ class TestPreviewRuntimeRegressions:
         page.route("**/-verso-data/blueprint-html-cache.json", count_cache_fetch)
         page.goto(f"{server}/Preview-Relationships/")
         page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
-        page.locator('.bp_wrapper[title="used_target"] .bp_relation_wrap').first.wait_for()
+        used_by_wrap = page.locator(
+            '.bp_wrapper[title="used_target"] .bp_extra_slot_used_by .bp_relation_wrap'
+        ).first
+        used_by_wrap.wait_for()
         page.wait_for_timeout(250)
 
         status = page.evaluate(
@@ -168,7 +177,7 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] == 0
         assert status["state"] == "idle"
 
-        page.locator('.bp_wrapper[title="used_target"] .bp_relation_chip').first.hover()
+        used_by_wrap.locator(".bp_relation_chip").first.hover()
         page.wait_for_function(
             """() => {
                 const utils = window.bpPreviewUtils;
@@ -438,6 +447,11 @@ class TestPreviewRuntimeRegressions:
         )
         expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
+        header_label = wrap.locator(".bp_relation_preview_header_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_statement")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_statement"))
+
         body = wrap.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
@@ -445,38 +459,219 @@ class TestPreviewRuntimeRegressions:
         )
         expect(body).to_contain_text("Statement depends on")
 
+        second_item = wrap.locator(".bp_relation_item").nth(1)
+        second_item.hover()
+        expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(header_label).to_contain_text("used_proof")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_proof"))
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Statement facet marker for preview relationships.')",
+            arg=body.element_handle(),
+        )
+        expect(body).to_contain_text("Statement facet marker for preview relationships.")
+
         assert_no_runtime_errors(errors)
 
-    def test_uses_panel_loads_manifest_backed_preview(self, server: str, page: Page):
+    def test_uses_single_dependency_loads_manifest_backed_inline_preview(
+        self, server: str, page: Page
+    ):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
 
         slot = page.locator('.bp_wrapper[title="used_statement"] .bp_extra_slot_uses').first
-        wrap = slot.locator(".bp_relation_wrap").first
-        expect(wrap).to_have_count(1)
+        trigger = slot.locator(".bp_inline_preview_ref").first
+        expect(trigger).to_have_count(1)
+        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
+        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
         assert "bp_relation_preview_fallback_tpl" not in page.content()
 
-        chip = wrap.locator(".bp_relation_chip").first
+        chip = trigger.locator(".bp_relation_chip").first
         expect(chip).to_have_text("uses 1")
-        chip.hover()
+        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
+        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
+        trigger.hover()
 
-        panel = wrap.locator(".bp_relation_panel").first
+        panel = page.locator("#bp-inline-preview-panel")
         expect(panel).to_be_visible()
-        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Uses 1")
-        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Dependency previews")
-        expect(panel.locator(".bp_relation_item")).to_have_count(1)
-        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("used_target")
-        expect(panel.locator(".bp_relation_target_meta")).to_contain_text("statement")
-        expect(panel.locator(".bp_relation_item")).to_have_attribute(
-            "data-bp-relation-preview-id", re.compile(r"^bp-uses-")
-        )
 
-        body = panel.locator(".bp_relation_preview_body")
+        body = panel.locator(".bp_inline_preview_panel_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
         expect(body).to_contain_text("Target statement with associated Lean code.")
+
+        header_label = panel.locator(".bp_inline_preview_panel_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
+        footer = panel.locator(".bp_inline_preview_panel_footer")
+        expect(footer).to_be_visible()
+        expect(footer).to_contain_text("statement")
+
+        page.mouse.move(0, 0)
+        expect(panel).to_be_hidden(timeout=1000)
+
+        assert_no_runtime_errors(errors)
+
+    def test_proof_uses_single_dependency_loads_from_proof_header(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_proof"]'
+        ).first
+        statement_uses = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses).to_have_text("uses 0")
+
+        proof = page.locator('.bp_wrapper.bp_kind_proof_wrapper[title="used_proof"]').first
+        slot = proof.locator(".bp_extra_slot_uses").first
+        trigger = slot.locator(".bp_inline_preview_ref").first
+        expect(trigger).to_have_count(1)
+        expect(proof.locator(".bp_extra_slot_used_by")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_code")).to_have_count(0)
+        expect(slot.locator(".bp_relation_wrap")).to_have_count(0)
+        expect(slot.locator(".bp_relation_panel")).to_have_count(0)
+
+        chip = trigger.locator(".bp_relation_chip").first
+        expect(chip).to_have_text("uses 1")
+        expect(trigger).to_have_attribute("data-bp-preview-id", re.compile(r"^bp-uses-"))
+        expect(trigger).to_have_attribute("data-bp-preview-key", re.compile(r"used_target"))
+        trigger.hover()
+
+        panel = page.locator("#bp-inline-preview-panel")
+        expect(panel).to_be_visible()
+
+        body = panel.locator(".bp_inline_preview_panel_body")
+        page.wait_for_function(
+            "(el) => !!el && el.innerHTML.includes('<p')",
+            arg=body.element_handle(),
+        )
+        expect(body).to_contain_text("Target statement with associated Lean code.")
+
+        header_label = panel.locator(".bp_inline_preview_panel_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
+        footer = panel.locator(".bp_inline_preview_panel_footer")
+        expect(footer).to_be_visible()
+        expect(footer).to_contain_text("proof")
+
+        page.mouse.move(0, 0)
+        expect(panel).to_be_hidden(timeout=1000)
+
+        assert_no_runtime_errors(errors)
+
+    def test_proof_uses_multiple_dependencies_loads_panel_previews(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_proof_panel"]'
+        ).first
+        statement_uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses_chip).to_have_text("uses 0")
+
+        proof = page.locator(
+            '.bp_wrapper.bp_kind_proof_wrapper[title="used_proof_panel"]'
+        ).first
+        slot = proof.locator(".bp_extra_slot_uses").first
+        wrap = slot.locator(".bp_relation_wrap").first
+        expect(wrap).to_have_count(1)
+        expect(slot.locator(".bp_inline_preview_ref")).to_have_count(0)
+
+        chip = wrap.locator("button.bp_relation_chip").first
+        expect(chip).to_have_text("uses 2")
+        statement_uses_box = require_box(statement_uses_chip)
+        caption_box = require_box(proof.locator(".bp_caption").first)
+        chip_box = require_box(chip)
+        assert abs(statement_uses_box["x"] - chip_box["x"]) < 1
+        assert abs((caption_box["y"] + caption_box["height"]) - (chip_box["y"] + chip_box["height"])) < 1
+        chip.hover()
+
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_title")).to_have_text(
+            "Proof uses 2"
+        )
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
+            "Proof dependency previews"
+        )
+        expect(wrap.locator(".bp_relation_badge_proof").first).to_be_visible()
+
+        header_label = wrap.locator(".bp_relation_preview_header_label")
+        expect(header_label).to_be_visible()
+        expect(header_label).to_contain_text("used_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_target"))
+
+        body = wrap.locator(".bp_relation_preview_body")
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
+            arg=body.element_handle(),
+        )
+
+        second_item = wrap.locator(".bp_relation_item").nth(1)
+        second_item.hover()
+        expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        expect(header_label).to_contain_text("used_aux_target")
+        expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_aux_target"))
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Auxiliary target statement for multi-use proof previews.')",
+            arg=body.element_handle(),
+        )
+
+        assert_no_runtime_errors(errors)
+
+    def test_grouped_statement_and_proof_uses_columns_align(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+        page.locator("body[data-bp-inline-preview-bound='1']").wait_for()
+
+        statement = page.locator(
+            '.bp_wrapper.bp_kind_theorem_wrapper[title="used_grouped_proof_panel"]'
+        ).first
+        expect(statement.locator(".bp_extra_slot_group .bp_relation_chip").first).to_have_text(
+            "group"
+        )
+        statement_uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(statement_uses_chip).to_have_text("uses 0")
+        expect(statement.locator(".bp_extra_slot_used_by .bp_relation_chip").first).to_have_text(
+            "used by 1"
+        )
+        expect(statement.locator(".bp_extra_slot_code .bp_code_link")).to_have_count(1)
+
+        proof = page.locator(
+            '.bp_wrapper.bp_kind_proof_wrapper[title="used_grouped_proof_panel"]'
+        ).first
+        expect(proof.locator(".bp_extra_slot_group")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_used_by")).to_have_count(0)
+        expect(proof.locator(".bp_extra_slot_code")).to_have_count(0)
+
+        chip = proof.locator(".bp_extra_slot_uses .bp_relation_chip").first
+        expect(chip).to_have_text("uses 2")
+
+        group_box = require_box(statement.locator(".bp_extra_slot_group").first)
+        statement_uses_box = require_box(statement_uses_chip)
+        used_by_box = require_box(statement.locator(".bp_extra_slot_used_by").first)
+        code_box = require_box(statement.locator(".bp_extra_slot_code").first)
+        proof_caption_box = require_box(proof.locator(".bp_caption").first)
+        proof_uses_box = require_box(chip)
+
+        assert group_box["x"] < statement_uses_box["x"] < used_by_box["x"] < code_box["x"]
+        assert abs(statement_uses_box["x"] - proof_uses_box["x"]) < 1
+        assert abs(
+            (proof_caption_box["y"] + proof_caption_box["height"])
+            - (proof_uses_box["y"] + proof_uses_box["height"])
+        ) < 1
 
         assert_no_runtime_errors(errors)
 

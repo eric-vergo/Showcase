@@ -30,6 +30,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "data-bp-preview-placement=\"anchored\"" &&
       hasSubstr out "bp_summary_preview_wrap_active" &&
       hasSubstr out "data-bp-preview-key=\"«def:preview.base»--statement\"" &&
+      hasExtraCss st ".bp_inline_preview_panel[hidden]" &&
+      hasExtraCss st ".bp_preview_header_label" &&
+      hasExtraCss st ".bp_inline_preview_panel_footer" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
       !hasSubstr out "verso-tex-prelude" &&
@@ -52,10 +55,15 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewUtilsJs "Blueprint HTML cache contains duplicate key " &&
         hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
         hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
+        hasSubstr previewUtilsJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
+        hasSubstr previewUtilsJs "data-bp-preview-header-label" &&
         hasSubstr previewUtilsJs "window.setTimeout(function () {" &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
+        hasSubstr inlineJs "previewUtils.setPreviewHeaderLink(headerLabel, trigger)" &&
+        hasSubstr inlineJs "function setPanelFooter(footerNode, trigger)" &&
+        hasSubstr inlineJs "data-bp-preview-footer-html" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
         !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&

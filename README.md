@@ -52,7 +52,9 @@ Blueprint can automatically render text such as `Theorem N`.
 Metadata-only dependencies can be written on a block with
 `(uses := "foo, bar")`; inline and metadata-only uses can also carry intent tags
 such as `"regular"`, `"technical"`, or `"auxiliary"`, plus an origin of
-`"manual"` or `"automatic"`.
+`"manual"` or `"automatic"`. Statement and proof directives render separate
+`uses` chips, so proof-only prerequisites can stay attached to the proof header
+without being folded into the statement chip.
 
 Typical directives look like:
 
