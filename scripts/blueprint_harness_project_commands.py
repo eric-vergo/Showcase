@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -196,6 +196,11 @@ def rebuild_and_log_embedded_asset_owners(package_root: Path) -> list[str]:
     for target in rebuilt:
         print(f"[blueprint-harness] rebuilt embedded-asset owner target: {target}")
     return rebuilt
+
+
+def format_project_command(command: tuple[str, ...], placeholders: Mapping[str, object]) -> list[str]:
+    values = {key: str(value) for key, value in placeholders.items()}
+    return [part.format(**values) for part in command]
 
 
 def run_project_update_build_generate(
