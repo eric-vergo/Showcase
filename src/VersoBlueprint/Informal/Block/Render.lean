@@ -340,6 +340,53 @@ structure InformalBlockRenderContext where
   folded : Bool := false
 
 /--
+Build shell context for a concrete informal block.
+
+Statement and proof headings use different fallback captions. This helper keeps
+that policy out of phase-specific renderers: callers provide the caption they
+resolved for each block kind, and the shared renderer chooses the one that
+matches the block.
+-/
+def InformalBlockRenderContext.forBlock
+    (data : BlockData)
+    (numberText : String)
+    (statementCaption? : Option String := none)
+    (proofCaption? : Option String := none)
+    (attrs : Array (String × String) := #[])
+    (titleRowAttrs? : Option (Array (String × String)) := none)
+    (headerExtras : HeaderExtras := {})
+    (folded : Bool := false) :
+    InformalBlockRenderContext :=
+  let captionText? :=
+    match data.kind with
+    | .proof => proofCaption?
+    | .statement _ => statementCaption?
+  {
+    numberText
+    captionText?
+    attrs
+    titleRowAttrs?
+    headerExtras
+    folded
+  }
+
+/--
+Complete render model for one informal Blueprint block.
+
+The block shell is shared by normal Manual rendering and manifest-backed
+renderers such as slides. Phase-specific callers still own data lookup and body
+rendering, but the final assembly order is centralized here: the informal block
+shell first, followed by any rendered companion panels, optionally wrapped for a
+particular embedding surface.
+-/
+structure InformalBlockRenderModel where
+  data : BlockData
+  context : InformalBlockRenderContext
+  content : Array Verso.Output.Html := #[]
+  companionPanels : Array Verso.Output.Html := #[]
+  wrapperClass? : Option String := none
+
+/--
 Genre-neutral inputs for the reusable Blueprint informal-block shell.
 
 Callers own phase-specific data lookup and body rendering. This shell owns the
@@ -424,5 +471,17 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       folded := ctx.folded
     }
     (.seq content)
+
+/-- HTML attributes for an optional CSS class string. -/
+def htmlClassAttrs (className : String) : Array (String × String) :=
+  if className.isEmpty then #[] else #[("class", className)]
+
+/-- Render a complete informal block model, including companion panels. -/
+def renderInformalBlockModel (model : InformalBlockRenderModel) : Verso.Output.Html :=
+  let blockHtml := renderInformalBlockHtml model.data model.context model.content
+  let html := Verso.Output.Html.seq (#[blockHtml] ++ model.companionPanels)
+  match model.wrapperClass? with
+  | some className => Verso.Output.Html.tag "div" (htmlClassAttrs className) html
+  | none => html
 
 end Informal
