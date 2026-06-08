@@ -169,7 +169,7 @@ private def renderUsesExtra?
       renderRelatedPanel
         cfg
         .uses
-        Informal.RelatedPanel.usesPanelConfig
+        (Informal.RelatedPanel.usesPanelConfig entry.label (entry.facet == .proof))
         entry.uses
         entry
         Name.anonymous
@@ -254,11 +254,7 @@ def renderWithRenderedContent
             | .proof => some entry.title
             | .statement _ => some title.caption
           titleRowAttrs? := cfg.titleRowAttrs? entry
-          headerExtras :=
-            match blockData.kind with
-            | .proof => {}
-            | .statement _ =>
-              renderHeaderExtras cfg.relationPanels entry blockData
+          headerExtras := renderHeaderExtras cfg.relationPanels entry blockData
         }
         #[content.body]
     let codePanel :=

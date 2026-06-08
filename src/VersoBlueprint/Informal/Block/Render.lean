@@ -203,6 +203,10 @@ private def HeaderExtras.wrapperClass (extras : HeaderExtras) : String :=
       classes := classes.push "bp_extras_with_group"
     if extras.uses?.isSome then
       classes := classes.push "bp_extras_with_uses"
+    if extras.usedBy?.isSome then
+      classes := classes.push "bp_extras_with_used_by"
+    if extras.code?.isSome then
+      classes := classes.push "bp_extras_with_code"
     if !extras.custom.isEmpty then
       classes := classes.push "bp_extras_with_custom"
     return classes
@@ -217,7 +221,7 @@ private def renderHeaderExtraSlot (extra : HeaderExtra) : Verso.Output.Html :=
       s!"{extra.kind.slotClass} {extra.wrapperClass}"
   {{<span class={{slotClass}}>{{extra.html}}</span>}}
 
-def renderStatementHeaderExtras (extras : HeaderExtras) : Verso.Output.Html :=
+def renderHeaderExtras (extras : HeaderExtras) : Verso.Output.Html :=
   open Verso.Output.Html in
   let renderable := extras.renderable
   if renderable.isEmpty then
@@ -357,7 +361,7 @@ def renderInformalBlockShell (shell : InformalBlockShell)
   let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
   let titleRow := renderShellTitleRow shell
-  let extras := renderStatementHeaderExtras shell.headerExtras
+  let extras := renderHeaderExtras shell.headerExtras
   if shell.folded then
     {{
       <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
@@ -393,10 +397,6 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   open Verso.Output.Html in
   let style := blockKindRenderStyle data
   let labelText := s!"{data.label}"
-  let headerExtras :=
-    match data.kind with
-    | .proof => {}
-    | .statement _ => ctx.headerExtras
   let metadataPanel : Verso.Output.Html :=
     match data.kind with
     | .proof => .empty
@@ -409,7 +409,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       captionText := ctx.captionText?.getD style.kindText
       attrs := ctx.attrs
       titleRowAttrs? := ctx.titleRowAttrs?
-      headerExtras
+      headerExtras := ctx.headerExtras
       metadataPanel
       folded := ctx.folded
     }

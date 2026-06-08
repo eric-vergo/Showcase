@@ -17,7 +17,7 @@ private def textHtml (text : String) : Output.Html :=
   .text true text
 
 private def renderedHeaderExtras : String :=
-  (renderStatementHeaderExtras {
+  (renderHeaderExtras {
     group? := some <| HeaderExtra.group (textHtml "group")
     uses? := some <| HeaderExtra.uses (textHtml "uses")
     code? := some <| HeaderExtra.code (textHtml "code")

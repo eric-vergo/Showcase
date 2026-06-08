@@ -31,10 +31,25 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Reverse dependency previews" &&
       !hasSubstr out "Hover a use site to preview it." &&
       !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
+      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id" &&
       hasSubstr out "data-bp-relation-preview-key" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out ">statement</span>" &&
       hasSubstr out ">proof</span>" &&
+      hasSubstr out ">automatic</span>" &&
+      hasSubstr out ">technical</span>" &&
+      hasSubstr out ">auxiliary</span>" &&
+      hasSubstr out "bp_relation_badge_statement" &&
+      hasSubstr out "bp_relation_badge_proof" &&
+      hasSubstr out "bp_relation_badge_origin_automatic" &&
+      hasSubstr out "bp_relation_badge_intent_technical" &&
+      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
+      hasExtraCss st ".bp_preview_header_label" &&
+      hasExtraCss st ".bp_relation_badge_origin::before" &&
+      hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
@@ -47,6 +62,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
         hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
         hasSubstr relationJs "function loadActivePreview()" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })" &&
         hasSubstr relationJs "item.addEventListener(\"mouseenter\"" &&
@@ -72,7 +88,12 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "class=\"bp_relation_chip bp_relation_chip_empty\"" &&
       hasSubstr out "class=\"bp_inline_preview_ref\"" &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\" data-bp-preview-id=\"bp-used-by-" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
       hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
+      hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
+      hasSubstr out "data-bp-preview-footer-html=" &&
       hasSubstr out "data-bp-preview-key="
     )
 
@@ -83,28 +104,40 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
     let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
     pure (
-      hasSubstr out "uses 3" &&
+      hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
       hasSubstr out "class=\"bp_relation_chip bp_uses_chip\"" &&
       hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "Uses 3" &&
-      hasSubstr out "Dependency previews" &&
+      hasSubstr out "Statement uses 2" &&
+      hasSubstr out "Statement dependency previews" &&
+      hasSubstr out "Proof uses 2" &&
+      hasSubstr out "Proof dependency previews" &&
       !hasSubstr out "Hover a dependency to preview it." &&
+      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
       hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
+      hasSubstr out "data-bp-preview-header-label=" &&
+      hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
       hasSubstr out "def:uses.proof" &&
+      hasSubstr out "def:uses.proof.extra" &&
       hasSubstr out ">statement</span>" &&
       hasSubstr out ">proof</span>" &&
       hasSubstr out ">automatic</span>" &&
       hasSubstr out ">technical</span>" &&
       hasSubstr out ">auxiliary</span>" &&
+      hasSubstr out "bp_relation_badge_statement" &&
+      hasSubstr out "bp_relation_badge_proof" &&
+      hasSubstr out "bp_relation_badge_origin_automatic" &&
+      hasSubstr out "bp_relation_badge_intent_technical" &&
+      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
         hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)"
       | none => false
     )

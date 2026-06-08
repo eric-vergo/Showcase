@@ -74,6 +74,11 @@ These metadata options are accepted only by dependency-bearing uses: inline
 `uses` roles and block-level `(uses := ...)` entries. `bpref` is link-only and
 does not accept `origin` or `intent`.
 
+Statement and proof directives keep their dependencies separate in the rendered
+headers. A theorem-level `(uses := ...)` or inline `{uses ...}` in the statement
+contributes to the statement `uses` chip, while a proof-level `(uses := ...)` or
+inline proof use contributes to the proof `uses` chip for the same label.
+
 If the payload of `{uses "addition_spec"}[]` or `{bpref "addition_spec"}[]` is
 empty, Blueprint can generate the visible text automatically, for example
 `Theorem N`.

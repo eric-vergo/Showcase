@@ -642,6 +642,31 @@ def previewHoverUtilsJs : String := r##"(function () {
     if (bodyNode instanceof Element) bodyNode.innerHTML = "";
   }
 
+  function setPreviewHeaderLink(labelNode, sourceNode) {
+    if (!(labelNode instanceof Element)) return;
+    const label =
+      sourceNode instanceof Element
+        ? (sourceNode.getAttribute("data-bp-preview-header-label") || "").trim()
+        : "";
+    const href =
+      sourceNode instanceof Element
+        ? (sourceNode.getAttribute("data-bp-preview-header-href") || "").trim()
+        : "";
+    if (label.length > 0) {
+      labelNode.textContent = label;
+      if (href.length > 0) {
+        labelNode.setAttribute("href", href);
+      } else {
+        labelNode.removeAttribute("href");
+      }
+      labelNode.hidden = false;
+    } else {
+      labelNode.textContent = "";
+      labelNode.removeAttribute("href");
+      labelNode.hidden = true;
+    }
+  }
+
   function showPanelContent(panel, titleNode, bodyNode, heading, html, behavior, anchor, margin, offset) {
     if (!(panel instanceof Element) || !(titleNode instanceof Element) || !(bodyNode instanceof Element)) {
       return false;
@@ -917,10 +942,47 @@ def previewHoverUtilsJs : String := r##"(function () {
     previewDebug: previewDebug,
     previewDebugLabel: previewDebugLabel,
     hidePanelContent: hidePanelContent,
+    setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
     bindTemplatePreview: bindTemplatePreview
   };
 })();"##
+
+def previewHeaderCss : String := r##"
+.bp_preview_header_heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bp_preview_header_heading > *:first-child {
+  min-width: 0;
+}
+
+.bp_preview_header_label {
+  margin-left: auto;
+  max-width: 100%;
+  color: var(--bp-color-text-muted);
+  font-family: var(--bp-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-align: right;
+  text-decoration: none;
+}
+
+.bp_preview_header_label[href]:hover {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+.bp_preview_header_label[hidden] {
+  display: none;
+}
+"##
 
 def inlinePreviewCss : String := r##"
 .bp_inline_preview_ref {
@@ -929,6 +991,8 @@ def inlinePreviewCss : String := r##"
 
 .bp_inline_preview_panel {
   position: fixed;
+  display: flex;
+  flex-direction: column;
   z-index: 70;
   min-width: 18rem;
   max-width: min(34rem, 86vw);
@@ -946,6 +1010,10 @@ def inlinePreviewCss : String := r##"
 
 .bp_inline_preview_panel_child {
   z-index: 71;
+}
+
+.bp_inline_preview_panel[hidden] {
+  display: none;
 }
 
 .bp_inline_preview_panel[data-bp-preview-placement="anchored"]::before {
@@ -992,9 +1060,30 @@ def inlinePreviewCss : String := r##"
 
 .bp_inline_preview_panel_body {
   padding: 0.5rem 0.6rem 0.55rem;
+  min-height: 0;
   max-height: min(22rem, 70vh);
   overflow: auto;
   font-size: 0.8rem;
+}
+
+.bp_inline_preview_panel_footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.38rem 0.55rem 0.42rem;
+  border-top: 1px solid var(--bp-color-border-soft);
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-subtle);
+  font-size: 0.72rem;
+}
+
+.bp_inline_preview_panel_footer[hidden] {
+  display: none;
+}
+
+.bp_inline_preview_panel_footer code {
+  font-size: 0.72rem;
 }
 
 .bp_bibliography_hover_entry {
@@ -1110,10 +1199,14 @@ def inlineLinkPreviewJs : String := r##"(function () {
     panel.hidden = true;
     panel.innerHTML =
       '<div class="bp_inline_preview_panel_header">' +
+      '<div class="bp_inline_preview_panel_heading bp_preview_header_heading">' +
       '<div class="bp_inline_preview_panel_title"></div>' +
+      '<a class="bp_inline_preview_panel_label bp_preview_header_label" hidden></a>' +
+      "</div>" +
       '<button type="button" class="bp_inline_preview_panel_close" aria-label="Close inline preview">Close</button>' +
       "</div>" +
-      '<div class="bp_inline_preview_panel_body"></div>';
+      '<div class="bp_inline_preview_panel_body"></div>' +
+      '<div class="bp_inline_preview_panel_footer" hidden></div>';
     document.body.appendChild(panel);
     return panel;
   }
@@ -1136,6 +1229,7 @@ def inlineLinkPreviewJs : String := r##"(function () {
       typeof previewUtils.readPanelBehavior !== "function" ||
       typeof previewUtils.showPanelContent !== "function" ||
       typeof previewUtils.hidePanelContent !== "function" ||
+      typeof previewUtils.setPreviewHeaderLink !== "function" ||
       typeof previewUtils.shouldKeepOpen !== "function" ||
       typeof previewUtils.escapeHtml !== "function" ||
       typeof previewUtils.configureCloseButton !== "function" ||
@@ -1155,15 +1249,22 @@ def inlineLinkPreviewJs : String := r##"(function () {
 
     const panel = getPanel("bp-inline-preview-panel", "");
     const title = panel.querySelector(".bp_inline_preview_panel_title");
+    const headerLabel = panel.querySelector(".bp_inline_preview_panel_label");
     const body = panel.querySelector(".bp_inline_preview_panel_body");
+    const footer = panel.querySelector(".bp_inline_preview_panel_footer");
     const close = panel.querySelector(".bp_inline_preview_panel_close");
     const childPanel = getPanel("bp-inline-preview-child-panel", "bp_inline_preview_panel_child");
     const childTitle = childPanel.querySelector(".bp_inline_preview_panel_title");
+    const childHeaderLabel = childPanel.querySelector(".bp_inline_preview_panel_label");
     const childBody = childPanel.querySelector(".bp_inline_preview_panel_body");
+    const childFooter = childPanel.querySelector(".bp_inline_preview_panel_footer");
     const childClose = childPanel.querySelector(".bp_inline_preview_panel_close");
     if (
-      !(title instanceof Element) || !(body instanceof Element) || !(close instanceof Element) ||
-      !(childTitle instanceof Element) || !(childBody instanceof Element) || !(childClose instanceof Element)
+      !(title instanceof Element) || !(headerLabel instanceof Element) ||
+      !(body instanceof Element) || !(footer instanceof Element) || !(close instanceof Element) ||
+      !(childTitle instanceof Element) || !(childHeaderLabel instanceof Element) ||
+      !(childBody instanceof Element) || !(childFooter instanceof Element) ||
+      !(childClose instanceof Element)
     ) {
       return;
     }
@@ -1209,6 +1310,23 @@ def inlineLinkPreviewJs : String := r##"(function () {
       if (childHideTimer !== null) {
         clearTimeout(childHideTimer);
         childHideTimer = null;
+      }
+    }
+
+    function setPanelFooter(footerNode, trigger) {
+      if (!(footerNode instanceof Element)) return;
+      const footerHtml =
+        trigger instanceof Element
+          ? (trigger.getAttribute("data-bp-preview-footer-html") || "").trim()
+          : "";
+      if (footerHtml.length > 0) {
+        footerNode.innerHTML = footerHtml;
+        footerNode.hidden = false;
+        previewUtils.hydratePreviewSubtree(footerNode);
+        previewUtils.renderMath(footerNode);
+      } else {
+        footerNode.innerHTML = "";
+        footerNode.hidden = true;
       }
     }
 
@@ -1365,6 +1483,8 @@ def inlineLinkPreviewJs : String := r##"(function () {
       });
       clearPanelSizeLock();
       previewUtils.hidePanelContent(panel, title, body);
+      previewUtils.setPreviewHeaderLink(headerLabel, null);
+      setPanelFooter(footer, null);
       activeTrigger = null;
       activeHost = null;
       activePreviewKey = "";
@@ -1375,6 +1495,8 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childShowRequestToken += 1;
       previewUtils.hidePanelContent(childPanel, childTitle, childBody);
+      previewUtils.setPreviewHeaderLink(childHeaderLabel, null);
+      setPanelFooter(childFooter, null);
       childActiveTrigger = null;
       childPreviewKey = "";
     }
@@ -1449,6 +1571,8 @@ def inlineLinkPreviewJs : String := r##"(function () {
       cancelChildHide();
       childPreviewKey = key;
       childActiveTrigger = trigger;
+      previewUtils.setPreviewHeaderLink(childHeaderLabel, trigger);
+      setPanelFooter(childFooter, trigger);
       previewUtils.showPanelContent(childPanel, childTitle, childBody, heading, html, childBehavior, trigger, 12, 10);
     }
 
@@ -1489,6 +1613,8 @@ def inlineLinkPreviewJs : String := r##"(function () {
         activeTrigger = null;
         ignoreNextPanelExit = true;
         title.textContent = heading;
+        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
+        setPanelFooter(footer, trigger);
         body.innerHTML = html;
         previewUtils.hydratePreviewSubtree(body);
         previewUtils.renderMath(body);
@@ -1503,6 +1629,8 @@ def inlineLinkPreviewJs : String := r##"(function () {
         hideChildPanel();
         clearPanelSizeLock();
         activeTrigger = trigger;
+        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
+        setPanelFooter(footer, trigger);
         previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10);
         if (behavior.isDocked && activeHost) {
           positionDockedPanel(activeHost);
@@ -1632,10 +1760,10 @@ def withPreviewPanelCssAssets (extras : List String := []) : List String :=
   withBlueprintCssAssets ([previewPanelCss] ++ extras)
 
 def withInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withBlueprintCssAssets (extras ++ [inlinePreviewCss])
+  withBlueprintCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
 
 def withPreviewPanelInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withPreviewPanelCssAssets (extras ++ [inlinePreviewCss])
+  withPreviewPanelCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
 
 def previewRuntimeJsAssets : List String :=
   [previewHoverUtilsJs]

@@ -25,10 +25,8 @@ def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
 def RelationAxis.badgeHtml (axis : RelationAxis) : Html :=
   {{<span class="bp_relation_axis_badge">{{Html.ofString axis.display}}</span>}}
 
-def RelatedEntry.metaHtml (entry : RelatedEntry) : Html :=
-  .seq <| #[
-    {{<code>{{Html.ofString entry.displayLabel}}</code>}}
-  ] ++ entry.axes.map RelationAxis.badgeHtml
+def RelatedEntry.badgesHtml (entry : RelatedEntry) : Html :=
+  .seq <| entry.axes.map RelationAxis.badgeHtml
 
 def RelatedEntry.panelEntry
     (entry : RelatedEntry)
@@ -38,8 +36,9 @@ def RelatedEntry.panelEntry
     previewId := Informal.HoverRender.previewId idPrefix entry.displayLabel
     previewKey := entry.previewKey
     previewTitle := entry.displayTitle
+    label := entry.label
     href := entry.href
-    metaHtml := entry.metaHtml
+    badgesHtml := entry.badgesHtml
     previewFallbackLabel? := some entry.displayLabel
     active := entry.label == currentLabel
   }
