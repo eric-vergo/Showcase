@@ -22,8 +22,8 @@ private def importedNodeInLocalData (label : String) : CoreM Bool := do
 
 private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Data.NodeKind)
     (node : Informal.Data.Node) : Bool :=
-  match node.code with
-  | some (.external #[ref]) =>
+  match node.externalRefs with
+  | #[ref] =>
     ref.origin == .blueprintAttr &&
       ref.present &&
       ref.written == expectedDecl &&
@@ -45,16 +45,16 @@ private def isBlueprintAttrRef (expectedDecl : Name) (expectedKind : Informal.Da
       | return false
     pure (
       theoremNode.kind == .theorem &&
-      theoremNode.code.isSome &&
+      theoremNode.hasAssociatedCode &&
       theoremNode.statement.isSome &&
       definitionNode.kind == .definition &&
-      definitionNode.code.isSome &&
+      definitionNode.hasAssociatedCode &&
       definitionNode.statement.isSome &&
       inductiveNode.kind == .definition &&
-      inductiveNode.code.isSome &&
+      inductiveNode.hasAssociatedCode &&
       inductiveNode.statement.isSome &&
       undocumentedNode.kind == .definition &&
-      undocumentedNode.code.isSome
+      undocumentedNode.hasAssociatedCode
     )
 
 /-- info: true -/

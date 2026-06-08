@@ -127,11 +127,11 @@ inductive BlockCodeData where
   | external (decls : Array Data.ExternalRef)
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-/-- Projection from environment-level `Data.CodeRef` into JSON-safe block payload hints. -/
-def BlockCodeData.ofCodeRefHint (codeRef? : Option Data.CodeRef) : Option BlockCodeData :=
-  match codeRef? with
-  | some (.external decls) => some (.external decls)
-  | _ => none
+def BlockCodeData.ofExternalRefs (decls : Array Data.ExternalRef) : Option BlockCodeData :=
+  if decls.isEmpty then
+    none
+  else
+    some (.external decls)
 
 /-- Resolve inline precedence at render time by combining optional hint + inline payload. -/
 def BlockCodeData.ofHintAndInline (hint? : Option BlockCodeData) (inline? : Option InlineCodeData)

@@ -245,27 +245,117 @@ private def mkIndexItem (label : Name) (kind : Data.NodeKind) (leanObjects : Lis
   { label, kind := toString kind, leanObjects }
 
 private def nodeLeanObjects (node : Data.Node) : List Name :=
-  match node.code with
-  | some (.external decls) => (decls.map (·.canonical)).toList
-  | some (.literate code) => (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).toList
-  | _ => []
+  let externalNames :=
+    node.externalRefs.foldl (init := #[]) fun acc decl =>
+      pushUniqueName acc decl.canonical
+  let allNames :=
+    node.literateCodes.foldl (init := externalNames) fun acc code =>
+      code.definedDeclNames.foldl pushUniqueName acc
+  allNames.toList
+
+private def codeDeclCount (code : Data.Code) : Nat :=
+  code.definedDefs.size + code.definedTheorems.size
+
+private def codeSorryCount (code : Data.Code) : Nat :=
+  countSorries code.definedDefs (fun (d : Data.LiterateDef) => d.provedStatus) +
+  countSorries code.definedTheorems (fun (d : Data.LiterateThm) => d.provedStatus)
+
+private def codeSorryDetails (label : Name) (kind : String) (code : Data.Code) : List SorryItem :=
+  collectSorries label kind code.definedDefs
+    (fun (d : Data.LiterateDef) => d.name)
+    (fun (d : Data.LiterateDef) => d.provedStatus)
+    (fun _ => false) ++
+  collectSorries label kind code.definedTheorems
+    (fun (d : Data.LiterateThm) => d.name)
+    (fun (d : Data.LiterateThm) => d.provedStatus)
+    (fun _ => true)
+
+private structure NodeLeanSummary where
+  leanDecls : Nat := 0
+  sorries : Nat := 0
+  leanObjects : List Name := []
+  sorryDetails : List SorryItem := []
+  missingLeanDecls : List MissingLeanDeclItem := []
+  renderFailures : List RenderFailureItem := []
+deriving Inhabited
+
+private def nodeLeanSummary (label : Name) (node : Data.Node) : NodeLeanSummary :=
+  if !node.hasAssociatedCode then
+    {}
+  else
+    let kind := toString node.kind
+    let externalDecls := node.externalRefs
+    let missingLeanDecls :=
+      externalDecls.foldl (init := []) fun acc decl =>
+        if !decl.present then
+          {
+            label
+            kind
+            written := decl.written
+            canonical := decl.canonical
+          } :: acc
+        else
+          acc
+    let incompleteExternalDecls :=
+      externalDecls.foldl (init := #[]) fun acc decl =>
+        if !decl.present then
+          acc
+        else
+          let status := decl.provedStatus
+          if status.isIncomplete then
+            acc.push (decl.canonical, status)
+          else
+            acc
+    let externalSorryDetails :=
+      incompleteExternalDecls.toList.map fun (decl, status) =>
+        {
+          label
+          kind
+          decl
+          isTheorem :=
+            (externalDecls.find? (fun d => d.canonical == decl)).map (·.kind.isTheoremLike) |>.getD false
+          status
+        }
+    let renderFailures :=
+      (externalRenderFailures externalDecls).toList.map fun failure =>
+        {
+          label
+          kind
+          written := failure.decl.written
+          canonical := failure.decl.canonical
+          message := failure.message
+        }
+    let (inlineDecls, inlineSorries, inlineSorryDetails) :=
+      node.literateCodes.foldl
+        (init := (0, 0, ([] : List SorryItem)))
+        fun (decls, sorryCount, details) code =>
+          (
+            decls + codeDeclCount code,
+            sorryCount + codeSorryCount code,
+            codeSorryDetails label kind code ++ details
+          )
+    {
+      leanDecls := externalDecls.size + inlineDecls
+      sorries := incompleteExternalDecls.size + inlineSorries
+      leanObjects := nodeLeanObjects node
+      sorryDetails := externalSorryDetails ++ inlineSorryDetails
+      missingLeanDecls
+      renderFailures
+    }
 
 private def nodeMissingLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
   (Informal.Graph.nodeExternalDecls node).foldl (init := 0) fun acc decl =>
     acc + (if Informal.Graph.externalDeclMissing external decl then 1 else 0)
 
 private def nodeIncompleteLeanDeclCount (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : Nat :=
-  match node.code with
-  | some (.external decls) =>
-    decls.foldl (init := 0) fun acc decl =>
+  let externalCount :=
+    node.externalRefs.foldl (init := 0) fun acc decl =>
       if Informal.Graph.externalDeclMissing external decl then
         acc
       else
         acc + (if decl.provedStatus.isIncomplete then 1 else 0)
-  | some (.literate code) =>
-      countSorries code.definedDefs (fun (d : Data.LiterateDef) => d.provedStatus) +
-      countSorries code.definedTheorems (fun (d : Data.LiterateThm) => d.provedStatus)
-  | _ => 0
+  externalCount + node.literateCodes.foldl (init := 0) fun acc code =>
+    acc + codeSorryCount code
 
 private def ownerDisplayName (state : Environment.State) (node : Data.Node) : Option String :=
   match node.owner with
@@ -365,89 +455,27 @@ def buildSummary : CoreM Summary := do
   let summary := entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
       let hasStatement := node.statement.isSome
       let hasProof := node.proof.isSome
-      let hasCode := node.code.isSome
+      let hasCode := Informal.Graph.nodeHasAssociatedCode node
       let statusFlags := entryStatusFlags state external node
-      let (leanDecls, sorries, leanObjects, sorryDetails, missingLeanDecls, renderFailures) :=
-        match node.code with
-        | none => (0, 0, ([] : List Name), ([] : List SorryItem), ([] : List MissingLeanDeclItem), ([] : List RenderFailureItem))
-        | some (.external decls) =>
-          let leanObjects := nodeLeanObjects node
-          let missingDecls :=
-            decls.foldl (init := []) fun acc decl =>
-              if !decl.present then
-                {
-                  label
-                  kind := toString node.kind
-                  written := decl.written
-                  canonical := decl.canonical
-                } :: acc
-              else
-                acc
-          let incompleteDecls :=
-            decls.foldl (init := #[]) fun acc decl =>
-              if !decl.present then
-                acc
-              else
-                let status := decl.provedStatus
-                if status.isIncomplete then
-                  acc.push (decl.canonical, status)
-                else
-                  acc
-          let sorryDetails :=
-            incompleteDecls.toList.map fun (decl, status) =>
-              {
-                label
-                kind := toString node.kind
-                decl
-                isTheorem :=
-                  (decls.find? (fun d => d.canonical == decl)).map (·.kind.isTheoremLike) |>.getD false
-                status
-              }
-          let renderFailures :=
-            (externalRenderFailures decls).toList.map fun failure =>
-              {
-                label
-                kind := toString node.kind
-                written := failure.decl.written
-                canonical := failure.decl.canonical
-                message := failure.message
-              }
-          (decls.size, incompleteDecls.size, leanObjects, sorryDetails, missingDecls, renderFailures)
-        | some (.literate code) =>
-          let kind := toString node.kind
-          let leanObjects := nodeLeanObjects node
-          let leanDecls := code.definedDefs.size + code.definedTheorems.size
-          let sorries :=
-            countSorries code.definedDefs (fun (d : Data.LiterateDef) => d.provedStatus) +
-            countSorries code.definedTheorems (fun (d : Data.LiterateThm) => d.provedStatus)
-          let sorryDetails :=
-            collectSorries label kind code.definedDefs
-              (fun (d : Data.LiterateDef) => d.name)
-              (fun (d : Data.LiterateDef) => d.provedStatus)
-              (fun _ => false) ++
-            collectSorries label kind code.definedTheorems
-              (fun (d : Data.LiterateThm) => d.name)
-              (fun (d : Data.LiterateThm) => d.provedStatus)
-              (fun _ => true)
-          (leanDecls, sorries, leanObjects, sorryDetails, ([] : List MissingLeanDeclItem), ([] : List RenderFailureItem))
+      let leanSummary := nodeLeanSummary label node
       let pendingInformalEntries : List PendingInformalItem :=
         if hasCode && ((node.kind.isTheoremLike && !hasProof) || !hasStatement) then
-          mkIndexItem label node.kind leanObjects :: acc.pendingInformalEntries
+          mkIndexItem label node.kind leanSummary.leanObjects :: acc.pendingInformalEntries
         else
           acc.pendingInformalEntries
       let definitionIndex : List IndexItem :=
         if node.kind == Data.NodeKind.definition then
-          mkIndexItem label node.kind leanObjects :: acc.definitionIndex
+          mkIndexItem label node.kind leanSummary.leanObjects :: acc.definitionIndex
         else
           acc.definitionIndex
       let theoremLikeIndex : List IndexItem :=
         if node.kind.isTheoremLike then
-          mkIndexItem label node.kind leanObjects :: acc.theoremLikeIndex
+          mkIndexItem label node.kind leanSummary.leanObjects :: acc.theoremLikeIndex
         else
           acc.theoremLikeIndex
       let axiomIndex : List IndexItem :=
         if statusFlags.hasAxiomLike then
-          mkIndexItem label node.kind leanObjects :: acc.axiomIndex
+          mkIndexItem label node.kind leanSummary.leanObjects :: acc.axiomIndex
         else
           acc.axiomIndex
       let acc := { acc with
@@ -456,11 +484,11 @@ def buildSummary : CoreM Summary := do
         informalOnlyEntries := acc.informalOnlyEntries + (if hasStatement && !hasCode then 1 else 0)
         totalStatus := bumpEntryStatus acc.totalStatus statusFlags
         pendingInformalEntries
-        leanDecls := acc.leanDecls + leanDecls
-        sorries := acc.sorries + sorries
-        sorryDetails := sorryDetails ++ acc.sorryDetails
-        missingLeanDecls := missingLeanDecls ++ acc.missingLeanDecls
-        renderFailures := renderFailures ++ acc.renderFailures
+        leanDecls := acc.leanDecls + leanSummary.leanDecls
+        sorries := acc.sorries + leanSummary.sorries
+        sorryDetails := leanSummary.sorryDetails ++ acc.sorryDetails
+        missingLeanDecls := leanSummary.missingLeanDecls ++ acc.missingLeanDecls
+        renderFailures := leanSummary.renderFailures ++ acc.renderFailures
         definitionIndex
         theoremLikeIndex
         axiomIndex
@@ -596,7 +624,7 @@ def buildSummary : CoreM Summary := do
   let coverageSplit :=
     entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
       let hasStatement := node.statement.isSome
-      let hasCode := node.code.isSome
+      let hasCode := Informal.Graph.nodeHasAssociatedCode node
       let statusFlags := entryStatusFlags state external node
       let statementStatus := Informal.Graph.statementStatus external state label node
       let proofStatus := Informal.Graph.proofStatus external state label node

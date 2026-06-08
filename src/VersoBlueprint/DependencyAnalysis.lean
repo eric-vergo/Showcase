@@ -7,6 +7,15 @@ Author: Emilio J. Gallego Arias
 import Lean
 import VersoBlueprint.Environment
 
+/-!
+LeanArchitect-style automatic dependency inference for Verso Blueprint.
+
+LeanArchitect recursively expands untagged Lean constants until it reaches
+blueprint nodes. Verso Blueprint uses a document-first variant: it scans direct
+constants from compiled declarations and maps each associated Lean declaration
+to its Blueprint labels.
+-/
+
 namespace Informal
 
 open Lean
@@ -141,22 +150,18 @@ def attachInferredUseRefs (label : Data.Label) (ref : Syntax) (useRefs : Inferre
   if useRefs.statement.isEmpty && useRefs.proof.isEmpty then
     pure ()
   else
-    Environment.modifyM fun state => do
+    Environment.modifyDataForLabel label fun data => do
       let data :=
-        match state.data.get? label with
+        match data.get? label with
         | some node =>
           let statement := payloadWithUseRefs ref useRefs.statement node.statement
           let proof := payloadWithUseRefs ref useRefs.proof node.proof
-          state.data.insert label { node with statement, proof }
+          data.insert label { node with statement, proof }
         | none =>
           let statement := payloadWithUseRefs ref useRefs.statement none
           let proof := payloadWithUseRefs ref useRefs.proof none
-          state.data.insert label { statement, proof }
-      let localData :=
-        match data.get? label with
-        | some node => state.localData.insert label node
-        | none => state.localData
-      return { state with data, localData }
+          data.insert label { statement, proof }
+      return data
 
 end DependencyAnalysis
 

@@ -94,6 +94,16 @@ jobs:
             )
           fi
       - if: ${{ inputs.harness_enabled }}
+        name: Select harness Lean toolchain
+        run: |
+          formalization_toolchain="${{ steps.harness.outputs.formalization_path }}/lean-toolchain"
+          if [ -f "$formalization_toolchain" ]; then
+            cp "$formalization_toolchain" lean-toolchain
+            if [ -f ".lake/packages/VersoBlueprint/lean-toolchain" ]; then
+              cp "$formalization_toolchain" ".lake/packages/VersoBlueprint/lean-toolchain"
+            fi
+          fi
+      - if: ${{ inputs.harness_enabled }}
         name: Validate harness contract
         run: python3 tools/verso-harness/scripts/check_harness.py --project-root .
       - name: Build Blueprint site

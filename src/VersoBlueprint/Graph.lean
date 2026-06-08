@@ -293,6 +293,20 @@ private def CodeHealth.bump (health : CodeHealth) (kind : Data.NodeKind) (status
       hasAxiomLike := health.hasAxiomLike || status.isAxiomLike
   }
 
+private def CodeHealth.merge (left right : CodeHealth) : CodeHealth :=
+  {
+    hasAssociatedCode := left.hasAssociatedCode || right.hasAssociatedCode
+    totalDecls := left.totalDecls + right.totalDecls
+    presentDecls := left.presentDecls + right.presentDecls
+    missingDecls := left.missingDecls + right.missingDecls
+    statementAxisCount := left.statementAxisCount + right.statementAxisCount
+    proofAxisCount := left.proofAxisCount + right.proofAxisCount
+    statementBlockCount := left.statementBlockCount + right.statementBlockCount
+    proofBlockCount := left.proofBlockCount + right.proofBlockCount
+    anyGapCount := left.anyGapCount + right.anyGapCount
+    hasAxiomLike := left.hasAxiomLike || right.hasAxiomLike
+  }
+
 private def codeHealthOfInlineDecls (kind : Data.NodeKind) (statuses : Array Data.ProvedStatus) : CodeHealth :=
   statuses.foldl
       (init := { hasAssociatedCode := true, totalDecls := statuses.size, presentDecls := statuses.size })
@@ -310,15 +324,19 @@ def codeHealthOfExternalDecls (kind : Data.NodeKind) (external : ExternalCodeSta
       let health := health.bump kind status
       { health with presentDecls := health.presentDecls + 1 }
 
-def codeHealthOfCodeRef (kind : Data.NodeKind) (external : ExternalCodeStatus)
-    (codeRef? : Option Data.CodeRef) : CodeHealth :=
-  match codeRef? with
-  | none => {}
-  | some (.external decls) => codeHealthOfExternalDecls kind external decls
-  | some (.literate code) =>
+private def codeHealthOfOneCodeRef (kind : Data.NodeKind) (external : ExternalCodeStatus)
+    (codeRef : Data.CodeRef) : CodeHealth :=
+  match codeRef with
+  | .external decls => codeHealthOfExternalDecls kind external decls
+  | .literate code =>
     let statuses :=
       (code.definedDefs.map (·.provedStatus)) ++ (code.definedTheorems.map (·.provedStatus))
     codeHealthOfInlineDecls kind statuses
+
+def codeHealthOfLeanCode (kind : Data.NodeKind) (external : ExternalCodeStatus)
+    (leanCode : Array Data.CodeRef) : CodeHealth :=
+  leanCode.foldl (init := {}) fun health codeRef =>
+    health.merge (codeHealthOfOneCodeRef kind external codeRef)
 
 def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatus)
     (source? : Option Informal.BlockCodeData) : CodeHealth :=
@@ -331,7 +349,7 @@ def codeHealthOfBlockSource (kind : Data.NodeKind) (external : ExternalCodeStatu
     codeHealthOfInlineDecls kind statuses
 
 def nodeCodeHealth (external : ExternalCodeStatus) (node : Data.Node) : CodeHealth :=
-  codeHealthOfCodeRef node.kind external node.code
+  codeHealthOfLeanCode node.kind external node.leanCode
 
 def CodeHealth.hasMissingExternalDecls (health : CodeHealth) : Bool :=
   health.missingDecls > 0
@@ -363,12 +381,10 @@ def CodeHealth.localFormalized (health : CodeHealth) (kind : Data.NodeKind) : Bo
     false
 
 def nodeExternalDecls (node : Data.Node) : Array Data.ExternalRef :=
-  match node.code with
-  | some (.external decls) => decls
-  | _ => #[]
+  node.externalRefs
 
 def nodeHasAssociatedCode (node : Data.Node) : Bool :=
-  node.code.isSome
+  node.hasAssociatedCode
 
 def externalDeclMissing (external : ExternalCodeStatus) (decl : Data.ExternalRef) : Bool :=
   !decl.present || external.isMissing decl.canonical

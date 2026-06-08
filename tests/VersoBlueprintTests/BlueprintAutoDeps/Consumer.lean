@@ -124,6 +124,26 @@ private def expectedUsesMatrix : Array ExpectedUses :=
 #guard_msgs in
 #eval
   show CoreM Bool from do
+    let sharedLabels ←
+      Environment.labelsForLeanDecl
+        `Verso.VersoBlueprintTests.BlueprintAutoDeps.Provider.sharedSource
+    let sharedUses ← statementUses "auto.shared.target"
+    let expectedLabels := labels #[
+      "auto.shared.source.primary",
+      "auto.shared.source.secondary"
+    ]
+    pure <|
+      sharedLabels.size == expectedLabels.size &&
+      expectedLabels.all (fun label => sharedLabels.contains label) &&
+      sharedUses.size == expectedLabels.size &&
+      expectedLabels.all (fun label =>
+        sharedUses.any fun useRef =>
+          useRef.label == label && useRef.origin == .automatic)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
     let providerLabels ←
       Environment.labelsForLeanDecl
         `Verso.VersoBlueprintTests.BlueprintAutoDeps.Provider.typeSource

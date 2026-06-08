@@ -298,6 +298,15 @@ set_option verso.blueprint.autoDeps true
 The local argument wins over the option, so `(autoDeps := false)` disables
 inference for one node even when the file default is enabled.
 
+This is LeanArchitect-style automatic dependency inference: dependency edges are
+derived from Lean's compiled declarations instead of duplicated by hand.
+Verso Blueprint's variant is document-first and direct. LeanArchitect expands
+through untagged Lean helpers until it reaches blueprint-tagged declarations;
+Verso Blueprint scans only direct constants and then maps those constants to
+their associated Blueprint labels. This keeps immediate Blueprint edges
+predictable while still removing the routine `uses` duplication around formal
+declarations.
+
 For a compiled declaration tagged with `@[blueprint]`, write:
 
 ```lean
@@ -327,15 +336,22 @@ Blueprint labels and used directly by the type become statement dependencies;
 declarations associated with Blueprint labels and used directly by the body
 become proof dependencies. A Lean declaration is associated with a Blueprint
 label by `@[blueprint "..."]`, by a labeled inline Lean code block, or by an
-informal statement block with `(lean := "...")`. Untagged Lean constants are
-ignored and are not expanded to search for transitive tagged dependencies. Use
-string labels for ordinary Blueprint-only nodes. Inferred edges are stored with origin
-`"automatic"` so relationship panels can distinguish them from author-written
-edges. If the same label is both inferred and explicitly listed on the same
-axis, the edge is emitted once with manual origin. If the same label is inferred
-on both axes, the statement edge wins and the automatic proof edge is
-suppressed; an explicit `proofUses` entry can still put the label on the proof
-axis when that is what the Blueprint should say.
+informal statement block with `(lean := "...")`.
+
+Lean associations are many-to-many. One Blueprint label may be associated with
+several Lean code items, and one Lean declaration may be associated with several
+Blueprint labels. Automatic dependency inference emits all associated labels and
+then deduplicates edges by label.
+
+Untagged Lean constants are ignored and are not expanded to search for
+transitive tagged dependencies. Use string labels for ordinary Blueprint-only
+nodes. Inferred edges are stored with origin `"automatic"` so relationship
+panels can distinguish them from author-written edges. If the same label is
+both inferred and explicitly listed on the same axis, the edge is emitted once
+with manual origin. If the same label is inferred on both axes, the statement
+edge wins and the automatic proof edge is suppressed; an explicit `proofUses`
+entry can still put the label on the proof axis when that is what the Blueprint
+should say.
 
 Manual attribute dependencies can be merged with or excluded from the inferred
 set:
@@ -372,6 +388,11 @@ For all natural numbers $`a`, $`b`, and $`c`, addition is associative.
 
 This links the Blueprint entry to an existing Lean declaration without copying
 the declaration body into the chapter.
+
+If the same Blueprint label also has a labeled inline Lean block, Blueprint
+keeps both Lean associations. External declaration references render with the
+informal statement block, while inline Lean blocks render at their source
+location.
 
 Notes:
 

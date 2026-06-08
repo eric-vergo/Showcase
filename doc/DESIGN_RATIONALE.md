@@ -133,8 +133,10 @@ code block:
 
 1. `Informal/Code.lean` elaborates the Lean block and records
    `InlineCodeData`.
-2. `Informal/Block.lean` resolves block-level code source precedence during
-   HTML rendering, preferring inline code over any external-code hint.
+2. `Informal/Block.lean` keeps semantic Lean associations accumulated across
+   inline and external sources. Heading summaries prefer inline code when they
+   need one compact status badge, while external declaration panels still render
+   from the statement block's external references.
 3. `Informal/CodeSummary.lean` computes the heading badge, summary hover body,
    and code-panel indicator from that resolved source.
 4. `Informal/Block/Common.lean` provides the shared panel/header helpers used

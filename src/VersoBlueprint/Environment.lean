@@ -86,25 +86,8 @@ deriving Inhabited, Repr
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
   if labels.contains label then labels else labels.push label
 
-private def pushDeclUnique (decls : Array Name) (decl : Name) : Array Name :=
-  let decl := decl.eraseMacroScopes
-  if decls.contains decl then decls else decls.push decl
-
-private def codeRefDecls : CodeRef → Array Name
-  | .external refs =>
-    refs.foldl (init := #[]) fun acc ref =>
-      if ref.present then
-        pushDeclUnique acc ref.canonical
-      else
-        acc
-  | .literate code =>
-    (code.definedDefs.map (·.name) ++ code.definedTheorems.map (·.name)).foldl
-      pushDeclUnique #[]
-
 private def nodeLeanDecls (node : Node) : Array Name :=
-  match node.code with
-  | some code => codeRefDecls code
-  | none => #[]
+  node.leanDecls
 
 private def addLeanDeclLabel
     (leanNameLabels : NameMap (Array Label)) (decl label : Name) : NameMap (Array Label) :=
@@ -124,6 +107,28 @@ private def addRegisteredNodeLeanDeclLabels
   match data.get? label with
   | some node => addNodeLeanDeclLabels leanNameLabels label node
   | none => leanNameLabels
+
+private def removeLeanDeclLabel
+    (leanNameLabels : NameMap (Array Label)) (label : Name) : NameMap (Array Label) :=
+  leanNameLabels.foldl (init := ({} : NameMap (Array Label))) fun acc decl labels =>
+    let labels := labels.filter (· != label)
+    if labels.isEmpty then
+      acc
+    else
+      acc.insert decl labels
+
+private def reindexRegisteredNodeLeanDeclLabels
+    (leanNameLabels : NameMap (Array Label)) (data : Data) (label : Name) :
+    NameMap (Array Label) :=
+  addRegisteredNodeLeanDeclLabels (removeLeanDeclLabel leanNameLabels label) data label
+
+private def State.commitDataForLabel (state : State) (label : Name) (data : Data) : State :=
+  let localData :=
+    match data.get? label with
+    | some node => state.localData.insert label node
+    | none => state.localData
+  let leanNameLabels := reindexRegisteredNodeLeanDeclLabels state.leanNameLabels data label
+  { state with data, localData, leanNameLabels }
 
 initialize informalExt : PersistentEnvExtension Entry Entry State ←
   registerPersistentEnvExtension {
@@ -199,6 +204,11 @@ def modifyM (f : State -> m State) : m Unit := do
   let st := informalExt.getState (← getEnv)
   let st ← f st
   modifyEnv (informalExt.setState · st)
+
+def modifyDataForLabel (label : Label) (f : Data -> m Data) : m Unit := do
+  modifyM fun state => do
+    let data ← f state.data
+    return state.commitDataForLabel label data
 
 def importedConflicts : m (Array ImportedConflict) := do
   return (informalExt.getState (← getEnv)).importedConflicts
@@ -291,12 +301,7 @@ def pop (ref : Syntax) : m Nat := do
         }
         let data ← state.data.register
           cur.label cur.kind payload cur.codeHint cur.parent cur.priority cur.owner cur.tags cur.effort cur.prUrl
-        let localData :=
-          match data.get? cur.label with
-          | some node => state.localData.insert cur.label node
-          | none => state.localData
-        let leanNameLabels := addRegisteredNodeLeanDeclLabels state.leanNameLabels data cur.label
-        return { state with data, localData, leanNameLabels, stack }
+        return { state.commitDataForLabel cur.label data with stack }
   let state := informalExt.getState (← getEnv)
   match label? with
   | some label =>
@@ -345,32 +350,16 @@ def setPreviewBlocks (blocks : Array (Verso.Doc.Block Verso.Genre.Manual)) : m U
 
 def registerCode (label : Label) (code : Syntax)
     (definedDefs : Array LiterateDef := #[]) (definedTheorems : Array LiterateThm := #[]) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerCode label code definedDefs definedTheorems
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    let leanNameLabels := addRegisteredNodeLeanDeclLabels state.leanNameLabels data label
-    return { state with data, localData, leanNameLabels }
+  modifyDataForLabel label fun data =>
+    data.registerCode label code definedDefs definedTheorems
 
 def registerRustCode (label : Label) (code : RustInlineCode) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerRustCode label code
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    return { state with data, localData }
+  modifyDataForLabel label fun data =>
+    data.registerRustCode label code
 
 def registerTexSource (label : Label) (slot : String) (texSource : TexSource) : m Unit := do
-  modifyM fun state => do
-    let data ← state.data.registerTexSource label slot texSource
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    return { state with data, localData }
+  modifyDataForLabel label fun data =>
+    data.registerTexSource label slot texSource
 
 def getNode? (label : Label) : m (Option Node) := do
   return (informalExt.getState (← getEnv)).data.get? label
