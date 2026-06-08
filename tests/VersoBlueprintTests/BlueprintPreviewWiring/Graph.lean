@@ -25,6 +25,34 @@ Base statement for an explicit left-to-right graph.
 {blueprint_graph (direction := LR) (pack := false)}
 :::::::
 
+#docs (Genre.Manual) hoverPreviewGraphDoc "Blueprint Hover Preview Graph" :=
+:::::::
+:::definition "def:graph.hover.base"
+Base statement for an explicit hover-preview graph with the default docked panel.
+:::
+
+{blueprint_graph (preview := hover)}
+:::::::
+
+#docs (Genre.Manual) anchoredHoverPreviewGraphDoc "Blueprint Anchored Hover Preview Graph" :=
+:::::::
+:::definition "def:graph.hover.anchored.base"
+Base statement for an explicit anchored hover-preview graph.
+:::
+
+{blueprint_graph (preview := hover) (previewPlacement := anchored)}
+:::::::
+
+set_option verso.blueprint.graph.defaultPreviewMode "hover" in
+#docs (Genre.Manual) optionHoverPreviewGraphDoc "Blueprint Option Hover Preview Graph" :=
+:::::::
+:::definition "def:graph.option.hover.base"
+Base statement for graph preview mode option coverage.
+:::
+
+{blueprint_graph}
+:::::::
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -38,6 +66,18 @@ Base statement for an explicit left-to-right graph.
       hasSubstr out "class=\"bp_graph_preview bp_preview_panel\"" &&
       hasSubstr out "data-bp-preview-mode=\"pinned\"" &&
       hasSubstr out "data-bp-preview-placement=\"docked\"" &&
+      hasSubstr out "class=\"bp_graph_controls_select bp_graph_preview_mode_select\"" &&
+      hasSubstr out "data-bp-graph-default-preview-mode=\"pinned\"" &&
+      hasSubstr out "class=\"bp_graph_controls_select bp_graph_preview_placement_select\"" &&
+      hasSubstr out "data-bp-graph-default-preview-placement=\"docked\"" &&
+      hasSubstr out "value=\"pinned\"" &&
+      hasSubstr out "Click to pin" &&
+      hasSubstr out "value=\"hover\"" &&
+      hasSubstr out "Hover" &&
+      hasSubstr out "value=\"docked\"" &&
+      hasSubstr out "Docked" &&
+      hasSubstr out "value=\"anchored\"" &&
+      hasSubstr out "Near node" &&
       !hasSubstr out "class=\"bp_graph_preview_store\"" &&
       !hasSubstr out "class=\"bp_graph_preview_tpl\"" &&
       hasSubstr out "class=\"bp_group_hover_preview bp_preview_panel\"" &&
@@ -62,10 +102,14 @@ Base statement for an explicit left-to-right graph.
       | some graphJs =>
         hasSubstr graphJs "return utils.readPreviewTemplate(entry);" &&
         hasSubstr graphJs "function layoutGraphCanvas(graphRoot, graphState)" &&
+        hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
+        hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
         hasSubstr graphJs "function ensureGraphBlockState(graphBlock)" &&
         hasSubstr graphJs "function createPanelController(panel, behavior, titleSelector, bodySelector, options)" &&
         hasSubstr graphJs "function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr)" &&
         hasSubstr graphJs "function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior)" &&
+        hasSubstr graphJs "const previewModeSelector = graphBlock.querySelector(\".bp_graph_preview_mode_select\");" &&
+        hasSubstr graphJs "const previewPlacementSelector = graphBlock.querySelector(\".bp_graph_preview_placement_select\");" &&
         hasSubstr graphJs "const previewKey = nodeId ? (previewKeys.get(nodeId) || \"\") : \"\";" &&
         hasSubstr graphJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
@@ -73,6 +117,10 @@ Base statement for an explicit left-to-right graph.
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)" &&
         hasSubstr graphJs "graphState.previewActiveNode === node && !previewController.panel.hidden" &&
+        hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isHover) return;" &&
+        hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isPinned) return;" &&
+        hasSubstr graphJs "setPreviewBehavior(previewModeSelector.value, readPreviewPlacement());" &&
+        hasSubstr graphJs "setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);" &&
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, previewClose" &&
         hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
@@ -101,6 +149,50 @@ Base statement for an explicit left-to-right graph.
         hasSubstr graphJs ".fit(true)" &&
         hasSubstr graphJs "syncLegend(graphBlock, activeKey)"
       | none => false
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (out, _) ← renderManualDocHtmlStringAndState manualImpls hoverPreviewGraphDoc
+    pure (
+      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-preview-placement=\"docked\"" &&
+      hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-graph-default-preview-placement=\"docked\"" &&
+      hasSubstr out "value=\"pinned\"" &&
+      hasSubstr out "Click to pin" &&
+      hasSubstr out "value=\"hover\"" &&
+      hasSubstr out "Hover" &&
+      hasSubstr out "value=\"docked\"" &&
+      hasSubstr out "Docked" &&
+      hasSubstr out "value=\"anchored\"" &&
+      hasSubstr out "Near node"
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (out, _) ← renderManualDocHtmlStringAndState manualImpls anchoredHoverPreviewGraphDoc
+    pure (
+      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-preview-placement=\"anchored\"" &&
+      hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-graph-default-preview-placement=\"anchored\""
+    )
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (out, _) ← renderManualDocHtmlStringAndState manualImpls optionHoverPreviewGraphDoc
+    pure (
+      hasSubstr out "data-bp-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-preview-placement=\"docked\"" &&
+      hasSubstr out "data-bp-graph-default-preview-mode=\"hover\"" &&
+      hasSubstr out "data-bp-graph-default-preview-placement=\"docked\""
     )
 
 /-- info: true -/

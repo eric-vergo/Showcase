@@ -38,6 +38,45 @@
     return true;
   }
 
+  function normalizePreviewMode(rawMode) {
+    const mode = String(rawMode || "").trim().toLowerCase();
+    if (mode === "hover" || mode === "transient") return "hover";
+    return "pinned";
+  }
+
+  function normalizePreviewPlacement(rawPlacement) {
+    const placement = String(rawPlacement || "").trim().toLowerCase();
+    if (
+      placement === "anchored" ||
+      placement === "anchor" ||
+      placement === "near" ||
+      placement === "near-node" ||
+      placement === "node"
+    ) {
+      return "anchored";
+    }
+    return "docked";
+  }
+
+  function previewBehaviorForMode(previewUtils, mode, placement) {
+    const normalized = normalizePreviewMode(mode);
+    const normalizedPlacement = normalizePreviewPlacement(placement);
+    if (previewUtils && typeof previewUtils.readPanelBehavior === "function") {
+      return previewUtils.readPanelBehavior(null, {
+        mode: normalized,
+        placement: normalizedPlacement
+      });
+    }
+    return {
+      mode: normalized,
+      placement: normalizedPlacement,
+      isPinned: normalized === "pinned",
+      isHover: normalized === "hover",
+      isAnchored: normalizedPlacement === "anchored",
+      isDocked: normalizedPlacement === "docked"
+    };
+  }
+
   function normalizeGraphOptions(rawOptions) {
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
@@ -353,8 +392,17 @@
     return controller;
   }
 
-  function makeHtmlPanelPositioner(behavior) {
+  function readBehaviorSource(behaviorSource) {
+    if (typeof behaviorSource === "function") {
+      const behavior = behaviorSource();
+      return behavior && typeof behavior === "object" ? behavior : null;
+    }
+    return behaviorSource && typeof behaviorSource === "object" ? behaviorSource : null;
+  }
+
+  function makeHtmlPanelPositioner(behaviorSource) {
     return function (panel, anchorNode) {
+      const behavior = readBehaviorSource(behaviorSource);
       const previewUtils = window.bpPreviewUtils;
       if (
         behavior &&
@@ -406,6 +454,10 @@
       return;
     }
     if (behavior && behavior.isPinned) {
+      closeButton.hidden = false;
+      closeButton.style.display = "";
+      closeButton.setAttribute("aria-hidden", "false");
+      closeButton.tabIndex = 0;
       if (previewUtils && typeof previewUtils.bindCloseOnce === "function") {
         previewUtils.bindCloseOnce(closeButton, hidePanel);
       } else if (closeButton.getAttribute("data-bp-bound") !== "1") {
@@ -432,7 +484,6 @@
       }
     };
     if (!controller || !(controller.panel instanceof Element)) return noop;
-    if (!controller.behavior || !controller.behavior.isHover) return noop;
     const panel = controller.panel;
     const attr =
       typeof boundAttr === "string" && boundAttr.length > 0
@@ -448,6 +499,7 @@
     }
 
     function scheduleHide() {
+      if (!controller.behavior || !controller.behavior.isHover) return;
       cancelHide();
       hideTimer = window.setTimeout(function () {
         hideTimer = null;
@@ -522,11 +574,15 @@
       graphState.previewActiveNode = anchorNode instanceof Element ? anchorNode : null;
       previewController.show(label, html, graphState.previewActiveNode);
     };
-    svg.querySelectorAll("g.node").forEach(function (node) {
+    const canPreviewNode = function (node) {
+      if (!(node instanceof Element)) return false;
       const label = graphNodeLabel(node);
       const nodeId = graphNodeId(node);
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      if (!label || (!previewMap.has(label) && !(canResolveHtmlCache && previewKey))) return;
+      return !!label && (previewMap.has(label) || !!(canResolveHtmlCache && previewKey));
+    };
+    svg.querySelectorAll("g.node").forEach(function (node) {
+      if (!canPreviewNode(node)) return;
       node.style.cursor = "pointer";
       node.setAttribute("tabindex", "0");
       const titleNode = node.querySelector("title");
@@ -541,39 +597,52 @@
       });
     });
     const showFromTarget = function (target) {
-      if (!(target instanceof Element)) return;
+      if (!(target instanceof Element)) return false;
       const node = target.closest("g.node");
-      if (!node) return;
-       if (graphState.previewActiveNode === node && !previewController.panel.hidden) {
+      if (!node || !canPreviewNode(node)) return false;
+      if (graphState.previewActiveNode === node && !previewController.panel.hidden) {
         hoverLifetime.cancelHide();
         previewController.position(node);
-        return;
+        return true;
       }
       const label = graphNodeLabel(node);
       if (label) show(label, node);
+      return !!label;
     };
     if (svg.getAttribute("data-bp-preview-bound") === "1") return;
     svg.setAttribute("data-bp-preview-bound", "1");
     svg.addEventListener("mouseover", function (ev) {
+      if (!previewController.behavior || !previewController.behavior.isHover) return;
       showFromTarget(ev.target);
     });
     svg.addEventListener("focusin", function (ev) {
+      if (!previewController.behavior || !previewController.behavior.isHover) return;
       showFromTarget(ev.target);
     });
-    if (previewController.behavior && previewController.behavior.isHover) {
-      const hideIfLeaving = function (ev) {
-        if (
-          previewUtils &&
-          typeof previewUtils.shouldKeepOpen === "function" &&
-          previewUtils.shouldKeepOpen(ev.relatedTarget, graphState.previewActiveNode, previewController.panel)
-        ) {
-          return;
-        }
-        hoverLifetime.scheduleHide();
-      };
-      svg.addEventListener("mouseout", hideIfLeaving);
-      svg.addEventListener("focusout", hideIfLeaving);
-    }
+    svg.addEventListener("click", function (ev) {
+      if (!previewController.behavior || !previewController.behavior.isPinned) return;
+      if (!showFromTarget(ev.target)) return;
+      ev.preventDefault();
+    });
+    svg.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (!previewController.behavior || !previewController.behavior.isPinned) return;
+      if (!showFromTarget(ev.target)) return;
+      ev.preventDefault();
+    });
+    const hideIfLeaving = function (ev) {
+      if (!previewController.behavior || !previewController.behavior.isHover) return;
+      if (
+        previewUtils &&
+        typeof previewUtils.shouldKeepOpen === "function" &&
+        previewUtils.shouldKeepOpen(ev.relatedTarget, graphState.previewActiveNode, previewController.panel)
+      ) {
+        return;
+      }
+      hoverLifetime.scheduleHide();
+    };
+    svg.addEventListener("mouseout", hideIfLeaving);
+    svg.addEventListener("focusout", hideIfLeaving);
   }
 
   function attachVariantSelectors(graphContainer, variantsByKey, activeVariant, onSelect, onHover, onHoverLeave) {
@@ -771,6 +840,8 @@
         const selector = graphBlock.querySelector(".bp_graph_view_select");
         const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
         const packInput = graphBlock.querySelector(".bp_graph_pack_input");
+        const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
+        const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
         const previewMap = collectPreviewTemplates(graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
         const previewClose = previewPanelNode
@@ -781,7 +852,8 @@
           previewUtils && typeof previewUtils.readPanelBehavior === "function"
             ? previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" })
             : { mode: "pinned", placement: "docked", isPinned: true, isHover: false, isAnchored: false, isDocked: true };
-        const previewController = createPanelController(
+        let previewController = null;
+        previewController = createPanelController(
           previewPanelNode,
           previewPanelBehavior,
           ".bp_graph_preview_title",
@@ -795,7 +867,9 @@
               }
               renderMath(body);
             },
-            positionPanel: makeHtmlPanelPositioner(previewPanelBehavior),
+            positionPanel: makeHtmlPanelPositioner(function () {
+              return previewController ? previewController.behavior : previewPanelBehavior;
+            }),
             onHide: function () {
               graphState.previewRequestToken += 1;
               graphState.previewActiveNode = null;
@@ -803,9 +877,45 @@
           }
         );
         graphState.previewController = previewController;
-        configurePanelCloseButton(previewUtils, previewClose, function () {
-          if (previewController) previewController.hide();
-        }, previewPanelBehavior);
+        const readPreviewMode = function () {
+          if (previewModeSelector) return previewModeSelector.value;
+          if (previewController && previewController.behavior) return previewController.behavior.mode;
+          return previewPanelBehavior.mode || "pinned";
+        };
+        const readPreviewPlacement = function () {
+          if (previewPlacementSelector) return previewPlacementSelector.value;
+          if (previewController && previewController.behavior) return previewController.behavior.placement;
+          return previewPanelBehavior.placement || "docked";
+        };
+        const setPreviewBehavior = function (nextMode, nextPlacement, options) {
+          const opts = options && typeof options === "object" ? options : {};
+          const mode = normalizePreviewMode(nextMode);
+          const placement = normalizePreviewPlacement(nextPlacement);
+          if (previewPanelNode) {
+            previewPanelNode.setAttribute("data-bp-preview-mode", mode);
+            previewPanelNode.setAttribute("data-bp-preview-placement", placement);
+          }
+          if (previewModeSelector) previewModeSelector.value = mode;
+          if (previewPlacementSelector) previewPlacementSelector.value = placement;
+          const behavior = previewBehaviorForMode(previewUtils, mode, placement);
+          if (previewController) {
+            previewController.behavior = behavior;
+            configurePanelCloseButton(previewUtils, previewClose, function () {
+              if (previewController) previewController.hide();
+            }, behavior);
+            if (!opts.keepOpen) previewController.hide();
+          }
+          return behavior;
+        };
+        setPreviewBehavior(
+          previewModeSelector
+            ? (previewModeSelector.getAttribute("data-bp-graph-default-preview-mode") || previewModeSelector.value)
+            : (previewPanelBehavior.mode || "pinned"),
+          previewPlacementSelector
+            ? (previewPlacementSelector.getAttribute("data-bp-graph-default-preview-placement") || previewPlacementSelector.value)
+            : (previewPanelBehavior.placement || "docked"),
+          { keepOpen: true }
+        );
 
         const rawVariants = collectGraphVariants(graphContainer);
         if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
@@ -1103,6 +1213,16 @@
         if (packInput) {
           packInput.addEventListener("change", function () {
             switchPack(packInput.checked);
+          });
+        }
+        if (previewModeSelector) {
+          previewModeSelector.addEventListener("change", function () {
+            setPreviewBehavior(previewModeSelector.value, readPreviewPlacement());
+          });
+        }
+        if (previewPlacementSelector) {
+          previewPlacementSelector.addEventListener("change", function () {
+            setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);
           });
         }
 
