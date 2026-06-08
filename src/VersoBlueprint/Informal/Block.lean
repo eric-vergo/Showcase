@@ -100,6 +100,7 @@ block_extension Block.informal (data : BlockData) where
           | .proof => none
           | .statement _ => data.codeData
         let codeSource := BlockCodeData.ofHintAndInline codeHint? codeData?
+        let externalDecls := codeHint?.map (·.externalDecls) |>.getD #[]
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
@@ -108,27 +109,30 @@ block_extension Block.informal (data : BlockData) where
           codeHref
           source := codeSource
         }
-        let panelSummary := CodeSummary.renderPanelIndicator data.label cdata getDeclHref
         let headingParts? : Option CodeSummary.RenderParts :=
           match data.kind with
           | .statement _ => some <| CodeSummary.renderParts data cdata getDeclHref
           | .proof => none
         let externalParts? : Option ExternalCode.RenderParts ←
-          match data.kind, codeSource with
-          | .statement _, some (.external decls) =>
-            if decls.isEmpty then
+          match data.kind with
+          | .statement _ =>
+            if externalDecls.isEmpty then
               pure none
             else
+              let externalCdata : CodeSummary.ComputedData := {
+                source := some (.external externalDecls)
+              }
+              let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
               let panelHeader := codePanelHeader data (data.displayNumber s)
               some <$> ExternalCode.renderPartsWithPageHovers
                 panelHeader
-                panelSummary.summaryTitle
-                panelSummary.indicator
-                decls
+                externalSummary.summaryTitle
+                externalSummary.indicator
+                externalDecls
                 getDeclHref
                 getDeclAnchorAttrs
                 (folded := data.foldCodeBlock)
-          | _, _ => pure none
+          | .proof => pure none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
         let content := (← blocks.mapM goB)
         let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
@@ -180,7 +184,6 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let count ← Environment.pop blockRef
     liftM <| DependencyAnalysis.attachInferredUseRefs label blockRef { proof := resolved.proofUses }
     let node? ← Environment.getNode? label
-    let nodeCodeRef? := node?.bind (·.code)
     let blockKind : Data.InProgressKind ←
       if isProof then
         pure .proof
@@ -195,7 +198,9 @@ private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : Dire
     let codeData :=
       match blockKind with
       | .proof => none
-      | .statement _ => BlockCodeData.ofCodeRefHint nodeCodeRef?
+      | .statement _ =>
+        let externalRefs := node?.map (·.externalRefs) |>.getD #[]
+        BlockCodeData.ofExternalRefs externalRefs
     let statementPayload? := node?.bind (·.statement)
     let proofPayload? := node?.bind (·.proof)
     let statementUses := statementPayload?.map (·.deps) |>.getD #[]

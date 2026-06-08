@@ -35,19 +35,20 @@ Public API:
 -/
 
 /--
-Canonical inputs used to compute Lean summary UI for one informal block.
+Presentation inputs used to compute Lean summary UI for one informal block.
 
-`source` is the resolved optional code source for this block (`none` / `some inline` /
-`some external`).
-Inline declaration summaries come from `.inline`; `codeHref` is used for heading link rendering.
+`source` is the optional source selected for this particular heading or panel
+summary (`none` / `some inline` / `some external`). It is not the complete set of
+Lean associations owned by the label; semantic association data lives in
+`Data.Node.leanCode`.
 
-Callers should pass `source` after applying code-source precedence
-(typically via `BlockCodeData.ofHintAndInline`).
+Callers that need a single heading source should pass `source` after applying
+the presentation selection rule, typically via `BlockCodeData.ofHintAndInline`.
 -/
 structure ComputedData where
   /-- URL to the rendered Lean panel for this block, when available. -/
   codeHref : Option String := none
-  /-- Canonical resolved source used for status and tooltip semantics. -/
+  /-- Presentation source used for status and tooltip semantics. -/
   source : Option BlockCodeData := none
 
 /--

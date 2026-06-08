@@ -21,6 +21,10 @@ theorem proofSource : True := by
 @[blueprint "auto.def.source"]
 def defSource : Nat := 1
 
+/-- Source declaration intentionally associated with two Blueprint labels. -/
+@[blueprint "auto.shared.source.primary", blueprint "auto.shared.source.secondary"]
+def sharedSource : Prop := True
+
 /-- Extra explicit dependency target. -/
 @[blueprint "auto.manual.extra"]
 theorem manualExtra : True := by
@@ -37,6 +41,10 @@ theorem proofTarget : True := by
 
 @[blueprint "auto.def.target" (autoDeps := true)]
 def defTarget : Nat := defSource + 1
+
+@[blueprint "auto.shared.target" (autoDeps := true)]
+theorem sharedTarget : sharedSource := by
+  trivial
 
 theorem untaggedSource : True := by
   trivial

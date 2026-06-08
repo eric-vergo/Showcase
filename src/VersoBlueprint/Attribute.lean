@@ -310,8 +310,8 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
   let extRef ←
     externalRefSnapshotAtCurrentDir opts (Data.ExternalRef.ofName decl .blueprintAttr)
 
-  Environment.modifyM fun state => do
-    let data ← state.data.registerCodeRef label (.external #[extRef])
+  Environment.modifyDataForLabel label fun data => do
+    let data ← data.registerCodeRef label (.external #[extRef])
     let data :=
       match data.get? label with
       | some node =>
@@ -325,13 +325,7 @@ private def registerLeanOnlyDecl (decl : Name) (cfg : BlueprintAttrConfig) (ref 
         let node := { node with statement, proof }
         data.insert label node
       | none => data
-    let localData :=
-      match data.get? label with
-      | some node => state.localData.insert label node
-      | none => state.localData
-    let labels := state.leanNameLabels.getD decl #[]
-    let leanNameLabels := state.leanNameLabels.insert decl (pushLabelUnique labels label)
-    return { state with data, localData, leanNameLabels }
+    return data
 
 open Lean in
 initialize
