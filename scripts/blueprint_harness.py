@@ -29,6 +29,7 @@ from scripts.blueprint_harness_branches import (
     write_branch_policy,
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
+from scripts.blueprint_harness_manifest import load_json_object
 from scripts.blueprint_harness_paths import (
     canonical_reference_project_site_dir,
     canonical_test_blueprint_site_dir,
@@ -442,9 +443,10 @@ def update_release_line_project_manifest(
     rc: str | None,
     deploy_pages: bool,
 ) -> None:
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected JSON object")
+    try:
+        raw = load_json_object(manifest_path)
+    except ValueError as err:
+        raise SystemExit(f"[blueprint-harness] invalid project manifest: {err}") from err
 
     release_targets = raw.get("release_targets")
     if not isinstance(release_targets, list):
