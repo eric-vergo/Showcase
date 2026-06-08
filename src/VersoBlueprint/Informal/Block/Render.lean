@@ -12,7 +12,7 @@ namespace Informal
 
 open Verso.Output.Html
 
-private structure BlockKindRenderStyle where
+structure BlockKindRenderStyle where
   kindText : String
   showLabel : Bool := true
   kindCss : String
@@ -22,8 +22,9 @@ private structure BlockKindRenderStyle where
   labelCss : String
   contentCss : String
 
-private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
-  match data.kind with
+namespace BlockKindRenderStyle
+
+def ofInProgressKind : Data.InProgressKind → BlockKindRenderStyle
   | .proof =>
     {
       kindText := "Proof"
@@ -78,7 +79,13 @@ private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
         contentCss := "corollary_thmcontent"
       }
 
-private def renderBlockTitleRow (style : BlockKindRenderStyle)
+end BlockKindRenderStyle
+
+private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
+  BlockKindRenderStyle.ofInProgressKind data.kind
+
+/-- Render the caption/label row shared by informal block shells. -/
+def renderBlockTitleRow (style : BlockKindRenderStyle)
     (labelText numberText captionText : String) :
     Verso.Output.Html :=
   open Verso.Output.Html in
@@ -314,8 +321,65 @@ structure InformalBlockRenderContext where
   numberText : String
   captionText? : Option String := none
   attrs : Array (String × String) := #[]
+  titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
   folded : Bool := false
+
+/--
+Genre-neutral inputs for the reusable Blueprint informal-block shell.
+
+Callers own phase-specific data lookup and body rendering. This shell owns the
+stable Blueprint wrapper, heading, title row, extras slot, metadata slot, and
+content container assembly.
+-/
+structure InformalBlockShell where
+  style : BlockKindRenderStyle
+  labelText : String
+  numberText : String
+  captionText : String
+  attrs : Array (String × String) := #[]
+  titleRowAttrs? : Option (Array (String × String)) := none
+  headerExtras : HeaderExtras := {}
+  metadataPanel : Verso.Output.Html := .empty
+  folded : Bool := false
+
+private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html :=
+  let titleRow := renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
+  match shell.titleRowAttrs? with
+  | some attrs => .tag "a" attrs titleRow
+  | none => titleRow
+
+def renderInformalBlockShell (shell : InformalBlockShell)
+    (content : Verso.Output.Html) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let style := shell.style
+  let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
+  let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
+  let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
+  let titleRow := renderShellTitleRow shell
+  let extras := renderStatementHeaderExtras shell.headerExtras
+  if shell.folded then
+    {{
+      <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+        <summary class={{headingClass}}>
+          {{titleRow}}
+          {{extras}}
+        </summary>
+        {{shell.metadataPanel}}
+        <div class={{contentClass}}> {{content}} </div>
+      </details>
+    }}
+  else
+    {{
+      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+        <div class={{headingClass}}>
+          {{titleRow}}
+          {{extras}}
+        </div>
+        {{shell.metadataPanel}}
+        <div class={{contentClass}}> {{content}} </div>
+      </div>
+    }}
 
 /--
 Render the reusable HTML shell for an informal Blueprint block.
@@ -329,39 +393,26 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
   open Verso.Output.Html in
   let style := blockKindRenderStyle data
   let labelText := s!"{data.label}"
-  let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
-  let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
-  let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
-  let titleRow := renderBlockTitleRow style labelText ctx.numberText (ctx.captionText?.getD style.kindText)
-  let extras : Verso.Output.Html :=
+  let headerExtras :=
     match data.kind with
-    | .proof => .empty
-    | .statement _ => renderStatementHeaderExtras ctx.headerExtras
+    | .proof => {}
+    | .statement _ => ctx.headerExtras
   let metadataPanel : Verso.Output.Html :=
     match data.kind with
     | .proof => .empty
     | .statement _ => renderStatementMetadataPanel data
-  if ctx.folded then
-    {{
-      <details class={{wrapperClass}} title={{labelText}} {{ctx.attrs}}>
-        <summary class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </summary>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </details>
-    }}
-  else
-    {{
-      <div class={{wrapperClass}} title={{labelText}} {{ctx.attrs}}>
-        <div class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </div>
-        {{metadataPanel}}
-        <div class={{contentClass}}> {{ content }} </div>
-      </div>
-    }}
+  renderInformalBlockShell
+    {
+      style
+      labelText
+      numberText := ctx.numberText
+      captionText := ctx.captionText?.getD style.kindText
+      attrs := ctx.attrs
+      titleRowAttrs? := ctx.titleRowAttrs?
+      headerExtras
+      metadataPanel
+      folded := ctx.folded
+    }
+    (.seq content)
 
 end Informal

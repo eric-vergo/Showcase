@@ -78,6 +78,20 @@ span[class$="_thmlabel"]::after {
   grid-template-areas: "group used code";
 }
 
+.bp_extras_with_uses {
+  grid-template-columns: minmax(5.2rem, max-content) max-content minmax(7.2rem, max-content);
+  grid-template-areas: "uses used code";
+}
+
+.bp_extras_with_group.bp_extras_with_uses {
+  grid-template-columns:
+    minmax(5rem, max-content)
+    minmax(5.2rem, max-content)
+    minmax(7.2rem, max-content)
+    max-content;
+  grid-template-areas: "group uses used code";
+}
+
 .bp_extras_with_group.bp_extras_with_uses {
   grid-template-columns:
     minmax(5rem, max-content)
@@ -1435,12 +1449,13 @@ def codeSummaryPreviewJs : String := r##"(function () {
 
 def relationPanelJs : String := r##"(function () {
   function escapeHtml(text) {
-    return String(text || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
+    const previewUtils = window.bpPreviewUtils;
+    if (previewUtils && typeof previewUtils.escapeHtml === "function") {
+      return previewUtils.escapeHtml(text);
+    }
+    const scratch = document.createElement("div");
+    scratch.textContent = String(text || "");
+    return scratch.innerHTML;
   }
 
   function previewMessageHtml(kind, title, detail) {
@@ -1467,29 +1482,29 @@ def relationPanelJs : String := r##"(function () {
     return previewMessageHtml(
       "loading",
       "Loading preview",
-      "Reading this preview from the shared Blueprint manifest."
+      "Reading this preview from the Blueprint HTML cache."
     );
   }
 
-  function readManifestStatus(previewUtils) {
-    if (previewUtils && typeof previewUtils.readSharedPreviewManifestStatus === "function") {
-      return previewUtils.readSharedPreviewManifestStatus();
+  function readCacheStatus(previewUtils) {
+    if (previewUtils && typeof previewUtils.readBlueprintHtmlCacheStatus === "function") {
+      return previewUtils.readBlueprintHtmlCacheStatus();
     }
     return null;
   }
 
   function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail) {
-    const status = readManifestStatus(previewUtils);
+    const status = readCacheStatus(previewUtils);
     if (!previewKey) {
       return previewMessageHtml(
         "error",
         "Preview unavailable",
-        "This entry did not provide a shared preview key."
+        "This entry did not provide a preview cache key."
       );
     }
     if (
       !previewUtils ||
-      typeof previewUtils.loadSharedPreviewEntry !== "function" ||
+      typeof previewUtils.loadBlueprintHtmlCacheEntry !== "function" ||
       typeof previewUtils.readPreviewTemplate !== "function"
     ) {
       return previewMessageHtml(
@@ -1501,7 +1516,7 @@ def relationPanelJs : String := r##"(function () {
     if (status && status.state === "error") {
       return previewMessageHtml(
         "error",
-        "Preview manifest unavailable",
+        "Preview HTML cache unavailable",
         "Rebuild the site or refresh after the current build finishes."
       );
     }
@@ -1509,13 +1524,13 @@ def relationPanelJs : String := r##"(function () {
       return previewMessageHtml(
         "error",
         "Preview entry not found",
-        "The shared preview manifest loaded, but it does not contain this entry yet. Rebuild the Blueprint output to resync generated data."
+        "The Blueprint HTML cache loaded, but it does not contain this entry yet. Rebuild the Blueprint output to resync generated data."
       );
     }
     return previewMessageHtml(
       "error",
       "Preview unavailable",
-      fallbackDetail || "The shared preview content could not be loaded."
+      fallbackDetail || "The preview cache content could not be loaded."
     );
   }
 
@@ -1619,16 +1634,16 @@ def relationPanelJs : String := r##"(function () {
       if (
         !previewKey ||
         !previewUtils ||
-        typeof previewUtils.loadSharedPreviewEntry !== "function" ||
+        typeof previewUtils.loadBlueprintHtmlCacheEntry !== "function" ||
         typeof previewUtils.readPreviewTemplate !== "function"
       ) {
         body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
         return;
       }
       try {
-        const sharedEntry = await previewUtils.loadSharedPreviewEntry(previewKey);
+        const cacheEntry = await previewUtils.loadBlueprintHtmlCacheEntry(previewKey);
         if (requestToken !== activateRequestToken) return;
-        const html = previewUtils.readPreviewTemplate(sharedEntry);
+        const html = previewUtils.readPreviewTemplate(cacheEntry);
         if (!html) {
           body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
           return;
@@ -1645,7 +1660,7 @@ def relationPanelJs : String := r##"(function () {
         body.innerHTML = previewUnavailableHtml(
           previewUtils,
           previewKey,
-          "The shared preview content could not be loaded. Refresh the page, or rebuild the site if this persists."
+          "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
         );
       }
     }

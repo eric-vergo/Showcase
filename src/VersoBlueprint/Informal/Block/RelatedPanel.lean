@@ -37,7 +37,7 @@ private structure GroupRenderInfo where
   title : String
   declared : Bool := false
 
-/-- Render-time context shared by group and reverse-dependency header panels. -/
+/-- Render-time context shared by group and dependency header panels. -/
 structure Context where
   state : Verso.Genre.Manual.TraverseState
   storedBlocks : Array BlockData
@@ -61,26 +61,123 @@ private def groupRenderInfo?
   | some groupData => some { label := parent, title := groupData.header, declared := true }
   | none => some { label := parent, title := parent.toString, declared := false }
 
-private structure Entry where
-  label : Data.Label
+/-- One previewable row in a Blueprint related-entry panel. -/
+structure PanelEntry where
   previewId : String
   previewKey : String
   previewTitle : String
   href : Option String := none
   metaHtml : Output.Html := .empty
+  previewFallbackLabel? : Option String := none
+  active : Bool := false
 
-private structure Config where
+/-- Whether a one-entry related panel should stay as an inline preview chip or render the full panel. -/
+inductive PanelSingleMode where
+  | inlinePreview
+  | panel
+deriving Repr, Inhabited, BEq
+
+/-- Rendering configuration for a Blueprint related-entry panel. -/
+structure PanelConfig where
   chipText : Nat → String
   chipTitle : Nat → String
-  singleTitle : Entry → String
+  singleTitle : PanelEntry → String
   panelTitle : Nat → String
   panelMeta : String
   panelMetaClass : String := "bp_relation_panel_meta"
-  previewDefaultTitle : String := "Preview"
-  previewLoadingDetail : String := "Preview content is loaded from the shared Blueprint manifest."
+  previewDefaultTitle : String := "Hover an entry"
+  previewEmptyText : String := "Hover an entry to preview it."
   chipClass : String := "bp_relation_chip"
   emptyChipClass : String := "bp_relation_chip bp_relation_chip_empty"
-  singleAsPanel : Bool := false
+  wrapClass : String := "bp_relation_wrap"
+  panelClass : String := "bp_relation_panel"
+  panelAttrs : Array (String × String) := #[]
+  singleMode : PanelSingleMode := .inlinePreview
+  selectFirst : Bool := true
+
+def usedByChipText (count : Nat) : String :=
+  s!"used by {count}"
+
+/-- Standard reverse-dependency panel presentation. -/
+def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig := {
+  chipText := usedByChipText
+  chipTitle := fun n =>
+    if n == 0 then
+      "No reverse dependencies"
+    else
+      match targetLabel? with
+      | some label => s!"Reverse dependencies for {label}"
+      | none => "Reverse dependencies"
+  singleTitle := fun entry => s!"Reverse dependency: {entry.previewTitle}"
+  panelTitle := fun n => s!"Used by {n}"
+  panelMeta := "Reverse dependency previews"
+  previewDefaultTitle := "Reverse dependency preview"
+  previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
+}
+
+/-- Standard forward-dependency panel presentation. -/
+def usesPanelConfig : PanelConfig := {
+  chipText := fun n => s!"uses {n}"
+  chipTitle := fun _ => "Statement and proof dependencies"
+  singleTitle := fun _ => "Statement and proof dependencies"
+  panelTitle := fun n => s!"Uses {n}"
+  panelMeta := "Dependency previews"
+  previewDefaultTitle := "Dependency preview"
+  previewEmptyText := "Dependency preview content is loaded from the Blueprint HTML cache."
+  chipClass := "bp_relation_chip bp_uses_chip"
+  emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
+  singleMode := .panel
+}
+
+private def groupChipClass (declared : Bool) : String :=
+  if declared then
+    "bp_relation_chip"
+  else
+    "bp_relation_chip bp_relation_chip_warn"
+
+private def groupEmptyChipClass (declared : Bool) : String :=
+  if declared then
+    "bp_relation_chip bp_relation_chip_empty"
+  else
+    "bp_relation_chip bp_relation_chip_empty bp_relation_chip_warn"
+
+private def groupPanelMeta (groupLabel : Data.Label) (declared : Bool) : String :=
+  if declared then
+    "Group member previews"
+  else
+    s!"No :::group declaration was found for parent '{groupLabel}'; showing entries that share this parent label."
+
+/-- Standard group-membership panel presentation. -/
+def groupPanelConfig (groupLabel : Data.Label) (groupTitle : String) (declared : Bool) :
+    PanelConfig := {
+  chipText := fun _ => "group"
+  chipTitle := fun n =>
+    if n == 0 then
+      if declared then
+        s!"Group: {groupTitle}. No other entries in this group."
+      else
+        s!"Parent group '{groupLabel}' is referenced here, but no :::group declaration was found."
+    else if declared then
+      s!"Other entries in group {groupTitle}"
+    else
+      s!"Undeclared group '{groupLabel}'"
+  singleTitle := fun entry =>
+    if declared then
+      s!"Group member: {entry.previewTitle}"
+    else
+      s!"Undeclared group '{groupLabel}': {entry.previewTitle}"
+  panelTitle := fun n => s!"Group: {groupTitle} ({n})"
+  panelMeta := groupPanelMeta groupLabel declared
+  panelMetaClass :=
+    if declared then
+      "bp_relation_panel_meta"
+    else
+      "bp_relation_panel_meta bp_relation_chip_warn"
+  previewDefaultTitle := "Group member preview"
+  previewEmptyText := "Group member preview content is loaded from the Blueprint HTML cache."
+  chipClass := groupChipClass declared
+  emptyChipClass := groupEmptyChipClass declared
+}
 
 private structure UsedByEntry where
   source : BlockData
@@ -182,12 +279,6 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 private def previewLookupKey (source : BlockData) : String :=
   PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
-private def usedByChipText (count : Nat) : String :=
-  s!"used by {count}"
-
-private def usesChipText (count : Nat) : String :=
-  s!"uses {count}"
-
 private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   open Verso.Output.Html in
   let statementBadge : Array Output.Html :=
@@ -223,16 +314,16 @@ private def mkBlockEntry {m}
     (ctx : Context)
     (source : BlockData) (previewId : String)
     (metaHtml : Output.Html := .empty) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Entry := do
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
   let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
   pure {
-    label := source.label
     previewId
     previewKey := previewLookupKey source
     previewTitle
     href
     metaHtml
+    previewFallbackLabel? := some s!"{source.label}"
   }
 
 private def mkLabelEntry {m}
@@ -240,15 +331,15 @@ private def mkLabelEntry {m}
     (ctx : Context)
     (label : Data.Label) (previewId : String)
     (metaHtml : Output.Html := .empty) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Entry := do
+    Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := s!"{label}"
   pure {
-    label
     previewId
     previewKey := PreviewCache.key label .statement
     previewTitle
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
     metaHtml
+    previewFallbackLabel? := some s!"{label}"
   }
 
 private def loadingBody (detail : String) : Output.Html :=
@@ -260,90 +351,104 @@ private def loadingBody (detail : String) : Output.Html :=
     </div>
   }}
 
-private def renderPanel (cfg : Config) (entries : Array Entry) : Output.Html :=
+private def samePanelEntry (a b : PanelEntry) : Bool :=
+  a.previewId == b.previewId && a.previewKey == b.previewKey
+
+private def selectedPanelEntry? (cfg : PanelConfig) (entries : Array PanelEntry) : Option PanelEntry :=
+  entries.find? (fun entry => entry.active) <|>
+    if cfg.selectFirst then entries[0]? else none
+
+def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :=
   open Verso.Output.Html in
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
     {{<span class={{chipClass}} title={{chipTitle}}>{{.text true (cfg.chipText n)}}</span>}}
-  let renderEntriesPanel (entries : Array Entry) : Output.Html :=
-    let renderRow (itemClass : String) (entry : Entry) : Output.Html :=
-      let rowNode : Output.Html :=
-        let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
-        let metaNode := {{
-          <span class="bp_relation_target_meta">
-            {{entry.metaHtml}}
-          </span>
-        }}
-        if let some href := entry.href then
-          {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
-        else
-          {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
-      {{
-        <li class={{itemClass}}
-            "data-bp-relation-preview-id"={{entry.previewId}}
-            "data-bp-relation-preview-key"={{entry.previewKey}}
-            "data-bp-relation-preview-title"={{entry.previewTitle}}>
-          {{rowNode}}
-        </li>
-      }}
-    let (selectedEntry?, rows) :=
-      entries.foldl (init := (none, #[])) fun (selectedEntry?, acc) entry =>
-        match selectedEntry? with
-        | none =>
-          (some entry, acc.push (renderRow "bp_relation_item bp_relation_item_active" entry))
-        | some selectedEntry =>
-          (some selectedEntry, acc.push (renderRow "bp_relation_item" entry))
-    let previewTitle :=
+  let renderInlinePreview (entry : PanelEntry) : Output.Html :=
+    let chipNode : Output.Html :=
+      if let some href := entry.href then
+        {{<a class={{s!"{cfg.chipClass} bp_code_link"}} href={{href}} title={{cfg.singleTitle entry}}>
+            {{.text true (cfg.chipText 1)}}
+          </a>}}
+      else
+        renderChip cfg.chipClass (cfg.singleTitle entry) 1
+    Informal.HoverRender.inlinePreviewNode
+      chipNode entry.previewId entry.previewTitle
+      (previewLookupKey? := some entry.previewKey)
+      (previewFallbackLabel? := entry.previewFallbackLabel?)
+  let selectedEntry? := selectedPanelEntry? cfg entries
+  let renderRow (entry : PanelEntry) : Output.Html :=
+    let itemClass :=
       match selectedEntry? with
-      | some entry => entry.previewTitle
-      | none => cfg.previewDefaultTitle
-    let previewBody : Output.Html := loadingBody cfg.previewLoadingDetail
+      | some selected =>
+        if samePanelEntry selected entry then
+          "bp_relation_item bp_relation_item_active"
+        else
+          "bp_relation_item"
+      | none =>
+        if entry.active then "bp_relation_item bp_relation_item_active" else "bp_relation_item"
+    let rowNode : Output.Html :=
+      let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
+      let metaNode := {{
+        <span class="bp_relation_target_meta">
+          {{entry.metaHtml}}
+        </span>
+      }}
+      if let some href := entry.href then
+        {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
+      else
+        {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
     {{
-      <div class="bp_relation_wrap">
-        <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
-          {{.text true (cfg.chipText entries.size)}}
-        </button>
-        <div class="bp_relation_panel">
-          <div class="bp_relation_panel_header">
-            <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
-            <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
-          </div>
-          <div class="bp_relation_panel_body">
-            <ul class="bp_relation_list">
-              {{rows}}
-            </ul>
-            <div class="bp_relation_preview_surface">
-              <div class="bp_relation_preview_header">
-                <div class="bp_relation_preview_label">"Preview"</div>
-                <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
-              </div>
-              <div class="bp_relation_preview_body">
-                {{previewBody}}
-              </div>
+      <li class={{itemClass}}
+          "data-bp-relation-preview-id"={{entry.previewId}}
+          "data-bp-relation-preview-key"={{entry.previewKey}}
+          "data-bp-relation-preview-title"={{entry.previewTitle}}>
+        {{rowNode}}
+      </li>
+    }}
+  let previewTitle :=
+    match selectedEntry? with
+    | some entry => entry.previewTitle
+    | none => cfg.previewDefaultTitle
+  let previewBody : Output.Html := loadingBody cfg.previewEmptyText
+  let rows := entries.map renderRow
+  let panel : Output.Html :=
+    .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
+      {{
+        <div class="bp_relation_panel_header">
+          <div class="bp_relation_panel_title">{{.text true (cfg.panelTitle entries.size)}}</div>
+          <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
+        </div>
+        <div class="bp_relation_panel_body">
+          <ul class="bp_relation_list">
+            {{rows}}
+          </ul>
+          <div class="bp_relation_preview_surface">
+            <div class="bp_relation_preview_header">
+              <div class="bp_relation_preview_label">"Preview"</div>
+              <div class="bp_relation_preview_title">{{.text true previewTitle}}</div>
+            </div>
+            <div class="bp_relation_preview_body">
+              {{previewBody}}
             </div>
           </div>
         </div>
-      </div>
-    }}
+      }}
+  let panelShell : Output.Html :=
+    .tag "div" #[("class", cfg.wrapClass)] <|
+      {{
+        <button type="button" class={{cfg.chipClass}} title={{cfg.chipTitle entries.size}} "aria-expanded"="false">
+          {{.text true (cfg.chipText entries.size)}}
+        </button>
+        {{panel}}
+      }}
   if entries.isEmpty then
     renderChip cfg.emptyChipClass (cfg.chipTitle 0) 0
   else if h : entries.size = 1 then
-    if cfg.singleAsPanel then
-      renderEntriesPanel entries
-    else
-      let entry := entries[0]'(by simp [h])
-      let chipNode : Output.Html :=
-        if let some href := entry.href then
-          {{<a class={{s!"{cfg.chipClass} bp_code_link"}} href={{href}} title={{cfg.singleTitle entry}}>
-              {{.text true (cfg.chipText 1)}}
-            </a>}}
-        else
-          renderChip cfg.chipClass (cfg.singleTitle entry) 1
-      let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
-        entry.previewId entry.previewTitle entry.previewKey
-        (fallbackLabel? := some s!"{entry.label}")
-      Informal.HoverRender.inlinePreviewTargetNode chipNode previewTarget
+    let entry := entries[0]'(by simp [h])
+    match cfg.singleMode with
+    | .inlinePreview => renderInlinePreview entry
+    | .panel => panelShell
   else
-    renderEntriesPanel entries
+    panelShell
 
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}
@@ -362,20 +467,7 @@ def renderUsedByExtra {m}
           <code>s!"{entry.source.label}"</code>
           {{renderUsedByAxisBadges entry}}
         }})
-    let cfg : Config := {
-      chipText := usedByChipText
-      chipTitle := fun n =>
-        if n == 0 then
-          "No reverse dependencies"
-        else
-          s!"Reverse dependencies for {data.label}"
-      singleTitle := fun entry => s!"Reverse dependency: {entry.previewTitle}"
-      panelTitle := fun n => s!"Used by {n}"
-      panelMeta := "Reverse dependency previews"
-      previewDefaultTitle := "Reverse dependency preview"
-      previewLoadingDetail := "Reverse dependency preview content is loaded from the shared Blueprint manifest."
-    }
-    pure <| renderPanel cfg panelEntries
+    pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
 
 /-- Render the forward-dependency header extra for a statement block. -/
 def renderUsesExtra {m}
@@ -402,23 +494,7 @@ def renderUsesExtra {m}
         mkLabelEntry ctx entry.label
           (usesPreviewId data.label entry.label)
           (metaHtml := metaHtml)
-    let cfg : Config := {
-      chipText := usesChipText
-      chipTitle := fun n =>
-        if n == 0 then
-          "No declared dependencies"
-        else
-          s!"Dependencies used by {data.label}"
-      singleTitle := fun entry => s!"Dependency: {entry.previewTitle}"
-      panelTitle := fun n => s!"Uses {n}"
-      panelMeta := "Dependency previews"
-      previewDefaultTitle := "Dependency preview"
-      previewLoadingDetail := "Dependency preview content is loaded from the shared Blueprint manifest."
-      chipClass := "bp_relation_chip bp_uses_chip"
-      emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
-      singleAsPanel := true
-    }
-    pure <| renderPanel cfg panelEntries
+    pure <| renderPanel usesPanelConfig panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
@@ -437,46 +513,7 @@ def renderGroupExtra {m}
       mkBlockEntry ctx source
         (groupPreviewId data.label source.label)
         (metaHtml := {{<code>s!"{source.label}"</code>}})
-    let chipClass :=
-      if group.declared then
-        "bp_relation_chip"
-      else
-        "bp_relation_chip bp_relation_chip_warn"
-    let emptyChipClass :=
-      if group.declared then
-        "bp_relation_chip bp_relation_chip_empty"
-      else
-        "bp_relation_chip bp_relation_chip_empty bp_relation_chip_warn"
-    let panelMeta :=
-      if group.declared then
-        "Group member previews"
-      else
-        s!"No :::group declaration was found for parent '{group.label}'; showing entries that share this parent label."
-    let cfg : Config := {
-      chipText := fun _ => "group"
-      chipTitle := fun n =>
-        if n == 0 then
-          if group.declared then
-            s!"Group: {group.title}. No other entries in this group."
-          else
-            s!"Parent group '{group.label}' is referenced here, but no :::group declaration was found."
-        else if group.declared then
-          s!"Other entries in group {group.title}"
-        else
-          s!"Undeclared group '{group.label}'"
-      singleTitle := fun entry =>
-        if group.declared then
-          s!"Group member: {entry.previewTitle}"
-        else
-          s!"Undeclared group '{group.label}': {entry.previewTitle}"
-      panelTitle := fun n => s!"Group: {group.title} ({n})"
-      panelMeta
-      panelMetaClass := if group.declared then "bp_relation_panel_meta" else "bp_relation_panel_meta bp_relation_chip_warn"
-      previewDefaultTitle := "Group member preview"
-      previewLoadingDetail := "Group member preview content is loaded from the shared Blueprint manifest."
-      chipClass
-      emptyChipClass
-    }
+    let cfg := groupPanelConfig group.label group.title group.declared
     pure <| some (renderPanel cfg panelEntries)
 
 end RelatedPanel

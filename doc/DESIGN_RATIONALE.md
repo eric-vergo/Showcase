@@ -178,33 +178,43 @@ rather than page-local template bodies:
 
 1. `PreviewSource.lean` and `PreviewCache.lean` store statement/proof preview
    identities and blocks during traversal; citation traversal stores citation
-   preview payloads under their own manifest keys.
-2. `PreviewManifest.lean` owns the Blueprint generator entry point and renders
-   the shared preview manifest consumed by the generated site.
+   preview payloads under their own preview-data keys.
+2. `PreviewManifest.lean` owns the Blueprint generator entry point and emits
+   two files consumed by generated sites: the semantic Blueprint manifest and
+   the rendered HTML cache. The cache stores rendered fragments plus their
+   Verso hover side table, while generated pages merge those hover payloads into
+   `-verso-docs.json`. It also emits informal-block relationship topology,
+   including uses, reverse uses, and group panel entries, while traversal state
+   is still available.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
-   manifest loading, missing-manifest diagnostics, hydration, math rendering,
+   HTML-cache loading, missing-cache diagnostics, hydration, math rendering,
    and anchored panel behavior.
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
+5. On the v4.30 line, `VersoBlueprint.Slides` consumes the semantic manifest
+   and rendered HTML cache during slide generation to render `{blueprint_node}`
+   shells into the deck HTML. The v4.29 backport keeps the shared manifest/cache
+   data model but does not build the Slides module, because the required Verso
+   Slides rendering hooks are not available on that release line.
 
 Inline Blueprint references, citation references, and the `used by`/group
-relationship panels are now manifest callers: the rendered page carries the
-stable lookup key, while the preview body comes from the shared manifest. Those
+relationship panels are now preview-data callers: the rendered page carries the
+stable lookup key, while the preview body comes from the HTML cache. Those
 surfaces deliberately avoid page-local fallback templates so preview content has
-one generated source of truth. If the manifest is unavailable or missing an
-entry, the browser renders a local diagnostic message instead of silently using
-stale local preview HTML.
+one generated source of truth. If the cache is unavailable or missing an entry,
+the browser renders a local diagnostic message instead of silently using stale
+local preview HTML.
 
 ### Blueprint render entry point
 
 Blueprint generators call
-`Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest`, not Verso's
+`Informal.PreviewManifest.blueprintMainWithPreviewData`, not Verso's
 `manualMain` directly. That wrapper is intentionally a thin orchestration
 layer:
 
 - Blueprint owns its extra CLI flags, Blueprint asset injection, post-traversal
-  asset normalization, shared preview-manifest emission, and public xref
+  asset normalization, preview-data emission, and public xref
   filtering.
 - Verso still owns document traversal, TeX emission, word counts, saved
   traversal-state serialization, search generation, the page shell, and the
@@ -372,10 +382,10 @@ the operational detail that is easier to read in prose.
 | `Nodes` | semantic domain | informal label -> `StoredBlockData` plus node anchor ids | Lightweight semantic node metadata: kind, parent/group, numbering caches, declared dependencies, ownership, tags, effort, priority, and PR URL. It deliberately excludes code/render payloads. |
 | `InlineCode` | internal index | informal label -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof/code folding settings, and the code panel destination. |
 | `Groups` | semantic domain | group label -> `GroupBlockData` | Declared group metadata for a parent/group label, currently its display header. Group membership itself is stored on `Nodes` through each node's `parent`. |
-| `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and the shared preview manifest. |
+| `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and preview-data emission. Entries may also carry HTML-cache keys for associated Lean-code previews; the code preview payloads themselves remain in `LeanCodePreviews`. |
 | `LeanCodePreviews` | runtime cache | Lean declaration name -> `LeanCodePreview.Entry` plus declaration-preview anchor ids | Preview payloads for Lean declaration links, either from inline code blocks or external declaration snapshots. |
 | `ExternalDeclAnchors` | internal index | `(informal label, canonical external declaration)` -> rendered declaration row anchor ids | Row-level destinations for rendered external declaration snippets, so summary and graph links can jump to the specific rendered occurrence. |
-| `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into the shared preview manifest. |
+| `CitationPreviews` | runtime cache | `(citation label, citation style, locator kind, locator index)` -> `CitationPreviewData` | Bibliography hover payloads captured during citation traversal and rendered into preview data. |
 | `Bibliography` | semantic domain | citation label -> bibliography entry anchor ids | Linkable bibliography entry destinations. |
 | `CitationUsages` | accumulator | citation label -> `CitationUsageData` plus citation use-site ids | Backlink data accumulated from citation inlines, including rendered use-site destinations and human-readable location summaries. |
 
@@ -385,8 +395,8 @@ reasons:
 | Index | Main writers | Main readers | Normalization rule |
 | --- | --- | --- | --- |
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store at most one inline Lean code payload per informal label. The rendered statement then resolves inline code separately from the semantic node metadata, and inline code takes precedence over external declaration hints when both are available. |
-| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?` and preview-manifest construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. This keeps hover/manifest consumers from embedding preview bodies into every link or node entry. |
-| `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | Lean-code preview-manifest construction and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
+| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?` and preview-data construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys, but they do not duplicate declaration-preview payloads. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
+| `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | Lean-code preview-data construction and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
 | `CitationPreviews` | Citation inline traversal | Preview-manifest construction and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |
 | `CitationUsages` | Citation inline traversal | Bibliography rendering | Accumulate bibliography backlinks by citation label. Each citation use contributes a rendered href plus a structured location summary, while bibliography entries remain the semantic/linkable destinations in `Bibliography`. |
@@ -415,12 +425,16 @@ would remain the public link surface, while internal indexes, runtime caches,
 and accumulators could move to the new backend without changing rendering
 callers.
 
-### Self-Contained Snippet Rendering
+### Portable Snippet Rendering
 
 Some previews are rendered inside a full page, while others are rendered in
 isolated contexts such as editor or LSP hovers. Isolated renderers therefore
 cannot rely on page-global hover tables. That is why Blueprint sometimes
-rewrites hover payloads into self-contained HTML.
+rewrites hover payloads into self-contained HTML. Generated preview-cache
+fragments are not treated as isolated snippets: they keep normal
+`data-verso-hover` attributes and carry hover payloads as cache side data, so
+generated pages and other cache-aware generators can use the standard Verso
+hover path without duplicating hover HTML into every fragment.
 
 ### Server-Mode Lean Elaboration
 

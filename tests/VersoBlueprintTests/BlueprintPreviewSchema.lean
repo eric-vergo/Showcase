@@ -31,6 +31,9 @@ open Informal.PreviewManifest
         let useRefJson ← defs.get? "Informal.Data.UseRef"
         let useRefPropsJson ← useRefJson.getObjVal? "properties" |>.toOption
         useRefPropsJson.getObj? |>.toOption
+      let leanCodePreviewKeysDesc? := do
+        let leanCodePreviewKeysJson ← entryProps.get? "leanCodePreviewKeys"
+        leanCodePreviewKeysJson.getObjValAs? String "description" |>.toOption
       let kindDesc? := do
         let kindJson ← entryProps.get? "kind"
         kindJson.getObjValAs? String "description" |>.toOption
@@ -38,9 +41,12 @@ open Informal.PreviewManifest
         let labelJson ← entryProps.get? "label"
         labelJson.getObjValAs? String "description" |>.toOption
       let some useRefProps := useRefProps? | return false
+      let displayCaptionDesc? := do
+        let displayCaptionJson ← entryProps.get? "displayCaption"
+        displayCaptionJson.getObjValAs? String "description" |>.toOption
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
-        defs.size == 8 &&
         !fileProps.contains "version" &&
+        !fileProps.contains "traverseState" &&
         fileProps.contains "previews" &&
         entryProps.contains "key" &&
         entryProps.contains "targetKind" &&
@@ -48,6 +54,8 @@ open Informal.PreviewManifest
         entryProps.contains "facet" &&
         entryProps.contains "kind" &&
         entryProps.contains "title" &&
+        entryProps.contains "displayCaption" &&
+        entryProps.contains "displayLabel" &&
         entryProps.contains "href" &&
         entryProps.contains "parent" &&
         entryProps.contains "parentTitle" &&
@@ -59,19 +67,31 @@ open Informal.PreviewManifest
         useRefProps.contains "origin" &&
         useRefProps.contains "intent" &&
         !useRefProps.contains "intents" &&
+        entryProps.contains "leanCodePreviewKeys" &&
+        entryProps.contains "codeData" &&
+        !entryProps.contains "blocks" &&
+        !entryProps.contains "leanCode" &&
+        entryProps.contains "uses" &&
+        entryProps.contains "usedBy" &&
+        entryProps.contains "group" &&
         entryProps.contains "ownerDisplayName" &&
         entryProps.contains "tags" &&
         entryProps.contains "priority" &&
         entryProps.contains "effort" &&
-        entryProps.contains "html" &&
+        !entryProps.contains "html" &&
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, or citation label." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
+        displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
+        leanCodePreviewKeysDesc? == some "HTML-cache keys for Lean declaration previews associated with this entry." &&
         kindDesc? == some "Kind (definition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
         defs.contains "Informal.Data.UseOrigin" &&
         defs.contains "Informal.Data.UseIntent" &&
+        defs.contains "Informal.PreviewManifest.RelatedEntry" &&
+        defs.contains "Informal.PreviewManifest.GroupRelation" &&
+        defs.contains "Informal.PreviewManifest.RelationAxis" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 

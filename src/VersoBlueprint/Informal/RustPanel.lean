@@ -17,16 +17,10 @@ def codePanelHeader (data : BlockData) (numberText : String) : CodePanelHeader :
 def fallbackCodePanelHeader : CodePanelHeader :=
   Informal.fallbackCodePanelHeaderFor "Rust"
 
-def renderCodePanel
-    (header : CodePanelHeader) (summaryTitle : String) (body : Verso.Output.Html)
-    (attrs : Array (String × String) := #[]) (folded : Bool := false) :
-    Verso.Output.Html :=
-  mkCodePanel header summaryTitle .empty body attrs (folded := folded)
-
 def renderRawCodePanel
     (header : CodePanelHeader) (summaryTitle raw : String)
     (attrs : Array (String × String) := #[]) (folded : Bool := false) :
     Verso.Output.Html :=
-  renderCodePanel header summaryTitle (highlightHtml raw) attrs (folded := folded)
+  mkCodePanel header summaryTitle .empty (highlightHtml raw) attrs (folded := folded)
 
 end Informal.Rust

@@ -19,7 +19,7 @@ If you are starting a first project, read
 - [Math and TeX](#math-and-tex)
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
 - [Rendering Surface](#rendering-surface)
-- [Metadata Export and Preview Manifest](#metadata-export-and-preview-manifest)
+- [Metadata Export and Preview Data](#metadata-export-and-preview-data)
 - [The Generator Entry Point](#the-generator-entry-point)
 - [Blueprint Options](#blueprint-options)
 - [Experimental Widget](#experimental-widget)
@@ -567,19 +567,28 @@ Projects that do not use citations can omit this page entirely.
 Blueprint pages support shared previews in generated HTML, including math
 rendering through KaTeX.
 
-## Metadata Export and Preview Manifest
+## Metadata Export and Preview Data
 
-Blueprint builds emit a shared preview manifest at:
+Blueprint builds emit two preview-data files:
 
-`html-multi/-verso-data/blueprint-preview-manifest.json`
+- `html-multi/-verso-data/blueprint-manifest.json`
+- `html-multi/-verso-data/blueprint-html-cache.json`
 
-Most authors do not need this file for routine writing. It is mainly useful
-for:
+Most authors do not need these files for routine writing. They are mainly
+useful for:
 
 - runtime preview support in generated sites
 - tooling and integration work
 - metadata export for other tools
 - inspection and debugging
+
+For informal blocks, the manifest contains semantic metadata needed by generated
+consumers: direct uses, reverse uses, group-panel entries, code-preview keys,
+ownership, tags, priority, and effort. Rendered preview bodies are stored in the
+HTML cache under the same keys. The cache also carries the Verso hover payloads
+referenced by those rendered fragments; generated Blueprint pages merge them into
+`-verso-docs.json`. This keeps HTML consumers from needing to deserialize Manual
+blocks or re-run the Blueprint toolchain.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
@@ -587,14 +596,24 @@ Blueprint generator are:
 ```bash
 lake env lean --run <GeneratorMain>.lean --dump-schema
 lake env lean --run <GeneratorMain>.lean --dump-manifest
+lake env lean --run <GeneratorMain>.lean --dump-html-cache
 lake env lean --run <GeneratorMain>.lean --help
 ```
 
 - `--dump-schema` prints the JSON Schema for the manifest
 - `--dump-manifest` prints the generated manifest JSON instead of writing the
   site and then reading the file
+- `--dump-html-cache` prints the rendered HTML cache JSON
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
+
+## Verso Slides Integration
+
+The v4.29 backport does not build `VersoBlueprint.Slides`, because the required
+Verso Slides rendering hooks are only available on the v4.30 line. The semantic
+manifest and rendered HTML cache described above are still emitted on v4.29 so
+the shared preview-data refactorings remain available and future patches apply
+cleanly. Use v4.30 or newer for `{blueprint_node}` support in slide decks.
 
 ## The Generator Entry Point
 
@@ -614,7 +633,7 @@ open Verso Doc
 open Verso.Genre Manual
 
 def main (args : List String) : IO UInt32 :=
-  Informal.PreviewManifest.blueprintMainWithSharedPreviewManifest
+  Informal.PreviewManifest.blueprintMainWithPreviewData
     (%doc ProjectTemplate.Blueprint)
     args
     (extensionImpls := by exact extension_impls%)
@@ -622,7 +641,7 @@ def main (args : List String) : IO UInt32 :=
 
 This Blueprint-provided main wrapper owns the Blueprint-specific generation
 layer around Verso's renderer. It injects the frontend assets required by
-Blueprint-specific rendered surfaces, applies Blueprint's shared preview and
+Blueprint-specific rendered surfaces, applies Blueprint's preview-data and
 public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 

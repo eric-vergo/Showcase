@@ -178,11 +178,13 @@ def mkCodePanel
     <div class="bp_wrapper bp_code_panel_wrapper">
       <details class="bp_code_block bp_code_panel" {{attrs}}>
         <summary class="bp_heading lemma_thmheading" title={{summaryTitle}}>
-          <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text true header.caption}}</span>
-          {{if let some number := header.number? then
-              {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text true number}}</span>}}
-            else
-              .empty}}
+          <span class="bp_heading_title_row">
+            <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text true header.caption}}</span>
+            {{if let some number := header.number? then
+                {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text true number}}</span>}}
+              else
+                .empty}}
+          </span>
           {{progressBar}}
         </summary>
         {{body}}
