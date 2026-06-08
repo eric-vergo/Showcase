@@ -1,4 +1,4 @@
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 
 def wait_for_graph(page: Page):
@@ -117,6 +117,12 @@ def assert_graph_is_well_placed(page: Page):
     assert metrics is not None
     assert metrics["graphTop"] < metrics["canvasTop"] + 0.35 * metrics["canvasHeight"]
     assert metrics["graphBottom"] > metrics["canvasTop"] + 0.5 * metrics["canvasHeight"]
+
+
+def first_preview_node(page: Page):
+    node = page.locator(".bp_graph_canvas svg g.node[tabindex='0']").first
+    node.wait_for()
+    return node
 
 
 class TestGraphLayoutRuntime:
@@ -267,6 +273,104 @@ class TestGraphLayoutRuntime:
         assert switched["activePack"] == "true"
         assert switched["width"] > switched["height"]
         assert_graph_is_well_placed(page)
+
+    def test_graph_preview_defaults_to_click_to_pin(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        panel = page.locator(".bp_graph_preview").first
+        node = first_preview_node(page)
+
+        assert panel.get_attribute("data-bp-preview-mode") == "pinned"
+        assert panel.get_attribute("data-bp-preview-placement") == "docked"
+
+        node.hover()
+        page.wait_for_timeout(250)
+        assert panel.evaluate("el => el.hidden") is True
+
+        node.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                return !!panel && !panel.hidden && panel.getAttribute("data-bp-preview-mode") === "pinned";
+            }"""
+        )
+        page.mouse.move(20, 20)
+        page.wait_for_timeout(250)
+        assert panel.evaluate("el => el.hidden") is False
+
+        page.locator(".bp_graph_preview_close").first.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                return !!panel && panel.hidden;
+            }"""
+        )
+
+    def test_graph_preview_can_switch_to_hover_autohide(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        options_button = page.locator(".bp_graph_options_button").first
+        preview_selector = page.locator(".bp_graph_preview_mode_select").first
+        placement_selector = page.locator(".bp_graph_preview_placement_select").first
+        panel = page.locator(".bp_graph_preview").first
+        node = first_preview_node(page)
+
+        options_button.click()
+        expect(placement_selector).to_have_value("docked")
+        preview_selector.select_option("hover")
+        page.locator(".bp_graph_options_popover_close").first.click()
+
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                const selector = document.querySelector(".bp_graph_preview_mode_select");
+                return (
+                    !!panel &&
+                    !!selector &&
+                    panel.hidden &&
+                    selector.value === "hover" &&
+                    panel.getAttribute("data-bp-preview-mode") === "hover" &&
+                    panel.getAttribute("data-bp-preview-placement") === "docked"
+                );
+            }"""
+        )
+
+        node.hover()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                return !!panel && !panel.hidden;
+            }"""
+        )
+        page.mouse.move(1390, 890)
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                return !!panel && panel.hidden;
+            }"""
+        )
+
+        options_button.click()
+        placement_selector.select_option("anchored")
+        page.locator(".bp_graph_options_popover_close").first.click()
+        page.wait_for_function(
+            """() => {
+                const panel = document.querySelector(".bp_graph_preview");
+                const selector = document.querySelector(".bp_graph_preview_placement_select");
+                return (
+                    !!panel &&
+                    !!selector &&
+                    panel.hidden &&
+                    selector.value === "anchored" &&
+                    panel.getAttribute("data-bp-preview-mode") === "hover" &&
+                    panel.getAttribute("data-bp-preview-placement") === "anchored"
+                );
+            }"""
+        )
 
     def test_graph_page_does_not_force_extra_vertical_scroll(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
