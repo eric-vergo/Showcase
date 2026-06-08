@@ -156,6 +156,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual([target.release for target in projects[5].targets], ["v4.28.0"])
         self.assertTrue(projects[5].targets[0].publish_reference)
 
+    def test_project_catalog_requires_json_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "projects.json"
+            manifest.write_text("[]\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "expected JSON object"):
+                load_project_catalog(manifest)
+
     def test_reference_dependency_cache_key_tracks_external_source_identity(self) -> None:
         base_project = HarnessProject(
             project_id="external-blueprint",

@@ -8,8 +8,18 @@ import re
 import shutil
 import subprocess
 
+from scripts.blueprint_harness_manifest import (
+    load_json_object,
+    optional_command as _optional_command,
+    optional_string as _optional_string,
+    optional_string_list as _optional_string_list,
+    require_string as _require_string,
+    require_string_list as _require_string_list,
+    resolve_manifest_path,
+)
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_project_commands import (
+    format_project_command,
     maybe_in_repo_blueprint_dependency_override,
     rebuild_and_log_embedded_asset_owners,
     restore_tracked_project_manifest,
@@ -66,57 +76,11 @@ def default_test_blueprint_manifest(package_root: Path) -> Path:
 
 
 def resolve_test_blueprint_manifest(path_text: str | None, package_root: Path) -> Path:
-    if path_text is None:
-        return default_test_blueprint_manifest(package_root)
-    path = Path(path_text)
-    if path.is_absolute():
-        return path.resolve()
-    return (Path.cwd() / path).resolve()
-
-
-def _require_string(data: dict, key: str, *, context: str) -> str:
-    value = data.get(key)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{context}: expected non-empty string field `{key}`")
-    return value
-
-
-def _optional_string(data: dict, key: str, *, context: str) -> str | None:
-    value = data.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{context}: expected non-empty string field `{key}`")
-    return value
-
-
-def _optional_command(data: dict, key: str, *, context: str) -> tuple[str, ...] | None:
-    value = data.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
-        raise ValueError(f"{context}: expected non-empty string list field `{key}`")
-    return tuple(value)
-
-
-def _required_string_list(data: dict, key: str, *, context: str) -> tuple[str, ...]:
-    value = data.get(key)
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
-        raise ValueError(f"{context}: expected non-empty string list field `{key}`")
-    if len(set(value)) != len(value):
-        raise ValueError(f"{context}: duplicate values in `{key}`")
-    return tuple(value)
+    return resolve_manifest_path(path_text, default_test_blueprint_manifest(package_root))
 
 
 def _optional_tags(data: dict, key: str, *, context: str) -> tuple[str, ...]:
-    value = data.get(key)
-    if value is None:
-        return ()
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise ValueError(f"{context}: expected string list field `{key}`")
-    tags = tuple(value)
-    if len(set(tags)) != len(tags):
-        raise ValueError(f"{context}: duplicate values in `{key}`")
+    tags = _optional_string_list(data, key, context=context, unique=True) or ()
     invalid = [tag for tag in tags if not TAG_PATTERN.fullmatch(tag)]
     if invalid:
         raise ValueError(f"{context}: invalid tag values in `{key}`: {', '.join(invalid)}")
@@ -124,11 +88,11 @@ def _optional_tags(data: dict, key: str, *, context: str) -> tuple[str, ...]:
 
 
 def load_test_blueprint_catalog(manifest_path: Path) -> tuple[tuple[str, ...], list[StandaloneTestBlueprint]]:
-    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw = load_json_object(manifest_path)
     if raw.get("version") != 1:
         raise ValueError(f"{manifest_path}: unsupported manifest version {raw.get('version')!r}")
 
-    categories = _required_string_list(raw, "categories", context=str(manifest_path))
+    categories = _require_string_list(raw, "categories", context=str(manifest_path), unique=True)
 
     entries = raw.get("fixtures")
     if not isinstance(entries, list):
@@ -584,16 +548,6 @@ def find_test_blueprint(fixtures: list[StandaloneTestBlueprint], slug: str) -> S
     raise SystemExit(f"[blueprint-test-blueprints] unknown fixture `{slug}`; known fixtures: {known}")
 
 
-def format_project_command(command: tuple[str, ...], *, package_root: Path, project_dir: Path, output_dir: Path, slug: str) -> list[str]:
-    placeholders = {
-        "package_root": str(package_root),
-        "project_dir": str(project_dir),
-        "output_dir": str(output_dir),
-        "slug": slug,
-    }
-    return [part.format(**placeholders) for part in command]
-
-
 def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTestBlueprint, output_dir: Path) -> None:
     project_dir = package_root / fixture.project_root
     if not project_dir.exists():
@@ -611,10 +565,12 @@ def generate_standalone_test_blueprint(package_root: Path, fixture: StandaloneTe
                 generate_command=fixture.generate_command,
                 format_command=lambda command: format_project_command(
                     command,
-                    package_root=package_root,
-                    project_dir=project_dir,
-                    output_dir=output_dir,
-                    slug=fixture.slug,
+                    {
+                        "package_root": package_root,
+                        "project_dir": project_dir,
+                        "output_dir": output_dir,
+                        "slug": fixture.slug,
+                    },
                 ),
                 skip_build=False,
             )
