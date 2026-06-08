@@ -30,7 +30,7 @@ Preview visibility behavior:
 inductive PreviewMode where
   | hover
   | pinned
-deriving Inhabited, Repr, BEq, ToJson, FromJson
+deriving Inhabited, Repr, BEq, ToJson, FromJson, Quote
 
 def PreviewMode.dataValue : PreviewMode → String
   | .hover => "hover"
@@ -44,7 +44,7 @@ Preview placement behavior:
 inductive PreviewPlacement where
   | anchored
   | docked
-deriving Inhabited, Repr, BEq, ToJson, FromJson
+deriving Inhabited, Repr, BEq, ToJson, FromJson, Quote
 
 def PreviewPlacement.dataValue : PreviewPlacement → String
   | .anchored => "anchored"
