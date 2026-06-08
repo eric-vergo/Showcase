@@ -40,15 +40,13 @@ theorem inline_main_complete : True := by
     | some node =>
       let external : ExternalCodeStatus := {}
       let helperProofGapOnly :=
-        match node.code with
-        | some (.literate code) =>
+        node.literateCodes.any fun code =>
           code.definedDefs.any fun decl =>
             let (typeRefs, proofRefs) := decl.provedStatus.sorryRefCounts
             decl.provedStatus.hasProofGap &&
             !decl.provedStatus.hasTypeGap &&
             typeRefs == 0 &&
             proofRefs > 0
-        | _ => false
       pure <|
         node.kind == .theorem &&
         nodeLocalStatementFormalized external node &&
@@ -77,12 +75,11 @@ private def literateDeclNamesFor? (label : Name) : CoreM (Option (Array String))
   match state.data.get? label with
   | none => pure none
   | some node =>
-    match node.code with
-    | some (.literate code) =>
-      pure <| some <|
-        (code.definedDefs.map (·.name.toString)) ++
-        (code.definedTheorems.map (·.name.toString))
-    | _ => pure none
+    let names :=
+      node.literateCodes.foldl (init := #[]) fun acc code =>
+        acc ++ (code.definedDefs.map (·.name.toString)) ++
+          (code.definedTheorems.map (·.name.toString))
+    pure <| if names.isEmpty then none else some names
 
 /-- info: true -/
 #guard_msgs in

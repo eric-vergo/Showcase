@@ -91,6 +91,14 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     kind := "curated_doc"
   },
   {
+    slug := "lean-auto-deps"
+    title := "Lean Auto Dependencies"
+    category := "Relationships"
+    summary := "Lean declaration dependency inference with generated graph and summary output."
+    tags := #["lean", "relationships", "automatic"]
+    kind := "curated_doc"
+  },
+  {
     slug := "state-showcase"
     title := "Blueprint Graph State Showcase"
     category := "Graph"

@@ -35,7 +35,9 @@ Those labels are the key to the whole system. They are used to:
 - point at a node without adding a dependency edge with `{bpref "addition_spec"}[]`
 - attach inline Lean code with a labeled `lean` code block
 - attach raw TeX source for porting with a `tex` code block
-- tag compiled declarations with `@[blueprint "label"]`
+- tag compiled declarations with `@[blueprint "label"]`, optionally using
+  `(autoDeps := true)` or `set_option verso.blueprint.autoDeps true` to infer
+  edges to directly referenced Lean declarations associated with Blueprint labels
 
 If you pick stable labels early, the rest of the project structure becomes much
 easier to maintain.

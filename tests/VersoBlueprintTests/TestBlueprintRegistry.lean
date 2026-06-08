@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
+import VersoBlueprintTests.BlueprintAutoDeps.Preview
 import VersoBlueprintTests.BlueprintLinkHover
 import VersoBlueprintTests.BlueprintMetadataPanel
 import VersoBlueprintTests.BlueprintPreviewSource.Provider
@@ -23,15 +24,6 @@ open Verso.Genre.Manual
 open Lean
 open Verso.VersoBlueprintTests.TestBlueprintRegistryMeta
 
-structure CuratedTestBlueprint where
-  slug : String
-  title : String
-  category : String
-  summary : String
-  tags : Array String := #[]
-  doc : Doc.VersoDoc Genre.Manual
-deriving Inhabited
-
 def manualImpls : ExtensionImpls := extension_impls%
 
 private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genre.Manual) :=
@@ -45,6 +37,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "direct-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Direct.directImportedDuplicateDoc
   | "transitive-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive.transitiveImportedDuplicateDoc
   | "imported-preview-source" => some Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.importedPreviewSourceDoc
+  | "lean-auto-deps" => some Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview.autoDepsPreviewDoc
   | "state-showcase" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase.stateShowcaseDoc
   | "external-summary-links" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.externalSummaryLinksDoc
   | "summary-blockers" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.summaryBlockersDoc
@@ -59,35 +52,10 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "single-declared-group" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.singleDeclaredGroupDoc
   | _ => none
 
-def curatedTestBlueprints : Array CuratedTestBlueprint :=
-  curatedTestBlueprintMetas.map (fun entry =>
-    match curatedTestBlueprintDoc? entry.slug with
-    | some doc =>
-        {
-          slug := entry.slug
-          title := entry.title
-          category := entry.category
-          summary := entry.summary
-          tags := entry.tags
-          doc := doc
-        }
-    | none =>
-        panic! s!"missing curated test blueprint doc for slug `{entry.slug}`")
-
 def curatedTestBlueprintDocSlugs : Array String :=
-  curatedTestBlueprints.map (·.slug)
+  curatedTestBlueprintMetas.map (·.slug)
 
 def findCuratedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genre.Manual) :=
-  (curatedTestBlueprints.find? fun entry => entry.slug == slug).map (·.doc)
-
-def CuratedTestBlueprint.meta (doc : CuratedTestBlueprint) : CuratedTestBlueprintMeta :=
-  {
-    slug := doc.slug
-    title := doc.title
-    category := doc.category
-    summary := doc.summary
-    tags := doc.tags
-    kind := "curated_doc"
-  }
+  curatedTestBlueprintDoc? slug
 
 end Verso.VersoBlueprintTests.TestBlueprintRegistry

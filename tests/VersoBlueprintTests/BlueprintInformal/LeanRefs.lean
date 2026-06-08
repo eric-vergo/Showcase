@@ -5,13 +5,17 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprintTests.BlueprintInformal.Shared
+import VersoBlueprintTests.Blueprint.Support
 
 open Lean
 open Verso Genre Manual
 open Informal
+open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintInformal.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs
+
+private def manualImpls : ExtensionImpls := extension_impls%
 
 private def attachedInductiveName : Name :=
   `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.AttachedInductive
@@ -83,10 +87,6 @@ Proof body.
 :::
 :::::::
 
-/--
-error: Label «conflict.ext.inline» has both '(lean := ...)' and an associated Lean code block; preferring inline code
--/
-#guard_msgs in
 #docs (Manual) conflictExternalThenInline "Conflict External Then Inline" :=
 :::::::
 :::definition "conflict.ext.inline" (lean := "Nat.add")
@@ -98,10 +98,6 @@ def conflictExternalThenInlineValue : Nat := Nat.succ 0
 ```
 :::::::
 
-/--
-error: Label «conflict.inline.ext» has both an associated Lean code block and '(lean := ...)'; preferring inline code
--/
-#guard_msgs in
 #docs (Manual) conflictInlineThenExternal "Conflict Inline Then External" :=
 :::::::
 ```lean "conflict.inline.ext"
@@ -112,6 +108,53 @@ def conflictInlineThenExternalValue : Nat := Nat.succ 1
 Simple body.
 :::
 :::::::
+
+private def hasLabel (labels : Array Informal.Data.Label) (label : String) : Bool :=
+  labels.contains (Name.mkSimple label)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let natAddLabels ← Environment.labelsForLeanDecl `Nat.add
+    let extInlineLabels ←
+      Environment.labelsForLeanDecl
+        `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.conflictExternalThenInlineValue
+    let inlineExtLabels ←
+      Environment.labelsForLeanDecl
+        `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.conflictInlineThenExternalValue
+    let state ← currentState
+    let some extInlineNode := state.data.get? (Name.mkSimple "conflict.ext.inline")
+      | pure false
+    let some inlineExtNode := state.data.get? (Name.mkSimple "conflict.inline.ext")
+      | pure false
+    pure <|
+      hasLabel natAddLabels "conflict.ext.inline" &&
+      hasLabel natAddLabels "conflict.inline.ext" &&
+      hasLabel extInlineLabels "conflict.ext.inline" &&
+      hasLabel inlineExtLabels "conflict.inline.ext" &&
+      extInlineNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
+      inlineExtNode.externalRefs.any (fun ref => ref.canonical == `Nat.add) &&
+      extInlineNode.literateCodes.size == 1 &&
+      inlineExtNode.literateCodes.size == 1
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let extInlineOut ← renderManualDocHtmlString manualImpls conflictExternalThenInline
+    let inlineExtOut ← renderManualDocHtmlString manualImpls conflictInlineThenExternal
+    pure <|
+      hasSubstr extInlineOut "bp_external_decl_rendered" &&
+      hasSubstr extInlineOut "Nat.add" &&
+      hasSubstr extInlineOut "conflictExternalThenInlineValue" &&
+      appearsBefore extInlineOut "Simple body." "bp_external_decl_rendered" &&
+      appearsBefore extInlineOut "bp_external_decl_rendered" "conflictExternalThenInlineValue" &&
+      hasSubstr inlineExtOut "bp_external_decl_rendered" &&
+      hasSubstr inlineExtOut "Nat.add" &&
+      hasSubstr inlineExtOut "conflictInlineThenExternalValue" &&
+      appearsBefore inlineExtOut "conflictInlineThenExternalValue" "Simple body." &&
+      appearsBefore inlineExtOut "Simple body." "bp_external_decl_rendered"
 
 #docs (Manual) inductiveLeanRefAccepted "Inductive Lean Ref Accepted" :=
 :::::::
@@ -129,8 +172,8 @@ Simple body.
       | pure false
     pure <|
       node.kind == .definition &&
-      match node.code with
-      | some (.external #[ref]) =>
+      match node.externalRefs with
+      | #[ref] =>
         ref.present &&
         ref.kind == .definition &&
         ref.canonical == `Verso.VersoBlueprintTests.BlueprintInformal.LeanRefs.AttachedInductive &&
@@ -170,7 +213,7 @@ Simple body.
     let state ← currentState
     let some node := state.data.get? (Name.mkSimple "trim.external.name")
       | pure false
-    pure node.code.isNone
+    pure !node.hasAssociatedCode
 
 set_option verso.blueprint.trimTeXLabelPrefix false
 
