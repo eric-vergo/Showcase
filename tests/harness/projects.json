@@ -1,29 +1,5 @@
 {
   "version": 2,
-  "release_targets": [
-    {
-      "id": "v4.28.0",
-      "toolchain": "v4.28.0",
-      "verso_ref": "v4.28.0",
-      "branch": "v4.28.0",
-      "deploy_pages": true
-    },
-    {
-      "id": "v4.29.0",
-      "toolchain": "v4.29.0",
-      "verso_ref": "v4.29.0",
-      "branch": "v4.29.0",
-      "deploy_pages": true
-    },
-    {
-      "id": "v4.30.0",
-      "toolchain": "v4.30.0",
-      "verso_ref": "v4.30.0",
-      "rc": "4.30-rc2",
-      "branch": "v4.30.0",
-      "deploy_pages": true
-    }
-  ],
   "projects": [
     {
       "id": "project-template",
@@ -33,9 +9,6 @@
         "project_root": "project_template"
       },
       "targets": [
-        {
-          "release": "v4.28.0"
-        },
         {
           "release": "v4.29.0"
         },
@@ -63,6 +36,7 @@
         {
           "release": "v4.30.0",
           "ref": "122abfd41c841ce5932114eb060dc1ee5c4c1425",
+          "rc": "4.30-rc2",
           "publish_reference": true
         }
       ],
@@ -105,6 +79,7 @@
         {
           "release": "v4.30.0",
           "ref": "bd848824b43c95ba9ae490321a70086d4f511984",
+          "rc": "4.30-rc2",
           "publish_reference": true
         }
       ],
@@ -124,29 +99,11 @@
         {
           "release": "v4.30.0",
           "ref": "260f2f7309da4916508a93f9754c0c766eb39b9b",
+          "rc": "4.30-rc2",
           "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "CarlesonBlueprint"],
-      "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
-      "site_subdir": "html-multi"
-    },
-    {
-      "id": "algebraic-combinatorics",
-      "description": "External algebraic combinatorics blueprint project currently maintained on the v4.28.0 line.",
-      "source": {
-        "kind": "git_checkout",
-        "repository": "https://github.com/ejgallego/verso-algebraic-combinatorics.git",
-        "project_root": "."
-      },
-      "targets": [
-        {
-          "release": "v4.28.0",
-          "ref": "96d34747d1654bd0ded13a222bb99b3513f71927",
-          "publish_reference": true
-        }
-      ],
-      "build_command": ["lake", "build", "AlgebraicCombinatoricsBlueprint"],
       "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }

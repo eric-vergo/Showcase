@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
+    BranchPolicyReleaseTarget,
     CHECKOUT_ROLE_CHOICES,
     ROOT_WORKTREE_NAME,
     active_release_branch,
@@ -19,14 +20,16 @@ from scripts.blueprint_harness_branches import (
     checkout_is_backport_only,
     load_branch_policy,
     local_release_ref,
-    normalize_lean_release_ref,
     preferred_release_ref,
-    release_branch_from_lean_ref,
-    release_candidate_name_or_none,
     require_checkout_role,
     resolve_git_ref,
     root_checkout_namespace,
     write_branch_policy,
+)
+from scripts.blueprint_harness_releases import (
+    normalize_lean_release_ref,
+    release_branch_from_lean_ref,
+    release_candidate_name_or_none,
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
 from scripts.blueprint_harness_manifest import load_json_object
@@ -437,43 +440,11 @@ def update_release_line_project_manifest(
     manifest_path: Path,
     *,
     release_id: str,
-    release_toolchain: str,
-    release_verso_ref: str,
-    branch: str,
-    rc: str | None,
-    deploy_pages: bool,
 ) -> None:
     try:
         raw = load_json_object(manifest_path)
     except ValueError as err:
         raise SystemExit(f"[blueprint-harness] invalid project manifest: {err}") from err
-
-    release_targets = raw.get("release_targets")
-    if not isinstance(release_targets, list):
-        raise SystemExit(f"[blueprint-harness] invalid project manifest `{manifest_path}`: expected `release_targets` list")
-
-    entry = {
-        "id": release_id,
-        "toolchain": release_toolchain,
-        "verso_ref": release_verso_ref,
-    }
-    if rc is not None:
-        entry["rc"] = rc
-    entry.update(
-        {
-            "branch": branch,
-            "deploy_pages": deploy_pages,
-        }
-    )
-
-    replaced = False
-    for index, candidate in enumerate(release_targets):
-        if isinstance(candidate, dict) and release_branch_from_lean_ref(str(candidate.get("id", ""))) == release_id:
-            release_targets[index] = entry
-            replaced = True
-            break
-    if not replaced:
-        release_targets.append(entry)
 
     projects = raw.get("projects")
     if not isinstance(projects, list):
@@ -498,6 +469,19 @@ def update_release_line_project_manifest(
             targets.append({"release": release_id})
 
     write_json(manifest_path, raw)
+
+
+def upsert_release_target(
+    targets: tuple[BranchPolicyReleaseTarget, ...],
+    target: BranchPolicyReleaseTarget,
+) -> tuple[BranchPolicyReleaseTarget, ...]:
+    updated = list(targets)
+    for index, candidate in enumerate(updated):
+        if candidate.release_id == target.release_id:
+            updated[index] = target
+            return tuple(updated)
+    updated.append(target)
+    return tuple(updated)
 
 
 def command_start_release_line(args: argparse.Namespace) -> int:
@@ -531,20 +515,27 @@ def command_start_release_line(args: argparse.Namespace) -> int:
             f"got `{result.verso_ref}`"
         )
 
+    release_targets = upsert_release_target(
+        old_policy.release_targets,
+        BranchPolicyReleaseTarget(
+            release_id=release_id,
+            release_toolchain=release_toolchain,
+            release_verso_ref=release_verso_ref,
+            branch=release_id,
+            deploy_pages=args.deploy_pages,
+        ),
+    )
     new_policy = write_branch_policy(
         layout.package_root,
         default_dev_branch=release_id,
         required_backport_branches=required_backports,
+        release_targets=release_targets,
+        version=max(old_policy.version, 2),
     )
     manifest_path = resolve_manifest_path(None, layout.package_root)
     update_release_line_project_manifest(
         manifest_path,
         release_id=release_id,
-        release_toolchain=release_toolchain,
-        release_verso_ref=release_verso_ref,
-        branch=release_id,
-        rc=rc,
-        deploy_pages=args.deploy_pages,
     )
 
     print(f"package_root={layout.package_root}")
@@ -569,6 +560,7 @@ def command_set_default_dev_branch(args: argparse.Namespace) -> int:
         layout.package_root,
         default_dev_branch=args.branch,
         required_backport_branches=old_policy.required_backport_branches,
+        release_targets=old_policy.release_targets,
         version=old_policy.version,
     )
     print(f"branch_policy={new_policy.source_path}")

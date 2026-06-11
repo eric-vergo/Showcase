@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 import tomllib
 
-from scripts.blueprint_harness_branches import (
+from scripts.blueprint_harness_releases import (
     lean_release_order_key,
     lean_toolchain_spec,
     normalize_lean_release_ref,

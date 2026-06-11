@@ -21,7 +21,14 @@ from scripts.blueprint_harness_cli import (
     selected_output_root,
 )
 from scripts.blueprint_harness_paths import detect_harness_layout, resolve_output_root
-from scripts.blueprint_harness_projects import HarnessProject, resolve_manifest_path
+from scripts.blueprint_harness_projects import (
+    HarnessProject,
+    HarnessReleaseTarget,
+    project_target_rc,
+    project_target_toolchain,
+    project_target_verso_ref,
+    resolve_manifest_path,
+)
 from scripts.blueprint_harness_projects import (
     HarnessProjectCatalog,
     load_project_catalog as load_project_catalog_manifest,
@@ -319,7 +326,18 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
     )
 
 
-def print_reference_project_status(status: ReferenceProjectStatus) -> None:
+def project_target_status_fields(release_target: HarnessReleaseTarget, project: HarnessProject) -> list[str]:
+    return [
+        f"rc={project_target_rc(project)}",
+        f"toolchain={project_target_toolchain(release_target, project)}",
+        f"verso_ref={project_target_verso_ref(release_target, project)}",
+    ]
+
+
+def print_reference_project_status(
+    status: ReferenceProjectStatus,
+    release_target: HarnessReleaseTarget | None = None,
+) -> None:
     project = status.project
     source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
@@ -339,6 +357,8 @@ def print_reference_project_status(status: ReferenceProjectStatus) -> None:
         f"skip={text_or_blank(status.skipped)}",
         f"error={text_or_blank(status.error)}",
     ]
+    if release_target is not None:
+        fields[2:2] = project_target_status_fields(release_target, project)
     print("\t".join(fields))
 
 
@@ -379,13 +399,14 @@ def print_release_target_summary(status: ReleaseTargetStatus) -> None:
     )
 
 
-def print_release_target_project_status(release_id: str, status: ReferenceProjectStatus) -> None:
+def print_release_target_project_status(release_target: HarnessReleaseTarget, status: ReferenceProjectStatus) -> None:
     project = status.project
     source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
-        f"release={release_id}",
+        f"release={release_target.release_id}",
         f"project={project.project_id}",
         f"source={source}",
+        *project_target_status_fields(release_target, project),
         f"catalog_ref={text_or_blank(status.catalog_ref)}",
         f"project_upstream_ref={text_or_blank(status.project_upstream_ref)}",
         f"catalog_status={text_or_blank(status.project_relationship)}",
@@ -744,6 +765,7 @@ def command_projects(args: argparse.Namespace) -> int:
         project_ids=args.project,
         package_root=layout.package_root,
     )
+    release_target = resolve_release_target(catalog, release_id, layout.package_root)
     print(f"project_manifest={manifest_path}")
     print(f"release_target={release_id}")
     for project in projects:
@@ -757,7 +779,13 @@ def command_projects(args: argparse.Namespace) -> int:
         if project.browser_tests_path is not None:
             validations.append("browser")
         validation_text = ",".join(validations) if validations else "none"
-        print(f"{project.project_id}\tsource={source}\tvalidations={validation_text}")
+        fields = [
+            project.project_id,
+            f"source={source}",
+            *project_target_status_fields(release_target, project),
+            f"validations={validation_text}",
+        ]
+        print("\t".join(fields))
     return 0
 
 
@@ -801,7 +829,7 @@ def command_status(args: argparse.Namespace) -> int:
                 blueprint_behind=None,
                 error=str(err),
             )
-        print_reference_project_status(status)
+        print_reference_project_status(status, release_target)
     return 0
 
 
@@ -872,7 +900,7 @@ def command_release_status(args: argparse.Namespace) -> int:
         for status in summary.project_statuses:
             if args.outdated_only and not status_has_catalog_issue(status):
                 continue
-            print_release_target_project_status(release_target.release_id, status)
+            print_release_target_project_status(release_target, status)
     return 0
 
 

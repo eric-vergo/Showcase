@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from scripts.blueprint_harness_branches import (
+from scripts.blueprint_harness_releases import (
     lean_toolchain_spec,
     normalize_lean_release_ref,
     release_branch_from_lean_ref,

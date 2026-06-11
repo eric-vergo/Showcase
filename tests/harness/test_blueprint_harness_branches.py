@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 
 import scripts.blueprint_harness_branches as branches_mod
+import scripts.blueprint_harness_releases as releases_mod
 
 
 class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
@@ -35,25 +37,28 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             self.assertEqual(policy.source_path, root / "branch-policy.json")
 
     def test_release_candidate_names_normalize_to_tags_and_branch_ids(self) -> None:
-        self.assertEqual(branches_mod.normalize_release_candidate_name("4.30-rc2"), "4.30-rc2")
-        self.assertEqual(branches_mod.normalize_release_candidate_name("v4.30.0-rc2"), "4.30-rc2")
-        self.assertEqual(branches_mod.release_candidate_name_or_none("v4.30.0-rc2"), "4.30-rc2")
-        self.assertIsNone(branches_mod.release_candidate_name_or_none("v4.30.0"))
-        self.assertEqual(branches_mod.release_candidate_ref("4.30-rc2"), "v4.30.0-rc2")
-        self.assertEqual(branches_mod.normalize_lean_release_ref("4.30-rc2"), "v4.30.0-rc2")
-        self.assertEqual(branches_mod.release_branch_from_lean_ref("leanprover/lean4:v4.30.0-rc2"), "v4.30.0")
+        self.assertEqual(releases_mod.normalize_release_candidate_name("4.30-rc2"), "4.30-rc2")
+        self.assertEqual(releases_mod.normalize_release_candidate_name("v4.30.0-rc2"), "4.30-rc2")
+        self.assertEqual(releases_mod.release_candidate_name_or_none("v4.30.0-rc2"), "4.30-rc2")
+        self.assertIsNone(releases_mod.release_candidate_name_or_none("v4.30.0"))
+        self.assertEqual(releases_mod.release_candidate_ref("4.30-rc2"), "v4.30.0-rc2")
+        self.assertEqual(releases_mod.normalize_lean_release_ref("4.30-rc2"), "v4.30.0-rc2")
+        self.assertEqual(releases_mod.release_branch_from_lean_ref("leanprover/lean4:v4.30.0-rc2"), "v4.30.0")
 
     def test_lean_release_order_key_orders_release_candidates_before_final_release(self) -> None:
         self.assertLess(
-            branches_mod.lean_release_order_key("v4.30.0-rc1"),
-            branches_mod.lean_release_order_key("v4.30.0-rc2"),
+            releases_mod.lean_release_order_key("v4.30.0-rc1"),
+            releases_mod.lean_release_order_key("v4.30.0-rc2"),
         )
         self.assertLess(
-            branches_mod.lean_release_order_key("v4.30.0-rc2"),
-            branches_mod.lean_release_order_key("v4.30.0"),
+            releases_mod.lean_release_order_key("v4.30.0-rc2"),
+            releases_mod.lean_release_order_key("v4.30.0"),
         )
-        self.assertEqual(branches_mod.lean_release_order_key("v4.30-rc2"), branches_mod.lean_release_order_key("v4.30.0-rc2"))
-        self.assertIsNone(branches_mod.lean_release_order_key("nightly-testing"))
+        self.assertEqual(
+            releases_mod.lean_release_order_key("v4.30-rc2"),
+            releases_mod.lean_release_order_key("v4.30.0-rc2"),
+        )
+        self.assertIsNone(releases_mod.lean_release_order_key("nightly-testing"))
 
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -63,8 +68,8 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             self.write(with_newline, "leanprover/lean4:v4.29.0\n")
             self.write(without_newline, "leanprover/lean4:v4.29.0")
 
-            branches_mod.rewrite_lean_toolchain(with_newline, "v4.30.0")
-            branches_mod.rewrite_lean_toolchain(without_newline, "v4.30.0")
+            releases_mod.rewrite_lean_toolchain(with_newline, "v4.30.0")
+            releases_mod.rewrite_lean_toolchain(without_newline, "v4.30.0")
 
             self.assertEqual(with_newline.read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0\n")
             self.assertEqual(without_newline.read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0")
@@ -87,6 +92,68 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             policy = branches_mod.load_branch_policy(root)
 
             self.assertEqual(policy.required_backport_branches, ("v4.28.0",))
+
+    def test_load_branch_policy_reads_release_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(
+                root / "branch-policy.json",
+                json.dumps(
+                    {
+                        "version": 2,
+                        "default_dev_branch": "v4.30.0",
+                        "required_backport_branches": ["v4.29.0"],
+                        "release_targets": [
+                            {
+                                "id": "v4.29.0",
+                                "toolchain": "v4.29.0",
+                                "verso_ref": "v4.29.0",
+                                "branch": "v4.29.0",
+                                "deploy_pages": True,
+                            },
+                            {
+                                "id": "v4.30.0",
+                                "toolchain": "v4.30.0",
+                                "verso_ref": "v4.30.0",
+                                "branch": "v4.30.0",
+                                "deploy_pages": True,
+                            },
+                        ],
+                    }
+                ),
+            )
+
+            policy = branches_mod.load_branch_policy(root)
+
+            self.assertEqual(policy.version, 2)
+            self.assertEqual([target.release_id for target in policy.release_targets], ["v4.29.0", "v4.30.0"])
+            self.assertEqual(policy.release_targets[1].toolchain, "v4.30.0")
+
+    def test_load_branch_policy_rejects_release_target_rc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write(
+                root / "branch-policy.json",
+                json.dumps(
+                    {
+                        "version": 2,
+                        "default_dev_branch": "v4.30.0",
+                        "release_targets": [
+                            {
+                                "id": "v4.30.0",
+                                "toolchain": "v4.30.0",
+                                "verso_ref": "v4.30.0",
+                                "rc": "4.30-rc2",
+                                "branch": "v4.30.0",
+                                "deploy_pages": True,
+                            }
+                        ],
+                    }
+                ),
+            )
+
+            with self.assertRaisesRegex(SystemExit, "`rc` belongs on project targets"):
+                branches_mod.load_branch_policy(root)
 
     def test_resolve_git_ref_prefers_branch_over_same_named_tag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -121,7 +188,7 @@ class BlueprintHarnessBranchPolicyTests(unittest.TestCase):
             self.assertEqual(policy.required_backport_branches, ("v4.29.0", "v4.28.0"))
             self.assertEqual(
                 (root / "branch-policy.json").read_text(encoding="utf-8"),
-                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.29.0", "v4.28.0"]\n}\n',
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": [\n    "v4.29.0",\n    "v4.28.0"\n  ]\n}\n',
             )
 
     def test_load_branch_policy_falls_back_to_active_release_branch(self) -> None:

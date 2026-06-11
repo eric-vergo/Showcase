@@ -61,6 +61,7 @@ python3 -m scripts.blueprint_test_blueprints list-json
 Reference blueprints and test blueprints are distinct artifact families:
 
 - reference blueprints are the release-facing validation catalog selected from
+  release targets in [`branch-policy.json`](../branch-policy.json) and
   `publish_reference: true` project targets in
   [`tests/harness/projects.json`](../tests/harness/projects.json)
 - test blueprints are local rendering/browser fixtures selected from
@@ -100,10 +101,17 @@ script map, not a second command reference.
 - `blueprint_harness_manifest.py`
   Shared JSON manifest loading, path resolution, and field validators used by
   the harness catalog loaders.
+- `blueprint_harness_releases.py`
+  Lean release-ref and release-candidate normalization helpers shared across
+  branch policy, toolchain, and reference-project code.
+- `blueprint_harness_branches.py`
+  Branch-policy loading, checkout role checks, and release-branch ref
+  resolution.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json), including
-  the external reference dependency-cache key.
+  branch-policy release-target inheritance and the external reference
+  dependency-cache key.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override,
   dependency-package cache warm-up, and prune helpers shared by the reference
@@ -135,9 +143,10 @@ python3 -m scripts.blueprint_reference_harness status
 python3 -m scripts.blueprint_harness paths
 ```
 
-The active project catalog lives in
-[`tests/harness/projects.json`](../tests/harness/projects.json). The current
-workflow and flag semantics live in
+The active release policy lives in
+[`branch-policy.json`](../branch-policy.json), and the active project catalog
+lives in [`tests/harness/projects.json`](../tests/harness/projects.json). The
+current workflow and flag semantics live in
 [`doc/MAINTAINER_GUIDE.md`](../doc/MAINTAINER_GUIDE.md).
 
 The local HTML-producing test fixtures use a second metadata source:

@@ -2,21 +2,37 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-import re
 import subprocess
 from pathlib import Path
 
+from scripts.blueprint_harness_releases import (
+    normalize_lean_release_ref,
+    release_branch_from_lean_ref,
+)
+
 
 BRANCH_POLICY_FILENAME = "branch-policy.json"
-LEAN_TOOLCHAIN_PREFIX = "leanprover/lean4:"
 ROOT_WORKTREE_NAME = "root"
 CHECKOUT_ROLE_DEFAULT_DEV = "default_dev"
 CHECKOUT_ROLE_BACKPORT = "backport"
 CHECKOUT_ROLE_CHOICES = (CHECKOUT_ROLE_DEFAULT_DEV, CHECKOUT_ROLE_BACKPORT)
-NUMERIC_LEAN_RELEASE_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+$")
-LEAN_RELEASE_CANDIDATE_PATTERN = re.compile(
-    r"^v?(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?-rc(?P<rc>\d+)$"
-)
+
+
+@dataclass(frozen=True)
+class BranchPolicyReleaseTarget:
+    release_id: str
+    release_toolchain: str
+    release_verso_ref: str
+    branch: str
+    deploy_pages: bool
+
+    @property
+    def toolchain(self) -> str:
+        return self.release_toolchain
+
+    @property
+    def verso_ref(self) -> str:
+        return self.release_verso_ref
 
 
 @dataclass(frozen=True)
@@ -24,91 +40,8 @@ class BranchPolicy:
     version: int
     default_dev_branch: str
     required_backport_branches: tuple[str, ...]
+    release_targets: tuple[BranchPolicyReleaseTarget, ...]
     source_path: Path
-
-
-def clean_lean_ref(raw_ref: str) -> str:
-    ref = raw_ref.strip()
-    if ref.startswith(LEAN_TOOLCHAIN_PREFIX):
-        ref = ref[len(LEAN_TOOLCHAIN_PREFIX) :]
-    if not ref or any(char.isspace() for char in ref) or any(char in ref for char in {'"', "\n", "\r"}):
-        raise SystemExit("[blueprint-harness] expected a Lean release ref without whitespace, quotes, or newlines")
-    return ref
-
-
-def normalize_release_candidate_name(raw_ref: str) -> str:
-    ref = clean_lean_ref(raw_ref)
-    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
-    if match is None:
-        raise SystemExit("[blueprint-harness] expected an official Lean release candidate name like `4.30-rc2`")
-
-    major = match.group("major")
-    minor = match.group("minor")
-    patch = match.group("patch")
-    rc = match.group("rc")
-    if patch is None or patch == "0":
-        return f"{major}.{minor}-rc{rc}"
-    return f"{major}.{minor}.{patch}-rc{rc}"
-
-
-def release_candidate_name_or_none(raw_ref: str) -> str | None:
-    ref = clean_lean_ref(raw_ref)
-    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is None:
-        return None
-    return normalize_release_candidate_name(ref)
-
-
-def release_candidate_ref(raw_ref: str) -> str:
-    name = normalize_release_candidate_name(raw_ref)
-    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(name)
-    if match is None:
-        raise AssertionError(f"normalized release candidate did not parse: {name}")
-
-    patch = match.group("patch") or "0"
-    return f"v{match.group('major')}.{match.group('minor')}.{patch}-rc{match.group('rc')}"
-
-
-def normalize_lean_release_ref(raw_ref: str) -> str:
-    ref = clean_lean_ref(raw_ref)
-    if LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref) is not None:
-        return release_candidate_ref(ref)
-    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None and not ref.startswith("v"):
-        ref = f"v{ref}"
-    return ref
-
-
-def release_branch_from_lean_ref(raw_ref: str) -> str:
-    ref = normalize_lean_release_ref(raw_ref)
-    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
-    if match is not None:
-        patch = match.group("patch") or "0"
-        return f"v{match.group('major')}.{match.group('minor')}.{patch}"
-    return ref
-
-
-def lean_release_order_key(raw_ref: str) -> tuple[int, int, int, int] | None:
-    ref = normalize_lean_release_ref(raw_ref)
-    if NUMERIC_LEAN_RELEASE_PATTERN.fullmatch(ref) is not None:
-        version = ref[1:] if ref.startswith("v") else ref
-        major, minor, patch = (int(part) for part in version.split("."))
-        return major, minor, patch, 1_000_000
-
-    match = LEAN_RELEASE_CANDIDATE_PATTERN.fullmatch(ref)
-    if match is None:
-        return None
-
-    patch = int(match.group("patch") or "0")
-    return int(match.group("major")), int(match.group("minor")), patch, int(match.group("rc"))
-
-
-def lean_toolchain_spec(lean_ref: str) -> str:
-    return f"{LEAN_TOOLCHAIN_PREFIX}{lean_ref}"
-
-
-def rewrite_lean_toolchain(path: Path, lean_ref: str) -> None:
-    existing = path.read_text(encoding="utf-8")
-    suffix = "\n" if existing.endswith("\n") else ""
-    path.write_text(f"{lean_toolchain_spec(lean_ref)}{suffix}", encoding="utf-8")
 
 
 def active_release_branch(repo_root: Path) -> str:
@@ -122,20 +55,34 @@ def branch_policy_path(checkout_root: Path) -> Path:
     return checkout_root / BRANCH_POLICY_FILENAME
 
 
+def _format_release_target(target: BranchPolicyReleaseTarget) -> dict[str, object]:
+    entry: dict[str, object] = {
+        "id": target.release_id,
+        "toolchain": target.release_toolchain,
+        "verso_ref": target.release_verso_ref,
+    }
+    entry["branch"] = target.branch
+    entry["deploy_pages"] = target.deploy_pages
+    return entry
+
+
 def format_branch_policy(
     *,
     default_dev_branch: str,
     required_backport_branches: tuple[str, ...] | list[str],
+    release_targets: tuple[BranchPolicyReleaseTarget, ...] | list[BranchPolicyReleaseTarget] = (),
     version: int = 1,
 ) -> str:
-    backports = ", ".join(f'"{release_branch_from_lean_ref(branch)}"' for branch in required_backport_branches)
-    return (
-        "{\n"
-        f'  "version": {version},\n'
-        f'  "default_dev_branch": "{release_branch_from_lean_ref(default_dev_branch)}",\n'
-        f'  "required_backport_branches": [{backports}]\n'
-        "}\n"
-    )
+    data: dict[str, object] = {
+        "version": version,
+        "default_dev_branch": release_branch_from_lean_ref(default_dev_branch),
+        "required_backport_branches": [
+            release_branch_from_lean_ref(branch) for branch in required_backport_branches
+        ],
+    }
+    if release_targets:
+        data["release_targets"] = [_format_release_target(target) for target in release_targets]
+    return json.dumps(data, indent=2) + "\n"
 
 
 def write_branch_policy(
@@ -143,12 +90,14 @@ def write_branch_policy(
     *,
     default_dev_branch: str,
     required_backport_branches: tuple[str, ...] | list[str],
+    release_targets: tuple[BranchPolicyReleaseTarget, ...] | list[BranchPolicyReleaseTarget] = (),
     version: int = 1,
 ) -> BranchPolicy:
     path = branch_policy_path(checkout_root)
     text = format_branch_policy(
         default_dev_branch=default_dev_branch,
         required_backport_branches=required_backport_branches,
+        release_targets=release_targets,
         version=version,
     )
     path.write_text(text, encoding="utf-8")
@@ -162,6 +111,7 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
             version=1,
             default_dev_branch=active_release_branch(checkout_root),
             required_backport_branches=(),
+            release_targets=(),
             source_path=path,
         )
 
@@ -188,12 +138,85 @@ def load_branch_policy(checkout_root: Path) -> BranchPolicy:
     if not isinstance(raw_version, int):
         raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: `version` must be an integer")
 
+    release_targets = load_branch_policy_release_targets(data, path)
+    release_ids = {target.release_id for target in release_targets}
+    if release_ids and release_branch_from_lean_ref(raw_default) not in release_ids:
+        raise SystemExit(
+            f"[blueprint-harness] invalid branch policy file `{path}`: "
+            f"default development branch `{release_branch_from_lean_ref(raw_default)}` is not a release target"
+        )
+    for branch in raw_backports:
+        normalized = release_branch_from_lean_ref(branch)
+        if release_ids and normalized not in release_ids:
+            raise SystemExit(
+                f"[blueprint-harness] invalid branch policy file `{path}`: "
+                f"required backport branch `{normalized}` is not a release target"
+            )
+
     return BranchPolicy(
         version=raw_version,
         default_dev_branch=release_branch_from_lean_ref(raw_default),
         required_backport_branches=tuple(release_branch_from_lean_ref(item) for item in raw_backports),
+        release_targets=release_targets,
         source_path=path,
     )
+
+
+def _require_policy_string(entry: dict, field: str, *, context: str) -> str:
+    value = entry.get(field)
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{context}`: missing string `{field}`")
+    return value
+
+
+def load_branch_policy_release_targets(data: dict, path: Path) -> tuple[BranchPolicyReleaseTarget, ...]:
+    entries = data.get("release_targets", [])
+    if entries is None:
+        entries = []
+    if not isinstance(entries, list):
+        raise SystemExit(f"[blueprint-harness] invalid branch policy file `{path}`: `release_targets` must be a list")
+
+    targets: list[BranchPolicyReleaseTarget] = []
+    seen_ids: set[str] = set()
+    for index, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise SystemExit(
+                f"[blueprint-harness] invalid branch policy file `{path}`: release target #{index} must be an object"
+            )
+        context = f"{path}: release target #{index}"
+        release_id = release_branch_from_lean_ref(_require_policy_string(entry, "id", context=context))
+        if release_id in seen_ids:
+            raise SystemExit(
+                f"[blueprint-harness] invalid branch policy file `{path}`: duplicate release target `{release_id}`"
+            )
+        seen_ids.add(release_id)
+
+        if "rc" in entry:
+            raise SystemExit(
+                f"[blueprint-harness] invalid branch policy file `{context}`: "
+                "`rc` belongs on project targets, not release targets"
+            )
+
+        deploy_pages = entry.get("deploy_pages", False)
+        if not isinstance(deploy_pages, bool):
+            raise SystemExit(
+                f"[blueprint-harness] invalid branch policy file `{context}`: expected boolean `deploy_pages`"
+            )
+
+        targets.append(
+            BranchPolicyReleaseTarget(
+                release_id=release_id,
+                release_toolchain=normalize_lean_release_ref(
+                    _require_policy_string(entry, "toolchain", context=context)
+                ),
+                release_verso_ref=normalize_lean_release_ref(
+                    _require_policy_string(entry, "verso_ref", context=context)
+                ),
+                branch=release_branch_from_lean_ref(_require_policy_string(entry, "branch", context=context)),
+                deploy_pages=deploy_pages,
+            )
+        )
+    return tuple(targets)
 
 
 def default_dev_branch(checkout_root: Path) -> str:

@@ -7,11 +7,16 @@ from pathlib import Path
 import re
 
 from scripts.blueprint_harness_branches import (
+    BranchPolicyReleaseTarget as HarnessReleaseTarget,
     active_release_branch,
+    branch_policy_path,
+    load_branch_policy,
+)
+from scripts.blueprint_harness_releases import (
     normalize_lean_release_ref,
     normalize_release_candidate_name,
-    release_branch_from_lean_ref,
     release_candidate_ref,
+    release_branch_from_lean_ref,
 )
 from scripts.blueprint_harness_manifest import (
     load_json_object,
@@ -29,28 +34,11 @@ REFERENCE_CACHE_KEY_DIGEST_LENGTH = 12
 
 
 @dataclass(frozen=True)
-class HarnessReleaseTarget:
-    release_id: str
-    release_toolchain: str
-    release_verso_ref: str
-    branch: str
-    deploy_pages: bool
-    rc: str | None = None
-
-    @property
-    def toolchain(self) -> str:
-        return release_candidate_ref(self.rc) if self.rc is not None else self.release_toolchain
-
-    @property
-    def verso_ref(self) -> str:
-        return release_candidate_ref(self.rc) if self.rc is not None else self.release_verso_ref
-
-
-@dataclass(frozen=True)
 class HarnessProjectTarget:
     release: str
     ref: str | None
     publish_reference: bool = False
+    rc: str | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +71,7 @@ class HarnessProject:
     description: str | None
     targets: tuple[HarnessProjectTarget, ...] = ()
     selected_release: str | None = None
+    selected_rc: str | None = None
 
     @property
     def in_repo_project(self) -> bool:
@@ -156,8 +145,27 @@ def resolve_manifest_path(path_text: str | None, package_root: Path) -> Path:
     return resolve_manifest_file_path(path_text, default_project_manifest(package_root))
 
 
+def _package_root_for_manifest(manifest_path: Path | str) -> Path | None:
+    path = Path(manifest_path)
+    candidates = path.parents if path.suffix else (path, *path.parents)
+    for parent in candidates:
+        if branch_policy_path(parent).exists():
+            return parent
+    return None
+
+
 def _load_release_targets(raw: dict, manifest_path: Path | str) -> tuple[HarnessReleaseTarget, ...]:
     entries = raw.get("release_targets")
+    if entries is None:
+        package_root = _package_root_for_manifest(manifest_path)
+        if package_root is None:
+            raise ValueError(
+                f"{manifest_path}: expected top-level `release_targets` list or nearby `branch-policy.json`"
+            )
+        targets = load_branch_policy(package_root).release_targets
+        if not targets:
+            raise ValueError(f"{branch_policy_path(package_root)}: expected non-empty `release_targets` list")
+        return targets
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{manifest_path}: expected non-empty top-level `release_targets` list")
 
@@ -177,9 +185,7 @@ def _load_release_targets(raw: dict, manifest_path: Path | str) -> tuple[Harness
         deploy_pages = _optional_bool(entry, "deploy_pages", default=False, context=context)
         rc = entry.get("rc")
         if rc is not None:
-            if not isinstance(rc, str):
-                raise ValueError(f"{context}: expected string field `rc`")
-            rc = normalize_release_candidate_name(rc)
+            raise ValueError(f"{context}: `rc` belongs on project targets, not release targets")
         targets.append(
             HarnessReleaseTarget(
                 release_id=release_id,
@@ -187,7 +193,6 @@ def _load_release_targets(raw: dict, manifest_path: Path | str) -> tuple[Harness
                 release_verso_ref=verso_ref,
                 branch=branch,
                 deploy_pages=deploy_pages,
-                rc=rc,
             )
         )
     return tuple(targets)
@@ -223,11 +228,19 @@ def _load_project_targets(
             raise ValueError(f"{target_context}: in-repo project targets must not declare `ref`")
         if "publish" in raw_target:
             raise ValueError(f"{target_context}: `publish` is no longer supported; use `publish_reference`")
+        rc = raw_target.get("rc")
+        if rc is not None:
+            if not isinstance(rc, str):
+                raise ValueError(f"{target_context}: expected string field `rc`")
+            rc = normalize_release_candidate_name(rc)
+            if release_branch_from_lean_ref(rc) != release:
+                raise ValueError(f"{target_context}: `rc` `{rc}` does not belong to release `{release}`")
         targets.append(
             HarnessProjectTarget(
                 release=release,
                 ref=ref,
                 publish_reference=_optional_bool(raw_target, "publish_reference", default=False, context=target_context),
+                rc=rc,
             )
         )
     return tuple(targets)
@@ -409,6 +422,7 @@ def resolve_projects_for_release(
                 project,
                 ref=target.ref,
                 selected_release=release,
+                selected_rc=target.rc,
             )
         )
     return resolved
@@ -440,11 +454,29 @@ def reference_artifact_path(project: HarnessProject) -> str:
     return f"_out/reference-blueprints/{project.project_id}"
 
 
-def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dict[str, object]]]:
+def project_target_rc(project: HarnessProject) -> str:
+    return project.selected_rc or ""
+
+
+def project_target_toolchain(release_target: HarnessReleaseTarget, project: HarnessProject) -> str:
+    return release_candidate_ref(project.selected_rc) if project.selected_rc is not None else release_target.toolchain
+
+
+def project_target_verso_ref(release_target: HarnessReleaseTarget, project: HarnessProject) -> str:
+    return release_candidate_ref(project.selected_rc) if project.selected_rc is not None else release_target.verso_ref
+
+
+def reference_build_matrix(
+    projects: list[HarnessProject],
+    release_target: HarnessReleaseTarget,
+) -> dict[str, list[dict[str, object]]]:
     return {
         "include": [
             {
                 "project_id": project.project_id,
+                "rc": project_target_rc(project),
+                "toolchain": project_target_toolchain(release_target, project),
+                "verso_ref": project_target_verso_ref(release_target, project),
                 "project_root": project.project_root,
                 "hash": project.ref,
                 "reference_cache_key": reference_dependency_cache_key(project) if project.git_checkout else "",
