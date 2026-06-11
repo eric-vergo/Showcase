@@ -33,9 +33,8 @@ from scripts.blueprint_harness_utils import (
     lean_low_priority_command,
     print_failure_summary,
     run,
-    run_capturing_failure,
 )
-from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
+from scripts.blueprint_harness_validation import SiteValidationCheck, run_site_validation_checks
 
 
 TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -428,29 +427,24 @@ def validate_test_blueprint_outputs(
             failures.append(StepFailure("generate test blueprints", str(err)))
             return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
 
-    for fixture in fixtures:
-        site_dir = test_blueprint_site_dir(output_root, fixture)
-        if fixture.panel_regression_script is not None and not skip_panel_regression:
-            failure = run_capturing_failure(
-                f"{fixture.slug} panel regression",
-                panel_regression_command(package_root, fixture.panel_regression_script or "", site_dir),
-                cwd=package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
-
-        if fixture.browser_tests_path is not None and not skip_browser_tests:
-            failure = run_capturing_failure(
-                f"{fixture.slug} browser tests",
-                browser_test_command(package_root, fixture.browser_tests_path or "", site_dir, pytest_args),
-                cwd=package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
+    failures.extend(
+        run_site_validation_checks(
+            package_root,
+            [
+                SiteValidationCheck(
+                    label=fixture.slug,
+                    site_dir=test_blueprint_site_dir(output_root, fixture),
+                    panel_regression_script=fixture.panel_regression_script,
+                    browser_tests_path=fixture.browser_tests_path,
+                )
+                for fixture in fixtures
+            ],
+            pytest_args,
+            skip_panel_regression=skip_panel_regression,
+            skip_browser_tests=skip_browser_tests,
+            stop_on_first_failure=stop_on_first_failure,
+        )
+    )
 
     return print_failure_summary(failures, prefix=TEST_BLUEPRINT_HARNESS_PREFIX)
 

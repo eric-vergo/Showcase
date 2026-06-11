@@ -20,6 +20,7 @@ from scripts.blueprint_test_blueprints import (
     write_test_blueprint_index,
 )
 from scripts.blueprint_harness_utils import StepFailure
+import scripts.blueprint_harness_validation as validation_mod
 import scripts.blueprint_test_blueprints as test_blueprints_mod
 
 
@@ -370,7 +371,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
         )
         originals = {
             "generate_test_blueprint_outputs": test_blueprints_mod.generate_test_blueprint_outputs,
-            "run_capturing_failure": test_blueprints_mod.run_capturing_failure,
+            "run_capturing_failure": validation_mod.run_capturing_failure,
         }
         calls: list[tuple[str, object]] = []
         try:
@@ -379,7 +380,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
                     ("generate", (output_root, requested))
                 )
             )
-            test_blueprints_mod.run_capturing_failure = (
+            validation_mod.run_capturing_failure = (
                 lambda step, command, cwd: calls.append(("run", (step, command, cwd))) or None
             )
 
@@ -403,7 +404,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             self.assertIn("preview", calls[2][1][1])
         finally:
             test_blueprints_mod.generate_test_blueprint_outputs = originals["generate_test_blueprint_outputs"]
-            test_blueprints_mod.run_capturing_failure = originals["run_capturing_failure"]
+            validation_mod.run_capturing_failure = originals["run_capturing_failure"]
 
     def test_validate_test_blueprint_outputs_stops_on_first_failure(self) -> None:
         fixture = StandaloneTestBlueprint(
@@ -420,12 +421,12 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
         )
         originals = {
             "generate_test_blueprint_outputs": test_blueprints_mod.generate_test_blueprint_outputs,
-            "run_capturing_failure": test_blueprints_mod.run_capturing_failure,
+            "run_capturing_failure": validation_mod.run_capturing_failure,
         }
         calls: list[str] = []
         try:
             test_blueprints_mod.generate_test_blueprint_outputs = lambda *_args: None
-            test_blueprints_mod.run_capturing_failure = (
+            validation_mod.run_capturing_failure = (
                 lambda step, _command, cwd: calls.append(step) or StepFailure(step, "failed")
             )
 
@@ -443,7 +444,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             self.assertEqual(calls, ["runtime-showcase panel regression"])
         finally:
             test_blueprints_mod.generate_test_blueprint_outputs = originals["generate_test_blueprint_outputs"]
-            test_blueprints_mod.run_capturing_failure = originals["run_capturing_failure"]
+            validation_mod.run_capturing_failure = originals["run_capturing_failure"]
 
 
 if __name__ == "__main__":
