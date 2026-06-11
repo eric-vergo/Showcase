@@ -102,8 +102,8 @@ Base statement for graph preview mode option coverage.
       | some graphJs =>
         hasSubstr graphJs "return utils.readPreviewTemplate(entry);" &&
         hasSubstr graphJs "function layoutGraphCanvas(graphRoot, graphState)" &&
-        hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
-        hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
+        !hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
+        !hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
         hasSubstr graphJs "function ensureGraphBlockState(graphBlock)" &&
         hasSubstr graphJs "function createPanelController(panel, behavior, titleSelector, bodySelector, options)" &&
         hasSubstr graphJs "function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr)" &&
@@ -112,6 +112,7 @@ Base statement for graph preview mode option coverage.
         hasSubstr graphJs "const previewPlacementSelector = graphBlock.querySelector(\".bp_graph_preview_placement_select\");" &&
         hasSubstr graphJs "const previewKey = nodeId ? (previewKeys.get(nodeId) || \"\") : \"\";" &&
         hasSubstr graphJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr graphJs "previewUtils.readPanelBehavior(null, {" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "previewUtils.hydratePreviewSubtree(body)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
