@@ -765,13 +765,37 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## Blueprint Nodes in Verso Slides
+## Blueprint Grafts in Manual and Slides
 
-`VersoBlueprint.Slides` adds a `{blueprint_node ...}` block command for Verso
-Slides decks. It renders an entry from the semantic manifest plus rendered HTML
+`VersoBlueprint` adds a `{blueprint_node ...}` block command that grafts an
+existing Blueprint node into another place in the document. The same command is
+also available in Verso Slides decks through `VersoBlueprint.Slides`.
+
+In Manual documents, grafts use the current traversal state and render through
+the same manifest-backed Blueprint block shell used by generated preview data.
+In Slides decks, grafts render from the semantic manifest plus rendered HTML
 cache emitted by a Blueprint site. The slide deck generator reads those files
 and writes the Blueprint node shell into the generated slide HTML; it does not
 re-traverse the Blueprint source document itself.
+
+Manual source:
+
+```lean
+import VersoBlueprint
+
+open Verso
+open Verso.Genre.Manual
+open Informal
+
+#docs (Genre.Manual) doc "Overview" :=
+:::::::
+:::theorem "thm:key"
+The statement to feature.
+:::
+
+{blueprint_node "thm:key" -header +compact}
+:::::::
+```
 
 Slide source:
 
@@ -788,13 +812,30 @@ open VersoSlides
 :::::::
 ```
 
-The `siteBase` option is useful when links in the manifest should open
-against a Blueprint site hosted next to, or below, the slide deck. Omit it when
-the manifest links are already correct relative to the deck.
+The first positional argument is the Blueprint label to graft. Available options
+are:
 
-Use `displayLabel` only when a slide needs a talk-specific heading label. It
-overrides the displayed label/number in the Blueprint shell, not the semantic
-manifest title.
+- `(facet := "statement")` or `(facet := "proof")`; statement is the default
+- `(displayLabel := "...")`, which overrides the displayed label/number in the
+  grafted shell without changing the semantic manifest entry
+- `+compact`, which omits attached Lean-code panels
+- `+header` or `-header`; headers are shown by default
+- `(siteBase := "...")`, for Slides decks whose manifest links should open
+  against a Blueprint site hosted next to, or below, the deck
+
+Use `blueprint_side_by_side` to place grafts next to each other:
+
+```lean
+:::blueprint_side_by_side
+{blueprint_node "thm:key" -header +compact}
+
+{blueprint_node "thm:key" (facet := "proof") -header +compact}
+:::
+```
+
+The side-by-side directive is presentation-only. Each child remains an ordinary
+`{blueprint_node ...}` command with its own label and options; the directive does
+not create dependencies, groups, or new manifest entries.
 
 Use the Blueprint slide wrapper in the deck generator:
 

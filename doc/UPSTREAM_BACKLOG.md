@@ -68,11 +68,12 @@ pull requests unless that upstream write action is explicitly requested.
 
 - [ ] Add a Verso Slides `Block.ofHtml` constructor.
   - current Blueprint workaround:
-    `VersoBlueprint.Slides.slidesMainWithBlueprintRenderer` supplies a local
-    `GenreHtml Slides IO` instance so `{blueprint_node}` blocks render from the
-    Blueprint manifest/cache data before the HTML document is serialized; because
-    `VersoSlides.slidesMain` owns both rendering and file emission, Blueprint
-    also mirrors the small config-asset plan and write loop
+    `VersoBlueprint.Slides.slidesMainWithBlueprintPreviews` supplies a local
+    `GenreHtml Slides IO` instance so slide graft blocks elaborated through
+    `{blueprint_node}` render from the Blueprint manifest/cache data before the
+    HTML document is serialized; because `VersoSlides.slidesMain` owns both
+    rendering and file emission, Blueprint also mirrors the small config-asset
+    plan and write loop
   - desired upstream behavior:
     downstream packages should be able to elaborate a slide block to an
     already-rendered HTML body, while reusing the upstream `slidesMain` asset

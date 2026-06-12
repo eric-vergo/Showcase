@@ -1169,6 +1169,45 @@ private def buildGroupRelation?
     entries
   }
 
+def blockEntryOfTraversalPreview
+    (state : TraverseState)
+    (preview : PreviewCache.Entry) : Entry :=
+  let blockData? := blockInfo? state preview.label
+  let key := PreviewCache.key preview.label preview.facet
+  let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
+  let codeData := blockCodeData? state preview.label preview blockData?
+  let storedBlocks := Informal.collectStoredBlocks state
+  {
+    key
+    targetKind := .block
+    label := preview.label
+    facet := preview.facet
+    kind := blockKind? blockData?
+    title := blockTitle state preview.label preview.facet blockData?
+    displayCaption := headingParts?.map (·.caption)
+    displayLabel := headingParts?.map (·.label)
+    href := blockHref state preview.label preview.facet
+    parent := blockData?.bind (·.parent)
+    parentTitle := blockParentTitle? state blockData?
+    statementUses := blockData?.map (·.statementUses) |>.getD #[]
+    proofUses := blockData?.map (·.proofUses) |>.getD #[]
+    leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
+    codeData
+    externalMarkup := externalMarkupArray state preview.label
+    uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
+    usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+    group := blockData?.bind (buildGroupRelation? state storedBlocks)
+    ownerDisplayName := blockData?.bind (·.ownerDisplayName)
+    tags := blockData?.map (·.tags) |>.getD #[]
+    priority := blockData?.bind (·.priority)
+    effort := blockData?.bind (·.effort)
+  }
+
+def findTraversalBlockEntry? (state : TraverseState) (key : String) :
+    Option (PreviewCache.Entry × Entry) := do
+  let preview ← Informal.TraversalIndex.TraversalPreviews.entry? state key
+  some (preview, blockEntryOfTraversalPreview state preview)
+
 private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
@@ -1177,7 +1216,6 @@ private def buildTraversalEntries
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
     | return (#[], #[], hoverState)
-  let storedBlocks := Informal.collectStoredBlocks state
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
@@ -1194,35 +1232,8 @@ private def buildTraversalEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
-      let blockData? := blockInfo? state entry.label
       let key := PreviewCache.key entry.label entry.facet
-      let headingParts? := blockHeadingParts? state entry.label entry.facet blockData?
-      let codeData := blockCodeData? state entry.label entry blockData?
-      let manifestEntry : Entry := {
-        key
-        targetKind := .block
-        label := entry.label
-        facet := entry.facet
-        kind := blockKind? blockData?
-        title := blockTitle state entry.label entry.facet blockData?
-        displayCaption := headingParts?.map (·.caption)
-        displayLabel := headingParts?.map (·.label)
-        href := blockHref state entry.label entry.facet
-        parent := blockData?.bind (·.parent)
-        parentTitle := blockParentTitle? state blockData?
-        statementUses := blockData?.map (·.statementUses) |>.getD #[]
-        proofUses := blockData?.map (·.proofUses) |>.getD #[]
-        leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
-        codeData
-        externalMarkup := externalMarkupArray state entry.label
-        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-        group := blockData?.bind (buildGroupRelation? state storedBlocks)
-        ownerDisplayName := blockData?.bind (·.ownerDisplayName)
-        tags := blockData?.map (·.tags) |>.getD #[]
-        priority := blockData?.bind (·.priority)
-        effort := blockData?.bind (·.effort)
-      }
+      let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key, html }
   pure (entries, htmlEntries, hoverState)

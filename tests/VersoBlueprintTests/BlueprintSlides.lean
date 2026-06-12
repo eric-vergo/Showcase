@@ -34,10 +34,58 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 {blueprint_node "def:code.preview" (siteBase := "blueprint")}
 :::::::
 
+#docs (Slides) sideBySideBlueprintNodeSlideFixture "Side-by-Side Blueprint Node Slide" :=
+:::::::
+# Side-by-Side Blueprint Nodes
+
+:::blueprint_side_by_side
+{blueprint_node "def:graft.slide.left" -header (siteBase := "blueprint")}
+
+{blueprint_node "def:graft.slide.right" -header (siteBase := "blueprint")}
+:::
+:::::::
+
 #docs (Genre.Manual) slideMetadataPanelDoc "Slide Metadata Panel" :=
 :::::::
 :::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
 Manifest-backed slide rendering should use the standard Blueprint block renderer.
+:::
+:::::::
+
+#docs (Genre.Manual) manualGraftDoc "Manual Blueprint Graft" :=
+:::::::
+:::definition "def:graft.manual.source"
+Manual graft body.
+:::
+
+{blueprint_node "def:graft.manual.source" -header +compact}
+:::::::
+
+#docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
+:::::::
+:::definition "def:graft.manual.left"
+Manual left graft body.
+:::
+
+:::definition "def:graft.manual.right"
+Manual right graft body.
+:::
+
+:::blueprint_side_by_side
+{blueprint_node "def:graft.manual.left" -header +compact}
+
+{blueprint_node "def:graft.manual.right" -header +compact}
+:::
+:::::::
+
+#docs (Genre.Manual) slideGraftSourceDoc "Slide Blueprint Graft Sources" :=
+:::::::
+:::definition "def:graft.slide.left"
+Slide left graft body.
+:::
+
+:::definition "def:graft.slide.right"
+Slide right graft body.
 :::
 :::::::
 
@@ -116,6 +164,15 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
     attrs.contains ("data-bp-display-label", "Custom slide label") &&
     !(attrs.any (fun attr => attr.1 == "data-bp-title"))
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
+    showHeader := false }
+  let attrs := node.toAttrs
+  Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
+    attrs.contains ("data-bp-show-header", "false")
 
 /-- info: true -/
 #guard_msgs in
@@ -218,6 +275,29 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         !files.htmlCache.hoverDocs.isEmpty &&
         files.htmlCache.hoverDocs.all (fun doc => doc.id >= Informal.PreviewManifest.HtmlCache.hoverIdStart) &&
         !hasSubstr codeHtml "<pre>def "
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualGraftDoc
+    pure <|
+      hasSubstr html "bp_graft_node" &&
+        countSubstr html "Manual graft body." == 2 &&
+        countSubstr html "class=\"bp_heading " == 1 &&
+        !hasSubstr html "Blueprint node not found"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
+    pure <|
+      hasSubstr html "bp_graft_side_by_side" &&
+        countSubstr html "data-bp-blueprint-node=\"true\"" == 2 &&
+        countSubstr html "Manual left graft body." == 2 &&
+        countSubstr html "Manual right graft body." == 2 &&
+        !hasSubstr html "Blueprint node not found"
 
 /-- info: true -/
 #guard_msgs in
@@ -373,6 +453,39 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
         hasSubstr index "href=\"#--informal-preview" &&
+        !hasSubstr index "Loading Blueprint node"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideGraftSourceDoc
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let root ← freshSlidesSmokeRoot
+    let outDir := root / "slides"
+    let manifestPath := root / Informal.PreviewManifest.manifestFilename
+    let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
+    if !(← root.pathExists) then
+      IO.FS.createDirAll root
+    IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
+    IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
+    let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
+      { outputDir := outDir }
+      (previewManifest? := some manifestPath)
+      sideBySideBlueprintNodeSlideFixture.toPart
+      (quiet := true)
+    if rc != 0 then
+      return false
+    let indexPath := outDir / "index.html"
+    if !(← indexPath.pathExists) then
+      return false
+    let index ← IO.FS.readFile indexPath
+    pure <|
+      hasSubstr index "bp_graft_side_by_side" &&
+        countSubstr index "data-bp-rendered=\"static\"" == 2 &&
+        hasSubstr index "Slide left graft body." &&
+        hasSubstr index "Slide right graft body." &&
+        !hasSubstr index "Blueprint node not found" &&
         !hasSubstr index "Loading Blueprint node"
 
 end Verso.VersoBlueprintTests.BlueprintSlides

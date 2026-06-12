@@ -27,6 +27,7 @@ public structure BlueprintSlideNode where
   key : String
   displayLabel? : Option String := none
   compact : Bool := false
+  showHeader : Bool := true
   siteBase? : Option String := none
 deriving Repr, BEq
 
@@ -46,6 +47,7 @@ def BlueprintSlideNode.toAttrs (node : BlueprintSlideNode) : Array (String × St
      , ("data-bp-facet", node.facet)
      , ("data-bp-preview-key", node.key)
      , ("data-bp-compact", if node.compact then "true" else "false")
+     , ("data-bp-show-header", if node.showHeader then "true" else "false")
      ] ++
     (node.displayLabel?.map (fun label => #[("data-bp-display-label", label)] ) |>.getD #[]) ++
     (node.siteBase?.map (fun siteBase => #[("data-bp-site-base", siteBase)] ) |>.getD #[])
@@ -58,8 +60,9 @@ def BlueprintSlideNode.fromAttrs? (attrs : Array (String × String)) : Option Bl
   let key := attrValue? attrs "data-bp-preview-key" |>.getD s!"{label}--{facet}"
   let displayLabel? := attrValue? attrs "data-bp-display-label"
   let compact := attrValue? attrs "data-bp-compact" == some "true"
+  let showHeader := attrValue? attrs "data-bp-show-header" != some "false"
   let siteBase? := attrValue? attrs "data-bp-site-base"
-  some { label, facet, key, displayLabel?, compact, siteBase? }
+  some { label, facet, key, displayLabel?, compact, showHeader, siteBase? }
 
 def BlueprintSlideNode.renderedAttrs (node : BlueprintSlideNode) : Array (String × String) :=
   node.toAttrs ++ #[("data-bp-rendered", "static")]
@@ -72,7 +75,9 @@ public structure BlueprintNodeConfig where
   facet : Option String := none
   displayLabel : Option String := none
   compact : Bool := false
+  showHeader : Bool := true
   siteBase : Option String := none
+deriving Repr, BEq, ToJson, FromJson, Quote
 
 public meta instance : FromArgs BlueprintNodeConfig DocElabM where
   fromArgs :=
@@ -81,6 +86,7 @@ public meta instance : FromArgs BlueprintNodeConfig DocElabM where
       .named `facet .string true <*>
       .named `displayLabel .string true <*>
       .flag `compact false <*>
+      .flag `header true <*>
       .named `siteBase .string true
 
 private def previewKey (label facet : String) : String :=
@@ -98,6 +104,7 @@ def BlueprintNodeConfig.toSlideNode (cfg : BlueprintNodeConfig) : BlueprintSlide
     key := previewKey cfg.label facet
     displayLabel? := cfg.displayLabel
     compact := cfg.compact
+    showHeader := cfg.showHeader
     siteBase? := cfg.siteBase
   }
 
