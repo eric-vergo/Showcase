@@ -135,6 +135,7 @@ jobs:
             --project ${{ matrix.project_id }} \
             --allow-unsafe-root-release \
             --allow-local-build \
+            --reference-package-mode move \
             --serial \
             _out/reference-blueprints/${{ matrix.release_id }}
       - name: Report disk usage after reference generation
