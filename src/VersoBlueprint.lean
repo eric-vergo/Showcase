@@ -17,6 +17,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
 import VersoBlueprint.Process
 import VersoBlueprint.Git
+import VersoBlueprint.Html
 import VersoBlueprint.RuntimeCache
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros

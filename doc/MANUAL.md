@@ -16,7 +16,7 @@ If you are starting a first project, read
 - [Core Block Forms](#core-block-forms)
 - [Connecting Blocks to Lean](#connecting-blocks-to-lean)
 - [Attached Rust Code](#attached-rust-code)
-- [Math and TeX](#math-and-tex)
+- [Math, TeX, and external markup](#math-tex-and-external-markup)
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
 - [Rendering Surface](#rendering-surface)
 - [Metadata Export and Preview Data](#metadata-export-and-preview-data)
@@ -53,7 +53,7 @@ These identifiers are used by:
 - `{bpref "addition_spec"}[]` link-only references
 - labeled inline Lean code blocks
 - labeled inline Rust code blocks
-- `tex` code blocks carrying raw TeX source
+- `tex` and `md` code blocks carrying external markup source
 - `@[blueprint "label"]` on compiled Lean declarations
 - summary and graph nodes
 - preview lookup and exported metadata
@@ -430,7 +430,7 @@ Current behavior:
 - Rust diagnostics, hover information, and external Rust refs are not currently
   part of the supported surface
 
-## Math and TeX
+## Math, TeX, and external markup
 
 Blueprint supports ordinary Verso math syntax inside the informal text.
 
@@ -455,7 +455,7 @@ After that, Blueprint math can use the macro in rendered pages:
 We write $`a \NatAdd b` for addition on natural numbers.
 ```
 
-Blueprint nodes can also store raw general-TeX source through `tex`
+Blueprint nodes can also store raw external markup through `tex` and `md`
 code blocks:
 
 ````md
@@ -468,10 +468,18 @@ For every natural number $`n`, $`n + 0 = n`.
 For every natural number $n$, adding zero on the right leaves it unchanged.
 \end{theorem}
 ```
+
+```md "addition_right_identity" (slot := proof)
+Imported Markdown proof sketch.
+```
 ````
 
-To keep a raw TeX witness without attaching it to a Blueprint node, omit the
-label:
+External markup attachments are intended for faithful import and comparison
+workflows. They are stored on the associated Blueprint node, exported in the
+Blueprint manifest, and hidden in rendered pages by default.
+
+To keep an external markup witness without attaching it to a Blueprint node,
+omit the label:
 
 ````md
 ```tex
@@ -481,8 +489,8 @@ Unlabeled TeX witness kept in the source file while porting.
 ```
 ````
 
-To start a port from TeX before writing the Verso statement, use a labeled
-standalone witness block:
+To start a port before writing the Verso statement, use a labeled standalone
+witness block:
 
 ````md
 ```tex "raw_addition_right_identity"
@@ -492,7 +500,9 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 ```
 ````
 
-If a label needs more than one TeX witness, give each block a separate slot:
+If a label needs more than one external span, give each block a separate slot.
+Common slots are `statement` and `proof`; importer-specific slots are also
+allowed when they are stable and documented by the project.
 
 ````md
 ```tex "raw_addition_right_identity" (slot := statement)
@@ -508,21 +518,40 @@ Raw proof witness kept near the imported source.
 ```
 ````
 
+External markup can also carry a project-relative file location. Locations use
+LSP-compatible ranges: zero-based `line` and `character`, inclusive `start`,
+exclusive `end`, and a non-empty range. The manifest stores the range using
+Lean's standard `Lean.Lsp.Range` JSON shape.
+
+````md
+```md "raw_addition_right_identity" (slot := statement) (path := "imported/addition.md") (start_line := 12) (start_character := 0) (end_line := 17) (end_character := 0)
+Imported Markdown statement.
+```
+````
+
 Current behavior:
 
-- unlabeled `tex` blocks are accepted as hidden source witnesses and do not
+- unlabeled `tex` and `md` blocks are accepted as hidden source witnesses and do not
   create Blueprint nodes
-- labeled `tex` block labels are parsed like labeled `lean` blocks
-- a labeled block stores the raw TeX source on the associated Blueprint node
+- labeled external-markup block labels are parsed like labeled `lean` blocks
+- a labeled block stores raw source on the associated Blueprint node
   under slot `"default"` unless `(slot := ...)` is provided
-- the same label may have several TeX witnesses as long as they use different
-  slots
-- repeating the same `(label, slot)` pair is an error
-- the block is not displayed in the rendered output
-- the current primary use is to help port an existing TeX source alongside the
-  Blueprint entry
-- other uses may be possible later; for now it is just a structured raw-TeX
-  attachment
+- a labeled standalone external-markup block is exported to the semantic
+  manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
+  it does not create a rendered HTML-cache preview body
+- if the same label also has a rendered statement or proof, the external markup
+  is attached to that block's manifest entry instead of creating a separate
+  external-markup entry
+- uniqueness is by label, language, and slot, so `tex`/`statement` and
+  `md`/`statement` can coexist
+- repeating the same label/language/slot key is an error
+- locations are all-or-nothing: provide `path`, `start_line`,
+  `start_character`, `end_line`, and `end_character`, or omit the location
+- the block is not displayed in the rendered output unless `(display := summary)`
+  or `(display := source)` is provided, or the file sets
+  `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
+- display rendering is intentionally simple; future converters can replace the
+  raw display path with Markdown-to-Verso or TeX-to-Verso rendering
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems

@@ -27,5 +27,5 @@ import VersoBlueprintTests.BlueprintPreviewWiring
 import VersoBlueprintTests.BlueprintRustCode
 import VersoBlueprintTests.BlueprintSummaryLinks
 import VersoBlueprintTests.BlueprintSummaryStatus
-import VersoBlueprintTests.BlueprintTexSource
+import VersoBlueprintTests.BlueprintExternalMarkup
 import VersoBlueprintTests.BlueprintTexMacros
