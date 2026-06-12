@@ -99,7 +99,8 @@ script map, not a second command reference.
   the harness catalog loaders.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
-  [`tests/harness/projects.json`](../tests/harness/projects.json).
+  [`tests/harness/projects.json`](../tests/harness/projects.json), including
+  shared reference/deploy matrix serialization.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override, cache
   warm-up, and prune helpers shared by the reference CLI.

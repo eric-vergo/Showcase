@@ -12,6 +12,7 @@ from scripts.blueprint_harness_projects import (
     HarnessProject,
     IN_REPO_PROJECT_SOURCE_KIND,
     default_project_manifest,
+    deploy_matrix_from_release_catalogs,
     load_project_catalog,
     load_project_catalog_text,
     load_projects_manifest,
@@ -19,7 +20,6 @@ from scripts.blueprint_harness_projects import (
     resolve_projects_for_release,
     resolve_release_target,
 )
-from scripts.emit_reference_deploy_matrix import deploy_matrix_from_release_catalogs
 from scripts.blueprint_harness_project_commands import (
     OFFICIAL_BLUEPRINT_REQUIRE,
     tracked_project_manifest_path,
