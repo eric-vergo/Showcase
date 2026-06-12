@@ -16,6 +16,7 @@ from scripts.blueprint_harness_projects import (
     load_project_catalog_data,
     reference_build_matrix,
     reference_dependency_cache_key,
+    reference_release_payload,
     resolve_projects_for_release,
     resolve_release_target,
 )
@@ -425,6 +426,28 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 self.assertTrue(entry["reference_cache_key"])
             else:
                 self.assertEqual(entry["reference_cache_key"], "")
+
+    def test_reference_release_payload_uses_project_target_rcs(self) -> None:
+        manifest = default_project_manifest(PACKAGE_ROOT)
+        catalog = load_project_catalog(manifest)
+
+        payload = reference_release_payload(manifest, catalog, "v4.30.0", PACKAGE_ROOT)
+
+        self.assertEqual(payload["manifest_path"], str(manifest))
+        self.assertEqual(payload["release_id"], "v4.30.0")
+        self.assertEqual(payload["rc"], "")
+        self.assertEqual(payload["toolchain"], "v4.30.0")
+        self.assertEqual(payload["verso_ref"], "v4.30.0")
+        self.assertEqual(payload["reference_project_count"], 3)
+        rows = {
+            entry["project_id"]: entry
+            for entry in payload["reference_matrix"]["include"]
+        }
+        self.assertEqual(set(rows), {"noperthedron", "verso-flt", "verso-carleson"})
+        for row in rows.values():
+            self.assertEqual(row["rc"], "4.30-rc2")
+            self.assertEqual(row["toolchain"], "v4.30.0-rc2")
+            self.assertEqual(row["verso_ref"], "v4.30.0-rc2")
 
     def test_deploy_matrix_uses_controller_publish_targets_for_generated_manifests(self) -> None:
         controller_catalog = load_project_catalog_text(
