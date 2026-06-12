@@ -40,138 +40,30 @@ from scripts.blueprint_harness_validation import browser_test_command, panel_reg
 
 TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 TEST_BLUEPRINT_HARNESS_PREFIX = "[blueprint-test-blueprints]"
-TEST_BLUEPRINT_INDEX_CSS = """      :root {
-        color-scheme: light;
-        --bg: #f8fafc;
-        --panel: #ffffff;
-        --text: #0f172a;
-        --muted: #475569;
-        --border: #cbd5e1;
-        --accent: #0f766e;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: ui-sans-serif, system-ui, sans-serif;
-        background: linear-gradient(180deg, #f8fafc, #eef2ff 45%, #f8fafc);
-        color: var(--text);
-      }
-      main {
-        width: min(70rem, calc(100% - 2rem));
-        margin: 0 auto;
-        padding: 2rem 0 3rem;
-      }
-      header {
-        margin-bottom: 1.5rem;
-      }
-      h1 {
-        margin: 0 0 0.5rem;
-        font-size: clamp(2rem, 4vw, 2.75rem);
-      }
-      .lede {
-        margin: 0;
-        max-width: 54rem;
-        color: var(--muted);
-        line-height: 1.5;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-        gap: 1rem;
-      }
-      .chip_row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.55rem;
-        margin: 1.1rem 0 1.6rem;
-      }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        background: var(--panel);
-        padding: 0.35rem 0.7rem;
-        font-size: 0.92rem;
-        font-weight: 600;
-        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
-      }
-      .category_section + .category_section {
-        margin-top: 1.8rem;
-      }
-      .category_header {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 0.5rem 1rem;
-        margin-bottom: 0.9rem;
-      }
-      .category_header h2 {
-        margin: 0;
-        font-size: 1.2rem;
-      }
-      .category_header p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.92rem;
-      }
-      .card {
-        border: 1px solid var(--border);
-        border-radius: 1rem;
-        background: var(--panel);
-        padding: 1rem 1.05rem;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-      }
-      .card h2 {
-        margin: 0 0 0.4rem;
-        font-size: 1.05rem;
-      }
-      .category {
-        margin: 0.25rem 0 0;
-        color: var(--accent);
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-      .kind {
-        margin: 0.2rem 0 0;
-        color: var(--muted);
-        font-size: 0.78rem;
-        font-style: italic;
-      }
-      .card p {
-        margin: 0.45rem 0 0;
-        line-height: 1.45;
-      }
-      .slug {
-        color: var(--muted);
-        font-size: 0.9rem;
-      }
-      .tag_list {
-        list-style: none;
-        padding: 0;
-        margin: 0.65rem 0 0;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-      }
-      .tag_list li {
-        border: 1px solid #d8dee9;
-        border-radius: 999px;
-        background: #f8fafc;
-        color: var(--muted);
-        padding: 0.2rem 0.55rem;
-        font-size: 0.78rem;
-      }
-      a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      a:hover {
-        text-decoration: underline;
-      }"""
+TEST_BLUEPRINT_INDEX_CSS = """:root { color-scheme: light; --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #475569; --border: #cbd5e1; --accent: #0f766e; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: linear-gradient(180deg, #f8fafc, #eef2ff 45%, #f8fafc); color: var(--text); }
+main { width: min(70rem, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 3rem; }
+header { margin-bottom: 1.5rem; }
+h1 { margin: 0 0 0.5rem; font-size: clamp(2rem, 4vw, 2.75rem); }
+.lede { margin: 0; max-width: 54rem; color: var(--muted); line-height: 1.5; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; }
+.chip_row { display: flex; flex-wrap: wrap; gap: 0.55rem; margin: 1.1rem 0 1.6rem; }
+.chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); padding: 0.35rem 0.7rem; font-size: 0.92rem; font-weight: 600; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
+.category_section + .category_section { margin-top: 1.8rem; }
+.category_header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.9rem; }
+.category_header h2 { margin: 0; font-size: 1.2rem; }
+.category_header p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+.card { border: 1px solid var(--border); border-radius: 1rem; background: var(--panel); padding: 1rem 1.05rem; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); }
+.card h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.category { margin: 0.25rem 0 0; color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.kind { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.78rem; font-style: italic; }
+.card p { margin: 0.45rem 0 0; line-height: 1.45; }
+.slug { color: var(--muted); font-size: 0.9rem; }
+.tag_list { list-style: none; padding: 0; margin: 0.65rem 0 0; display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.tag_list li { border: 1px solid #d8dee9; border-radius: 999px; background: #f8fafc; color: var(--muted); padding: 0.2rem 0.55rem; font-size: 0.78rem; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }"""
 
 
 @dataclass(frozen=True)
