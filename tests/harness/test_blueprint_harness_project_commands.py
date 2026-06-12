@@ -194,9 +194,13 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
+            original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
+                    lambda package_root: commands.append(["ensure", str(package_root)]) or []
+                )
 
                 run_project_update_build_generate(
                     package_root,
@@ -209,12 +213,14 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 )
             finally:
                 commands_mod.run = original_run
+                commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
             commands,
             [
                 ["lake", "update"],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "build", "--formatted"],
+                ["ensure", str(package_root)],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen", "--formatted"],
             ],
         )
@@ -229,9 +235,13 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
+            original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
+                    lambda package_root: commands.append(["ensure", str(package_root)]) or []
+                )
 
                 run_project_update_build_generate(
                     package_root,
@@ -244,11 +254,13 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 )
             finally:
                 commands_mod.run = original_run
+                commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
             commands,
             [
                 ["lake", "update"],
+                ["ensure", str(package_root)],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen"],
             ],
         )
