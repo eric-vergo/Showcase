@@ -33,7 +33,7 @@ deriving Repr, BEq
 private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
   (attrs.find? fun attr => attr.1 == name).map (·.2)
 
-private def BlueprintNode.slideClassName (node : BlueprintNode) : String :=
+private def BlueprintNode.domClassName (node : BlueprintNode) : String :=
   if node.compact then
     "bp_slide_node bp_slide_node_compact"
   else
@@ -41,7 +41,7 @@ private def BlueprintNode.slideClassName (node : BlueprintNode) : String :=
 
 def BlueprintNode.toAttrs (node : BlueprintNode) : Array (String × String) :=
   nodeMarkerAttrs ++
-    #[ ("class", node.slideClassName)
+    #[ ("class", node.domClassName)
      , ("data-bp-label", node.label)
      , ("data-bp-facet", node.facet)
      , ("data-bp-preview-key", node.key)

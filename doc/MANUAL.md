@@ -867,7 +867,39 @@ key with `PreviewManifest.File.findEntry?` and
 `PreviewManifest.HtmlCache.File.findHtml?`. Code panels can reuse
 `HtmlCache.File.codeHtmlBodies`.
 
-The final shared assembly point is
+`VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
+interfaces. A consumer such as an audit view can provide its own wrapper
+classes and diagnostics while reusing the same manifest/cache content:
+
+```lean
+import VersoBlueprint.Graft
+
+def renderAuditNode
+    (manifest : Informal.PreviewManifest.File)
+    (htmlCache : Informal.PreviewManifest.HtmlCache.File)
+    (label : String) : IO Verso.Output.Html := do
+  let node :=
+    ({ label := label, compact := true, showHeader := false } :
+      Informal.Graft.BlueprintNodeConfig).toNode
+  let ctx := Informal.Graft.RenderContext.ofPreviewData? (some manifest) (some htmlCache)
+  Informal.Graft.renderNodeFromManifestCache
+    {
+      blockRenderConfig := {
+        wrapperClass := "audit_blueprint_node"
+        codeBodyClass := "audit_blueprint_code"
+      }
+      nodeAttrs := fun node =>
+        node.renderedAttrs.map (fun attr =>
+          if attr.1 == "class" then
+            ("class", attr.2 ++ " audit_graft_node")
+          else
+            attr)
+    }
+    ctx
+    node
+```
+
+For lower-level consumers, the final shared assembly point remains
 `Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass it the
 semantic manifest entry plus `BlockRender.RenderedContent`, using
 `BlockRender.RenderedContent.ofHtmlStrings` when the body came from

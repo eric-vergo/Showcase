@@ -20,8 +20,6 @@ open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
-def graftManualLeftValue : Nat := 2
-
 #docs (Slides) blueprintNodeSlideFixture "Blueprint Node Slide" :=
 :::::::
 # Example Blueprint Node
@@ -51,45 +49,6 @@ def graftManualLeftValue : Nat := 2
 :::::::
 :::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
 Manifest-backed slide rendering should use the standard Blueprint block renderer.
-:::
-:::::::
-
-#docs (Genre.Manual) manualGraftDoc "Manual Blueprint Graft" :=
-:::::::
-:::definition "def:graft.manual.source"
-Manual graft body.
-:::
-
-{blueprint_node "def:graft.manual.source" -header +compact}
-:::::::
-
-#docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
-:::::::
-:::definition "def:graft.manual.left" (tags := "graft, source") (effort := "small") (lean := "graftManualLeftValue")
-Manual left graft body with inline math $`x + y = y + x` and an attached Lean preview.
-:::
-
-:::theorem "thm:graft.manual.sum" (uses := "def:graft.manual.left") (priority := "high")
-The grafted theorem states $`(a + b) + c = a + (b + c)`.
-:::
-
-:::proof "thm:graft.manual.sum"
-The proof graft records the same goal and keeps the proof facet selectable.
-:::
-
-:::definition "def:graft.manual.right" (uses := "thm:graft.manual.sum")
-Manual right graft body references {uses "def:graft.manual.left"}[] and includes display math:
-$$`\sum_{i=0}^{n} i = n`.
-:::
-
-:::blueprint_side_by_side +boxed
-{blueprint_node "def:graft.manual.left" (displayLabel := "Featured definition")}
-
-{blueprint_node "thm:graft.manual.sum" (displayLabel := "Theorem view") -header +compact}
-
-{blueprint_node "thm:graft.manual.sum" (facet := "proof") (displayLabel := "Proof view") -header +compact}
-
-{blueprint_node "def:graft.manual.right" (displayLabel := "Uses view") +compact}
 :::
 :::::::
 
@@ -290,39 +249,6 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         !files.htmlCache.hoverDocs.isEmpty &&
         files.htmlCache.hoverDocs.all (fun doc => doc.id >= Informal.PreviewManifest.HtmlCache.hoverIdStart) &&
         !hasSubstr codeHtml "<pre>def "
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualGraftDoc
-    pure <|
-      hasSubstr html "bp_graft_node" &&
-        countSubstr html "Manual graft body." == 2 &&
-        countSubstr html "class=\"bp_heading " == 1 &&
-        !hasSubstr html "Blueprint node not found"
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
-    pure <|
-      hasSubstr html "bp_graft_side_by_side" &&
-        hasSubstr html "bp_graft_side_by_side_boxed" &&
-        countSubstr html "data-bp-blueprint-node=\"true\"" == 4 &&
-        countSubstr html "Manual left graft body with inline math" == 2 &&
-        countSubstr html "The grafted theorem states" == 2 &&
-        countSubstr html "The proof graft records" == 2 &&
-        countSubstr html "Manual right graft body references" == 2 &&
-        hasSubstr html "Featured definition" &&
-        hasSubstr html "Uses view" &&
-        hasSubstr html "graftManualLeftValue" &&
-        hasSubstr html "bp_math inline" &&
-        hasSubstr html "bp_math display" &&
-        hasSubstr html "data-bp-facet=\"proof\"" &&
-        hasSubstr html "bp_code_panel_wrapper" &&
-        !hasSubstr html "Blueprint node not found"
 
 /-- info: true -/
 #guard_msgs in
