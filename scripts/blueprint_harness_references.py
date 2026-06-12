@@ -26,7 +26,6 @@ from scripts.blueprint_harness_project_commands import (
     rewrite_pinned_blueprint_dependency,
     run_project_update_build_generate,
     snapshot_tracked_project_manifest,
-    tracked_project_manifest_path,
 )
 from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run
 
