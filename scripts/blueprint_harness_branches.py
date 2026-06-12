@@ -27,6 +27,15 @@ class BranchPolicy:
     source_path: Path
 
 
+@dataclass(frozen=True)
+class RefSyncStatus:
+    local_ref: str
+    upstream_ref: str
+    local_oid: str | None
+    upstream_oid: str | None
+    relationship: str
+
+
 def clean_lean_ref(raw_ref: str) -> str:
     ref = raw_ref.strip()
     if ref.startswith(LEAN_TOOLCHAIN_PREFIX):
@@ -213,6 +222,107 @@ def ref_exists(repo_root: Path, ref: str) -> bool:
         ).returncode
         == 0
     )
+
+
+def resolve_git_ref(repo_root: Path, ref: str) -> str:
+    if ref.startswith("refs/"):
+        return ref
+
+    candidates: list[str] = []
+    if ref.startswith("origin/"):
+        candidates.append(f"refs/remotes/{ref}")
+    else:
+        candidates.append(f"refs/heads/{ref}")
+        candidates.append(f"refs/remotes/{ref}")
+    candidates.append(ref)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if ref_exists(repo_root, candidate):
+            return candidate
+    return ref
+
+
+def ref_oid(repo_root: Path, ref: str) -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    oid = result.stdout.strip()
+    return oid or None
+
+
+def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
+    return (
+        subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                resolve_git_ref(repo_root, ancestor),
+                resolve_git_ref(repo_root, descendant),
+            ],
+            cwd=repo_root,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def preferred_main_ref(repo_root: Path) -> str:
+    return preferred_release_ref(repo_root)
+
+
+def current_branch_name(repo_root: Path) -> str | None:
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    return branch or None
+
+
+def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSyncStatus:
+    local_oid = ref_oid(repo_root, local_ref)
+    upstream_oid = ref_oid(repo_root, upstream_ref)
+    local_git_ref = resolve_git_ref(repo_root, local_ref)
+    upstream_git_ref = resolve_git_ref(repo_root, upstream_ref)
+
+    if local_oid is None:
+        relationship = "missing_local"
+    elif upstream_oid is None:
+        relationship = "missing_upstream"
+    elif local_oid == upstream_oid:
+        relationship = "in_sync"
+    elif is_ancestor(repo_root, local_git_ref, upstream_git_ref):
+        relationship = "behind"
+    elif is_ancestor(repo_root, upstream_git_ref, local_git_ref):
+        relationship = "ahead"
+    else:
+        relationship = "diverged"
+
+    return RefSyncStatus(
+        local_ref=local_ref,
+        upstream_ref=upstream_ref,
+        local_oid=local_oid,
+        upstream_oid=upstream_oid,
+        relationship=relationship,
+    )
+
+
+def main_sync_status(repo_root: Path) -> RefSyncStatus:
+    upstream_ref = preferred_main_ref(repo_root)
+    return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
 
 
 def remote_head_ref(repo_root: Path) -> str | None:

@@ -9,8 +9,15 @@ import shutil
 import subprocess
 import sys
 
-from scripts.blueprint_harness_branches import active_release_branch, local_release_ref, root_checkout_namespace
-from scripts.blueprint_harness import current_branch_name, main_sync_status, ref_oid, ref_sync_status, worktree_is_clean
+from scripts.blueprint_harness_branches import (
+    active_release_branch,
+    current_branch_name,
+    local_release_ref,
+    main_sync_status,
+    ref_oid,
+    ref_sync_status,
+    root_checkout_namespace,
+)
 from scripts.blueprint_harness_cli import (
     add_allow_local_build_argument,
     add_allow_unsafe_root_main_argument,
@@ -53,7 +60,7 @@ from scripts.blueprint_harness_utils import (
     run_capturing_failure,
 )
 from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
-from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts
+from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts, worktree_is_clean
 
 
 @dataclass(frozen=True)
@@ -331,12 +338,41 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
     )
 
 
+def reference_project_status_or_error(
+    layout,
+    project: HarnessProject,
+    *,
+    blueprint_base_ref: str | None = None,
+) -> ReferenceProjectStatus:
+    try:
+        if blueprint_base_ref is None:
+            return collect_reference_project_status(layout, project)
+        return collect_reference_project_status(layout, project, blueprint_base_ref=blueprint_base_ref)
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
+        return ReferenceProjectStatus(
+            project=project,
+            catalog_ref=None,
+            project_upstream_ref=None,
+            project_relationship=None,
+            project_ahead=None,
+            project_behind=None,
+            blueprint_pin=None,
+            blueprint_relationship=None,
+            blueprint_ahead=None,
+            blueprint_behind=None,
+            error=str(err),
+        )
+
+
+def project_source(project: HarnessProject) -> str:
+    return f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
+
+
 def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         project.project_id,
-        f"source={source}",
+        f"source={project_source(project)}",
         f"catalog_ref={text_or_blank(status.catalog_ref)}",
         f"project_upstream_ref={text_or_blank(status.project_upstream_ref)}",
         f"catalog_status={text_or_blank(status.project_relationship)}",
@@ -393,11 +429,10 @@ def print_release_target_summary(status: ReleaseTargetStatus) -> None:
 
 def print_release_target_project_status(release_id: str, status: ReferenceProjectStatus) -> None:
     project = status.project
-    source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
     fields = [
         f"release={release_id}",
         f"project={project.project_id}",
-        f"source={source}",
+        f"source={project_source(project)}",
         f"catalog_ref={text_or_blank(status.catalog_ref)}",
         f"project_upstream_ref={text_or_blank(status.project_upstream_ref)}",
         f"catalog_status={text_or_blank(status.project_relationship)}",
@@ -434,6 +469,31 @@ def select_release_projects(
     except ValueError as err:
         raise SystemExit(f"[blueprint-reference-harness] {err}") from err
     return selected_release.release_id, projects
+
+
+def load_reference_catalog_for_args(layout, args: argparse.Namespace):
+    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
+    return manifest_path, load_project_catalog(manifest_path)
+
+
+def select_reference_projects_from_args(
+    layout,
+    args: argparse.Namespace,
+    *,
+    project_ids: list[str] | None = None,
+    default_to_published_catalog: bool = True,
+):
+    manifest_path, catalog = load_reference_catalog_for_args(layout, args)
+    selected_project_ids = getattr(args, "project", None) if project_ids is None else project_ids
+    if selected_project_ids is None and not default_to_published_catalog:
+        selected_project_ids = [project.project_id for project in catalog.projects]
+    selection_args = {
+        "release": getattr(args, "release", None),
+        "project_ids": selected_project_ids,
+        "package_root": layout.package_root,
+    }
+    release_id, projects = select_release_projects(catalog, **selection_args)
+    return manifest_path, catalog, release_id, projects
 
 
 def require_checkout_release(layout, release_id: str, *, command_name: str) -> None:
@@ -511,9 +571,7 @@ def ensure_prebuilt_executable(package_root: Path, exe_name: str) -> Path:
 
 def find_prebuilt_lean_test_artifact(package_root: Path) -> Path | None:
     path = package_root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprintTests.olean"
-    if path.exists():
-        return path
-    return None
+    return path if path.exists() else None
 
 
 def lean_test_runner(package_root: Path) -> list[str]:
@@ -630,14 +688,7 @@ def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
     output_root = resolve_output_root(selected_output_root(args), Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    release_id, projects = select_release_projects(
-        catalog,
-        release=args.release,
-        project_ids=args.project,
-        package_root=layout.package_root,
-    )
+    manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="generate")
 
     generate_projects(
@@ -658,18 +709,73 @@ def command_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def lean_test_validation_failures(layout, *, use_local_build: bool) -> list[StepFailure]:
+    if use_local_build:
+        failure = run_capturing_failure(
+            "lean tests",
+            lean_test_runner(layout.package_root),
+            cwd=layout.package_root,
+        )
+        return [failure] if failure is not None else []
+
+    test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
+    if test_artifact is None:
+        return [
+            StepFailure(
+                "lean tests",
+                "no prebuilt Lean test library found in the current worktree `.lake/`; "
+                "run `python3 -m scripts.blueprint_harness sync-root-lake` after "
+                "building from the root checkout, or use `--allow-local-build`",
+            )
+        ]
+
+    print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
+    return []
+
+
+def project_validation_failures(
+    layout,
+    output_root: Path,
+    projects: list[HarnessProject],
+    *,
+    skip_panel_regression: bool,
+    skip_browser_tests: bool,
+    pytest_args: list[str],
+    stop_on_first_failure: bool,
+) -> list[StepFailure]:
+    failures: list[StepFailure] = []
+    for project in projects:
+        site_dir = site_dir_for(project, output_root)
+        if project.panel_regression_script is not None and not skip_panel_regression:
+            failure = run_capturing_failure(
+                f"{project.project_id} panel regression",
+                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
+                cwd=layout.package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return failures
+
+        if project.browser_tests_path is not None and not skip_browser_tests:
+            failure = run_capturing_failure(
+                f"{project.project_id} browser tests",
+                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, pytest_args),
+                cwd=layout.package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return failures
+
+    return failures
+
+
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
     output_root = resolve_output_root(selected_output_root(args), Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    release_id, projects = select_release_projects(
-        catalog,
-        release=args.release,
-        project_ids=args.project,
-        package_root=layout.package_root,
-    )
+    _manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="validate")
     failures: list[StepFailure] = []
 
@@ -677,31 +783,9 @@ def command_validate(args: argparse.Namespace) -> int:
     print(f"[blueprint-reference-harness] release target: {release_id}")
     use_local_build = should_use_local_build(layout, args.allow_local_build)
     if args.run_lean_tests:
-        if use_local_build:
-            failure = run_capturing_failure(
-                "lean tests",
-                lean_test_runner(layout.package_root),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-        else:
-            test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
-            if test_artifact is None:
-                failures.append(
-                    StepFailure(
-                        "lean tests",
-                        "no prebuilt Lean test library found in the current worktree `.lake/`; "
-                        "run `python3 -m scripts.blueprint_harness sync-root-lake` after "
-                        "building from the root checkout, or use `--allow-local-build`",
-                    )
-                )
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-            else:
-                print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
+        failures.extend(lean_test_validation_failures(layout, use_local_build=use_local_build))
+        if failures and args.stop_on_first_failure:
+            return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
     try:
         generate_projects(
@@ -717,70 +801,44 @@ def command_validate(args: argparse.Namespace) -> int:
         failures.append(StepFailure("generate projects", str(err)))
         return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
-    for project in projects:
-        site_dir = site_dir_for(project, output_root)
-        if project.panel_regression_script is not None and not args.skip_panel_regression:
-            failure = run_capturing_failure(
-                f"{project.project_id} panel regression",
-                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-
-        if project.browser_tests_path is not None and not args.skip_browser_tests:
-            failure = run_capturing_failure(
-                f"{project.project_id} browser tests",
-                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, args.pytest_arg),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
+    failures.extend(
+        project_validation_failures(
+            layout,
+            output_root,
+            projects,
+            skip_panel_regression=args.skip_panel_regression,
+            skip_browser_tests=args.skip_browser_tests,
+            pytest_args=args.pytest_arg,
+            stop_on_first_failure=args.stop_on_first_failure,
+        )
+    )
 
     return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
 
 def command_projects(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    release_id, projects = select_release_projects(
-        catalog,
-        release=args.release,
-        project_ids=args.project,
-        package_root=layout.package_root,
-    )
+    manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     print(f"project_manifest={manifest_path}")
     print(f"release_target={release_id}")
     for project in projects:
-        if project.in_repo_project:
-            source = f"in_repo:{project.project_root}"
-        else:
-            source = f"git:{project.repository}@{project.ref}"
-        validations: list[str] = []
-        if project.panel_regression_script is not None:
-            validations.append("panel")
-        if project.browser_tests_path is not None:
-            validations.append("browser")
-        validation_text = ",".join(validations) if validations else "none"
-        print(f"{project.project_id}\tsource={source}\tvalidations={validation_text}")
+        validation_text = ",".join(
+            name
+            for name, enabled in (("panel", project.panel_regression_script), ("browser", project.browser_tests_path))
+            if enabled is not None
+        ) or "none"
+        fields = [
+            project.project_id,
+            f"source={project_source(project)}",
+            f"validations={validation_text}",
+        ]
+        print("\t".join(fields))
     return 0
 
 
 def command_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    release_id, projects = select_release_projects(
-        catalog,
-        release=args.release,
-        project_ids=args.project,
-        package_root=layout.package_root,
-    )
+    manifest_path, catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="status")
     release_branch = active_release_branch(layout.repo_root)
     main_status = main_sync_status(layout.repo_root)
@@ -793,30 +851,15 @@ def command_status(args: argparse.Namespace) -> int:
     print(f"{main_status.upstream_ref}_oid={main_status.upstream_oid or ''}")
 
     for project in projects:
-        try:
-            status = collect_reference_project_status(layout, project)
-        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
-            status = ReferenceProjectStatus(
-                project=project,
-                catalog_ref=None,
-                project_upstream_ref=None,
-                project_relationship=None,
-                project_ahead=None,
-                project_behind=None,
-                blueprint_pin=None,
-                blueprint_relationship=None,
-                blueprint_ahead=None,
-                blueprint_behind=None,
-                error=str(err),
-            )
-        print_reference_project_status(status)
+        print_reference_project_status(
+            reference_project_status_or_error(layout, project)
+        )
     return 0
 
 
 def command_release_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
+    manifest_path, catalog = load_reference_catalog_for_args(layout, args)
     releases = selected_release_targets(catalog, args.release, layout.package_root)
     known_project_ids = {project.project_id for project in catalog.projects}
     if args.project is not None:
@@ -834,37 +877,16 @@ def command_release_status(args: argparse.Namespace) -> int:
             allowed = set(args.project)
             projects = [project for project in projects if project.project_id in allowed]
 
-        statuses: list[ReferenceProjectStatus] = []
-        for project in projects:
-            try:
-                status = collect_reference_project_status(
-                    layout,
-                    project,
-                    blueprint_base_ref=release_target.branch,
-                )
-            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
-                status = ReferenceProjectStatus(
-                    project=project,
-                    catalog_ref=None,
-                    project_upstream_ref=None,
-                    project_relationship=None,
-                    project_ahead=None,
-                    project_behind=None,
-                    blueprint_pin=None,
-                    blueprint_relationship=None,
-                    blueprint_ahead=None,
-                    blueprint_behind=None,
-                    error=str(err),
-                )
-            statuses.append(status)
-
         summary = ReleaseTargetStatus(
             release_id=release_target.release_id,
             toolchain=release_target.toolchain,
             verso_ref=release_target.verso_ref,
             branch=release_target.branch,
             deploy_pages=release_target.deploy_pages,
-            project_statuses=tuple(statuses),
+            project_statuses=tuple(
+                reference_project_status_or_error(layout, project, blueprint_base_ref=release_target.branch)
+                for project in projects
+            ),
         )
         if args.outdated_only and not any(status_has_catalog_issue(status) for status in summary.project_statuses):
             continue
@@ -880,14 +902,7 @@ def command_release_status(args: argparse.Namespace) -> int:
 def command_reference_sync(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    release_id, projects = select_release_projects(
-        catalog,
-        release=args.release,
-        project_ids=args.project,
-        package_root=layout.package_root,
-    )
+    _manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="sync")
     sync_reference_blueprints(
         layout,
@@ -903,13 +918,23 @@ def command_reference_sync(args: argparse.Namespace) -> int:
 
 def command_reference_edit(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    project_map = {project.project_id: project for project in catalog.projects}
-    if args.project not in project_map:
-        known = ", ".join(sorted(project_map))
-        raise SystemExit(f"[blueprint-reference-harness] unknown project `{args.project}`; known projects: {known}")
-    project = project_map[args.project]
+    if hasattr(args, "release"):
+        _manifest_path, _catalog, _release_id, projects = select_reference_projects_from_args(
+            layout,
+            args,
+            project_ids=[args.project],
+        )
+        project = projects[0]
+    else:
+        manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
+        catalog = load_project_catalog(manifest_path)
+        project_map = {project.project_id: project for project in catalog.projects}
+        if args.project not in project_map:
+            known = ", ".join(sorted(project_map))
+            raise SystemExit(f"[blueprint-reference-harness] unknown project `{args.project}`; known projects: {known}")
+        project = project_map[args.project]
+    if not project.git_checkout:
+        raise SystemExit(f"[blueprint-reference-harness] project `{project.project_id}` is not an external git checkout project")
     edit_dir, branch, base_ref = prepare_reference_edit_checkout(
         layout,
         project,
@@ -928,21 +953,36 @@ def command_reference_edit(args: argparse.Namespace) -> int:
 
 def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    catalog = load_project_catalog(manifest_path)
-    project_map = {project.project_id: project for project in catalog.projects if project.git_checkout}
-    if args.project:
-        seen: set[str] = set()
-        projects: list[HarnessProject] = []
-        for value in args.project:
-            if value not in project_map:
-                known = ", ".join(sorted(project_map))
-                raise SystemExit(f"[blueprint-reference-harness] unknown project `{value}`; known projects: {known}")
-            if value not in seen:
-                projects.append(project_map[value])
-                seen.add(value)
+    if hasattr(args, "release"):
+        _manifest_path, _catalog, release_id, selected_projects = select_reference_projects_from_args(
+            layout,
+            args,
+            default_to_published_catalog=False,
+        )
+        projects = [project for project in selected_projects if project.git_checkout]
+        if args.project is not None and len(projects) != len(selected_projects):
+            project = next(project for project in selected_projects if not project.git_checkout)
+            raise SystemExit(
+                f"[blueprint-reference-harness] project `{project.project_id}` is not an external git checkout project"
+            )
+        if not projects:
+            raise SystemExit(f"[blueprint-reference-harness] release target `{release_id}` has no external git checkout projects")
     else:
-        projects = list(project_map.values())
+        manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
+        catalog = load_project_catalog(manifest_path)
+        project_map = {project.project_id: project for project in catalog.projects if project.git_checkout}
+        if args.project:
+            seen: set[str] = set()
+            projects = []
+            for value in args.project:
+                if value not in project_map:
+                    known = ", ".join(sorted(project_map))
+                    raise SystemExit(f"[blueprint-reference-harness] unknown project `{value}`; known projects: {known}")
+                if value not in seen:
+                    projects.append(project_map[value])
+                    seen.add(value)
+        else:
+            projects = list(project_map.values())
     failures: list[StepFailure] = []
     output_root = layout.artifact_root / "reference-blueprints-edit"
 
@@ -998,8 +1038,8 @@ def command_reference_bump_blueprint(args: argparse.Namespace) -> int:
 
 def command_reference_prune(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
-    projects = load_project_catalog(manifest_path).projects
+    _manifest_path, catalog = load_reference_catalog_for_args(layout, args)
+    projects = catalog.projects
     active_names = {
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
@@ -1023,13 +1063,8 @@ def command_reference_prune(args: argparse.Namespace) -> int:
     print(f"[blueprint-reference-harness] reference prune: removed {len(removals)} path(s)")
     return 0
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python3 -m scripts.blueprint_reference_harness",
-        description="Reference blueprint generation, validation, and checkout lifecycle CLI.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
+def add_generation_commands(subparsers) -> None:
     generate = subparsers.add_parser(
         "generate",
         help="Build the selected blueprint harness projects.",
@@ -1095,6 +1130,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_reference_package_mode_argument(validate)
     validate.set_defaults(func=command_validate)
 
+
+def add_reporting_commands(subparsers) -> None:
     projects = subparsers.add_parser(
         "projects",
         help="List the configured harness projects from the active manifest.",
@@ -1140,6 +1177,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     release_status.set_defaults(func=command_release_status)
 
+
+def add_checkout_sync_commands(subparsers) -> None:
     sync = subparsers.add_parser(
         "sync",
         help="Warm shared reference blueprint caches and prepare local clones for the current checkout.",
@@ -1181,6 +1220,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit.set_defaults(func=command_reference_edit)
 
+
+def add_bump_command(subparsers) -> None:
     bump = subparsers.add_parser(
         "bump-verso-blueprint",
         help="Rewrite the pinned `VersoBlueprint` ref in editable external reference checkouts.",
@@ -1232,6 +1273,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bump.set_defaults(func=command_reference_bump_blueprint)
 
+
+def add_prune_command(subparsers) -> None:
     prune = subparsers.add_parser(
         "prune",
         help="Remove stale harness-managed reference blueprint caches and checkout clones.",
@@ -1243,6 +1286,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="List stale paths without deleting them.",
     )
     prune.set_defaults(func=command_reference_prune)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m scripts.blueprint_reference_harness",
+        description="Reference blueprint generation, validation, and checkout lifecycle CLI.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    add_generation_commands(subparsers)
+    add_reporting_commands(subparsers)
+    add_checkout_sync_commands(subparsers)
+    add_bump_command(subparsers)
+    add_prune_command(subparsers)
 
     return parser
 

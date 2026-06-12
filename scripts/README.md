@@ -48,6 +48,7 @@ Common starting points:
 
 ```bash
 python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock --priority P1 --summary "short description"
+python3 -m scripts.blueprint_harness create-worktree <name> --lightweight  # docs/Python-only work
 python3 -m scripts.blueprint_harness release-status --require-sync
 python3 -m scripts.blueprint_harness paths
 python3 -m scripts.blueprint_reference_harness projects
@@ -99,7 +100,8 @@ script map, not a second command reference.
   the harness catalog loaders.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
-  [`tests/harness/projects.json`](../tests/harness/projects.json).
+  [`tests/harness/projects.json`](../tests/harness/projects.json), including
+  shared reference/deploy matrix serialization.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override, cache
   warm-up, and prune helpers shared by the reference CLI.

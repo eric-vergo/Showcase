@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 import subprocess
 
-from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, preferred_release_ref
+from scripts.blueprint_harness_branches import (
+    ROOT_WORKTREE_NAME,
+    is_ancestor,
+    preferred_release_ref,
+    ref_oid,
+    resolve_git_ref,
+)
 
 
 ROOT_METADATA_FILENAME = "_root.json"
@@ -181,6 +187,10 @@ def git_worktrees(repo_root: Path) -> list[GitWorktree]:
     return parse_git_worktree_porcelain(result.stdout, repo_root)
 
 
+def git_worktree_map(repo_root: Path) -> dict[str, GitWorktree]:
+    return {worktree.name: worktree for worktree in git_worktrees(repo_root)}
+
+
 def load_record(path: Path) -> WorktreeMetadata | None:
     if not path.exists():
         return None
@@ -216,31 +226,6 @@ def save_registry(repo_root: Path, records: list[WorktreeRecord]) -> Path:
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
-
-
-def ref_oid(repo_root: Path, ref: str) -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", ref],
-        cwd=repo_root,
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    oid = result.stdout.strip()
-    return oid or None
-
-
-def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
-    return (
-        subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    )
 
 
 def ref_merged_into_base(repo_root: Path, ref: str, base_ref: str) -> bool:
@@ -287,6 +272,11 @@ def worktree_status_counts(path: Path) -> tuple[bool, int, int]:
     tracked_changes = sum(1 for line in lines if not line.startswith("??"))
     untracked_changes = sum(1 for line in lines if line.startswith("??"))
     return bool(lines), tracked_changes, untracked_changes
+
+
+def worktree_is_clean(path: Path) -> bool:
+    dirty, _tracked_changes, _untracked_changes = worktree_status_counts(path)
+    return not dirty
 
 
 def worktree_last_commit(path: Path) -> tuple[str | None, str | None, str | None]:
