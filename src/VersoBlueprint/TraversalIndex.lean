@@ -139,6 +139,35 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
 
 end InlineCode
 
+namespace ExternalMarkup
+
+def spec : StoreSpec := {
+  name := Resolve.externalMarkupDomainName
+  kind := .semanticDomain
+  key := "informal label"
+  value := "ExternalMarkupData plus markup block anchor ids"
+  summary := "Semantic index for raw external markup attachments keyed by informal label."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName label.toString
+
+def data? (state : TraverseState) (label : Name) : Option Informal.Data.ExternalMarkupData :=
+  objectData? state domainName label.toString
+
+def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName label.toString id
+
+def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
+  saveObjectData state domainName label.toString data
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+end ExternalMarkup
+
 namespace Groups
 
 def spec : StoreSpec := {
@@ -359,6 +388,7 @@ compare against one source location instead of rediscovering each domain name.
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
   InlineCode.spec,
+  ExternalMarkup.spec,
   Groups.spec,
   TraversalPreviews.spec,
   LeanCodePreviews.spec,

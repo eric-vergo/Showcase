@@ -357,9 +357,9 @@ def registerRustCode (label : Label) (code : RustInlineCode) : m Unit := do
   modifyDataForLabel label fun data =>
     data.registerRustCode label code
 
-def registerTexSource (label : Label) (slot : String) (texSource : TexSource) : m Unit := do
+def registerExternalMarkup (label : Label) (markup : ExternalMarkup) : m Unit := do
   modifyDataForLabel label fun data =>
-    data.registerTexSource label slot texSource
+    data.registerExternalMarkup label markup
 
 def getNode? (label : Label) : m (Option Node) := do
   return (informalExt.getState (← getEnv)).data.get? label

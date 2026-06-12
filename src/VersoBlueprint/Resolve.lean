@@ -23,6 +23,16 @@ open Lean
 def informalDomainName : Name := Name.mkSimple "Informal.Block.informal"
 def informalCodeDomainName : Name := Name.mkSimple "Informal.Block.informalCode"
 def informalRustCodeDomainName : Name := Name.mkSimple "Informal.Block.informalRustCode"
+/--
+Traversal domain for external-markup attachments.
+
+This is a semantic domain, not a rendered-preview cache. `Block.externalMarkup`
+stores one object per Blueprint label here so later `tex`/`md` witness blocks
+can merge by label during traversal. Manifest construction reads this domain to
+attach markup to preview-backed block entries, or to emit semantic-only
+`externalMarkup` entries for witness-only labels.
+-/
+def externalMarkupDomainName : Name := Name.mkSimple "Informal.Block.externalMarkup"
 def informalPreviewDomainName : Name := Name.mkSimple "Informal.Block.informalPreview"
 def informalGroupDomainName : Name := Name.mkSimple "Informal.Block.group"
 /- 
