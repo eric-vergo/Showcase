@@ -10,7 +10,6 @@ from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
     CHECKOUT_ROLE_CHOICES,
-    ROOT_WORKTREE_NAME,
     active_release_branch,
     branch_policy_path,
     checkout_branch_role,

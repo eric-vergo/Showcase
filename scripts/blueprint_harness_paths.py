@@ -95,11 +95,6 @@ def canonical_reference_project_site_dir(project_id: str, start: Path | None = N
     return layout.reference_output_root / project_id / "html-multi"
 
 
-def canonical_test_blueprint_package_dir(name: str, start: Path | None = None) -> Path:
-    layout = detect_harness_layout(start)
-    return layout.package_root / "tests" / "test_blueprints" / name
-
-
 def canonical_test_blueprint_output_dir(name: str, start: Path | None = None) -> Path:
     layout = detect_harness_layout(start)
     return layout.test_blueprint_output_root / name
