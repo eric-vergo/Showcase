@@ -1110,13 +1110,8 @@ def command_worktree_release(args: argparse.Namespace) -> int:
     print(f"status={record.status}")
     return 0
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python3 -m scripts.blueprint_harness",
-        description="Worktree, landing, and local coordination CLI for this repository.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
+def add_release_management_commands(subparsers) -> None:
     sync_root_lake = subparsers.add_parser(
         "sync-root-lake",
         help="Sync `.lake/` from the root checkout into the current linked worktree.",
@@ -1190,6 +1185,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     main_status.set_defaults(func=command_main_status)
 
+
+def add_pr_preparation_commands(subparsers) -> None:
     prepare_backports = subparsers.add_parser(
         "prepare-backports",
         help="Print PR-body lines for the required backport plan on the current default-dev release line.",
@@ -1267,6 +1264,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_backport_pr.set_defaults(func=command_prepare_backport_pr)
 
+
+def add_landing_commands(subparsers) -> None:
     require_role = subparsers.add_parser(
         "require-branch-role",
         help="Exit nonzero unless the current checkout matches the requested branch-policy role.",
@@ -1304,6 +1303,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     land_main.set_defaults(func=command_land_main)
 
+
+def add_worktree_commands(subparsers) -> None:
     create_worktree = subparsers.add_parser(
         "create-worktree",
         help=(
@@ -1400,6 +1401,8 @@ def build_parser() -> argparse.ArgumentParser:
     worktree_release.add_argument("--summary", default=None, help="Optional final summary.")
     worktree_release.set_defaults(func=command_worktree_release)
 
+
+def add_path_commands(subparsers) -> None:
     paths = subparsers.add_parser(
         "paths",
         help="Print canonical and resolved worktree-aware harness paths.",
@@ -1410,6 +1413,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print site paths for every manifest project instead of only the current release selection.",
     )
     paths.set_defaults(func=command_paths)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m scripts.blueprint_harness",
+        description="Worktree, landing, and local coordination CLI for this repository.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    add_release_management_commands(subparsers)
+    add_pr_preparation_commands(subparsers)
+    add_landing_commands(subparsers)
+    add_worktree_commands(subparsers)
+    add_path_commands(subparsers)
     return parser
 
 

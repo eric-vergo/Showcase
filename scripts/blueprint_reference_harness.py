@@ -1092,13 +1092,8 @@ def command_reference_prune(args: argparse.Namespace) -> int:
     print(f"[blueprint-reference-harness] reference prune: removed {len(removals)} path(s)")
     return 0
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python3 -m scripts.blueprint_reference_harness",
-        description="Reference blueprint generation, validation, and checkout lifecycle CLI.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
+def add_generation_commands(subparsers) -> None:
     generate = subparsers.add_parser(
         "generate",
         help="Build the selected blueprint harness projects.",
@@ -1164,6 +1159,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_reference_package_mode_argument(validate)
     validate.set_defaults(func=command_validate)
 
+
+def add_reporting_commands(subparsers) -> None:
     projects = subparsers.add_parser(
         "projects",
         help="List the configured harness projects from the active manifest.",
@@ -1209,6 +1206,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     release_status.set_defaults(func=command_release_status)
 
+
+def add_checkout_sync_commands(subparsers) -> None:
     sync = subparsers.add_parser(
         "sync",
         help="Warm shared reference dependency caches and prepare local clones for the current checkout.",
@@ -1251,6 +1250,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     edit.set_defaults(func=command_reference_edit)
 
+
+def add_bump_command(subparsers) -> None:
     bump = subparsers.add_parser(
         "bump-verso-blueprint",
         help="Rewrite the pinned `VersoBlueprint` ref in editable external reference checkouts.",
@@ -1303,6 +1304,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bump.set_defaults(func=command_reference_bump_blueprint)
 
+
+def add_prune_command(subparsers) -> None:
     prune = subparsers.add_parser(
         "prune",
         help="Remove stale harness-managed reference dependency caches and checkout clones.",
@@ -1314,6 +1317,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="List stale paths without deleting them.",
     )
     prune.set_defaults(func=command_reference_prune)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m scripts.blueprint_reference_harness",
+        description="Reference blueprint generation, validation, and checkout lifecycle CLI.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    add_generation_commands(subparsers)
+    add_reporting_commands(subparsers)
+    add_checkout_sync_commands(subparsers)
+    add_bump_command(subparsers)
+    add_prune_command(subparsers)
 
     return parser
 
