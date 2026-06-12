@@ -293,10 +293,13 @@ That split is deliberate:
 - Lean-code previews are declaration-centric navigation
 - citation previews are bibliography-entry hovers parameterized by rendered
   citation form and locator
+- external-markup entries are semantic import witnesses and may intentionally
+  have no rendered preview body
 
 The UI can converge while the identity schemes remain distinct. Manifest entries
-therefore carry a `targetKind` tag (`block`, `leanDecl`, or `citation`) instead
-of relying on every preview key to mean `(label, facet)`.
+therefore carry a `targetKind` tag (`block`, `leanDecl`, `citation`, or
+`externalMarkup`) instead of relying on every preview key to mean
+`(label, facet)`.
 
 ### Shared Retrieval Namespace for Callers
 
@@ -383,6 +386,7 @@ the operational detail that is easier to read in prose.
 | --- | --- | --- | --- |
 | `Nodes` | semantic domain | informal label -> `StoredBlockData` plus node anchor ids | Lightweight semantic node metadata: kind, parent/group, numbering caches, declared dependencies, ownership, tags, effort, priority, and PR URL. It deliberately excludes code/render payloads. |
 | `InlineCode` | internal index | informal label -> `InlineCodeData` plus code-panel anchor ids | Inline/literate Lean code data for a node: declared definitions/theorems, command ordering, proof/code folding settings, and the code panel destination. |
+| `ExternalMarkup` | semantic domain | informal label -> `ExternalMarkupSet` plus markup block anchor ids | Raw imported TeX/Markdown attachments keyed by language and slot, with optional project-relative LSP ranges for source comparison tooling. |
 | `Groups` | semantic domain | group label -> `GroupBlockData` | Declared group metadata for a parent/group label, currently its display header. Group membership itself is stored on `Nodes` through each node's `parent`. |
 | `TraversalPreviews` | runtime cache | `(informal label, preview facet)` -> `PreviewCache.Entry` plus preview anchor ids | Statement/proof preview blocks captured during traversal for hovers and preview-data emission. Entries may also carry HTML-cache keys for associated Lean-code previews; the code preview payloads themselves remain in `LeanCodePreviews`. |
 | `LeanCodePreviews` | runtime cache | Lean declaration name -> `LeanCodePreview.Entry` plus declaration-preview anchor ids | Preview payloads for Lean declaration links, either from inline code blocks or external declaration snapshots. |
@@ -397,6 +401,7 @@ reasons:
 | Index | Main writers | Main readers | Normalization rule |
 | --- | --- | --- | --- |
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store at most one inline Lean code payload per informal label. The rendered statement then resolves inline code separately from the semantic node metadata, and inline code takes precedence over external declaration hints when both are available. |
+| `ExternalMarkup` | `Block.externalMarkup.traverse` | Preview-manifest construction and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries without HTML-cache bodies. |
 | `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?` and preview-data construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys, but they do not duplicate declaration-preview payloads. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
 | `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | Lean-code preview-data construction and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |

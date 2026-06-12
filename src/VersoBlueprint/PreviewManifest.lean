@@ -18,6 +18,7 @@ import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Git
+import VersoBlueprint.Html
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -345,21 +346,17 @@ def readBuildMetadata : IO BuildMetadata := do
     upstreamBlueprint
   }
 
-private def escapedHtmlText (text : String) : Output.Html :=
-  Output.Html.text false <|
-    ((text.replace "&" "&amp;").replace "<" "&lt;").replace ">" "&gt;"
-
 private def buildMetadataLabelHtml (label : String) (href? : Option String) : Output.Html :=
   match href? with
   | some href =>
       Output.Html.tag "a"
         #[("class", "bp_build_metadata_label bp_build_metadata_link"), ("href", href)]
-        (escapedHtmlText label)
+        (VersoBlueprint.Html.text label)
   | none =>
-      Output.Html.tag "span" #[("class", "bp_build_metadata_label")] (escapedHtmlText label)
+      Output.Html.tag "span" #[("class", "bp_build_metadata_label")] (VersoBlueprint.Html.text label)
 
 private def buildMetadataCodeHtml (value : String) (href? : Option String) : Output.Html :=
-  let code := Output.Html.tag "code" #[("class", "bp_build_metadata_commit")] (escapedHtmlText value)
+  let code := Output.Html.tag "code" #[("class", "bp_build_metadata_commit")] (VersoBlueprint.Html.text value)
   match href? with
   | some href =>
       Output.Html.tag "a" #[("class", "bp_build_metadata_commit_link"), ("href", href)] code
@@ -371,16 +368,16 @@ def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
     <div class="bp_build_metadata" aria-label="Build metadata">
       <span class="bp_build_metadata_item">
         <span class="bp_build_metadata_label">"Compiled"</span>
-        <span class="bp_build_metadata_value">{{escapedHtmlText metadata.compiledAt}}</span>
+        <span class="bp_build_metadata_value">{{VersoBlueprint.Html.text metadata.compiledAt}}</span>
       </span>
       <span class="bp_build_metadata_item">
         {{buildMetadataLabelHtml "Project" metadata.projectRepositoryUrl}}
         {{buildMetadataCodeHtml metadata.commit metadata.projectCommitUrl}}
-        <span class="bp_build_metadata_subject">{{escapedHtmlText metadata.subject}}</span>
+        <span class="bp_build_metadata_subject">{{VersoBlueprint.Html.text metadata.subject}}</span>
       </span>
       <span class="bp_build_metadata_item">
         <span class="bp_build_metadata_label">"Lean"</span>
-        <span class="bp_build_metadata_value">{{escapedHtmlText metadata.leanToolchain}}</span>
+        <span class="bp_build_metadata_value">{{VersoBlueprint.Html.text metadata.leanToolchain}}</span>
       </span>
       <span class="bp_build_metadata_item">
         {{buildMetadataLabelHtml "VersoBlueprint" metadata.blueprintRepositoryUrl}}
@@ -390,7 +387,7 @@ def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
         {{<span class="bp_build_metadata_item">
             {{buildMetadataLabelHtml "Upstream" upstream.repositoryUrl}}
             {{buildMetadataCodeHtml upstream.commit upstream.commitUrl}}
-            <span class="bp_build_metadata_subject">{{escapedHtmlText upstream.subject}}</span>
+            <span class="bp_build_metadata_subject">{{VersoBlueprint.Html.text upstream.subject}}</span>
           </span>}}
         else .empty}}
       {{if let some mathlibVersion := metadata.mathlibVersion then
@@ -492,7 +489,8 @@ inductive EntryKind where
   | block
   | leanDecl
   | citation
-deriving Inhabited, Repr, ToJson, FromJson
+  | externalMarkup
+deriving Inhabited, Repr, BEq, ToJson, FromJson
 
 /-- Dependency axis for a related informal node. -/
 inductive RelationAxis where
@@ -531,17 +529,17 @@ structure GroupRelation where
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure Entry where
-  /-- Composite preview lookup key for this target family. -/
+  /-- Composite manifest lookup key for this target family. -/
   key : String
-  /-- Preview target family. -/
+  /-- Manifest target family. -/
   targetKind : EntryKind
-  /-- Canonical target label: informal label, Lean declaration name, or citation label. -/
+  /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
   label : Name
-  /-- Which preview variant this entry contains; non-block previews use `statement`. -/
+  /-- Which preview variant this entry contains; non-block entries use `statement`. -/
   facet : PreviewCache.Facet
   /-- Kind (definition, proposition, lemma, theorem, corollary). -/
   kind : Option Informal.Data.NodeKind := none
-  /-- Resolved display title for this preview entry. -/
+  /-- Resolved display title for this manifest entry. -/
   title : String
   /-- Structured heading caption for renderers that need to lay out the title. -/
   displayCaption : Option String := none
@@ -561,6 +559,8 @@ structure Entry where
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
+  /-- Raw external markup attachments keyed by language and slot. -/
+  externalMarkup : Array Informal.Data.ExternalMarkup := #[]
   /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
@@ -624,7 +624,10 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
   { caption, label }
 
 structure File where
-  /-- Semantic preview entries keyed by `PreviewCache`, Lean preview key, or citation key. -/
+  /--
+  Semantic manifest entries keyed by `PreviewCache`, `externalMarkupEntryKey`,
+  Lean preview key, or citation key.
+  -/
   previews : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -768,6 +771,9 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
+
+def externalMarkupEntryKey (label : Name) : String :=
+  s!"externalMarkup:{label}"
 
 /-- Count available Lean-code preview entries before display-level deduplication. -/
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
@@ -1023,6 +1029,10 @@ private def blockKind? (blockData? : Option Informal.BlockData) : Option Informa
       | Informal.Data.InProgressKind.proof => none
   | none => none
 
+private def externalMarkupArray (state : TraverseState) (label : Name) :
+    Array Informal.Data.ExternalMarkup :=
+  (Informal.TraversalIndex.ExternalMarkup.data? state label).map (·.markup.toArray) |>.getD #[]
+
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
   match Informal.TraversalIndex.Groups.data? state parent with
   | some groupData =>
@@ -1204,6 +1214,7 @@ private def buildTraversalEntries
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
         leanCodePreviewKeys := blockLeanCodePreviewKeys state entry.label entry
         codeData
+        externalMarkup := externalMarkupArray state entry.label
         uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
         usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
         group := blockData?.bind (buildGroupRelation? state storedBlocks)
@@ -1215,6 +1226,36 @@ private def buildTraversalEntries
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key, html }
   pure (entries, htmlEntries, hoverState)
+
+private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
+  entries.any fun entry =>
+    entry.targetKind == .block && entry.label == label
+
+private def buildExternalMarkupEntries
+    (logError : String → IO Unit)
+    (state : TraverseState)
+    (previewBackedEntries : Array Entry) : IO (Array Entry) := do
+  let some domain := Informal.TraversalIndex.ExternalMarkup.domain? state
+    | return #[]
+  let mut entries := #[]
+  for (_key, obj) in domain.objects.toArray do
+    match fromJson? (α := Informal.Data.ExternalMarkupData) obj.data with
+    | .error err =>
+      logError s!"Blueprint manifest: malformed external-markup entry {obj.canonicalName}: {err}"
+    | .ok data =>
+      if data.markup.isEmpty then
+        continue
+      if hasPreviewBackedBlockEntry previewBackedEntries data.label then
+        continue
+      entries := entries.push {
+        key := externalMarkupEntryKey data.label
+        targetKind := .externalMarkup
+        label := data.label
+        facet := .statement
+        title := blockTitle state data.label
+        externalMarkup := data.markup.toArray
+      }
+  pure entries
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
@@ -1304,9 +1345,10 @@ def buildPreviewDataFiles
     (state : TraverseState) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
   let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
+  let externalMarkupPreviews ← buildExternalMarkupEntries logError state traversalPreviews
   let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
   let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
-  let previews := (traversalPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
+  let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
   pure {
     manifest := { previews }

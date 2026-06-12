@@ -8,7 +8,8 @@ A Blueprint project combines:
 - informal mathematical exposition
 - links to local Lean code or existing Lean declarations
 - optional attached Rust code blocks on labeled nodes for mixed-language notes
-- optional raw TeX source attachments on labeled nodes to help port existing TeX
+- optional external TeX or Markdown markup attachments on labeled nodes to help
+  port existing sources
 - automatic tracking of formalization progress by analyzing the associated Lean
   code and declarations, including incomplete declarations such as `sorry`
 - rendered overview pages such as dependency graphs and progress summaries
@@ -44,7 +45,7 @@ blueprints and local test fixtures, see the
 
 Every Blueprint node is identified by a label such as `addition_spec` or
 `addition_right_identity`. Those labels drive cross-references, graph nodes,
-summary entries, code associations, TeX-source associations, and metadata
+summary entries, code associations, external-markup associations, and metadata
 export.
 
 When roles such as `{uses "foo"}[]` or citations have an empty payload,
@@ -132,15 +133,15 @@ Current behavior:
 - Rust blocks do not currently affect Blueprint progress/status semantics
 - Rust diagnostics and external Rust references are not part of the current surface
 
-### Math and TeX
+### Math, TeX, and external markup
 
 Blueprint supports inline math such as ``$`n + 0 = n` `` and display math such as
 ``$$`\sum_{i=0}^{n} i = \frac{n(n+1)}{2}` ``. It also supports TeX preludes via
 `tex_prelude` and best-effort KaTeX linting during elaboration. KaTeX is the
 renderer used by the generated HTML.
 
-Blueprint nodes can also carry raw general-TeX source through a labeled `tex`
-code block:
+Blueprint nodes can also carry raw external markup through labeled `tex` and
+`md` code blocks:
 
 ````md
 :::theorem "addition_right_identity"
@@ -152,11 +153,22 @@ For every natural number $`n`, $`n + 0 = n`.
 For every natural number $n$, adding zero on the right leaves it unchanged.
 \end{theorem}
 ```
+
+```md "addition_right_identity" (slot := proof)
+This was imported from a Markdown proof sketch.
+```
 ````
 
-Today this raw TeX attachment is primarily a porting aid for existing TeX
-sources. It is stored on the labeled node and is not rendered into the output
-site. Other uses may be possible later.
+Labeled standalone `tex` and `md` blocks are exported as semantic
+external-markup catalog entries without adding rendered preview bodies. When the
+same label also has a rendered Blueprint statement or proof, the raw markup is
+attached to that block's manifest entry instead.
+
+These `ExternalMarkup` attachments are primarily a porting aid for existing
+TeX or Markdown sources. They are stored on the labeled node, exported in the
+Blueprint manifest, and are not rendered into the output site by default.
+Use `slot` names such as `statement` and `proof` when one Blueprint node
+corresponds to multiple source spans.
 
 ### Rendering to HTML
 

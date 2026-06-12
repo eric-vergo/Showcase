@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Environment
+import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Common
@@ -146,15 +147,45 @@ instance : FromArgs CodeConfig m where
 
 end
 
-structure TexConfig where
+/-- How external markup code blocks should be rendered in the current document. -/
+inductive ExternalMarkupDisplayMode where
+  | hidden
+  | summary
+  | source
+deriving Repr, Inhabited, BEq, ToJson, FromJson, Quote
+
+def ExternalMarkupDisplayMode.parse? (raw : String) : Option ExternalMarkupDisplayMode :=
+  match raw.trimAscii.toString.toLower with
+  | "hidden" | "hide" | "none" => some .hidden
+  | "summary" | "metadata" => some .summary
+  | "source" | "raw" => some .source
+  | _ => none
+
+register_option verso.blueprint.externalMarkup.display : String := {
+  defValue := "hidden"
+  descr := "Default display mode for external markup blocks: `hidden` (default), `summary`, or `source`"
+}
+
+def ExternalMarkupDisplayMode.fromOptions (opts : Lean.Options) : ExternalMarkupDisplayMode :=
+  match ExternalMarkupDisplayMode.parse? (verso.blueprint.externalMarkup.display.get opts) with
+  | some mode => mode
+  | none => .hidden
+
+structure ExternalMarkupConfig where
   label? : Option Data.Label := none
-  slot : String := Data.defaultTexSourceSlot
+  slot : String := Data.defaultExternalMarkupSlot
+  path? : Option String := none
+  startLine? : Option Nat := none
+  startCharacter? : Option Nat := none
+  endLine? : Option Nat := none
+  endCharacter? : Option Nat := none
+  display : Option ExternalMarkupDisplayMode := none
 
 section
 variable [Monad m] [MonadError m]
 
-private def texSlot : ValDesc m String := {
-  description := "a tex witness slot name"
+private def externalMarkupSlot : ValDesc m String := {
+  description := "an external markup slot name"
   signature := CanMatch.Ident ∪ CanMatch.String
   get := fun
     | .name id =>
@@ -162,25 +193,119 @@ private def texSlot : ValDesc m String := {
     | .str s =>
       let slot := s.getString.trimAscii.toString
       if slot.isEmpty then
-        throwErrorAt s "Expected a non-empty tex witness slot"
+        throwErrorAt s "Expected a non-empty external markup slot"
       else
         pure slot
     | other =>
-      throwError "Expected a tex witness slot identifier or string, got {toMessageData other}"
+      throwError "Expected an external markup slot identifier or string, got {toMessageData other}"
 }
 
-def TexConfig.parse : ArgParse m TexConfig :=
-  (fun labelArg? slotArg? =>
+private def externalMarkupDisplay : ValDesc m ExternalMarkupDisplayMode := {
+  description := "an external markup display mode"
+  signature := CanMatch.Ident ∪ CanMatch.String
+  get := fun
+    | .name id =>
+      match ExternalMarkupDisplayMode.parse? id.getId.toString with
+      | some mode => pure mode
+      | none =>
+          throwErrorAt id "Expected external markup display mode 'hidden', 'summary', or 'source'"
+    | .str s =>
+      match ExternalMarkupDisplayMode.parse? s.getString with
+      | some mode => pure mode
+      | none =>
+          throwErrorAt s "Expected external markup display mode 'hidden', 'summary', or 'source'"
+    | other =>
+      throwError "Expected an external markup display mode identifier or string, got {toMessageData other}"
+}
+
+def ExternalMarkupConfig.parse : ArgParse m ExternalMarkupConfig :=
+  (fun labelArg? slotArg? path? startLine? startCharacter? endLine? endCharacter? display? =>
     {
       label? := labelArg?.map (fun labelArg => LabelNameParsing.parse labelArg.val)
-      slot := slotArg?.getD Data.defaultTexSourceSlot
+      slot := slotArg?.getD Data.defaultExternalMarkupSlot
+      path? := path?.map (·.trimAscii.toString)
+      startLine?
+      startCharacter?
+      endLine?
+      endCharacter?
+      display := display?
     }) <$> ((some <$> .positional `label (.withSyntax .string)) <|> pure none)
-        <*> .named `slot texSlot true
+        <*> .named `slot externalMarkupSlot true
+        <*> .named `path .string true
+        <*> .named' `start_line true
+        <*> .named' `start_character true
+        <*> .named' `end_line true
+        <*> .named' `end_character true
+        <*> .named `display externalMarkupDisplay true
 
-instance : FromArgs TexConfig m where
-  fromArgs := TexConfig.parse
+instance : FromArgs ExternalMarkupConfig m where
+  fromArgs := ExternalMarkupConfig.parse
 
 end
+
+structure ExternalMarkupBlockData where
+  label : Data.Label
+  markup : Data.ExternalMarkup
+  display : ExternalMarkupDisplayMode := .hidden
+deriving Repr, Inhabited, FromJson, ToJson, Quote
+
+private def externalMarkupSummary (language : Data.ExternalMarkupLanguage)
+    (slot : String) (location? : Option Data.ExternalMarkupLocation) : String :=
+  let base := s!"External {language.displayName} markup ({slot})"
+  match location? with
+  | none => base
+  | some location =>
+      let start := location.range.start
+      let stop := location.range.«end»
+      s!"{base}: {location.path}:{start.line}:{start.character}-{stop.line}:{stop.character}"
+
+private def externalMarkupSummaryHtml (summary : String) : Verso.Output.Html := open Verso.Output in
+  Html.tag "p" #[("class", "bp_external_markup_summary")] (VersoBlueprint.Html.text summary)
+
+private def externalMarkupSourceHtml (summary raw : String) : Verso.Output.Html := open Verso.Output in
+  let summaryHtml := Html.tag "summary" #[] (VersoBlueprint.Html.text summary)
+  let codeHtml := Html.tag "code" #[] (VersoBlueprint.Html.text raw)
+  let preHtml := Html.tag "pre" #[("class", "bp_external_markup_source")] codeHtml
+  Html.tag "details" #[("class", "bp_external_markup")] (Html.seq #[summaryHtml, preHtml])
+
+block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
+  data := toJson data
+  traverse id data _contents := do
+    let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
+      | logError s!"Malformed external markup data: {data}"
+        pure none
+    let existingData := (Informal.TraversalIndex.ExternalMarkup.data? (← get) cdata.label).getD {
+      label := cdata.label
+    }
+    let existing := existingData.markup
+    match existing.find? cdata.markup.language cdata.markup.slot with
+    | some value =>
+        unless value == cdata.markup.value do
+          logError s!"Label {cdata.label} already has associated {cdata.markup.language} external markup in slot '{cdata.markup.slot}'"
+    | none =>
+      let updated : Data.ExternalMarkupData := {
+        existingData with
+        label := cdata.label
+        markup := existing.insert cdata.markup
+      }
+      modify fun s => Informal.TraversalIndex.ExternalMarkup.saveId s cdata.label id
+      modify fun s => Informal.TraversalIndex.ExternalMarkup.saveData s cdata.label (toJson updated)
+    pure none
+  toTeX := none
+  extraCss := ({} : Std.HashSet CSS)
+  extraJs := ([] : List String)
+  toHtml :=
+    open Verso.Doc.Html in
+    some <| fun _goI _goB _id data _blocks => do
+      let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
+        | HtmlT.logError s!"Malformed external markup data: {data}"
+          pure .empty
+      let summary := externalMarkupSummary cdata.markup.language cdata.markup.slot cdata.markup.location
+      pure <|
+        match cdata.display with
+        | .hidden => .empty
+        | .summary => externalMarkupSummaryHtml summary
+        | .source => externalMarkupSourceHtml summary cdata.markup.raw
 
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
@@ -235,18 +360,59 @@ def rocq : CodeBlockExpanderOf Unit
   | cfg, contents => do
     Profile.withDocElab "code_block" "rocq" <| rocqImpl cfg contents
 
-private def texImpl : CodeBlockExpanderOf TexConfig
+private def ExternalMarkupConfig.location? (cfg : ExternalMarkupConfig) :
+    DocElabM (Option Data.ExternalMarkupLocation) := do
+  match cfg.path?, cfg.startLine?, cfg.startCharacter?, cfg.endLine?, cfg.endCharacter? with
+  | none, none, none, none, none => pure none
+  | some path, some startLine, some startCharacter, some endLine, some endCharacter =>
+      if path.isEmpty then
+        throwError "External markup location path must be non-empty"
+      if path.toList.head? == some '/' then
+        throwError "External markup location path must be project-relative"
+      if endLine < startLine || (endLine == startLine && endCharacter <= startCharacter) then
+        throwError "External markup location range must be non-empty and end-exclusive"
+      pure <| some {
+        path
+        range := {
+          start := { line := startLine, character := startCharacter }
+          «end» := { line := endLine, character := endCharacter }
+        }
+      }
+  | _, _, _, _, _ =>
+      throwError "External markup location requires all of '(path := ...)', '(start_line := ...)', '(start_character := ...)', '(end_line := ...)', and '(end_character := ...)'"
+
+private def externalMarkupImpl
+    (language : Data.ExternalMarkupLanguage) : CodeBlockExpanderOf ExternalMarkupConfig
   | cfg, contents => do
+    let location? ← cfg.location?
+    let raw := contents.getString
+    let markup : Data.ExternalMarkup := {
+      language
+      slot := cfg.slot
+      raw
+      location := location?
+    }
     match cfg.label? with
     | some label =>
-      Environment.registerTexSource label cfg.slot { raw := contents.getString }
+      Environment.registerExternalMarkup label markup
+      let display := cfg.display.getD <| ExternalMarkupDisplayMode.fromOptions (← getOptions)
+      let data : ExternalMarkupBlockData := {
+        label
+        markup
+        display
+      }
+      ``(Block.other (Block.externalMarkup $(quote data)) #[])
     | none =>
-      pure ()
-    ``(Block.concat #[])
+      ``(Block.concat #[])
 
 @[code_block]
-def tex : CodeBlockExpanderOf TexConfig
+def tex : CodeBlockExpanderOf ExternalMarkupConfig
   | cfg, contents => do
-    Profile.withDocElab "code_block" "tex" <| texImpl cfg contents
+    Profile.withDocElab "code_block" "tex" <| externalMarkupImpl .tex cfg contents
+
+@[code_block]
+def md : CodeBlockExpanderOf ExternalMarkupConfig
+  | cfg, contents => do
+    Profile.withDocElab "code_block" "md" <| externalMarkupImpl .markdown cfg contents
 
 end Informal

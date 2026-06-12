@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import Lean.Data.Json
+import Lean.Data.Lsp
 import VersoManual
 import VersoBlueprint.ExternalDeclRender
 
@@ -19,6 +20,17 @@ deriving instance Lean.FromJson for Lean.DeclarationRange
 open Syntax in
 instance : Lean.Quote Lean.Position where
   quote p := mkCApp ``Lean.Position.mk #[quote p.line, quote p.column]
+
+deriving instance DecidableEq for Lean.Lsp.Position
+deriving instance DecidableEq for Lean.Lsp.Range
+
+open Syntax in
+instance : Lean.Quote Lean.Lsp.Position where
+  quote p := mkCApp ``Lean.Lsp.Position.mk #[quote p.line, quote p.character]
+
+open Syntax in
+instance : Lean.Quote Lean.Lsp.Range where
+  quote r := mkCApp ``Lean.Lsp.Range.mk #[quote r.start, quote r.«end»]
 
 open Syntax in
 instance : Lean.Quote Lean.DeclarationRange where
@@ -263,13 +275,118 @@ structure Code where
   definedTheorems : Array LiterateThm := #[]
 deriving Repr, Inhabited
 
-/-- Raw TeX source associated with a blueprint label. -/
-structure TexSource where
-  raw : String
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+/-- External markup languages that can be attached to a Blueprint label. -/
+inductive ExternalMarkupLanguage where
+  | tex
+  | markdown
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
-/-- Default slot for labeled {lit}`tex` witness blocks that omit `(slot := ...)`. -/
-def defaultTexSourceSlot : String := "default"
+def ExternalMarkupLanguage.displayName : ExternalMarkupLanguage → String
+  | .tex => "TeX"
+  | .markdown => "Markdown"
+
+def ExternalMarkupLanguage.key : ExternalMarkupLanguage → String
+  | .tex => "tex"
+  | .markdown => "markdown"
+
+instance : ToString ExternalMarkupLanguage where
+  toString := ExternalMarkupLanguage.key
+
+/-- Project-relative source location for imported external markup. -/
+structure ExternalMarkupLocation where
+  path : String
+  range : Lean.Lsp.Range
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Key for external markup attached to a Blueprint label. -/
+structure ExternalMarkupKey where
+  language : ExternalMarkupLanguage
+  slot : String
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+def ExternalMarkupKey.compare (a b : ExternalMarkupKey) : Ordering :=
+  Ord.compare a.language.key b.language.key |>.then <| Ord.compare a.slot b.slot
+
+instance : Ord ExternalMarkupKey where
+  compare := ExternalMarkupKey.compare
+
+/-- External markup payload associated with one language/slot key. -/
+structure ExternalMarkupValue where
+  raw : String
+  location : Option ExternalMarkupLocation := none
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Manifest/display record for one external markup attachment. -/
+structure ExternalMarkup where
+  language : ExternalMarkupLanguage
+  slot : String
+  raw : String
+  location : Option ExternalMarkupLocation := none
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
+
+/-- Default slot for labeled external-markup witness blocks that omit `(slot := ...)`. -/
+def defaultExternalMarkupSlot : String := "default"
+
+/-- Ordered, unique external markup attachments keyed by language and slot. -/
+structure ExternalMarkupSet where
+  entries : Std.TreeMap ExternalMarkupKey ExternalMarkupValue := {}
+deriving Repr, Inhabited
+
+def ExternalMarkup.key (markup : ExternalMarkup) : ExternalMarkupKey := {
+  language := markup.language
+  slot := markup.slot
+}
+
+def ExternalMarkup.value (markup : ExternalMarkup) : ExternalMarkupValue := {
+  raw := markup.raw
+  location := markup.location
+}
+
+def ExternalMarkupSet.isEmpty (markup : ExternalMarkupSet) : Bool :=
+  markup.entries.isEmpty
+
+def ExternalMarkupSet.find? (markup : ExternalMarkupSet)
+    (language : ExternalMarkupLanguage) (slot : String) : Option ExternalMarkupValue :=
+  markup.entries.get? { language, slot }
+
+def ExternalMarkupSet.contains (markup : ExternalMarkupSet) (key : ExternalMarkupKey) : Bool :=
+  markup.entries.contains key
+
+def ExternalMarkupSet.insert (markup : ExternalMarkupSet) (entry : ExternalMarkup) :
+    ExternalMarkupSet :=
+  { entries := markup.entries.insert entry.key entry.value }
+
+def ExternalMarkupSet.toArray (markup : ExternalMarkupSet) : Array ExternalMarkup :=
+  Id.run do
+    let mut out := #[]
+    for (key, value) in markup.entries do
+      out := out.push {
+        language := key.language
+        slot := key.slot
+        raw := value.raw
+        location := value.location
+      }
+    out
+
+instance : ToJson ExternalMarkupSet where
+  toJson markup := toJson markup.toArray
+
+instance : FromJson ExternalMarkupSet where
+  fromJson? json := do
+    let entries ← fromJson? (α := Array ExternalMarkup) json
+    let mut markup : ExternalMarkupSet := {}
+    for entry in entries do
+      let key := entry.key
+      if markup.contains key then
+        throw s!"duplicate external markup entry for language '{key.language}' and slot '{key.slot}'"
+      markup := markup.insert entry
+    pure markup
+
+/-- Traversal payload for all external markup associated with one Blueprint label. -/
+structure ExternalMarkupData where
+  label : Label
+  markup : ExternalMarkupSet := {}
+deriving Repr, Inhabited, ToJson, FromJson
 
 inductive ExternalOrigin where
   | directiveLean
@@ -470,7 +587,7 @@ structure Node where
   /-- Lean code associations for this informal object. -/
   leanCode : Array CodeRef := #[]
   rustCode : Option RustInlineCode := none -- Informal object associated Rust code
-  texSources : Array (String × TexSource) := #[] -- Raw TeX witnesses keyed by slot
+  externalMarkup : ExternalMarkupSet := {} -- Raw external markup keyed by language and slot
   parent : Option Parent := none -- Optional parent group for summaries/graphs
   priority : Option String := none -- Optional author-provided triage hint
   owner : Option AuthorId := none
@@ -643,14 +760,15 @@ private def Data.nextCount (data : Data) : Nat :=
 private def Node.countOrNext (node : Node) (nextCount : Nat) : Nat :=
   if node.count == 0 then nextCount else node.count
 
-private def mergeTexSource (label : Label) (slot : String)
-    (current : Array (String × TexSource)) (incoming : TexSource)
-    : m (Array (String × TexSource)) := do
-  if current.any (fun entry => entry.1 == slot) then
-    logError m!"Label {label} already has an associated TeX witness in slot '{slot}'"
+private def mergeExternalMarkup (label : Label)
+    (current : ExternalMarkupSet) (incoming : ExternalMarkup)
+    : m ExternalMarkupSet := do
+  let key := incoming.key
+  if current.contains key then
+    logError m!"Label {label} already has associated {key.language} external markup in slot '{key.slot}'"
     return current
   else
-    return current.push (slot, incoming)
+    return current.insert incoming
 
 def Data.registerCodeRef (data : Data) (label : Label) (codeRef : CodeRef) : m Data := do
   match data.get? label with
@@ -740,13 +858,13 @@ def Data.registerRustCode (data : Data) (label : Label) (code : RustInlineCode) 
     let rustCode ← mergeRustCode label node.rustCode code
     return data.insert label { node with rustCode }
 
-/-- Register raw TeX source for an informal object label. -/
-def Data.registerTexSource (data : Data) (label : Label) (slot : String) (texSource : TexSource) : m Data := do
+/-- Register external markup for an informal object label. -/
+def Data.registerExternalMarkup (data : Data) (label : Label) (markup : ExternalMarkup) : m Data := do
   match data.get? label with
   | none =>
-    return data.insert label { texSources := #[(slot, texSource)] }
+    return data.insert label { externalMarkup := ({} : ExternalMarkupSet).insert markup }
   | some node =>
-    let texSources ← mergeTexSource label slot node.texSources texSource
-    return data.insert label { node with texSources }
+    let externalMarkup ← mergeExternalMarkup label node.externalMarkup markup
+    return data.insert label { node with externalMarkup }
 
 end

@@ -44,6 +44,7 @@ open Informal.PreviewManifest
       let displayCaptionDesc? := do
         let displayCaptionJson ← entryProps.get? "displayCaption"
         displayCaptionJson.getObjValAs? String "description" |>.toOption
+      let entryKindText := (defs.get? "Informal.PreviewManifest.EntryKind").map (·.compress) |>.getD ""
       rootRef == "#/$defs/Informal.PreviewManifest.File" &&
         !fileProps.contains "version" &&
         !fileProps.contains "traverseState" &&
@@ -69,6 +70,7 @@ open Informal.PreviewManifest
         !useRefProps.contains "intents" &&
         entryProps.contains "leanCodePreviewKeys" &&
         entryProps.contains "codeData" &&
+        entryProps.contains "externalMarkup" &&
         !entryProps.contains "blocks" &&
         !entryProps.contains "leanCode" &&
         entryProps.contains "uses" &&
@@ -79,12 +81,13 @@ open Informal.PreviewManifest
         entryProps.contains "priority" &&
         entryProps.contains "effort" &&
         !entryProps.contains "html" &&
-        labelDesc? == some "Canonical target label: informal label, Lean declaration name, or citation label." &&
+        labelDesc? == some "Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "HTML-cache keys for Lean declaration previews associated with this entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
+        entryKindText.contains "externalMarkup" &&
         defs.contains "Informal.PreviewManifest.EntryKind" &&
         defs.contains "Informal.Data.UseRef" &&
         defs.contains "Informal.Data.UseOrigin" &&
@@ -92,6 +95,11 @@ open Informal.PreviewManifest
         defs.contains "Informal.PreviewManifest.RelatedEntry" &&
         defs.contains "Informal.PreviewManifest.GroupRelation" &&
         defs.contains "Informal.PreviewManifest.RelationAxis" &&
+        defs.contains "Informal.Data.ExternalMarkup" &&
+        defs.contains "Informal.Data.ExternalMarkupLanguage" &&
+        defs.contains "Informal.Data.ExternalMarkupLocation" &&
+        defs.contains "Lean.Lsp.Range" &&
+        defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&
         defs.contains "Informal.PreviewCache.Facet"
 
