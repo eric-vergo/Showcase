@@ -1264,8 +1264,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     worktree_list = subparsers.add_parser(
         "worktree-list",
-        aliases=["worktree-sync"],
-        description="Refresh and print the local worktree dashboard. `worktree-sync` is a compatibility alias.",
         help="Refresh and print the local worktree dashboard.",
     )
     worktree_list.set_defaults(func=command_worktree_list)

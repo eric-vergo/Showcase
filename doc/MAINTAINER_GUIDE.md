@@ -452,8 +452,6 @@ The local coordination layer is now machine-readable and untracked.
 
 - `worktree-list` refreshes local metadata under `.worktrees/` and prints the
   current dashboard view, combining local metadata with live Git state
-- `worktree-sync` remains available as a compatibility alias for
-  `worktree-list`
 - `worktree-claim` records owner, lock state, priority, summary, status, and
   write scope
 - `worktree-status` shows one worktree record

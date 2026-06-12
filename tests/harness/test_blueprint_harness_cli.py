@@ -167,6 +167,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = parser.parse_args(["create-worktree", "demo", "--lock"])
         self.assertTrue(args.lock)
 
+    def test_worktree_sync_alias_is_retired(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["worktree-sync"])
+
     def test_worktree_claim_parses_lock_flags(self) -> None:
         parser = build_parser()
         lock_args = parser.parse_args(["worktree-claim", "demo", "--lock"])
