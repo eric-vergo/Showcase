@@ -1,0 +1,471 @@
+import VersoBlueprint.Vbp
+import VersoBlueprint.VbpMain
+
+namespace Verso.VersoBlueprintTests.Vbp
+
+open Lean
+
+abbrev ManifestFile := Informal.PreviewManifest.File
+abbrev HtmlCacheFile := Informal.PreviewManifest.HtmlCache.File
+abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
+
+private def label (value : String) : Name :=
+  Name.mkSimple value
+
+private def related (value title key : String) : RelatedEntry :=
+  {
+    label := label value
+    title := title
+    previewKey := key
+    axes := #[.statement]
+  }
+
+private def sampleManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:addition_spec:statement"
+      targetKind := .block
+      label := label "addition_spec"
+      facet := .statement
+      kind := some .definition
+      title := "Definition 1"
+      usedBy := #[related "addition_assoc" "Theorem 2" "informal:addition_assoc:statement"]
+      tags := #["starter"]
+    },
+    {
+      key := "informal:addition_assoc:statement"
+      targetKind := .block
+      label := label "addition_assoc"
+      facet := .statement
+      kind := some .theorem
+      title := "Theorem 2"
+      statementUses := #[{ label := label "addition_spec" }]
+      uses := #[related "addition_spec" "Definition 1" "informal:addition_spec:statement"]
+      leanCodePreviewKeys := #["lean:Nat.add_assoc"]
+      ownerDisplayName := some "Project Author"
+      tags := #["starter", "arithmetic"]
+      priority := some "high"
+      effort := some "small"
+    },
+    {
+      key := "lean:Nat.add_assoc"
+      targetKind := .leanDecl
+      label := label "Nat.add_assoc"
+      facet := .statement
+      title := "Nat.add_assoc"
+    }
+  ]
+}
+
+private def sampleCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:addition_spec:statement", html := "<div>addition spec</div>" },
+    { key := "informal:addition_assoc:statement", html := "<div>addition assoc</div>" },
+    { key := "lean:Nat.add_assoc", html := "<pre>Nat.add_assoc</pre>" }
+  ]
+}
+
+private def sampleMetadataManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:zeta_statement:statement"
+      targetKind := .block
+      label := label "zeta_statement"
+      facet := .statement
+      title := "Zeta"
+      ownerDisplayName := some "Zed"
+      tags := #["zeta", "alpha"]
+    },
+    {
+      key := "informal:alpha_statement:statement"
+      targetKind := .block
+      label := label "alpha_statement"
+      facet := .statement
+      title := "Alpha"
+      ownerDisplayName := some "Alpha"
+      tags := #["beta"]
+    }
+  ]
+}
+
+private def jsonField? (json : Json) (field : String) : Option Json :=
+  match json.getObjVal? field with
+  | .ok value => some value
+  | .error _ => none
+
+private def jsonStringField? (json : Json) (field : String) : Option String :=
+  match json.getObjValAs? String field with
+  | .ok value => some value
+  | .error _ => none
+
+private def jsonBoolField? (json : Json) (field : String) : Option Bool :=
+  match json.getObjValAs? Bool field with
+  | .ok value => some value
+  | .error _ => none
+
+private def jsonNatField? (json : Json) (field : String) : Option Nat :=
+  match json.getObjValAs? Nat field with
+  | .ok value => some value
+  | .error _ => none
+
+private def jsonArrayField? (json : Json) (field : String) : Option (Array Json) :=
+  match jsonField? json field with
+  | some (.arr values) => some values
+  | _ => none
+
+private def jsonHasApiStability (json : Json) : Bool :=
+  jsonStringField? json "apiStability" == some VersoBlueprint.Vbp.apiStability
+
+private def jsonArrayContainsString (values : Array Json) (expected : String) : Bool :=
+  values.any (fun
+    | .str value => value == expected
+    | _ => false)
+
+private def jsonArrayHasStringField (values : Array Json) (field expected : String) : Bool :=
+  values.any (fun json => jsonStringField? json field == some expected)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let text := VersoBlueprint.Vbp.Main.helpText
+    text.contains "lake exe vbp query [--site <dir>] <selector>" &&
+      text.contains "Query selectors:" &&
+      text.contains "selectors" &&
+      text.contains "all <label>" &&
+      text.contains "search <text>" &&
+      text.contains "--serve --port <n>" &&
+      text.contains "build writes _out/site" &&
+      !text.contains "lake exe vbp query [--site <dir>] node <label>"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.ownerValues sampleMetadataManifest == #["Alpha", "Zed"] &&
+      VersoBlueprint.Vbp.tagValues sampleMetadataManifest == #["alpha", "beta", "zeta"]
+
+private partial def freshVbpFixtureRoot : IO System.FilePath := do
+  let suffix ← IO.rand 0 1000000000000
+  let root :=
+    System.FilePath.mk ".lake" / "build" / "tmp" /
+      "verso-blueprint-vbp-test" / toString suffix
+  if ← root.pathExists then
+    freshVbpFixtureRoot
+  else
+    pure root
+
+private def writeManifestOnlySite (site : System.FilePath) : IO Unit := do
+  let dataDir := site / "html-multi" / "-verso-data"
+  IO.FS.createDirAll dataDir
+  IO.FS.writeFile
+    (dataDir / Informal.PreviewManifest.manifestFilename)
+    (toJson sampleManifest).compress
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["selectors"] with
+    | .ok json =>
+        match jsonArrayField? json "selectors" with
+        | some selectors =>
+            jsonHasApiStability json &&
+              jsonArrayContainsString selectors "selectors" &&
+              jsonArrayContainsString selectors "all <label>" &&
+              jsonArrayContainsString selectors "search <text>"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["labels"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonHasApiStability json &&
+              jsonArrayHasStringField labels "label" "addition_spec" &&
+              jsonArrayHasStringField labels "label" "addition_assoc" &&
+              !jsonArrayHasStringField labels "label" "Nat.add_assoc"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["node", "addition_assoc"] with
+    | .ok json =>
+        match jsonArrayField? json "statementUses" with
+        | some statementUses =>
+            jsonHasApiStability json &&
+              jsonStringField? json "label" == some "addition_assoc" &&
+              jsonStringField? json "ownerDisplayName" == some "Project Author" &&
+              jsonArrayHasStringField statementUses "label" "addition_spec" &&
+              jsonArrayContainsString (jsonArrayField? json "leanCodePreviewKeys" |>.getD #[]) "lean:Nat.add_assoc"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["used-by", "addition_spec"] with
+    | .ok json =>
+        match jsonArrayField? json "usedBy" with
+        | some usedBy =>
+            jsonHasApiStability json &&
+              jsonStringField? json "label" == some "addition_spec" &&
+              jsonArrayHasStringField usedBy "label" "addition_assoc" &&
+              jsonArrayHasStringField usedBy "previewKey" "informal:addition_assoc:statement"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["all", "addition_assoc"] with
+    | .ok json =>
+        match jsonField? json "node", jsonArrayField? json "statementUses" with
+        | some node, some statementUses =>
+            jsonHasApiStability json &&
+              jsonStringField? json "label" == some "addition_assoc" &&
+              jsonStringField? node "label" == some "addition_assoc" &&
+              jsonArrayHasStringField statementUses "label" "addition_spec" &&
+              (jsonArrayField? json "usedBy").isSome
+        | _, _ => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["search", "assoc"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonStringField? json "query" == some "assoc" &&
+              jsonArrayHasStringField labels "label" "addition_assoc" &&
+              !jsonArrayHasStringField labels "label" "addition_spec"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["search", "THEOREM"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonStringField? json "query" == some "THEOREM" &&
+              jsonArrayHasStringField labels "label" "addition_assoc" &&
+              !jsonArrayHasStringField labels "label" "addition_spec"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["code", "Nat.add_assoc"] with
+    | .ok json =>
+        match jsonArrayField? json "labels" with
+        | some labels =>
+            jsonStringField? json "query" == some "Nat.add_assoc" &&
+              jsonArrayHasStringField labels "label" "addition_assoc"
+        | none => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["stats"] with
+    | .ok json =>
+        match jsonField? json "byKind", jsonField? json "byTag" with
+        | some byKind, some byTag =>
+            jsonHasApiStability json &&
+              jsonNatField? json "statements" == some 2 &&
+              jsonNatField? byKind "definition" == some 1 &&
+              jsonNatField? byKind "theorem" == some 1 &&
+              jsonNatField? byTag "starter" == some 2
+        | _, _ => false
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest [] with
+    | .ok _ => false
+    | .error err => err == "missing query selector"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["bogus"] with
+    | .ok _ => false
+    | .error err => err == "unknown query selector 'bogus'"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.queryJson sampleManifest ["node", "missing_label"] with
+    | .ok json =>
+        jsonHasApiStability json &&
+          jsonStringField? json "error" == some "unknown-label" &&
+          jsonStringField? json "label" == some "missing_label"
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    VersoBlueprint.Vbp.checkGeneratedData sampleManifest sampleCache |>.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let json := VersoBlueprint.Vbp.checkJson sampleManifest sampleCache
+    jsonHasApiStability json &&
+      jsonBoolField? json "ok" == some true &&
+      jsonNatField? json "manifestEntries" == some 3 &&
+      jsonNatField? json "htmlCacheEntries" == some 3
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let json := VersoBlueprint.Vbp.checkJsonFromErrors sampleManifest sampleCache #["forced diagnostic"]
+    let errors := jsonArrayField? json "errors" |>.getD #[]
+    jsonBoolField? json "ok" == some false &&
+      jsonArrayContainsString errors "forced diagnostic"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let brokenCache : HtmlCacheFile := {
+      entries := sampleCache.entries.filter (fun entry => entry.key != "lean:Nat.add_assoc")
+    }
+    VersoBlueprint.Vbp.checkGeneratedData sampleManifest brokenCache |>.any (·.contains "lean:Nat.add_assoc")
+
+/-- info: true -/
+#guard_msgs in
+#eval do
+  let site ← freshVbpFixtureRoot
+  writeManifestOnlySite site
+  let manifest ← VersoBlueprint.Vbp.readManifestForSite site
+  let queryOk :=
+    match VersoBlueprint.Vbp.queryJson manifest ["labels"] with
+    | .ok json =>
+        let labels := jsonArrayField? json "labels" |>.getD #[]
+        jsonArrayHasStringField labels "label" "addition_assoc"
+    | .error _ => false
+  let cacheMissing ←
+    try
+      let _ ← VersoBlueprint.Vbp.readHtmlCacheForSite site
+      pure false
+    catch err =>
+      let message := IO.Error.toString err
+      pure <| message.contains "run `lake exe vbp build` first" &&
+        !message.contains "vbp check"
+  pure (queryOk && cacheMissing)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--output", "_out/custom", "--serve", "--port", "8080"] {} with
+    | .ok opts =>
+        opts.output.toString == "_out/custom" &&
+          opts.serve &&
+          opts.port? == some 8080
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--port", "not-a-port"] {} with
+    | .ok _ => false
+    | .error err => err.contains "invalid --port value"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--port", "8080"] {} with
+    | .ok _ => false
+    | .error err => err == "--port requires --serve"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--port", "8080", "--serve"] {} with
+    | .ok opts =>
+        opts.serve &&
+          opts.port? == some 8080
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--port", "70000"] {} with
+    | .ok _ => false
+    | .error err =>
+        err.contains "invalid --port value" &&
+          err.contains "65535"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--output"] {} with
+    | .ok _ => false
+    | .error err => err == "missing value after --output"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseBuildOptions ["--bogus"] {} with
+    | .ok _ => false
+    | .error err => err == "unknown build option '--bogus'"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseSiteOptions ["--site", "_out/custom", "node", "addition_assoc"] {} with
+    | .ok opts =>
+        opts.site.toString == "_out/custom" &&
+          opts.rest == ["node", "addition_assoc"]
+    | .error _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match VersoBlueprint.Vbp.Main.parseSiteOptions ["--site"] {} with
+    | .ok _ => false
+    | .error err => err.contains "missing value after --site"
+
+/-- info: discover does not accept arguments
+---
+info: true -/
+#guard_msgs in
+#eval do
+  let code ← VersoBlueprint.Vbp.Main.main ["discover", "extra"]
+  pure (code == 2)
+
+end Verso.VersoBlueprintTests.Vbp
