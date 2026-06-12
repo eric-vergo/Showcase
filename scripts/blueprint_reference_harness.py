@@ -59,7 +59,7 @@ from scripts.blueprint_harness_utils import (
     run,
     run_capturing_failure,
 )
-from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
+from scripts.blueprint_harness_validation import SiteValidationCheck, run_site_validation_checks
 from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts, worktree_is_clean
 
 
@@ -743,32 +743,22 @@ def project_validation_failures(
     pytest_args: list[str],
     stop_on_first_failure: bool,
 ) -> list[StepFailure]:
-    failures: list[StepFailure] = []
-    for project in projects:
-        site_dir = site_dir_for(project, output_root)
-        if project.panel_regression_script is not None and not skip_panel_regression:
-            failure = run_capturing_failure(
-                f"{project.project_id} panel regression",
-                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
-                cwd=layout.package_root,
+    return run_site_validation_checks(
+        layout.package_root,
+        [
+            SiteValidationCheck(
+                label=project.project_id,
+                site_dir=site_dir_for(project, output_root),
+                panel_regression_script=project.panel_regression_script,
+                browser_tests_path=project.browser_tests_path,
             )
-            if failure is not None:
-                failures.append(failure)
-                if stop_on_first_failure:
-                    return failures
-
-        if project.browser_tests_path is not None and not skip_browser_tests:
-            failure = run_capturing_failure(
-                f"{project.project_id} browser tests",
-                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, pytest_args),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if stop_on_first_failure:
-                    return failures
-
-    return failures
+            for project in projects
+        ],
+        pytest_args,
+        skip_panel_regression=skip_panel_regression,
+        skip_browser_tests=skip_browser_tests,
+        stop_on_first_failure=stop_on_first_failure,
+    )
 
 
 def command_validate(args: argparse.Namespace) -> int:
