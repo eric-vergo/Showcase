@@ -174,7 +174,6 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
         self.assertNotIn("reference-blueprints/verso-flt/", readme)
         self.assertNotIn("reference-blueprints/verso-carleson/", readme)
 
-        self.assertIn("reference-blueprints/v4.28.0/algebraic-combinatorics/", readme)
         self.assertIn("reference-blueprints/v4.29.0/spherepackingblueprint/", readme)
         self.assertIn("reference-blueprints/v4.30.0/noperthedron/", readme)
         self.assertIn("reference-blueprints/v4.30.0/verso-flt/", readme)

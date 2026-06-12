@@ -17,6 +17,9 @@ from scripts.blueprint_harness_projects import (
     deploy_project_artifact_name,
     deploy_project_artifact_path,
     load_project_catalog,
+    project_target_rc,
+    project_target_toolchain,
+    project_target_verso_ref,
     reference_dependency_cache_key,
     resolve_manifest_path,
     resolve_projects_for_release,
@@ -41,16 +44,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def release_target_manifest_entry(target: HarnessReleaseTarget) -> dict[str, object]:
-    entry: dict[str, object] = {
+    return {
         "id": target.release_id,
         "toolchain": target.release_toolchain,
         "verso_ref": target.release_verso_ref,
         "branch": target.branch,
         "deploy_pages": target.deploy_pages,
     }
-    if target.rc is not None:
-        entry["rc"] = target.rc
-    return entry
 
 
 def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
@@ -67,6 +67,8 @@ def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
     target: dict[str, object] = {"release": project.selected_release}
     if project.ref is not None:
         target["ref"] = project.ref
+    if project.selected_rc is not None:
+        target["rc"] = project.selected_rc
 
     entry: dict[str, object] = {
         "id": project.project_id,
@@ -118,9 +120,9 @@ def deploy_matrix_from_controller_catalog(
             include.append(
                 {
                     "release_id": target.release_id,
-                    "rc": target.rc,
-                    "toolchain": target.toolchain,
-                    "verso_ref": target.verso_ref,
+                    "rc": project_target_rc(project),
+                    "toolchain": project_target_toolchain(target, project),
+                    "verso_ref": project_target_verso_ref(target, project),
                     "branch": target.branch,
                     "project_id": project.project_id,
                     "project_root": project.project_root,

@@ -77,6 +77,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         expected_projects: list[str] = []
         expected_refs: dict[str, str | None] = {}
+        expected_rcs: dict[str, str | None] = {}
         published_targets = [
             (project, target)
             for project in catalog.projects
@@ -86,6 +87,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             for project, target in published_targets:
                 expected_projects.append(project.project_id)
                 expected_refs[project.project_id] = target.ref
+                expected_rcs[project.project_id] = target.rc
         else:
             for project in catalog.projects:
                 target = next((target for target in project.targets if target.release == release.release_id), None)
@@ -93,24 +95,34 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                     continue
                 expected_projects.append(project.project_id)
                 expected_refs[project.project_id] = target.ref
+                expected_rcs[project.project_id] = target.rc
 
         self.assertEqual([project.project_id for project in projects], expected_projects)
         for project in projects:
             self.assertEqual(project.selected_release, release.release_id)
+            self.assertEqual(project.selected_rc, expected_rcs[project.project_id])
             expected_ref = expected_refs[project.project_id]
             if expected_ref is not None:
                 self.assertEqual(project.ref, expected_ref)
 
     def test_default_manifest_contains_current_external_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
+        manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertNotIn("release_targets", manifest_data)
         catalog = load_project_catalog(manifest)
         projects = list(catalog.projects)
 
         self.assertEqual(
             [project.project_id for project in projects],
-            ["project-template", "noperthedron", "spherepackingblueprint", "verso-flt", "verso-carleson", "algebraic-combinatorics"],
+            [
+                "project-template",
+                "noperthedron",
+                "spherepackingblueprint",
+                "verso-flt",
+                "verso-carleson",
+            ],
         )
-        self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.28.0", "v4.29.0", "v4.30.0"])
+        self.assertEqual([target.release_id for target in catalog.release_targets], ["v4.29.0", "v4.30.0"])
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
@@ -119,20 +131,20 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[0].generate_command,
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
-        self.assertEqual([target.release for target in projects[0].targets], ["v4.28.0", "v4.29.0", "v4.30.0"])
+        self.assertEqual([target.release for target in projects[0].targets], ["v4.29.0", "v4.30.0"])
         release_430 = catalog.release_target("v4.30.0")
         self.assertIsNotNone(release_430)
         assert release_430 is not None
-        self.assertEqual(release_430.rc, "4.30-rc2")
         self.assertEqual(release_430.release_toolchain, "v4.30.0")
-        self.assertEqual(release_430.toolchain, "v4.30.0-rc2")
-        self.assertEqual(release_430.verso_ref, "v4.30.0-rc2")
+        self.assertEqual(release_430.toolchain, "v4.30.0")
+        self.assertEqual(release_430.verso_ref, "v4.30.0")
         self.assertTrue(release_430.deploy_pages)
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0", "v4.30.0"])
         self.assertFalse(projects[1].targets[0].publish_reference)
         self.assertTrue(projects[1].targets[1].publish_reference)
+        self.assertEqual(projects[1].targets[1].rc, "4.30-rc2")
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
@@ -140,21 +152,23 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
+        self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
+        self.assertEqual([target.release for target in projects[2].targets], ["v4.29.0"])
+        self.assertTrue(projects[2].targets[0].publish_reference)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual([target.release for target in projects[3].targets], ["v4.29.0", "v4.30.0"])
         self.assertFalse(projects[3].targets[0].publish_reference)
         self.assertTrue(projects[3].targets[1].publish_reference)
+        self.assertEqual(projects[3].targets[1].rc, "4.30-rc2")
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.30.0"])
         self.assertTrue(projects[4].targets[0].publish_reference)
+        self.assertEqual(projects[4].targets[0].rc, "4.30-rc2")
         self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
         self.assertEqual(
             projects[4].generate_command,
             ("lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"),
         )
-        self.assertEqual(projects[5].repository, "https://github.com/ejgallego/verso-algebraic-combinatorics.git")
-        self.assertEqual([target.release for target in projects[5].targets], ["v4.28.0"])
-        self.assertTrue(projects[5].targets[0].publish_reference)
 
     def test_project_catalog_requires_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -292,7 +306,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
-        matrix = reference_build_matrix(projects)
+        matrix = reference_build_matrix(projects, release)
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
             encoding="utf-8"
         )
@@ -373,6 +387,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.29.0",
                                     "ref": "new-controller-ref",
+                                    "rc": "4.29-rc1",
                                     "publish_reference": True,
                                 }
                             ],
@@ -390,6 +405,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 {
                                     "release": "v4.29.0",
                                     "ref": "new-second-controller-ref",
+                                    "rc": "v4.29.0-rc2",
                                     "publish_reference": True,
                                 }
                             ],
@@ -431,11 +447,24 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             "old-controller",
         )
         self.assertEqual(matrix_by_project["old-release-project"]["project_root"], "old-controller")
+        self.assertEqual(matrix_by_project["old-release-project"]["rc"], "")
+        self.assertEqual(matrix_by_project["old-release-project"]["toolchain"], "v4.28.0")
         self.assertTrue(matrix_by_project["old-release-project"]["reference_cache_key"].startswith("old-release-project-"))
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["targets"],
-            [{"release": "v4.29.0", "ref": "new-controller-ref"}],
+            [{"release": "v4.29.0", "ref": "new-controller-ref", "rc": "4.29-rc1"}],
         )
+        self.assertNotIn("rc", manifest_by_project["new-release-project"]["release_targets"][0])
+        self.assertEqual(matrix_by_project["new-release-project"]["rc"], "4.29-rc1")
+        self.assertEqual(matrix_by_project["new-release-project"]["toolchain"], "v4.29.0-rc1")
+        self.assertEqual(matrix_by_project["new-release-project"]["verso_ref"], "v4.29.0-rc1")
+        self.assertEqual(
+            manifest_by_project["new-release-second-project"]["projects"][0]["targets"],
+            [{"release": "v4.29.0", "ref": "new-second-controller-ref", "rc": "4.29-rc2"}],
+        )
+        self.assertEqual(matrix_by_project["new-release-second-project"]["rc"], "4.29-rc2")
+        self.assertEqual(matrix_by_project["new-release-second-project"]["toolchain"], "v4.29.0-rc2")
+        self.assertEqual(matrix_by_project["new-release-second-project"]["verso_ref"], "v4.29.0-rc2")
 
     def test_git_checkout_project_is_supported(self) -> None:
         manifest_data = {
@@ -523,10 +552,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
-        self.assert_resolved_projects_match_manifest("v4.29.0")
+        self.assert_resolved_projects_match_manifest("v4.30.0")
 
     def test_resolve_projects_for_older_release_uses_matching_targets(self) -> None:
-        self.assert_resolved_projects_match_manifest("v4.28.0")
+        self.assert_resolved_projects_match_manifest("v4.29.0")
 
     def test_publish_reference_targets_select_default_release_catalog(self) -> None:
         catalog = load_project_catalog_text(

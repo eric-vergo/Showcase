@@ -49,7 +49,8 @@ python3 -m scripts.blueprint_test_blueprints --help
 
 The two generated artifact families serve different purposes:
 
-- reference blueprints are the release-facing validation catalog declared in
+- reference blueprints are the release-facing validation catalog selected from
+  release targets in `branch-policy.json` and project targets in
   `tests/harness/projects.json`
 - test blueprints are local rendering and browser-regression fixtures declared
   in `tests/VersoBlueprintTests/TestBlueprintRegistry.lean` and
@@ -243,19 +244,20 @@ Run this from the new local branch, for example `v4.30.0`. The command:
   committed manifests for the root package, `project_template`, and the
   preview showcase
 - updates `branch-policy.json` so the new branch is the default-development
-  line and the previous default-development branch becomes a required backport
-  target
-- adds the new release target to `tests/harness/projects.json`
+  line, the previous default-development branch becomes a required backport
+  target, and the new release target is recorded
 - enables the in-repo reference projects, currently `project-template`, on the
   new release target
 
 For release candidates, use the official short RC name such as `4.30-rc2`.
 The branch name remains the stable release branch, for example `v4.30.0`, while
-the harness records the RC metadata and pins `v4.30.0-rc2` internally.
+the command pins the managed root-package files to `v4.30.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
-validated on the new Lean release.
+validated on the new Lean release. If one project target still needs a release
+candidate, put the short RC name, for example `"rc": "4.30-rc2"`, on that
+specific project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
 changes the actual Lean toolchain. Instead, update only the tracked branch
@@ -602,7 +604,7 @@ template-owned CI path.
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
 pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
-- resolves the current branch's release target from `tests/harness/projects.json`
+- resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
   `publish_reference: true`
 - builds the local `test-blueprints/` artifact set, including
@@ -628,14 +630,15 @@ the project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
 default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
-`projects.json` refs.
+`projects.json` refs. The per-project target entry also owns any RC override,
+so two projects in the same release line can deploy against different release
+candidate tags when needed.
 
 At the moment that means:
 
 - `v4.30.0` deploys Pages for `noperthedron`, `verso-flt`, and
   `verso-carleson`
 - `v4.29.0` deploys Pages for `spherepackingblueprint`
-- `v4.28.0` also deploys Pages for `algebraic-combinatorics`
 
 The branch-local site artifact produced by `reference-blueprints.yml` for one
 release includes:
@@ -671,13 +674,15 @@ The staging helper is:
 
 The harness is now project-driven rather than hardcoded to one project.
 
-- the default catalog is declared in `tests/harness/projects.json`
+- release targets, branch names, and deploy flags are declared in
+  `branch-policy.json`
+- the default project catalog is declared in `tests/harness/projects.json`
 - catalog entries can also describe ephemeral `git_checkout` projects hosted
   outside this repository
 - external `projects` entries declare the repository plus the build and
   generation commands needed after checkout
-- each project target owns its release ref, and `publish_reference: true` marks
-  the target as part of the release-facing published catalog
+- each project target owns its release ref, optional RC metadata, and
+  `publish_reference: true` marker for the release-facing published catalog
 - prefer a build command that targets only the Lean library or formalization
   artifacts needed by the document, followed by a `lake env lean --run ...`
   generation command; do not build the generator executable unless that native

@@ -883,16 +883,19 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "branch-policy.json").write_text(
-                '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
-                encoding="utf-8",
-            )
-            manifest_path = root / "tests" / "harness" / "projects.json"
-            manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text(
                 json.dumps(
                     {
                         "version": 2,
+                        "default_dev_branch": "v4.29.0",
+                        "required_backport_branches": ["v4.28.0"],
                         "release_targets": [
+                            {
+                                "id": "v4.28.0",
+                                "toolchain": "v4.28.0",
+                                "verso_ref": "v4.28.0",
+                                "branch": "v4.28.0",
+                                "deploy_pages": False,
+                            },
                             {
                                 "id": "v4.29.0",
                                 "toolchain": "v4.29.0",
@@ -901,6 +904,16 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                                 "deploy_pages": True,
                             }
                         ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest_path = root / "tests" / "harness" / "projects.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
                         "projects": [
                             {
                                 "id": "project-template",
@@ -955,13 +968,38 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             self.assertEqual(seen["toolchain"], "4.30-rc2")
             self.assertFalse(seen["validate"])
             self.assertEqual(
-                (root / "branch-policy.json").read_text(encoding="utf-8"),
-                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.29.0", "v4.28.0"]\n}\n',
+                json.loads((root / "branch-policy.json").read_text(encoding="utf-8")),
+                {
+                    "version": 2,
+                    "default_dev_branch": "v4.30.0",
+                    "required_backport_branches": ["v4.29.0", "v4.28.0"],
+                    "release_targets": [
+                        {
+                            "id": "v4.28.0",
+                            "toolchain": "v4.28.0",
+                            "verso_ref": "v4.28.0",
+                            "branch": "v4.28.0",
+                            "deploy_pages": False,
+                        },
+                        {
+                            "id": "v4.29.0",
+                            "toolchain": "v4.29.0",
+                            "verso_ref": "v4.29.0",
+                            "branch": "v4.29.0",
+                            "deploy_pages": True,
+                        },
+                        {
+                            "id": "v4.30.0",
+                            "toolchain": "v4.30.0",
+                            "verso_ref": "v4.30.0",
+                            "branch": "v4.30.0",
+                            "deploy_pages": False,
+                        },
+                    ],
+                },
             )
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["release_targets"][1]["id"], "v4.30.0")
-            self.assertEqual(manifest["release_targets"][1]["rc"], "4.30-rc2")
-            self.assertFalse(manifest["release_targets"][1]["deploy_pages"])
+            self.assertNotIn("release_targets", manifest)
             self.assertEqual(
                 [target["release"] for target in manifest["projects"][0]["targets"]],
                 ["v4.29.0", "v4.30.0"],
@@ -992,7 +1030,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
             self.assertEqual(
                 (root / "branch-policy.json").read_text(encoding="utf-8"),
-                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
+                '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": [\n    "v4.28.0"\n  ]\n}\n',
             )
             self.assertIn("checkout_role=backport", out.getvalue())
 
@@ -1641,6 +1679,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         )
         args = argparse.Namespace(manifest=None, project=None, release=None)
         layout = SimpleNamespace(package_root=Path("/tmp/package"), repo_root=Path("/tmp/repo"))
+        release = HarnessReleaseTarget("v4.29.0", "v4.29.0", "v4.29.0", "v4.29.0", True)
         status = reference_harness_mod.ReferenceProjectStatus(
             project=project,
             catalog_ref="abc123",
@@ -1665,7 +1704,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog=lambda _manifest_path: SimpleNamespace(projects=(project,), release_targets=()),
             select_release_projects=lambda _catalog, *, release, project_ids, package_root: ("v4.29.0", [project]),
             require_checkout_release=lambda _layout, _release_id, *, command_name: None,
-            resolve_release_target=lambda _catalog, _release, _package_root: SimpleNamespace(branch="v4.29.0"),
+            resolve_release_target=lambda _catalog, _release, _package_root: release,
             ref_sync_status=lambda _repo_root, _local_ref, _upstream_ref: harness_mod.RefSyncStatus(
                 local_ref="v4.29.0",
                 upstream_ref="origin/v4.29.0",
@@ -1683,6 +1722,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("release_relationship=in_sync", output)
         self.assertIn("verso_blueprint_ref=v4.29.0", output)
         self.assertIn("noperthedron\tsource=git:https://github.com/example/noperthedron.git@abc123", output)
+        self.assertIn("rc=\ttoolchain=v4.29.0\tverso_ref=v4.29.0", output)
         self.assertIn("catalog_status=behind", output)
         self.assertIn("catalog_behind=12", output)
         self.assertIn("blueprint_pin_source=lake-manifest.json", output)

@@ -154,8 +154,8 @@ workflow details in user-facing docs.
 
 Work:
 
-1. keep `branch-policy.json` as the source of truth for default-development and
-   backport behavior
+1. keep `branch-policy.json` as the source of truth for release targets,
+   default-development, and backport behavior
 2. keep linked worktree metadata local under `.worktrees/`
 3. keep shell wrappers thin; keep Python harness modules as the source of truth
    for orchestration, path logic, release checks, and project catalogs

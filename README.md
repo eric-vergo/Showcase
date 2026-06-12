@@ -197,8 +197,6 @@ you want to enable it.
 The repository also tracks larger reference blueprints.
 
 - [project_template/](./project_template/), the in-repo starter template
-- [`ejgallego/verso-algebraic-combinatorics`](https://github.com/ejgallego/verso-algebraic-combinatorics),
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.28.0/algebraic-combinatorics/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
   [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.29.0/spherepackingblueprint/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),

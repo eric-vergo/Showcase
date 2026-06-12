@@ -43,15 +43,15 @@ jobs:
       - name: Show resolved release target
         run: |
           echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
-          echo "rc=${{ needs.resolve-reference-release.outputs.rc }}"
-          echo "toolchain=${{ needs.resolve-reference-release.outputs.toolchain }}"
-          echo "verso_ref=${{ needs.resolve-reference-release.outputs.verso_ref }}"
+          echo "rc=${{ matrix.rc }}"
+          echo "toolchain=${{ matrix.toolchain }}"
+          echo "verso_ref=${{ matrix.verso_ref }}"
           echo "blueprint=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
       - name: Match reference target toolchain
-        if: ${{ needs.resolve-reference-release.outputs.rc != '' }}
-        run: printf 'leanprover/lean4:${{ needs.resolve-reference-release.outputs.toolchain }}\n' > lean-toolchain
+        if: ${{ matrix.rc != '' }}
+        run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -62,9 +62,9 @@ jobs:
           path: |
             .lake/packages/mathlib
             .lake/packages/verso
-          key: ${{ runner.os }}-lake-packages-v2-${{ needs.resolve-reference-release.outputs.toolchain }}-${{ hashFiles('lake-manifest.json') }}
+          key: ${{ runner.os }}-lake-packages-v2-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}
           restore-keys: |
-            ${{ runner.os }}-lake-packages-v2-${{ needs.resolve-reference-release.outputs.toolchain }}-
+            ${{ runner.os }}-lake-packages-v2-${{ matrix.toolchain }}-
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
         uses: actions/cache@v4
@@ -72,9 +72,9 @@ jobs:
           path: |
             .lake/packages/mathlib/.lake/build
             .lake/packages/verso/.lake/build
-          key: ${{ runner.os }}-lake-deps-${{ needs.resolve-reference-release.outputs.toolchain }}-${{ hashFiles('lake-manifest.json') }}
+          key: ${{ runner.os }}-lake-deps-${{ matrix.toolchain }}-${{ hashFiles('lake-manifest.json') }}
           restore-keys: |
-            ${{ runner.os }}-lake-deps-${{ needs.resolve-reference-release.outputs.toolchain }}-
+            ${{ runner.os }}-lake-deps-${{ matrix.toolchain }}-
             ${{ runner.os }}-lake-deps-
       - name: Restore external reference dependency cache
         if: ${{ matrix.reference_cache_key != '' }}

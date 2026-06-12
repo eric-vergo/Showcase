@@ -50,13 +50,13 @@ def payload(args: argparse.Namespace) -> dict[str, object]:
     return {
         "manifest_path": str(manifest_path),
         "release_id": release_target.release_id,
-        "rc": release_target.rc,
+        "rc": "",
         "toolchain": release_target.toolchain,
         "verso_ref": release_target.verso_ref,
         "branch": release_target.branch,
         "deploy_pages": release_target.deploy_pages,
         "reference_project_count": len(projects),
-        "reference_matrix": reference_build_matrix(projects),
+        "reference_matrix": reference_build_matrix(projects, release_target),
     }
 
 
