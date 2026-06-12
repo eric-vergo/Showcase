@@ -1790,7 +1790,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
 
     def test_reference_prune_plan_finds_stale_cache_and_checkout_paths(self) -> None:
-        from scripts.blueprint_harness import reference_prune_plan
+        from scripts.blueprint_harness_references import reference_prune_plan
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

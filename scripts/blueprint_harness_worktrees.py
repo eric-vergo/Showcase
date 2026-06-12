@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 import subprocess
 
-from scripts.blueprint_harness_branches import ROOT_WORKTREE_NAME, preferred_release_ref, resolve_git_ref
+from scripts.blueprint_harness_branches import (
+    ROOT_WORKTREE_NAME,
+    is_ancestor,
+    preferred_release_ref,
+    ref_oid,
+    resolve_git_ref,
+)
 
 
 ROOT_METADATA_FILENAME = "_root.json"
@@ -220,37 +226,6 @@ def save_registry(repo_root: Path, records: list[WorktreeRecord]) -> Path:
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
-
-
-def ref_oid(repo_root: Path, ref: str) -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
-        cwd=repo_root,
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    oid = result.stdout.strip()
-    return oid or None
-
-
-def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
-    return (
-        subprocess.run(
-            [
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                resolve_git_ref(repo_root, ancestor),
-                resolve_git_ref(repo_root, descendant),
-            ],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    )
 
 
 def ref_merged_into_base(repo_root: Path, ref: str, base_ref: str) -> bool:
