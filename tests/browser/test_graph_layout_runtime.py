@@ -308,6 +308,39 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
+    def test_preview_utils_normalize_graph_preview_aliases(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        assert page.evaluate(
+            """() => {
+                const utils = window.bpPreviewUtils;
+                if (
+                    !utils ||
+                    typeof utils.normalizePreviewMode !== "function" ||
+                    typeof utils.normalizePreviewPlacement !== "function" ||
+                    typeof utils.readPanelBehavior !== "function"
+                ) {
+                    return false;
+                }
+                const behavior = utils.readPanelBehavior(null, {
+                    mode: "click-and-stay",
+                    placement: "near-node",
+                });
+                return (
+                    utils.normalizePreviewMode("transient", "pinned") === "hover" &&
+                    utils.normalizePreviewMode("click-to-pin", "hover") === "pinned" &&
+                    utils.normalizePreviewPlacement("fixed", "anchored") === "docked" &&
+                    utils.normalizePreviewPlacement("near-node", "docked") === "anchored" &&
+                    behavior.mode === "pinned" &&
+                    behavior.placement === "anchored" &&
+                    behavior.isPinned &&
+                    behavior.isAnchored
+                );
+            }"""
+        )
+
     def test_graph_preview_can_switch_to_hover_autohide(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")

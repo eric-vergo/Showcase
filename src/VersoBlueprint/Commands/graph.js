@@ -38,35 +38,16 @@
     return true;
   }
 
-  function normalizePreviewMode(rawMode) {
-    const mode = String(rawMode || "").trim().toLowerCase();
-    if (mode === "hover" || mode === "transient") return "hover";
-    return "pinned";
-  }
-
-  function normalizePreviewPlacement(rawPlacement) {
-    const placement = String(rawPlacement || "").trim().toLowerCase();
-    if (
-      placement === "anchored" ||
-      placement === "anchor" ||
-      placement === "near" ||
-      placement === "near-node" ||
-      placement === "node"
-    ) {
-      return "anchored";
-    }
-    return "docked";
-  }
-
   function previewBehaviorForMode(previewUtils, mode, placement) {
-    const normalized = normalizePreviewMode(mode);
-    const normalizedPlacement = normalizePreviewPlacement(placement);
     if (previewUtils && typeof previewUtils.readPanelBehavior === "function") {
       return previewUtils.readPanelBehavior(null, {
-        mode: normalized,
-        placement: normalizedPlacement
+        mode: mode,
+        placement: placement
       });
     }
+    const normalized = mode === "hover" || mode === "pinned" ? mode : "pinned";
+    const normalizedPlacement =
+      placement === "anchored" || placement === "docked" ? placement : "docked";
     return {
       mode: normalized,
       placement: normalizedPlacement,
@@ -889,15 +870,15 @@
         };
         const setPreviewBehavior = function (nextMode, nextPlacement, options) {
           const opts = options && typeof options === "object" ? options : {};
-          const mode = normalizePreviewMode(nextMode);
-          const placement = normalizePreviewPlacement(nextPlacement);
+          const behavior = previewBehaviorForMode(previewUtils, nextMode, nextPlacement);
+          const mode = behavior.mode;
+          const placement = behavior.placement;
           if (previewPanelNode) {
             previewPanelNode.setAttribute("data-bp-preview-mode", mode);
             previewPanelNode.setAttribute("data-bp-preview-placement", placement);
           }
           if (previewModeSelector) previewModeSelector.value = mode;
           if (previewPlacementSelector) previewPlacementSelector.value = placement;
-          const behavior = previewBehaviorForMode(previewUtils, mode, placement);
           if (previewController) {
             previewController.behavior = behavior;
             configurePanelCloseButton(previewUtils, previewClose, function () {

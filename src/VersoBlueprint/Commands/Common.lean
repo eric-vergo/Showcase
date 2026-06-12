@@ -549,15 +549,50 @@ def previewHoverUtilsJs : String := r##"(function () {
     return false;
   }
 
-  function readPanelBehavior(panel, defaults) {
-    const defaultMode =
-      defaults && (defaults.mode === "hover" || defaults.mode === "pinned")
-        ? defaults.mode
-        : "hover";
+  function normalizePreviewMode(rawMode, fallback) {
+    const defaultMode = fallback === "hover" || fallback === "pinned" ? fallback : "hover";
+    const mode = String(rawMode || "").trim().toLowerCase();
+    if (mode === "hover" || mode === "transient") return "hover";
+    if (
+      mode === "pinned" ||
+      mode === "pin" ||
+      mode === "click" ||
+      mode === "click-to-pin" ||
+      mode === "click-and-stay" ||
+      mode === "click-to-stay"
+    ) {
+      return "pinned";
+    }
+    return defaultMode;
+  }
+
+  function normalizePreviewPlacement(rawPlacement, fallback) {
     const defaultPlacement =
-      defaults && (defaults.placement === "anchored" || defaults.placement === "docked")
-        ? defaults.placement
-        : "anchored";
+      fallback === "anchored" || fallback === "docked" ? fallback : "anchored";
+    const placement = String(rawPlacement || "").trim().toLowerCase();
+    if (
+      placement === "anchored" ||
+      placement === "anchor" ||
+      placement === "near" ||
+      placement === "near-node" ||
+      placement === "node"
+    ) {
+      return "anchored";
+    }
+    if (
+      placement === "docked" ||
+      placement === "dock" ||
+      placement === "fixed" ||
+      placement === "panel"
+    ) {
+      return "docked";
+    }
+    return defaultPlacement;
+  }
+
+  function readPanelBehavior(panel, defaults) {
+    const defaultMode = normalizePreviewMode(defaults && defaults.mode, "hover");
+    const defaultPlacement = normalizePreviewPlacement(defaults && defaults.placement, "anchored");
     if (!(panel instanceof Element)) {
       return {
         mode: defaultMode,
@@ -570,9 +605,8 @@ def previewHoverUtilsJs : String := r##"(function () {
     }
     const rawMode = (panel.getAttribute("data-bp-preview-mode") || "").trim();
     const rawPlacement = (panel.getAttribute("data-bp-preview-placement") || "").trim();
-    const mode = rawMode === "hover" || rawMode === "pinned" ? rawMode : defaultMode;
-    const placement =
-      rawPlacement === "anchored" || rawPlacement === "docked" ? rawPlacement : defaultPlacement;
+    const mode = normalizePreviewMode(rawMode, defaultMode);
+    const placement = normalizePreviewPlacement(rawPlacement, defaultPlacement);
     return {
       mode: mode,
       placement: placement,
@@ -933,6 +967,8 @@ def previewHoverUtilsJs : String := r##"(function () {
     bindCloseOnce: bindCloseOnce,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
+    normalizePreviewMode: normalizePreviewMode,
+    normalizePreviewPlacement: normalizePreviewPlacement,
     readPanelBehavior: readPanelBehavior,
     resetPanelPosition: resetPanelPosition,
     configureCloseButton: configureCloseButton,
