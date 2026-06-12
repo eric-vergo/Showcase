@@ -14,18 +14,17 @@ from support import (
     record_runtime_errors,
     wait_for_server,
 )
+from scripts.blueprint_harness_project_commands import (
+    maybe_rewrite_in_repo_blueprint_dependency,
+    restore_tracked_project_manifest,
+    snapshot_tracked_project_manifest,
+)
 from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
 
 pytestmark = pytest.mark.skip(reason="Verso Slides support is not built on the v4.29 backport line")
 
 
 def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path]:
-    from scripts.blueprint_harness_references import (
-        maybe_rewrite_in_repo_blueprint_dependency,
-        restore_tracked_project_manifest,
-        snapshot_tracked_project_manifest,
-    )
-
     project_dir = PACKAGE_ROOT / "project_template"
     manifest_snapshot = snapshot_tracked_project_manifest(project_dir)
     rewritten_lakefile, original_lakefile_text = maybe_rewrite_in_repo_blueprint_dependency(

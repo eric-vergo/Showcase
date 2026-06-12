@@ -1,4 +1,3 @@
-import json
 import pytest
 import random
 import shutil
@@ -14,17 +13,10 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from scripts.blueprint_harness_paths import (
     canonical_test_blueprint_output_dir,
-    default_test_blueprint_site_dir,
 )
 
 
 DEFAULT_TEST_BLUEPRINT = "preview_runtime_showcase"
-
-def default_site_dir() -> Path:
-    return default_test_blueprint_site_dir(DEFAULT_TEST_BLUEPRINT, Path(__file__))
-
-
-DEFAULT_SITE_DIR = default_site_dir()
 
 
 def browser_executable(browser_type: str) -> str | None:
@@ -37,18 +29,6 @@ def browser_executable(browser_type: str) -> str | None:
         if path:
             return path
     return None
-
-
-def load_redirects(site_dir: str | Path):
-    json_path = Path(site_dir)
-    if not json_path.is_absolute():
-        json_path = (Path(__file__).parent / json_path).resolve()
-    json_path = json_path / "xref.json"
-    with open(json_path) as f:
-        data = json.load(f)
-
-    sections = data["Verso.Genre.Manual.section"]["contents"]
-    return [(s, sections[s][0]["address"] + "#" + sections[s][0]["id"]) for s in sections]
 
 
 def build_test_blueprint_site(name: str) -> Path:
