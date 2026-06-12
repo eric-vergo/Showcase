@@ -1002,6 +1002,76 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(seen["package_root"], layout.package_root)
             self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
 
+    def test_reference_cache_warm_build_failure_reports_recovery_hints(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = HarnessProject(
+            project_id="external-blueprint",
+            source_kind="git_checkout",
+            project_root="nested/blueprint",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/external-blueprint.git",
+            ref="main",
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_key = reference_dependency_cache_key(project)
+            cache_dir = root / "cache" / cache_key
+            project_dir = cache_dir / "nested" / "blueprint"
+            project_dir.mkdir(parents=True)
+            (cache_dir / ".git").mkdir()
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(OFFICIAL_BLUEPRINT_REQUIRE + "\n", encoding="utf-8")
+            layout = SimpleNamespace(
+                package_root=root / "worktree",
+                repo_root=root / "root",
+                reference_source_cache_root=root / "cache",
+                reference_dependency_cache_root=root / "deps",
+            )
+            layout.package_root.mkdir()
+            layout.repo_root.mkdir()
+
+            originals = {
+                "update_git_checkout": refs_mod.update_git_checkout,
+                "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
+                "project_lake_update_command": refs_mod.project_lake_update_command,
+                "run": refs_mod.run,
+            }
+
+            def fake_run(command, *, cwd):
+                if command == ["lake", "update"]:
+                    return
+                raise subprocess.CalledProcessError(7, command)
+
+            try:
+                refs_mod.update_git_checkout = lambda _project, _cache_dir: None
+                refs_mod.bootstrap_reference_checkout = lambda *, project_dir: None
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update"]
+                refs_mod.run = fake_run
+
+                with self.assertRaises(SystemExit) as raised:
+                    refs_mod.sync_reference_cache_checkout(layout, project, warm_build=True)
+            finally:
+                for name, value in originals.items():
+                    setattr(refs_mod, name, value)
+
+            message = str(raised.exception)
+            self.assertIn("failed to warm reference cache for `external-blueprint`", message)
+            self.assertIn(cache_key, message)
+            self.assertIn(str(cache_dir), message)
+            self.assertIn(str(root / "deps" / cache_key / "packages"), message)
+            self.assertIn("incompatible `.olean` header", message)
+            self.assertIn("create-worktree <name> --lightweight", message)
+            self.assertIn("blueprint_reference_harness prune --dry-run", message)
+            self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
+
     def test_child_manifests_inherit_verso_and_subverso_from_root_without_mathlib(self) -> None:
         root_manifest_path = PACKAGE_ROOT / "lake-manifest.json"
         child_manifest_paths = [
