@@ -47,6 +47,20 @@ python3 -m scripts.blueprint_reference_harness --help
 python3 -m scripts.blueprint_test_blueprints --help
 ```
 
+### Agent-Facing `vbp` Helper
+
+`lake exe vbp ...` and `skills/verso-blueprint/` are maintained as an
+agent-facing helper surface for local coding agents. They do not replace the
+user-facing Blueprint generation path: end-user docs should continue to present
+`lake exe blueprint-gen ...` and the project generator entry point as the
+normal rendering workflow.
+
+Treat `vbp` JSON as fully unstable. It may change within this repository as
+agent workflows evolve, and should not be documented as a public compatibility
+contract. Prefer in-band discovery through `lake exe vbp --help`,
+`lake exe vbp discover`, and `lake exe vbp query selectors` instead of copying
+selector lists or JSON shapes into long-lived docs.
+
 The two generated artifact families serve different purposes:
 
 - reference blueprints are the release-facing validation catalog selected from
