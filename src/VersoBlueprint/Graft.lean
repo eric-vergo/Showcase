@@ -11,6 +11,7 @@ import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Graft.Node
+import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Slides.Node
 import VersoBlueprint.TraversalIndex

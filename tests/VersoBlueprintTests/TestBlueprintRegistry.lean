@@ -7,13 +7,13 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprintTests.BlueprintImportedDuplicates.Direct
 import VersoBlueprintTests.BlueprintImportedDuplicates.Transitive
 import VersoBlueprintTests.BlueprintAutoDeps.Preview
+import VersoBlueprintTests.BlueprintGraft
 import VersoBlueprintTests.BlueprintLinkHover
 import VersoBlueprintTests.BlueprintMetadataPanel
 import VersoBlueprintTests.BlueprintPreviewSource.Provider
 import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 import VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase
 import VersoBlueprintTests.BlueprintRustCode
-import VersoBlueprintTests.BlueprintSlides
 import VersoBlueprintTests.BlueprintSummaryLinks.Shared
 import VersoBlueprintTests.BlueprintTexMacros
 import VersoBlueprintTests.TestBlueprintRegistryMeta
@@ -39,7 +39,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "transitive-imported-duplicates" => some Verso.VersoBlueprintTests.BlueprintImportedDuplicates.Transitive.transitiveImportedDuplicateDoc
   | "imported-preview-source" => some Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.importedPreviewSourceDoc
   | "lean-auto-deps" => some Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview.autoDepsPreviewDoc
-  | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintSlides.manualSideBySideGraftDoc
+  | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintGraft.manualSideBySideGraftDoc
   | "state-showcase" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase.stateShowcaseDoc
   | "external-summary-links" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.externalSummaryLinksDoc
   | "summary-blockers" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.summaryBlockersDoc

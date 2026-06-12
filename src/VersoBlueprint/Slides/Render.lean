@@ -5,37 +5,26 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Verso.Output.Html
-import VersoBlueprint.PreviewManifest
+import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Slides.Node
 
 namespace Informal.Slides
 
-open Lean
 open Verso.Output
 open Verso.Output.Html
 
-public structure RenderContext where
-  manifest? : Option Informal.PreviewManifest.File := none
-  index : Informal.PreviewManifest.Index := {}
-  htmlCacheIndex : Informal.PreviewManifest.HtmlCache.Index := {}
-  logError : String → IO Unit := fun _ => pure ()
+public abbrev RenderContext := Informal.Graft.RenderContext
 
-def RenderContext.ofPreviewData?
+namespace RenderContext
+
+public def ofPreviewData?
     (manifest? : Option Informal.PreviewManifest.File)
     (htmlCache? : Option Informal.PreviewManifest.HtmlCache.File := none)
     (logError : String → IO Unit := fun _ => pure ()) : RenderContext :=
-  let htmlCache := htmlCache?.getD {}
-  {
-    manifest?
-    index := manifest?.map (·.index) |>.getD {}
-    htmlCacheIndex := htmlCache.index
-    logError
-  }
+  Informal.Graft.RenderContext.ofPreviewData? manifest? htmlCache? logError
 
-private def RenderContext.findEntry? (ctx : RenderContext) (key : String) :
-    Option Informal.PreviewManifest.Entry :=
-  ctx.index.findEntry? key
+end RenderContext
 
 private def slideManifestBlockConfig : Informal.PreviewManifest.BlockRender.RenderConfig :=
   {
@@ -72,52 +61,16 @@ private def renderNotice (kind title detail : String) : Html :=
 private def renderMissingNode (node : BlueprintSlideNode) (title detail : String) : Html :=
   .tag "div" node.renderedAttrs (renderNotice "error" title detail)
 
-private def renderLeanCodeBodies
-    (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
-    Array Html :=
-  if node.compact then
-    #[]
-  else
-    (ctx.htmlCacheIndex.codeHtmlBodies entry).map
-      Informal.PreviewManifest.BlockRender.htmlFragment
-
-private def renderEntryContent
-    (ctx : RenderContext) (node : BlueprintSlideNode) (entry : Informal.PreviewManifest.Entry) :
-    IO (Option Informal.PreviewManifest.BlockRender.RenderedContent) := do
-  match ctx.htmlCacheIndex.findHtml? entry.key with
-  | none =>
-      ctx.logError s!"Blueprint HTML cache: missing rendered body for {entry.key}"
-      pure none
-  | some bodyHtml =>
-      pure <| some {
-        body := Informal.PreviewManifest.BlockRender.htmlFragment bodyHtml
-        codeBodies := renderLeanCodeBodies ctx node entry
-      }
+private def slideManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
+  {
+    blockRenderConfig := slideManifestBlockConfig
+    renderMissingNode := renderMissingNode
+    manifestUnavailableDetail :=
+      "Pass previewManifest? to slidesMainWithBlueprintPreviews so Blueprint slide nodes can be rendered during slide generation."
+  }
 
 public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : IO Html := do
-  match ctx.manifest? with
-  | none =>
-    pure <| renderMissingNode node "Preview manifest unavailable"
-      "Pass previewManifest? to slidesMainWithBlueprintPreviews so Blueprint slide nodes can be rendered during slide generation."
-  | some _manifest =>
-    match ctx.findEntry? node.key with
-    | none =>
-      pure <| renderMissingNode node "Blueprint node not found" node.key
-    | some entry =>
-      match ← renderEntryContent ctx node entry with
-      | none =>
-          pure <| renderMissingNode node "Blueprint HTML cache entry not found" entry.key
-      | some content =>
-          pure <| .tag "div" node.renderedAttrs <|
-            Informal.PreviewManifest.BlockRender.renderWithRenderedContent
-              slideManifestBlockConfig
-              entry
-              content
-              {
-                displayLabelOverride? := node.displayLabel?
-                compact := node.compact
-                showHeader := node.showHeader
-              }
+  Informal.Graft.renderNodeFromManifestCache slideManifestRenderConfig ctx node
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
@@ -131,10 +84,10 @@ public def renderBlueprintSlideNodeFromAttrs?
 
 def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=
-  Informal.PreviewManifest.readFile path
+  Informal.Graft.readBlueprintManifest path
 
 def readBlueprintHtmlCache (path : System.FilePath) :
     IO Informal.PreviewManifest.HtmlCache.File :=
-  Informal.PreviewManifest.HtmlCache.readFile path
+  Informal.Graft.readBlueprintHtmlCache path
 
 end Informal.Slides

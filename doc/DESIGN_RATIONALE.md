@@ -198,11 +198,13 @@ rather than page-local template bodies:
    `blueprint_side_by_side` grafting commands. Manual grafts resolve their exact
    traversal preview through `PreviewSource.lean`, project that preview into the
    same semantic entry shape emitted by `PreviewManifest.lean`, then use the
-   shared manifest-backed block renderer. Slide grafts consume the semantic
-   manifest and rendered HTML cache during deck generation to render
-   `{blueprint_node}` shells into the deck HTML. Browser JavaScript then hydrates
-   links, math, and related-entry preview panels; it does not reconstruct
-   Blueprint block markup or relationship topology from ad hoc manifest scans.
+   shared manifest-backed block renderer. `VersoBlueprint.Graft.Render` owns the
+   reusable manifest/cache rendering path for generated consumers; Slides supply
+   slide-specific link attributes, classes, and diagnostics while delegating the
+   semantic lookup and block assembly to that shared path. Browser JavaScript
+   then hydrates links, math, and related-entry preview panels; it does not
+   reconstruct Blueprint block markup or relationship topology from ad hoc
+   manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
