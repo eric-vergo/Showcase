@@ -338,6 +338,30 @@ def collect_reference_project_status(layout, project: HarnessProject, *, bluepri
     )
 
 
+def reference_project_status_or_error(
+    layout,
+    project: HarnessProject,
+    *,
+    blueprint_base_ref: str,
+) -> ReferenceProjectStatus:
+    try:
+        return collect_reference_project_status(layout, project, blueprint_base_ref=blueprint_base_ref)
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
+        return ReferenceProjectStatus(
+            project=project,
+            catalog_ref=None,
+            project_upstream_ref=None,
+            project_relationship=None,
+            project_ahead=None,
+            project_behind=None,
+            blueprint_pin=None,
+            blueprint_relationship=None,
+            blueprint_ahead=None,
+            blueprint_behind=None,
+            error=str(err),
+        )
+
+
 def print_reference_project_status(status: ReferenceProjectStatus) -> None:
     project = status.project
     source = f"in_repo:{project.project_root}" if project.in_repo_project else f"git:{project.repository}@{project.ref}"
@@ -665,6 +689,68 @@ def command_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def lean_test_validation_failures(layout, *, use_local_build: bool) -> list[StepFailure]:
+    if use_local_build:
+        failure = run_capturing_failure(
+            "lean tests",
+            lean_test_runner(layout.package_root),
+            cwd=layout.package_root,
+        )
+        return [failure] if failure is not None else []
+
+    test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
+    if test_artifact is None:
+        return [
+            StepFailure(
+                "lean tests",
+                "no prebuilt Lean test library found in the current worktree `.lake/`; "
+                "run `python3 -m scripts.blueprint_harness sync-root-lake` after "
+                "building from the root checkout, or use `--allow-local-build`",
+            )
+        ]
+
+    print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
+    return []
+
+
+def project_validation_failures(
+    layout,
+    output_root: Path,
+    projects: list[HarnessProject],
+    *,
+    skip_panel_regression: bool,
+    skip_browser_tests: bool,
+    pytest_args: list[str],
+    stop_on_first_failure: bool,
+) -> list[StepFailure]:
+    failures: list[StepFailure] = []
+    for project in projects:
+        site_dir = site_dir_for(project, output_root)
+        if project.panel_regression_script is not None and not skip_panel_regression:
+            failure = run_capturing_failure(
+                f"{project.project_id} panel regression",
+                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
+                cwd=layout.package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return failures
+
+        if project.browser_tests_path is not None and not skip_browser_tests:
+            failure = run_capturing_failure(
+                f"{project.project_id} browser tests",
+                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, pytest_args),
+                cwd=layout.package_root,
+            )
+            if failure is not None:
+                failures.append(failure)
+                if stop_on_first_failure:
+                    return failures
+
+    return failures
+
+
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
@@ -684,31 +770,9 @@ def command_validate(args: argparse.Namespace) -> int:
     print(f"[blueprint-reference-harness] release target: {release_id}")
     use_local_build = should_use_local_build(layout, args.allow_local_build)
     if args.run_lean_tests:
-        if use_local_build:
-            failure = run_capturing_failure(
-                "lean tests",
-                lean_test_runner(layout.package_root),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-        else:
-            test_artifact = find_prebuilt_lean_test_artifact(layout.package_root)
-            if test_artifact is None:
-                failures.append(
-                    StepFailure(
-                        "lean tests",
-                        "no prebuilt Lean test library found in the current worktree `.lake/`; "
-                        "run `python3 -m scripts.blueprint_harness sync-root-lake` after "
-                        "building from the root checkout, or use `--allow-local-build`",
-                    )
-                )
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-            else:
-                print(f"[blueprint-reference-harness] using prebuilt Lean test library: {test_artifact}")
+        failures.extend(lean_test_validation_failures(layout, use_local_build=use_local_build))
+        if failures and args.stop_on_first_failure:
+            return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
     try:
         generate_projects(
@@ -724,29 +788,17 @@ def command_validate(args: argparse.Namespace) -> int:
         failures.append(StepFailure("generate projects", str(err)))
         return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
-    for project in projects:
-        site_dir = site_dir_for(project, output_root)
-        if project.panel_regression_script is not None and not args.skip_panel_regression:
-            failure = run_capturing_failure(
-                f"{project.project_id} panel regression",
-                panel_regression_command(layout.package_root, project.panel_regression_script or "", site_dir),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
-
-        if project.browser_tests_path is not None and not args.skip_browser_tests:
-            failure = run_capturing_failure(
-                f"{project.project_id} browser tests",
-                browser_test_command(layout.package_root, project.browser_tests_path or "", site_dir, args.pytest_arg),
-                cwd=layout.package_root,
-            )
-            if failure is not None:
-                failures.append(failure)
-                if args.stop_on_first_failure:
-                    return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
+    failures.extend(
+        project_validation_failures(
+            layout,
+            output_root,
+            projects,
+            skip_panel_regression=args.skip_panel_regression,
+            skip_browser_tests=args.skip_browser_tests,
+            pytest_args=args.pytest_arg,
+            stop_on_first_failure=args.stop_on_first_failure,
+        )
+    )
 
     return print_failure_summary(failures, prefix=REFERENCE_HARNESS_PREFIX)
 
@@ -800,23 +852,9 @@ def command_status(args: argparse.Namespace) -> int:
     print(f"{main_status.upstream_ref}_oid={main_status.upstream_oid or ''}")
 
     for project in projects:
-        try:
-            status = collect_reference_project_status(layout, project)
-        except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
-            status = ReferenceProjectStatus(
-                project=project,
-                catalog_ref=None,
-                project_upstream_ref=None,
-                project_relationship=None,
-                project_ahead=None,
-                project_behind=None,
-                blueprint_pin=None,
-                blueprint_relationship=None,
-                blueprint_ahead=None,
-                blueprint_behind=None,
-                error=str(err),
-            )
-        print_reference_project_status(status)
+        print_reference_project_status(
+            reference_project_status_or_error(layout, project, blueprint_base_ref=release_branch)
+        )
     return 0
 
 
@@ -841,37 +879,16 @@ def command_release_status(args: argparse.Namespace) -> int:
             allowed = set(args.project)
             projects = [project for project in projects if project.project_id in allowed]
 
-        statuses: list[ReferenceProjectStatus] = []
-        for project in projects:
-            try:
-                status = collect_reference_project_status(
-                    layout,
-                    project,
-                    blueprint_base_ref=release_target.branch,
-                )
-            except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError) as err:
-                status = ReferenceProjectStatus(
-                    project=project,
-                    catalog_ref=None,
-                    project_upstream_ref=None,
-                    project_relationship=None,
-                    project_ahead=None,
-                    project_behind=None,
-                    blueprint_pin=None,
-                    blueprint_relationship=None,
-                    blueprint_ahead=None,
-                    blueprint_behind=None,
-                    error=str(err),
-                )
-            statuses.append(status)
-
         summary = ReleaseTargetStatus(
             release_id=release_target.release_id,
             toolchain=release_target.toolchain,
             verso_ref=release_target.verso_ref,
             branch=release_target.branch,
             deploy_pages=release_target.deploy_pages,
-            project_statuses=tuple(statuses),
+            project_statuses=tuple(
+                reference_project_status_or_error(layout, project, blueprint_base_ref=release_target.branch)
+                for project in projects
+            ),
         )
         if args.outdated_only and not any(status_has_catalog_issue(status) for status in summary.project_statuses):
             continue
