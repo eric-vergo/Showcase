@@ -17,6 +17,7 @@ from scripts.blueprint_harness_projects import (
     load_project_catalog_text,
     load_projects_manifest,
     reference_build_matrix,
+    reference_release_payload,
     resolve_projects_for_release,
     resolve_release_target,
 )
@@ -227,6 +228,26 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             matrix,
             {"include": expected_entries},
         )
+
+    def test_reference_release_payload_uses_release_catalog_metadata(self) -> None:
+        manifest = default_project_manifest(PACKAGE_ROOT)
+        catalog = load_project_catalog(manifest)
+
+        payload = reference_release_payload(manifest, catalog, "v4.29.0", PACKAGE_ROOT)
+
+        self.assertEqual(payload["manifest_path"], str(manifest))
+        self.assertEqual(payload["release_id"], "v4.29.0")
+        self.assertEqual(payload["rc"], "")
+        self.assertEqual(payload["toolchain"], "v4.29.0")
+        self.assertEqual(payload["verso_ref"], "v4.29.0")
+        self.assertEqual(payload["branch"], "v4.29.0")
+        self.assertTrue(payload["deploy_pages"])
+        self.assertEqual(payload["reference_project_count"], 1)
+        rows = {
+            entry["project_id"]: entry
+            for entry in payload["reference_matrix"]["include"]
+        }
+        self.assertEqual(set(rows), {"spherepackingblueprint"})
 
     def test_deploy_matrix_uses_controller_reference_blueprints_with_release_branch_catalogs(self) -> None:
         controller_catalog = load_project_catalog_text(

@@ -448,6 +448,27 @@ def reference_build_matrix(projects: list[HarnessProject]) -> dict[str, list[dic
     }
 
 
+def reference_release_payload(
+    manifest_path: Path,
+    catalog: HarnessProjectCatalog,
+    release: str | None,
+    package_root: Path,
+) -> dict[str, object]:
+    release_target = resolve_release_target(catalog, release, package_root)
+    projects = resolve_projects_for_release(catalog, release_target.release_id, None)
+    return {
+        "manifest_path": str(manifest_path),
+        "release_id": release_target.release_id,
+        "rc": "",
+        "toolchain": release_target.toolchain,
+        "verso_ref": release_target.verso_ref,
+        "branch": release_target.branch,
+        "deploy_pages": release_target.deploy_pages,
+        "reference_project_count": len(projects),
+        "reference_matrix": reference_build_matrix(projects),
+    }
+
+
 DEPLOY_PROJECT_ARTIFACT_SEPARATOR = "__project__"
 
 

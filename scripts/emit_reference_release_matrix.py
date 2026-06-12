@@ -11,11 +11,9 @@ if __package__ in {None, ""}:
 
 from scripts.blueprint_harness_paths import detect_harness_layout
 from scripts.blueprint_harness_projects import (
-    default_project_manifest,
     load_project_catalog,
-    reference_build_matrix,
-    resolve_projects_for_release,
-    resolve_release_target,
+    reference_release_payload,
+    resolve_manifest_path,
 )
 
 
@@ -41,31 +39,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_manifest_path(layout, path_text: str | None) -> Path:
-    if path_text is None:
-        return default_project_manifest(layout.package_root)
-    path = Path(path_text)
-    if path.is_absolute():
-        return path.resolve()
-    return (Path.cwd() / path).resolve()
-
-
 def payload(args: argparse.Namespace) -> dict[str, object]:
     layout = detect_harness_layout(Path(__file__))
-    manifest_path = resolve_manifest_path(layout, args.manifest)
+    manifest_path = resolve_manifest_path(args.manifest, layout.package_root)
     catalog = load_project_catalog(manifest_path)
-    release_target = resolve_release_target(catalog, args.release, layout.package_root)
-    projects = resolve_projects_for_release(catalog, release_target.release_id, None)
-    return {
-        "manifest_path": str(manifest_path),
-        "release_id": release_target.release_id,
-        "toolchain": release_target.toolchain,
-        "verso_ref": release_target.verso_ref,
-        "branch": release_target.branch,
-        "deploy_pages": release_target.deploy_pages,
-        "reference_project_count": len(projects),
-        "reference_matrix": reference_build_matrix(projects),
-    }
+    return reference_release_payload(manifest_path, catalog, args.release, layout.package_root)
 
 
 def emit_github_output(data: dict[str, object]) -> None:
