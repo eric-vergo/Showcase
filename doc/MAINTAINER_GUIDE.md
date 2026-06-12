@@ -84,6 +84,13 @@ the stable base:
 python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock --priority P1 --summary "short description"
 ```
 
+For docs, Python harness, or other work that does not need synced Lake
+artifacts or warmed reference clones, prefer a lightweight worktree:
+
+```bash
+python3 -m scripts.blueprint_harness create-worktree <name> --lightweight
+```
+
 Before non-backport work, check the branch role and release sync state:
 
 ```bash
