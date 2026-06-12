@@ -99,6 +99,14 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     kind := "curated_doc"
   },
   {
+    slug := "blueprint-grafts"
+    title := "Blueprint Grafts"
+    category := "Preview"
+    summary := "Manual Blueprint node grafts and side-by-side presentation."
+    tags := #["preview", "graft", "manual"]
+    kind := "curated_doc"
+  },
+  {
     slug := "state-showcase"
     title := "Blueprint Graph State Showcase"
     category := "Graph"

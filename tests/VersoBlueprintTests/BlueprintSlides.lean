@@ -20,6 +20,8 @@ open Informal
 open Verso.VersoBlueprintTests.Blueprint.Support
 open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
+def graftManualLeftValue : Nat := 2
+
 #docs (Slides) blueprintNodeSlideFixture "Blueprint Node Slide" :=
 :::::::
 # Example Blueprint Node
@@ -38,7 +40,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 :::::::
 # Side-by-Side Blueprint Nodes
 
-:::blueprint_side_by_side
+:::blueprint_side_by_side +boxed
 {blueprint_node "def:graft.slide.left" -header (siteBase := "blueprint")}
 
 {blueprint_node "def:graft.slide.right" -header (siteBase := "blueprint")}
@@ -63,18 +65,31 @@ Manual graft body.
 
 #docs (Genre.Manual) manualSideBySideGraftDoc "Manual Side-by-Side Blueprint Graft" :=
 :::::::
-:::definition "def:graft.manual.left"
-Manual left graft body.
+:::definition "def:graft.manual.left" (tags := "graft, source") (effort := "small") (lean := "graftManualLeftValue")
+Manual left graft body with inline math $`x + y = y + x` and an attached Lean preview.
 :::
 
-:::definition "def:graft.manual.right"
-Manual right graft body.
+:::theorem "thm:graft.manual.sum" (uses := "def:graft.manual.left") (priority := "high")
+The grafted theorem states $`(a + b) + c = a + (b + c)`.
 :::
 
-:::blueprint_side_by_side
-{blueprint_node "def:graft.manual.left" -header +compact}
+:::proof "thm:graft.manual.sum"
+The proof graft records the same goal and keeps the proof facet selectable.
+:::
 
-{blueprint_node "def:graft.manual.right" -header +compact}
+:::definition "def:graft.manual.right" (uses := "thm:graft.manual.sum")
+Manual right graft body references {uses "def:graft.manual.left"}[] and includes display math:
+$$`\sum_{i=0}^{n} i = n`.
+:::
+
+:::blueprint_side_by_side +boxed
+{blueprint_node "def:graft.manual.left" (displayLabel := "Featured definition")}
+
+{blueprint_node "thm:graft.manual.sum" (displayLabel := "Theorem view") -header +compact}
+
+{blueprint_node "thm:graft.manual.sum" (facet := "proof") (displayLabel := "Proof view") -header +compact}
+
+{blueprint_node "def:graft.manual.right" (displayLabel := "Uses view") +compact}
 :::
 :::::::
 
@@ -89,7 +104,7 @@ Slide right graft body.
 :::
 :::::::
 
-private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideNode where
+private def blueprintNode (label key : String) : Informal.Graft.BlueprintNode where
   label := label
   facet := "statement"
   key := key
@@ -153,7 +168,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   let node := blueprintNode "def:code.preview" "def:code.preview--statement"
-  Informal.Slides.BlueprintSlideNode.fromAttrs? node.toAttrs == some node
+  Informal.Graft.BlueprintNode.fromAttrs? node.toAttrs == some node
 
 /-- info: true -/
 #guard_msgs in
@@ -161,7 +176,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
     displayLabel? := some "Custom slide label" }
   let attrs := node.toAttrs
-  Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
+  Informal.Graft.BlueprintNode.fromAttrs? attrs == some node &&
     attrs.contains ("data-bp-display-label", "Custom slide label") &&
     !(attrs.any (fun attr => attr.1 == "data-bp-title"))
 
@@ -171,7 +186,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
     showHeader := false }
   let attrs := node.toAttrs
-  Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
+  Informal.Graft.BlueprintNode.fromAttrs? attrs == some node &&
     attrs.contains ("data-bp-show-header", "false")
 
 /-- info: true -/
@@ -294,9 +309,19 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
     let (html, _st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
     pure <|
       hasSubstr html "bp_graft_side_by_side" &&
-        countSubstr html "data-bp-blueprint-node=\"true\"" == 2 &&
-        countSubstr html "Manual left graft body." == 2 &&
-        countSubstr html "Manual right graft body." == 2 &&
+        hasSubstr html "bp_graft_side_by_side_boxed" &&
+        countSubstr html "data-bp-blueprint-node=\"true\"" == 4 &&
+        countSubstr html "Manual left graft body with inline math" == 2 &&
+        countSubstr html "The grafted theorem states" == 2 &&
+        countSubstr html "The proof graft records" == 2 &&
+        countSubstr html "Manual right graft body references" == 2 &&
+        hasSubstr html "Featured definition" &&
+        hasSubstr html "Uses view" &&
+        hasSubstr html "graftManualLeftValue" &&
+        hasSubstr html "bp_math inline" &&
+        hasSubstr html "bp_math display" &&
+        hasSubstr html "data-bp-facet=\"proof\"" &&
+        hasSubstr html "bp_code_panel_wrapper" &&
         !hasSubstr html "Blueprint node not found"
 
 /-- info: true -/

@@ -10,6 +10,7 @@ import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Graft.Assets
+import VersoBlueprint.Graft.Node
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Slides.Node
 import VersoBlueprint.TraversalIndex
@@ -48,13 +49,13 @@ private def replaceClassAttr (attrs : Array (String × String)) (className : Str
     else
       out.push ("class", className)
 
-private def manualNodeClass (node : Informal.Slides.BlueprintSlideNode) : String :=
+private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
     "bp_graft_node bp_graft_node_compact"
   else
     "bp_graft_node"
 
-private def manualNodeAttrs (node : Informal.Slides.BlueprintSlideNode) :
+private def manualNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
   replaceClassAttr node.renderedAttrs (manualNodeClass node)
 
@@ -126,9 +127,9 @@ private def renderLeanCodeBodies
 private def renderManualGraftNode
     [Monad m]
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
-    (cfg : Informal.Slides.BlueprintNodeConfig) :
+    (cfg : Informal.Graft.BlueprintNodeConfig) :
     Doc.Html.HtmlT Verso.Genre.Manual m Html := do
-  let node := cfg.toSlideNode
+  let node := cfg.toNode
   let state ← Doc.Html.HtmlT.state
   match Informal.PreviewManifest.findTraversalBlockEntry? state node.key with
   | none =>
@@ -161,7 +162,7 @@ private def renderManualGraftNode
             }
 
 open Verso Doc Elab Genre Manual in
-block_extension Block.blueprintGraftNode (cfg : Informal.Slides.BlueprintNodeConfig) where
+block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where
   data := toJson cfg
   traverse _ _ _ := pure none
   toTeX := none
@@ -171,14 +172,15 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Slides.BlueprintNodeCon
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB _id data _blocks => do
-      match fromJson? (α := Informal.Slides.BlueprintNodeConfig) data with
+      match fromJson? (α := Informal.Graft.BlueprintNodeConfig) data with
       | .error err =>
           HtmlT.logError s!"Malformed Blueprint graft node data ({err}): {data}"
           pure .empty
       | .ok cfg => renderManualGraftNode goB cfg
 
 open Verso Doc Elab Genre Manual in
-block_extension Block.blueprintGraftSideBySide where
+block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideConfig) where
+  data := toJson cfg
   traverse _ _ _ := pure none
   toTeX := none
   extraCss := Informal.Block.Assets.blockCssAssets ++ Informal.Graft.cssAssets
@@ -186,9 +188,15 @@ block_extension Block.blueprintGraftSideBySide where
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in
-    some <| fun _goI goB _id _data blocks => do
+    some <| fun _goI goB _id data blocks => do
+      let cfg ←
+        match fromJson? (α := Informal.Graft.SideBySideConfig) data with
+        | .error err =>
+            HtmlT.logError s!"Malformed Blueprint graft side-by-side data ({err}): {data}"
+            pure {}
+        | .ok cfg => pure cfg
       let content ← blocks.mapM goB
-      pure <| Html.tag "div" #[("class", "bp_graft_side_by_side")] (Html.seq content)
+      pure <| Html.tag "div" cfg.attrs (Html.seq content)
 
 private meta def currentGenreIs (genreTerm : Term) : DocElabM Bool := do
   let current := (← readThe DocElabContext).genre
@@ -201,10 +209,7 @@ private meta def inManualGenre : DocElabM Bool := do
 private meta def inSlidesGenre : DocElabM Bool := do
   currentGenreIs (← `(VersoSlides.Slides))
 
-def sideBySideAttrs : Array (String × String) :=
-  #[("class", "bp_graft_side_by_side bp_slide_graft_side_by_side")]
-
-public meta def blueprintNodeBlock (cfg : Informal.Slides.BlueprintNodeConfig) :
+public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
     DocElabM Term := do
   if ← inManualGenre then
     ``(Verso.Doc.Block.other
@@ -215,16 +220,17 @@ public meta def blueprintNodeBlock (cfg : Informal.Slides.BlueprintNodeConfig) :
   else
     throwError "Blueprint graft nodes are only available in Manual and Slides documents"
 
-public meta def blueprintSideBySide : DirectiveExpanderOf Unit
-  | (), stxs => do
+public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Graft.SideBySideConfig
+  | cfg, stxs => do
       let contents ← stxs.mapM elabBlock
       if ← inManualGenre then
         ``(Verso.Doc.Block.other
-            Informal.Graft.Block.blueprintGraftSideBySide
+            (Informal.Graft.Block.blueprintGraftSideBySide $(quote cfg))
             #[$contents,*])
       else if ← inSlidesGenre then
+        let attrs := cfg.slideAttrs
         ``(Verso.Doc.Block.other
-            (VersoSlides.BlockExt.wrap $(quote sideBySideAttrs))
+            (VersoSlides.BlockExt.wrap $(quote attrs))
             #[$contents,*])
       else
         throwError "Blueprint side-by-side grafts are only available in Manual and Slides documents"
@@ -238,7 +244,7 @@ Render a Blueprint preview node by label in either a Manual document or a Slides
 deck.
 -/
 @[block_command]
-public meta def blueprint_node : BlockCommandOf Informal.Slides.BlueprintNodeConfig
+public meta def blueprint_node : BlockCommandOf Informal.Graft.BlueprintNodeConfig
   | cfg => Informal.Graft.blueprintNodeBlock cfg
 
 /--
@@ -246,5 +252,5 @@ Lay out Blueprint graft nodes side by side. Child blocks are ordinary
 `{blueprint_node ...}` commands and keep their own options.
 -/
 @[directive]
-public meta def blueprint_side_by_side : DirectiveExpanderOf Unit :=
+public meta def blueprint_side_by_side : DirectiveExpanderOf Informal.Graft.SideBySideConfig :=
   Informal.Graft.blueprintSideBySide

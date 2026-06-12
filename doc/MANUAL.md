@@ -828,10 +828,11 @@ are:
 - `(siteBase := "...")`, for Slides decks whose manifest links should open
   against a Blueprint site hosted next to, or below, the deck
 
-Use `blueprint_side_by_side` to place grafts next to each other:
+Use `blueprint_side_by_side` to place grafts next to each other. Add `+boxed`
+when each side should be visually framed:
 
 ```lean
-:::blueprint_side_by_side
+:::blueprint_side_by_side +boxed
 {blueprint_node "thm:key" -header +compact}
 
 {blueprint_node "thm:key" (facet := "proof") -header +compact}
@@ -841,6 +842,40 @@ Use `blueprint_side_by_side` to place grafts next to each other:
 The side-by-side directive is presentation-only. Each child remains an ordinary
 `{blueprint_node ...}` command with its own label and options; the directive does
 not create dependencies, groups, or new manifest entries.
+
+### API for Custom Graft Consumers
+
+The graft commands are built on the same small data boundary that other
+interfaces can reuse:
+
+- `Informal.Graft.BlueprintNodeConfig` is the command-level selection shape. It
+  records the label plus options such as `facet`, `displayLabel`, `compact`,
+  `showHeader`, and `siteBase`.
+- `BlueprintNodeConfig.toNode` normalizes that selection into
+  `Informal.Graft.BlueprintNode`, including the exact preview `key`.
+- `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
+  stable DOM shell used by Slides and other generated interfaces.
+- `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
+  Its `attrs` and `slideAttrs` helpers produce the standard wrapper classes,
+  but consumers can also ignore them and arrange nodes in their own UI.
+
+For server-side or generator-side renderers, prefer the manifest/cache path over
+ad hoc browser scans. Read or build the semantic
+`Informal.PreviewManifest.File` and rendered
+`Informal.PreviewManifest.HtmlCache.File`, then look up the same normalized node
+key with `PreviewManifest.File.findEntry?` and
+`PreviewManifest.HtmlCache.File.findHtml?`. Code panels can reuse
+`HtmlCache.File.codeHtmlBodies`.
+
+The final shared assembly point is
+`Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass it the
+semantic manifest entry plus `BlockRender.RenderedContent`, using
+`BlockRender.RenderedContent.ofHtmlStrings` when the body came from
+`blueprint-html-cache.json`. The render options map directly to graft behavior:
+`displayLabelOverride?`, `compact`, and `showHeader`. This lets an audit
+interface, dashboard, or slide generator use the same semantic entry and cached
+HTML while placing the rendered nodes in its own side-by-side, tabbed, or
+comparison wrapper.
 
 Use the Blueprint slide wrapper in the deck generator:
 
@@ -866,6 +901,21 @@ output under `-verso-data/` so related-entry and Lean-code hover previews can
 load their bodies. The slide generator also seeds the deck's Verso hover table
 from the cache, so cached Lean fragments keep the usual `data-verso-hover`
 markup instead of embedding duplicate hover payloads into each code token.
+
+### Troubleshooting Grafts
+
+- `Blueprint node not found` means the label/facet pair did not match a
+  rendered Blueprint preview. Check the label spelling and use
+  `(facet := "proof")` when grafting a proof block instead of the statement.
+- `Preview manifest unavailable` in Slides means the deck generator did not pass
+  `previewManifest?` to `slidesMainWithBlueprintPreviews`.
+- `Blueprint HTML cache entry not found` means the manifest entry was found, but
+  the matching rendered body was not in `blueprint-html-cache.json`. Keep the
+  manifest and cache from the same Blueprint render.
+- `siteBase` only affects Slides link rewriting. Manual grafts resolve from the
+  current document traversal state and do not need it.
+- `-header`, `+compact`, and `+boxed` are presentation options only. They do not
+  create new nodes, dependencies, groups, or manifest entries.
 
 ## The Generator Entry Point
 

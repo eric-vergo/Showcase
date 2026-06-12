@@ -15,6 +15,7 @@ import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Git
@@ -1205,7 +1206,7 @@ def blockEntryOfTraversalPreview
 
 def findTraversalBlockEntry? (state : TraverseState) (key : String) :
     Option (PreviewCache.Entry × Entry) := do
-  let preview ← Informal.TraversalIndex.TraversalPreviews.entry? state key
+  let preview ← Informal.PreviewSource.traversalEntryByKey? state key
   some (preview, blockEntryOfTraversalPreview state preview)
 
 private def buildTraversalEntries
