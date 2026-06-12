@@ -1305,6 +1305,11 @@ def add_landing_commands(subparsers) -> None:
 
 
 def add_worktree_commands(subparsers) -> None:
+    add_create_worktree_command(subparsers)
+    add_worktree_lifecycle_commands(subparsers)
+
+
+def add_create_worktree_command(subparsers) -> None:
     create_worktree = subparsers.add_parser(
         "create-worktree",
         help=(
@@ -1346,6 +1351,8 @@ def add_worktree_commands(subparsers) -> None:
     create_worktree.add_argument("--scope", action="append", default=None, help="Writable scope path. Repeat for multiple scopes.")
     create_worktree.set_defaults(func=command_create_worktree)
 
+
+def add_worktree_lifecycle_commands(subparsers) -> None:
     worktree_prune_candidates = subparsers.add_parser(
         "worktree-prune-candidates",
         help="List merged clean linked worktrees that are good prune candidates.",
