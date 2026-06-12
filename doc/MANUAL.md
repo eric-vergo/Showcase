@@ -778,6 +778,11 @@ cache emitted by a Blueprint site. The slide deck generator reads those files
 and writes the Blueprint node shell into the generated slide HTML; it does not
 re-traverse the Blueprint source document itself.
 
+Use Manual grafts for same-document reuse while writing an overview,
+introduction, or roadmap page. Use Slides grafts when the deck is generated
+next to an already-rendered Blueprint site and should feature exact entries from
+that site.
+
 Manual source:
 
 ```lean

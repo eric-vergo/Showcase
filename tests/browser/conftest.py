@@ -21,7 +21,7 @@ DEFAULT_TEST_BLUEPRINT = "preview_runtime_showcase"
 
 def browser_executable(browser_type: str) -> str | None:
     candidates = {
-        "chromium": ["chromium", "chromium-browser", "google-chrome"],
+        "chromium": ["google-chrome", "chromium", "chromium-browser"],
         "firefox": ["firefox"],
     }.get(browser_type, [])
     for candidate in candidates:

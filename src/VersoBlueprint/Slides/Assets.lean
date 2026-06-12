@@ -8,7 +8,7 @@ import Std.Data.HashMap
 import VersoSlides
 import VersoManual
 import VersoBlueprint.Commands.Common
-import VersoBlueprint.Graft
+import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
 
