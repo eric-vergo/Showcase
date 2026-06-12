@@ -466,25 +466,56 @@ def project_target_verso_ref(release_target: HarnessReleaseTarget, project: Harn
     return release_candidate_ref(project.selected_rc) if project.selected_rc is not None else release_target.verso_ref
 
 
+def reference_project_target_fields(
+    project: HarnessProject,
+    release_target: HarnessReleaseTarget,
+) -> dict[str, object]:
+    return {
+        "project_id": project.project_id,
+        "rc": project_target_rc(project),
+        "toolchain": project_target_toolchain(release_target, project),
+        "verso_ref": project_target_verso_ref(release_target, project),
+        "project_root": project.project_root,
+        "hash": project.ref,
+        "reference_cache_key": reference_dependency_cache_key(project) if project.git_checkout else "",
+    }
+
+
 def reference_build_matrix(
     projects: list[HarnessProject],
     release_target: HarnessReleaseTarget,
 ) -> dict[str, list[dict[str, object]]]:
-    return {
-        "include": [
+    include: list[dict[str, object]] = []
+    for project in projects:
+        entry = reference_project_target_fields(project, release_target)
+        entry.update(
             {
-                "project_id": project.project_id,
-                "rc": project_target_rc(project),
-                "toolchain": project_target_toolchain(release_target, project),
-                "verso_ref": project_target_verso_ref(release_target, project),
-                "project_root": project.project_root,
-                "hash": project.ref,
-                "reference_cache_key": reference_dependency_cache_key(project) if project.git_checkout else "",
                 "artifact_name": reference_artifact_name(project),
                 "artifact_path": reference_artifact_path(project),
             }
-            for project in projects
-        ]
+        )
+        include.append(entry)
+    return {"include": include}
+
+
+def reference_release_payload(
+    manifest_path: Path,
+    catalog: HarnessProjectCatalog,
+    release: str | None,
+    package_root: Path,
+) -> dict[str, object]:
+    release_target = resolve_release_target(catalog, release, package_root)
+    projects = resolve_projects_for_release(catalog, release_target.release_id, None)
+    return {
+        "manifest_path": str(manifest_path),
+        "release_id": release_target.release_id,
+        "rc": "",
+        "toolchain": release_target.toolchain,
+        "verso_ref": release_target.verso_ref,
+        "branch": release_target.branch,
+        "deploy_pages": release_target.deploy_pages,
+        "reference_project_count": len(projects),
+        "reference_matrix": reference_build_matrix(projects, release_target),
     }
 
 
@@ -504,3 +535,97 @@ def deploy_project_artifact_path(project: HarnessProject) -> str:
     if project.selected_release is None:
         raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
     return f"_out/reference-blueprints/{project.selected_release}/{project.project_id}"
+
+
+def release_target_manifest_entry(target: HarnessReleaseTarget) -> dict[str, object]:
+    return {
+        "id": target.release_id,
+        "toolchain": target.release_toolchain,
+        "verso_ref": target.release_verso_ref,
+        "branch": target.branch,
+        "deploy_pages": target.deploy_pages,
+    }
+
+
+def project_manifest_entry(project: HarnessProject) -> dict[str, object]:
+    if project.selected_release is None:
+        raise ValueError(f"project `{project.project_id}` is missing selected release metadata")
+
+    source: dict[str, object] = {
+        "kind": project.source_kind,
+        "project_root": project.project_root,
+    }
+    if project.repository is not None:
+        source["repository"] = project.repository
+
+    target: dict[str, object] = {"release": project.selected_release}
+    if project.ref is not None:
+        target["ref"] = project.ref
+    if project.selected_rc is not None:
+        target["rc"] = project.selected_rc
+
+    entry: dict[str, object] = {
+        "id": project.project_id,
+        "source": source,
+        "targets": [target],
+        "site_subdir": project.site_subdir,
+    }
+    if project.description is not None:
+        entry["description"] = project.description
+    if project.build_target is not None:
+        entry["build_target"] = project.build_target
+    if project.generator is not None:
+        entry["generator"] = project.generator
+    if project.build_command is not None:
+        entry["build_command"] = list(project.build_command)
+    if project.generate_command is not None:
+        entry["generate_command"] = list(project.generate_command)
+    validation: dict[str, object] = {}
+    if project.panel_regression_script is not None:
+        validation["panel_regression_script"] = project.panel_regression_script
+    if project.browser_tests_path is not None:
+        validation["browser_tests_path"] = project.browser_tests_path
+    if validation:
+        entry["validation"] = validation
+    return entry
+
+
+def deploy_project_manifest(target: HarnessReleaseTarget, project: HarnessProject) -> dict[str, object]:
+    return {
+        "version": 2,
+        "release_targets": [release_target_manifest_entry(target)],
+        "projects": [project_manifest_entry(project)],
+    }
+
+
+def deploy_matrix_from_controller_catalog(
+    controller_catalog: HarnessProjectCatalog,
+    deployable_targets: tuple[HarnessReleaseTarget, ...],
+) -> dict[str, list[dict[str, object]]]:
+    include: list[dict[str, object]] = []
+    for target in deployable_targets:
+        controller_projects = resolve_projects_for_release(controller_catalog, target.release_id, None)
+        if not controller_projects:
+            raise ValueError(
+                f"release target `{target.release_id}` has `deploy_pages: true` but no published "
+                "reference project targets"
+            )
+        for project in controller_projects:
+            fields = reference_project_target_fields(project, target)
+            include.append(
+                {
+                    "release_id": target.release_id,
+                    "rc": fields["rc"],
+                    "toolchain": fields["toolchain"],
+                    "verso_ref": fields["verso_ref"],
+                    "branch": target.branch,
+                    "project_id": fields["project_id"],
+                    "project_root": fields["project_root"],
+                    "hash": fields["hash"],
+                    "reference_cache_key": fields["reference_cache_key"],
+                    "artifact_name": deploy_project_artifact_name(project),
+                    "artifact_path": deploy_project_artifact_path(project),
+                    "project_manifest": deploy_project_manifest(target, project),
+                }
+            )
+    return {"include": include}

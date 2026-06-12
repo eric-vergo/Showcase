@@ -26,9 +26,8 @@ from scripts.blueprint_harness_project_commands import (
     rewrite_pinned_blueprint_dependency,
     run_project_update_build_generate,
     snapshot_tracked_project_manifest,
-    tracked_project_manifest_path,
 )
-from scripts.blueprint_harness_utils import lean_low_priority_command, run
+from scripts.blueprint_harness_utils import format_command, lean_low_priority_command, run
 
 
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
@@ -704,6 +703,40 @@ def bump_reference_project(
     )
 
 
+def reference_cache_warm_build_failure_message(
+    layout,
+    project: HarnessProject,
+    command: list[str],
+    err: subprocess.CalledProcessError,
+) -> str:
+    cache_key = reference_dependency_cache_key(project)
+    source_cache = reference_source_cache_checkout_dir(layout, project)
+    dependency_cache = reference_dependency_packages_dir(layout, project)
+    return "\n".join(
+        [
+            (
+                f"[blueprint-harness] failed to warm reference cache for `{project.project_id}` "
+                f"({cache_key}); command exited with code {err.returncode}: {format_command(command)}"
+            ),
+            f"[blueprint-harness] source cache: {source_cache}",
+            f"[blueprint-harness] dependency package cache: {dependency_cache}",
+            (
+                "[blueprint-harness] stale or cross-toolchain Lake build artifacts in the shared "
+                "reference cache can cause incompatible `.olean` header errors."
+            ),
+            (
+                "[blueprint-harness] for docs/Python-only work, create the checkout with "
+                "`python3 -m scripts.blueprint_harness create-worktree <name> --lightweight`."
+            ),
+            (
+                "[blueprint-harness] to inspect or remove stale reference caches, run "
+                "`python3 -m scripts.blueprint_reference_harness prune --dry-run`, then "
+                "`python3 -m scripts.blueprint_reference_harness prune` if the listed paths are disposable."
+            ),
+        ]
+    )
+
+
 def sync_reference_cache_checkout(
     layout,
     project: HarnessProject,
@@ -732,7 +765,11 @@ def sync_reference_cache_checkout(
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=True):
             run_reference_lake_update(layout.package_root, project_dir)
             if warm_build and project.build_command is not None:
-                run(lean_low_priority_command(layout.package_root, *project.build_command), cwd=project_dir)
+                command = lean_low_priority_command(layout.package_root, *project.build_command)
+                try:
+                    run(command, cwd=project_dir)
+                except subprocess.CalledProcessError as err:
+                    raise SystemExit(reference_cache_warm_build_failure_message(layout, project, command, err)) from err
             if store_lake_packages_in_dependency_cache(layout, project, project_dir, package_mode=package_mode) is not None:
                 # The dependency cache is now the source of truth. Drop the warmed
                 # cache checkout copy so large external projects do not keep two

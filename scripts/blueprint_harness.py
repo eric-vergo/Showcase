@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import re
 import shutil
@@ -12,16 +11,22 @@ from pathlib import Path
 from scripts.blueprint_harness_branches import (
     BranchPolicyReleaseTarget,
     CHECKOUT_ROLE_CHOICES,
-    ROOT_WORKTREE_NAME,
+    RefSyncStatus,
     active_release_branch,
     branch_policy_path,
     checkout_branch_role,
     default_dev_branch,
     checkout_is_backport_only,
+    current_branch_name,
+    is_ancestor,
     load_branch_policy,
     local_release_ref,
+    main_sync_status,
+    preferred_main_ref,
     preferred_release_ref,
     require_checkout_role,
+    ref_oid,
+    ref_sync_status,
     resolve_git_ref,
     root_checkout_namespace,
     write_branch_policy,
@@ -54,11 +59,13 @@ from scripts.blueprint_harness_toolchains import bump_toolchain_checkout
 from scripts.blueprint_harness_utils import run
 from scripts.blueprint_harness_worktrees import (
     GitWorktree,
+    git_worktree_map,
     git_worktrees,
     normalize_priority,
     resolve_worktree_name,
     sync_worktree_registry,
     update_worktree_record,
+    worktree_is_clean,
     worktree_record_map,
 )
 
@@ -70,15 +77,6 @@ PUBLIC_PR_TITLE_RE = re.compile(
 PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
     r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
 )
-
-
-@dataclass(frozen=True)
-class RefSyncStatus:
-    local_ref: str
-    upstream_ref: str
-    local_oid: str | None
-    upstream_oid: str | None
-    relationship: str
 
 
 def sync_root_worktree_lake(layout) -> None:
@@ -147,21 +145,6 @@ def branch_exists(repo_root: Path, branch: str) -> bool:
     )
 
 
-def preferred_main_ref(repo_root: Path) -> str:
-    return preferred_release_ref(repo_root)
-
-
-def current_branch_name(repo_root: Path) -> str | None:
-    branch = subprocess.run(
-        ["git", "branch", "--show-current"],
-        cwd=repo_root,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    return branch or None
-
-
 def current_commit_subject(repo_root: Path) -> str:
     subject = subprocess.run(
         ["git", "log", "-1", "--format=%s"],
@@ -203,84 +186,6 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
         capture_output=True,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-
-
-def ref_oid(repo_root: Path, ref: str) -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
-        cwd=repo_root,
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    oid = result.stdout.strip()
-    return oid or None
-
-
-def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSyncStatus:
-    local_oid = ref_oid(repo_root, local_ref)
-    upstream_oid = ref_oid(repo_root, upstream_ref)
-    local_git_ref = resolve_git_ref(repo_root, local_ref)
-    upstream_git_ref = resolve_git_ref(repo_root, upstream_ref)
-
-    if local_oid is None:
-        relationship = "missing_local"
-    elif upstream_oid is None:
-        relationship = "missing_upstream"
-    elif local_oid == upstream_oid:
-        relationship = "in_sync"
-    elif (
-        subprocess.run(
-            ["git", "merge-base", "--is-ancestor", local_git_ref, upstream_git_ref],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        relationship = "behind"
-    elif (
-        subprocess.run(
-            ["git", "merge-base", "--is-ancestor", upstream_git_ref, local_git_ref],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        relationship = "ahead"
-    else:
-        relationship = "diverged"
-
-    return RefSyncStatus(
-        local_ref=local_ref,
-        upstream_ref=upstream_ref,
-        local_oid=local_oid,
-        upstream_oid=upstream_oid,
-        relationship=relationship,
-    )
-
-
-def main_sync_status(repo_root: Path) -> RefSyncStatus:
-    upstream_ref = preferred_main_ref(repo_root)
-    return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
-
-
-def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
-    return (
-        subprocess.run(
-            [
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                resolve_git_ref(repo_root, ancestor),
-                resolve_git_ref(repo_root, descendant),
-            ],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    )
 
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
@@ -329,10 +234,6 @@ def merged_clean_worktree_candidates(repo_root: Path, current_path: Path) -> lis
     return candidates
 
 
-def git_worktree_map(repo_root: Path) -> dict[str, GitWorktree]:
-    return {worktree.name: worktree for worktree in git_worktrees(repo_root)}
-
-
 def local_branch_ref(repo_root: Path, branch: str) -> str | None:
     ref = f"refs/heads/{branch}"
     if ref_oid(repo_root, ref) is None:
@@ -355,17 +256,6 @@ def origin_branch_exists(repo_root: Path, branch: str) -> bool:
 
 def branch_worktrees(repo_root: Path, branch: str) -> list[GitWorktree]:
     return [worktree for worktree in git_worktrees(repo_root) if worktree.branch == branch]
-
-
-def worktree_is_clean(path: Path) -> bool:
-    status = subprocess.run(
-        ["git", "status", "--short"],
-        cwd=path,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    return not status
 
 
 def text_or_blank(value: object | None) -> str:
@@ -1220,13 +1110,8 @@ def command_worktree_release(args: argparse.Namespace) -> int:
     print(f"status={record.status}")
     return 0
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python3 -m scripts.blueprint_harness",
-        description="Worktree, landing, and local coordination CLI for this repository.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
+def add_release_management_commands(subparsers) -> None:
     sync_root_lake = subparsers.add_parser(
         "sync-root-lake",
         help="Sync `.lake/` from the root checkout into the current linked worktree.",
@@ -1300,6 +1185,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     main_status.set_defaults(func=command_main_status)
 
+
+def add_pr_preparation_commands(subparsers) -> None:
     prepare_backports = subparsers.add_parser(
         "prepare-backports",
         help="Print PR-body lines for the required backport plan on the current default-dev release line.",
@@ -1377,6 +1264,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_backport_pr.set_defaults(func=command_prepare_backport_pr)
 
+
+def add_landing_commands(subparsers) -> None:
     require_role = subparsers.add_parser(
         "require-branch-role",
         help="Exit nonzero unless the current checkout matches the requested branch-policy role.",
@@ -1414,6 +1303,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     land_main.set_defaults(func=command_land_main)
 
+
+def add_worktree_commands(subparsers) -> None:
+    add_create_worktree_command(subparsers)
+    add_worktree_lifecycle_commands(subparsers)
+
+
+def add_create_worktree_command(subparsers) -> None:
     create_worktree = subparsers.add_parser(
         "create-worktree",
         help=(
@@ -1455,6 +1351,8 @@ def build_parser() -> argparse.ArgumentParser:
     create_worktree.add_argument("--scope", action="append", default=None, help="Writable scope path. Repeat for multiple scopes.")
     create_worktree.set_defaults(func=command_create_worktree)
 
+
+def add_worktree_lifecycle_commands(subparsers) -> None:
     worktree_prune_candidates = subparsers.add_parser(
         "worktree-prune-candidates",
         help="List merged clean linked worktrees that are good prune candidates.",
@@ -1475,8 +1373,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     worktree_list = subparsers.add_parser(
         "worktree-list",
-        aliases=["worktree-sync"],
-        description="Refresh and print the local worktree dashboard. `worktree-sync` is a compatibility alias.",
         help="Refresh and print the local worktree dashboard.",
     )
     worktree_list.set_defaults(func=command_worktree_list)
@@ -1512,6 +1408,8 @@ def build_parser() -> argparse.ArgumentParser:
     worktree_release.add_argument("--summary", default=None, help="Optional final summary.")
     worktree_release.set_defaults(func=command_worktree_release)
 
+
+def add_path_commands(subparsers) -> None:
     paths = subparsers.add_parser(
         "paths",
         help="Print canonical and resolved worktree-aware harness paths.",
@@ -1522,6 +1420,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print site paths for every manifest project instead of only the current release selection.",
     )
     paths.set_defaults(func=command_paths)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m scripts.blueprint_harness",
+        description="Worktree, landing, and local coordination CLI for this repository.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    add_release_management_commands(subparsers)
+    add_pr_preparation_commands(subparsers)
+    add_landing_commands(subparsers)
+    add_worktree_commands(subparsers)
+    add_path_commands(subparsers)
     return parser
 
 

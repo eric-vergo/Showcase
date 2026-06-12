@@ -14,7 +14,7 @@ from support import (
     record_runtime_errors,
     wait_for_server,
 )
-from scripts.blueprint_harness_references import (
+from scripts.blueprint_harness_project_commands import (
     maybe_rewrite_in_repo_blueprint_dependency,
     restore_tracked_project_manifest,
     snapshot_tracked_project_manifest,

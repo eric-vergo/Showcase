@@ -99,9 +99,6 @@ jobs:
           formalization_toolchain="${{ steps.harness.outputs.formalization_path }}/lean-toolchain"
           if [ -f "$formalization_toolchain" ]; then
             cp "$formalization_toolchain" lean-toolchain
-            if [ -f ".lake/packages/VersoBlueprint/lean-toolchain" ]; then
-              cp "$formalization_toolchain" ".lake/packages/VersoBlueprint/lean-toolchain"
-            fi
           fi
       - if: ${{ inputs.harness_enabled }}
         name: Validate harness contract

@@ -108,7 +108,6 @@
   - `python3 -m scripts.blueprint_harness --help`
   - `python3 -m scripts.blueprint_harness sync-root-lake`
   - `python3 -m scripts.blueprint_harness paths`
-  - `python3 -m scripts.blueprint_harness worktree-sync`
   - `python3 -m scripts.blueprint_harness worktree-list`
   - `python3 -m scripts.blueprint_harness worktree-status`
   - `python3 -m scripts.blueprint_harness worktree-claim`
