@@ -86,6 +86,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
 
+    def test_reference_commands_parse_package_mode(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        self.assertEqual(parser.parse_args(["generate"]).reference_package_mode, "copy")
+        self.assertEqual(parser.parse_args(["generate", "--reference-package-mode", "move"]).reference_package_mode, "move")
+        self.assertEqual(parser.parse_args(["validate", "--reference-package-mode", "move"]).reference_package_mode, "move")
+
     def test_reference_projects_parses_release_filter(self) -> None:
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["projects", "--release", "v4.29.0"])
@@ -1163,6 +1169,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 skip_build=False,
                 serial=False,
                 allow_local_build=False,
+                reference_package_mode="copy",
             )
 
     def test_validate_run_lean_tests_does_not_auto_sync_root_lake(self) -> None:

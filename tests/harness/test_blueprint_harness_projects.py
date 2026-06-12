@@ -138,6 +138,52 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "expected JSON object"):
                 load_project_catalog(manifest)
 
+    def test_discard_lake_packages_prunes_warmed_checkout_copy(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project_dir = root / "checkout"
+            packages = project_dir / ".lake" / "packages"
+            mathlib_artifact = packages / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            mathlib_artifact.parent.mkdir(parents=True)
+            mathlib_artifact.write_text("warm", encoding="utf-8")
+
+            pruned = refs_mod.discard_lake_packages(project_dir)
+
+        self.assertEqual(pruned, packages)
+        self.assertFalse(packages.exists())
+
+    def test_move_lake_packages_moves_between_reference_checkouts(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_project_dir = root / "cache" / "nested" / "blueprint"
+            local_project_dir = root / "local" / "nested" / "blueprint"
+            source_marker = cache_project_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            stale_marker = local_project_dir / ".lake" / "packages" / "old" / "stale"
+            source_marker.parent.mkdir(parents=True)
+            source_marker.write_text("warm", encoding="utf-8")
+            stale_marker.parent.mkdir(parents=True)
+            stale_marker.write_text("stale", encoding="utf-8")
+
+            moved_to = refs_mod.move_lake_packages(
+                cache_project_dir,
+                local_project_dir,
+                action="moved test packages into",
+            )
+
+            self.assertEqual(moved_to, local_project_dir / ".lake" / "packages")
+            self.assertFalse((cache_project_dir / ".lake" / "packages").exists())
+            self.assertFalse(stale_marker.exists())
+            self.assertEqual(
+                (local_project_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean").read_text(
+                    encoding="utf-8"
+                ),
+                "warm",
+            )
+
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
@@ -891,9 +937,20 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             }
             commands: list[list[str]] = []
             warm_build_values: list[bool] = []
+            package_modes: list[str] = []
+
+            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build, package_mode="copy"):
+                warm_build_values.append(warm_build)
+                package_modes.append(package_mode)
+                return cache_dir
+
+            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir, *, package_mode="copy"):
+                package_modes.append(package_mode)
+                return local_dir
+
             try:
-                refs_mod.sync_reference_cache_checkout = lambda _layout, _project, *, warm_build: warm_build_values.append(warm_build) or cache_dir
-                refs_mod.sync_reference_local_checkout = lambda _layout, _project, _cache_dir: local_dir
+                refs_mod.sync_reference_cache_checkout = fake_sync_reference_cache_checkout
+                refs_mod.sync_reference_local_checkout = fake_sync_reference_local_checkout
                 commands_mod.rewrite_local_blueprint_dependency = (
                     lambda _project_dir, _package_root: local_dir / "lakefile.lean"
                 )
@@ -912,9 +969,87 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         setattr(refs_mod, name, value)
 
         self.assertEqual(warm_build_values, [False])
+        self.assertEqual(package_modes, ["copy", "copy"])
         self.assertEqual(commands[0], reference_submodule_update_command())
         self.assertIn(["lake", "update", "VersoBlueprint"], commands)
         self.assertTrue(any(command[1:] == ["lake", "build"] for command in commands))
+
+    def test_generate_git_project_move_mode_restores_packages_after_failure(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = HarnessProject(
+            project_id="external-blueprint",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/external-blueprint.git",
+            ref="main",
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache"
+            local_dir = root / "local"
+            output_root = root / "out"
+            marker = cache_dir / ".lake" / "packages" / "mathlib" / ".lake" / "build" / "Mathlib.olean"
+            marker.parent.mkdir(parents=True)
+            marker.write_text("warm", encoding="utf-8")
+            layout = SimpleNamespace(
+                package_root=root / "pkg",
+                repo_root=root / "repo",
+            )
+            layout.package_root.mkdir()
+            layout.repo_root.mkdir()
+
+            originals = {
+                "rebuild_and_log_embedded_asset_owners": refs_mod.rebuild_and_log_embedded_asset_owners,
+                "sync_reference_cache_checkout": refs_mod.sync_reference_cache_checkout,
+                "sync_reference_local_checkout": refs_mod.sync_reference_local_checkout,
+                "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
+            }
+            package_modes: list[str] = []
+
+            def fake_sync_reference_cache_checkout(_layout, _project, *, warm_build, package_mode="copy"):
+                package_modes.append(package_mode)
+                return cache_dir
+
+            def fake_sync_reference_local_checkout(_layout, _project, _cache_dir, *, package_mode="copy"):
+                package_modes.append(package_mode)
+                if package_mode == "move":
+                    refs_mod.move_lake_packages(
+                        cache_dir,
+                        local_dir,
+                        action="moved test packages into",
+                    )
+                return local_dir
+
+            try:
+                refs_mod.rebuild_and_log_embedded_asset_owners = lambda _package_root: None
+                refs_mod.sync_reference_cache_checkout = fake_sync_reference_cache_checkout
+                refs_mod.sync_reference_local_checkout = fake_sync_reference_local_checkout
+                refs_mod.bootstrap_reference_checkout = lambda *, project_dir: (_ for _ in ()).throw(RuntimeError("boom"))
+
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    generate_git_project(layout, output_root, project, skip_build=False, package_mode="move")
+            finally:
+                for name, value in originals.items():
+                    setattr(refs_mod, name, value)
+
+            cache_packages = cache_dir / ".lake" / "packages"
+
+            self.assertEqual(package_modes, ["move", "move"])
+            self.assertFalse((local_dir / ".lake" / "packages").exists())
+            self.assertEqual(
+                (cache_packages / "mathlib" / ".lake" / "build" / "Mathlib.olean").read_text(encoding="utf-8"),
+                "warm",
+            )
 
     def test_bootstrap_reference_checkout_requires_harness_layout(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
