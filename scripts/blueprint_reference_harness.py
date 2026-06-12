@@ -38,6 +38,8 @@ from scripts.blueprint_harness_projects import (
 )
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_URL_PATTERNS
 from scripts.blueprint_harness_references import (
+    REFERENCE_PACKAGE_MODE_COPY,
+    REFERENCE_PACKAGE_MODES,
     bump_reference_project,
     clone_git_project,
     generate_in_repo_command_project,
@@ -101,6 +103,18 @@ BLUEPRINT_REQUIRE_PATTERN = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 REFERENCE_HARNESS_PREFIX = "[blueprint-reference-harness]"
+
+
+def add_reference_package_mode_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--reference-package-mode",
+        choices=REFERENCE_PACKAGE_MODES,
+        default=REFERENCE_PACKAGE_MODE_COPY,
+        help=(
+            "How external reference projects receive warmed `.lake/packages` trees. "
+            "`copy` keeps the local default; `move` avoids duplicate package trees and is intended for CI."
+        ),
+    )
 
 
 def text_or_blank(value: object | None) -> str:
@@ -598,6 +612,7 @@ def generate_projects(
     skip_build: bool,
     serial: bool,
     allow_local_build: bool,
+    reference_package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
 ) -> None:
     in_repo_projects = [project for project in projects if project.in_repo_project]
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
@@ -636,7 +651,13 @@ def generate_projects(
 
     for project in git_projects:
         print(f"[blueprint-reference-harness] reference checkout: {project.project_id}")
-        generate_git_project(layout, output_root, project, skip_build=skip_build)
+        generate_git_project(
+            layout,
+            output_root,
+            project,
+            skip_build=skip_build,
+            package_mode=reference_package_mode,
+        )
 
 
 def command_generate(args: argparse.Namespace) -> int:
@@ -660,6 +681,7 @@ def command_generate(args: argparse.Namespace) -> int:
         skip_build=args.skip_build,
         serial=args.serial,
         allow_local_build=args.allow_local_build,
+        reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
     )
 
     print(f"[blueprint-reference-harness] project manifest: {manifest_path}")
@@ -723,6 +745,7 @@ def command_validate(args: argparse.Namespace) -> int:
             skip_build=False,
             serial=args.serial,
             allow_local_build=args.allow_local_build,
+            reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
         )
     except SystemExit as err:
         failures.append(StepFailure("generate projects", str(err)))
@@ -1088,6 +1111,7 @@ def build_parser() -> argparse.ArgumentParser:
         generate,
         help_text="Permit `lake build` in a linked worktree instead of requiring synced root executables.",
     )
+    add_reference_package_mode_argument(generate)
     generate.set_defaults(func=command_generate)
 
     validate = subparsers.add_parser(
@@ -1130,6 +1154,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Stop validation as soon as one phase fails instead of collecting later failures.",
     )
+    add_reference_package_mode_argument(validate)
     validate.set_defaults(func=command_validate)
 
     projects = subparsers.add_parser(

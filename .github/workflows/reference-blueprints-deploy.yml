@@ -68,6 +68,8 @@ jobs:
       - name: Match reference target toolchain
         if: ${{ matrix.rc != '' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
+      - name: Report disk usage before cache restore
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Write deploy project manifest
         env:
           BP_PROJECT_ID: ${{ matrix.project_id }}
@@ -107,6 +109,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-deps-${{ matrix.toolchain }}-
             ${{ runner.os }}-reference-deploy-lake-deps-
+      - name: Report disk usage after Lake cache restore
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore external reference dependency cache
         if: ${{ matrix.reference_cache_key != '' }}
         uses: actions/cache@v4
@@ -116,6 +120,8 @@ jobs:
           key: ${{ runner.os }}-reference-deploy-deps-v1-${{ matrix.reference_cache_key }}
           restore-keys: |
             ${{ runner.os }}-reference-deploy-deps-v1-${{ matrix.project_id }}-
+      - name: Report disk usage after reference cache restore
+        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
         run: |
           lean --version
@@ -129,8 +135,12 @@ jobs:
             --project ${{ matrix.project_id }} \
             --allow-unsafe-root-release \
             --allow-local-build \
+            --reference-package-mode move \
             --serial \
             _out/reference-blueprints/${{ matrix.release_id }}
+      - name: Report disk usage after reference generation
+        if: ${{ always() }}
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Upload release reference artifact
         uses: actions/upload-artifact@v4
         with:
