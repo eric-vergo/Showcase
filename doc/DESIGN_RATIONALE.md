@@ -194,11 +194,15 @@ rather than page-local template bodies:
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
-5. On the v4.30 line, `VersoBlueprint.Slides` consumes the semantic manifest
-   and rendered HTML cache during slide generation to render `{blueprint_node}`
-   shells into the deck HTML. The v4.29 backport keeps the shared manifest/cache
-   data model but does not build the Slides module, because the required Verso
-   Slides rendering hooks are not available on that release line.
+5. `VersoBlueprint.Graft` provides the `{blueprint_node}` and
+   `blueprint_side_by_side` grafting commands. Manual grafts project the current
+   traversal state into the same semantic entry shape emitted by
+   `PreviewManifest.lean`, then use the shared manifest-backed block renderer.
+   Slide grafts consume the semantic manifest and rendered HTML cache during
+   deck generation to render `{blueprint_node}` shells into the deck HTML.
+   Browser JavaScript then hydrates links, math, and related-entry preview
+   panels; it does not reconstruct Blueprint block markup or relationship
+   topology from ad hoc manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the

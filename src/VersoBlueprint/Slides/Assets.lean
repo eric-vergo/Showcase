@@ -8,6 +8,7 @@ import Std.Data.HashMap
 import VersoSlides
 import VersoManual
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Graft
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
 
@@ -21,7 +22,7 @@ private def slideNodeCss : String := include_str "blueprint-slides.css"
 def blueprintSlidesCss : String :=
   String.intercalate "\n\n" <|
     Informal.Commands.withPreviewPanelInlinePreviewCssAssets
-      [Informal.Block.Assets.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
+      [Informal.Block.Assets.css, Informal.Graft.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
 
 def blueprintSlidesCssFile : VersoSlides.CssFile where
   filename := blueprintSlidesCssFilename

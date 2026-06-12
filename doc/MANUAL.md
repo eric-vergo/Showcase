@@ -763,13 +763,102 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## Verso Slides Integration
+## Blueprint Grafts in Manual and Slides
 
-The v4.29 backport does not build `VersoBlueprint.Slides`, because the required
-Verso Slides rendering hooks are only available on the v4.30 line. The semantic
-manifest and rendered HTML cache described above are still emitted on v4.29 so
-the shared preview-data refactorings remain available and future patches apply
-cleanly. Use v4.30 or newer for `{blueprint_node}` support in slide decks.
+`VersoBlueprint` adds a `{blueprint_node ...}` block command that grafts an
+existing Blueprint node into another place in the document. The same command is
+also available in Verso Slides decks through `VersoBlueprint.Slides`.
+
+In Manual documents, grafts use the current traversal state and render through
+the same manifest-backed Blueprint block shell used by generated preview data.
+In Slides decks, grafts render from the semantic manifest plus rendered HTML
+cache emitted by a Blueprint site. The slide deck generator reads those files
+and writes the Blueprint node shell into the generated slide HTML; it does not
+re-traverse the Blueprint source document itself.
+
+Manual source:
+
+```lean
+import VersoBlueprint
+
+open Verso
+open Verso.Genre.Manual
+open Informal
+
+#docs (Genre.Manual) doc "Overview" :=
+:::::::
+:::theorem "thm:key"
+The statement to feature.
+:::
+
+{blueprint_node "thm:key" -header +compact}
+:::::::
+```
+
+Slide source:
+
+```lean
+import VersoBlueprint.Slides
+
+open VersoSlides
+
+#docs (Slides) deck "Talk" :=
+:::::::
+# Key statement
+
+{blueprint_node "addition_assoc" (siteBase := "blueprint")}
+:::::::
+```
+
+The first positional argument is the Blueprint label to graft. Available options
+are:
+
+- `(facet := "statement")` or `(facet := "proof")`; statement is the default
+- `(displayLabel := "...")`, which overrides the displayed label/number in the
+  grafted shell without changing the semantic manifest entry
+- `+compact`, which omits attached Lean-code panels
+- `+header` or `-header`; headers are shown by default
+- `(siteBase := "...")`, for Slides decks whose manifest links should open
+  against a Blueprint site hosted next to, or below, the deck
+
+Use `blueprint_side_by_side` to place grafts next to each other:
+
+```lean
+:::blueprint_side_by_side
+{blueprint_node "thm:key" -header +compact}
+
+{blueprint_node "thm:key" (facet := "proof") -header +compact}
+:::
+```
+
+The side-by-side directive is presentation-only. Each child remains an ordinary
+`{blueprint_node ...}` command with its own label and options; the directive does
+not create dependencies, groups, or new manifest entries.
+
+Use the Blueprint slide wrapper in the deck generator:
+
+```lean
+import VersoBlueprint.Slides
+import MyTalk.Deck
+
+def main : IO UInt32 :=
+  Informal.Slides.slidesMainWithBlueprintPreviews
+    { outputDir := "_out/slides" }
+    (previewManifest? := some "_out/site/html-multi/-verso-data/blueprint-manifest.json")
+    (%doc MyTalk.Deck.deck)
+```
+
+When `previewHtmlCache?` is omitted, the wrapper looks for
+`blueprint-html-cache.json` next to the provided manifest. Pass
+`previewHtmlCache?` explicitly if the cache lives elsewhere.
+
+This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
+blocks into static slide HTML from the provided manifest/cache pair, writes the
+slide interaction JavaScript file, and optionally copies both files to the deck
+output under `-verso-data/` so related-entry and Lean-code hover previews can
+load their bodies. The slide generator also seeds the deck's Verso hover table
+from the cache, so cached Lean fragments keep the usual `data-verso-hover`
+markup instead of embedding duplicate hover payloads into each code token.
 
 ## The Generator Entry Point
 

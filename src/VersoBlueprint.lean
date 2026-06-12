@@ -51,6 +51,7 @@ import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.LeanNameParsing
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.Graft
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.StyleSwitcher
