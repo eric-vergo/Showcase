@@ -181,6 +181,10 @@ def git_worktrees(repo_root: Path) -> list[GitWorktree]:
     return parse_git_worktree_porcelain(result.stdout, repo_root)
 
 
+def git_worktree_map(repo_root: Path) -> dict[str, GitWorktree]:
+    return {worktree.name: worktree for worktree in git_worktrees(repo_root)}
+
+
 def load_record(path: Path) -> WorktreeMetadata | None:
     if not path.exists():
         return None
@@ -299,6 +303,11 @@ def worktree_status_counts(path: Path) -> tuple[bool, int, int]:
     tracked_changes = sum(1 for line in lines if not line.startswith("??"))
     untracked_changes = sum(1 for line in lines if line.startswith("??"))
     return bool(lines), tracked_changes, untracked_changes
+
+
+def worktree_is_clean(path: Path) -> bool:
+    dirty, _tracked_changes, _untracked_changes = worktree_status_counts(path)
+    return not dirty
 
 
 def worktree_last_commit(path: Path) -> tuple[str | None, str | None, str | None]:

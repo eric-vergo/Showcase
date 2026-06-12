@@ -53,11 +53,15 @@ from scripts.blueprint_harness_toolchains import bump_toolchain_checkout
 from scripts.blueprint_harness_utils import run
 from scripts.blueprint_harness_worktrees import (
     GitWorktree,
+    git_worktree_map,
     git_worktrees,
+    is_ancestor,
     normalize_priority,
+    ref_oid,
     resolve_worktree_name,
     sync_worktree_registry,
     update_worktree_record,
+    worktree_is_clean,
     worktree_record_map,
 )
 
@@ -204,20 +208,6 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def ref_oid(repo_root: Path, ref: str) -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", resolve_git_ref(repo_root, ref)],
-        cwd=repo_root,
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    oid = result.stdout.strip()
-    return oid or None
-
-
 def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSyncStatus:
     local_oid = ref_oid(repo_root, local_ref)
     upstream_oid = ref_oid(repo_root, upstream_ref)
@@ -263,23 +253,6 @@ def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSy
 def main_sync_status(repo_root: Path) -> RefSyncStatus:
     upstream_ref = preferred_main_ref(repo_root)
     return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
-
-
-def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
-    return (
-        subprocess.run(
-            [
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                resolve_git_ref(repo_root, ancestor),
-                resolve_git_ref(repo_root, descendant),
-            ],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    )
 
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
@@ -328,10 +301,6 @@ def merged_clean_worktree_candidates(repo_root: Path, current_path: Path) -> lis
     return candidates
 
 
-def git_worktree_map(repo_root: Path) -> dict[str, GitWorktree]:
-    return {worktree.name: worktree for worktree in git_worktrees(repo_root)}
-
-
 def local_branch_ref(repo_root: Path, branch: str) -> str | None:
     ref = f"refs/heads/{branch}"
     if ref_oid(repo_root, ref) is None:
@@ -354,17 +323,6 @@ def origin_branch_exists(repo_root: Path, branch: str) -> bool:
 
 def branch_worktrees(repo_root: Path, branch: str) -> list[GitWorktree]:
     return [worktree for worktree in git_worktrees(repo_root) if worktree.branch == branch]
-
-
-def worktree_is_clean(path: Path) -> bool:
-    status = subprocess.run(
-        ["git", "status", "--short"],
-        cwd=path,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    return not status
 
 
 def text_or_blank(value: object | None) -> str:
