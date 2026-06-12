@@ -17,6 +17,12 @@ lean_lib VersoBlueprint where
   srcDir := "src"
   roots := #[`VersoBlueprint]
 
+@[default_target]
+lean_exe «vbp» where
+  root := `VersoBlueprint.VbpMain
+  srcDir := "src"
+  supportInterpreter := true
+
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
@@ -53,7 +59,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.RuntimeCache,
     `VersoBlueprintTests.TestBlueprintRegistryMeta,
     `VersoBlueprintTests.TestBlueprintRegistryChecks,
-    `VersoBlueprintTests.TestBlueprintRegistryCoverage
+    `VersoBlueprintTests.TestBlueprintRegistryCoverage,
+    `VersoBlueprintTests.Vbp
   ]
 
 lean_lib VersoBlueprintTestDocs where

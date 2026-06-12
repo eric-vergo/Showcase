@@ -263,6 +263,19 @@ Read these in order:
 9. [doc/UPSTREAM_TODO.md](./doc/UPSTREAM_TODO.md): items intended to move back
    into `verso`
 
+### Agent Helper Skill
+
+The repository includes an agent-facing skill under
+[`skills/verso-blueprint/`](./skills/verso-blueprint/) for Codex/Claude-style
+local coding agents. The skill teaches agents to use `lake exe vbp ...` for
+project discovery, build/serve previews, generated-data queries, and
+post-edit checks.
+
+This helper does not replace the normal Blueprint generation interface for
+projects. `lake exe blueprint-gen ...` and the generator entry point remain the
+documented user-facing rendering path. Treat `vbp` query JSON as an unstable
+agent interface, not a public compatibility contract.
+
 ### Maintainer CLI Split
 
 The repository now uses two small maintainer CLIs instead of one large mixed
