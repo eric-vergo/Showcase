@@ -110,7 +110,8 @@ script map, not a second command reference.
 - `blueprint_harness_projects.py`
   Project-manifest loader and schema checks for
   [`tests/harness/projects.json`](../tests/harness/projects.json), including
-  branch-policy release-target inheritance and the external reference
+  branch-policy release-target inheritance, per-project RC resolution, shared
+  reference/deploy matrix serialization, and the external reference
   dependency-cache key.
 - `blueprint_harness_references.py`
   Reference-blueprint checkout, editable-clone setup, local override,

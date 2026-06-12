@@ -74,6 +74,14 @@ Reference-project commands resolve the current checkout's release line by
 default. `generate`, `validate`, and `sync` require a matching checkout release
 line; switch branches instead of forcing a different release target.
 
+Reference release metadata has two tracked sources of truth. `branch-policy.json`
+owns release ids, branch names, baseline Lean toolchain refs, baseline `verso`
+refs, default-development/backport policy, and the release-level Pages deploy
+flag. `tests/harness/projects.json` owns project ids, external repository refs,
+the `publish_reference` flag, and any per-project `rc` override. Matrix emitter
+scripts derive effective per-project `toolchain` and `verso_ref` values from
+those two files; release targets themselves do not carry `rc` metadata.
+
 ## Everyday Workflows
 
 ### Start Implementation Work
@@ -709,6 +717,12 @@ The harness is now project-driven rather than hardcoded to one project.
   repository, and it tolerates different Git refs and URL spellings for that
   source
 - local worktree bookkeeping is intentionally not tracked in the repository
+
+For example, the release id may remain `v4.30.0` while a specific published
+project target records `"rc": "4.30-rc2"`. That row then builds with
+`leanprover/lean4:v4.30.0-rc2` and pins `verso` to `v4.30.0-rc2`, while another
+project target on the same release id can use a different RC or the final
+release tag.
 
 Minimal external catalog entry shape:
 
