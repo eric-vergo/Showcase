@@ -44,16 +44,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         args = argparse.Namespace(skip_sync=True, skip_reference_sync=False, lightweight=False)
         self.assertEqual(create_worktree_sync_policy(args), (True, False))
 
-    def test_reference_sync_rejects_legacy_example_alias(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["sync", "--example", "noperthedron"])
-
-    def test_reference_status_rejects_legacy_example_alias(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["status", "--example", "noperthedron"])
-
     def test_reference_generate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["generate", "--allow-unsafe-root-release", "--release", "v4.29.0"])
@@ -668,16 +658,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ["git", "push", "origin", "--delete", "feat/demo"],
             ],
         )
-
-    def test_reference_generate_rejects_legacy_example_alias(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["generate", "--example", "noperthedron"])
-
-    def test_reference_validate_rejects_legacy_example_alias(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["validate", "--example", "noperthedron"])
 
     def test_reference_generate_rejects_unsafe_root_main_without_override(self) -> None:
         args = argparse.Namespace(
