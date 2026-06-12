@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+import json
 import re
 import shutil
 import subprocess
@@ -10,16 +10,23 @@ from pathlib import Path
 
 from scripts.blueprint_harness_branches import (
     CHECKOUT_ROLE_CHOICES,
+    RefSyncStatus,
     active_release_branch,
     branch_policy_path,
     checkout_branch_role,
     default_dev_branch,
     checkout_is_backport_only,
+    current_branch_name,
+    is_ancestor,
     load_branch_policy,
     local_release_ref,
+    main_sync_status,
     normalize_lean_release_ref,
+    preferred_main_ref,
     preferred_release_ref,
     require_checkout_role,
+    ref_oid,
+    ref_sync_status,
     root_checkout_namespace,
 )
 from scripts.blueprint_harness_cli import add_optional_worktree_name_argument
@@ -46,9 +53,7 @@ from scripts.blueprint_harness_worktrees import (
     GitWorktree,
     git_worktree_map,
     git_worktrees,
-    is_ancestor,
     normalize_priority,
-    ref_oid,
     resolve_worktree_name,
     sync_worktree_registry,
     update_worktree_record,
@@ -64,15 +69,6 @@ PUBLIC_PR_TITLE_RE = re.compile(
 PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
     r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
 )
-
-
-@dataclass(frozen=True)
-class RefSyncStatus:
-    local_ref: str
-    upstream_ref: str
-    local_oid: str | None
-    upstream_oid: str | None
-    relationship: str
 
 
 def load_project_catalog(manifest_path: Path) -> list[HarnessProject]:
@@ -147,21 +143,6 @@ def branch_exists(repo_root: Path, branch: str) -> bool:
     )
 
 
-def preferred_main_ref(repo_root: Path) -> str:
-    return preferred_release_ref(repo_root)
-
-
-def current_branch_name(repo_root: Path) -> str | None:
-    branch = subprocess.run(
-        ["git", "branch", "--show-current"],
-        cwd=repo_root,
-        check=True,
-        text=True,
-        capture_output=True,
-    ).stdout.strip()
-    return branch or None
-
-
 def current_commit_subject(repo_root: Path) -> str:
     subject = subprocess.run(
         ["git", "log", "-1", "--format=%s"],
@@ -203,51 +184,6 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
         capture_output=True,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-
-
-def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSyncStatus:
-    local_oid = ref_oid(repo_root, local_ref)
-    upstream_oid = ref_oid(repo_root, upstream_ref)
-
-    if local_oid is None:
-        relationship = "missing_local"
-    elif upstream_oid is None:
-        relationship = "missing_upstream"
-    elif local_oid == upstream_oid:
-        relationship = "in_sync"
-    elif (
-        subprocess.run(
-            ["git", "merge-base", "--is-ancestor", local_ref, upstream_ref],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        relationship = "behind"
-    elif (
-        subprocess.run(
-            ["git", "merge-base", "--is-ancestor", upstream_ref, local_ref],
-            cwd=repo_root,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        relationship = "ahead"
-    else:
-        relationship = "diverged"
-
-    return RefSyncStatus(
-        local_ref=local_ref,
-        upstream_ref=upstream_ref,
-        local_oid=local_oid,
-        upstream_oid=upstream_oid,
-        relationship=relationship,
-    )
-
-
-def main_sync_status(repo_root: Path) -> RefSyncStatus:
-    upstream_ref = preferred_main_ref(repo_root)
-    return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
 
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:

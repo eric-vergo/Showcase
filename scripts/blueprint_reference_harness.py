@@ -9,8 +9,15 @@ import shutil
 import subprocess
 import sys
 
-from scripts.blueprint_harness_branches import active_release_branch, local_release_ref, root_checkout_namespace
-from scripts.blueprint_harness import current_branch_name, main_sync_status, ref_oid, ref_sync_status, worktree_is_clean
+from scripts.blueprint_harness_branches import (
+    active_release_branch,
+    current_branch_name,
+    local_release_ref,
+    main_sync_status,
+    ref_oid,
+    ref_sync_status,
+    root_checkout_namespace,
+)
 from scripts.blueprint_harness_cli import (
     add_allow_local_build_argument,
     add_allow_unsafe_root_main_argument,
@@ -53,7 +60,7 @@ from scripts.blueprint_harness_utils import (
     run_capturing_failure,
 )
 from scripts.blueprint_harness_validation import browser_test_command, panel_regression_command
-from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts
+from scripts.blueprint_harness_worktrees import git_worktrees, rev_list_counts, worktree_is_clean
 
 
 @dataclass(frozen=True)
