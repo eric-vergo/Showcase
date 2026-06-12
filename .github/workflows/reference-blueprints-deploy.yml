@@ -65,6 +65,8 @@ jobs:
           echo "branch=${{ matrix.branch }}"
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
+      - name: Report disk usage before cache restore
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --artifact-path "${{ matrix.artifact_path }}"
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -87,6 +89,8 @@ jobs:
           key: ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-${{ matrix.release_id }}
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-deps-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
+      - name: Report disk usage after Lake cache restore
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
         run: |
           lean --version
@@ -100,6 +104,9 @@ jobs:
             --allow-local-build \
             --serial \
             _out/reference-blueprints/${{ matrix.release_id }}
+      - name: Report disk usage after reference generation
+        if: ${{ always() }}
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --artifact-path "${{ matrix.artifact_path }}"
       - name: Upload release reference artifact
         uses: actions/upload-artifact@v4
         with:
