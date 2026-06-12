@@ -22,6 +22,14 @@ namespace Verso.VersoBlueprintTests.BlueprintSlidesRuntime
 {blueprint_node "multiplication_one_right" (siteBase := "blueprint")}
 
 {blueprint_node "multiplication_one_right" +compact (facet := "proof") (siteBase := "blueprint")}
+
+# Side-by-Side Grafts
+
+:::blueprint_side_by_side +boxed
+{blueprint_node "collatz_step" -header +compact (siteBase := "blueprint")}
+
+{blueprint_node "multiplication_one_right" -header +compact (facet := "proof") (siteBase := "blueprint")}
+:::
 :::::::
 
 private def usage : IO UInt32 := do
