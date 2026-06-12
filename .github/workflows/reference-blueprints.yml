@@ -80,7 +80,7 @@ jobs:
           lake --version
           python3 --version
       - name: Generate reference blueprint
-        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --project ${{ matrix.project_id }}
+        run: ./scripts/generate-reference-blueprints.sh --allow-unsafe-root-release --reference-package-mode move --project ${{ matrix.project_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation" --artifact-path "${{ matrix.artifact_path }}"

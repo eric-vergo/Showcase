@@ -32,6 +32,9 @@ from scripts.blueprint_harness_utils import lean_low_priority_command, run
 
 
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+REFERENCE_PACKAGE_MODE_COPY = "copy"
+REFERENCE_PACKAGE_MODE_MOVE = "move"
+REFERENCE_PACKAGE_MODES = (REFERENCE_PACKAGE_MODE_COPY, REFERENCE_PACKAGE_MODE_MOVE)
 GITHUB_SUBMODULE_URL_REWRITE_ARGS = (
     "-c",
     "url.https://github.com/.insteadOf=git@github.com:",
@@ -174,6 +177,36 @@ def reconcile_reference_toolchains(package_root: Path, project_dir: Path) -> Ref
         release_branch=common_branch,
         changed_paths=tuple(changed_paths),
     )
+
+
+def validate_reference_package_mode(mode: str) -> str:
+    if mode not in REFERENCE_PACKAGE_MODES:
+        expected = ", ".join(REFERENCE_PACKAGE_MODES)
+        raise ValueError(f"unknown reference package mode `{mode}`; expected one of: {expected}")
+    return mode
+
+
+def discard_lake_packages(project_dir: Path) -> Path | None:
+    packages = lake_packages_dir(project_dir)
+    if not packages.exists() and not packages.is_symlink():
+        return None
+    if packages.is_symlink() or packages.is_file():
+        packages.unlink()
+    else:
+        shutil.rmtree(packages)
+    return packages
+
+
+def move_lake_packages(source_project_dir: Path, destination_project_dir: Path, *, action: str) -> Path | None:
+    source_packages = lake_packages_dir(source_project_dir)
+    if not source_packages.exists() and not source_packages.is_symlink():
+        return None
+    destination_packages = lake_packages_dir(destination_project_dir)
+    discard_lake_packages(destination_project_dir)
+    destination_packages.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source_packages), str(destination_packages))
+    print(f"[blueprint-harness] {action} {destination_packages}")
+    return destination_packages
 
 
 def short_git_ref(ref: str) -> str:
@@ -575,7 +608,14 @@ def bump_reference_project(
     )
 
 
-def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build: bool) -> Path:
+def sync_reference_cache_checkout(
+    layout,
+    project: HarnessProject,
+    *,
+    warm_build: bool,
+    package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
+) -> Path:
+    package_mode = validate_reference_package_mode(package_mode)
     cache_dir = reference_cache_checkout_dir(layout, project)
     cache_dir.parent.mkdir(parents=True, exist_ok=True)
     if not cache_dir.exists():
@@ -592,23 +632,61 @@ def sync_reference_cache_checkout(layout, project: HarnessProject, *, warm_build
     return cache_dir
 
 
-def sync_reference_local_checkout(layout, project: HarnessProject, cache_dir: Path) -> Path:
+def sync_reference_local_checkout(
+    layout,
+    project: HarnessProject,
+    cache_dir: Path,
+    *,
+    package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
+) -> Path:
+    package_mode = validate_reference_package_mode(package_mode)
     local_dir = reference_local_checkout_dir(layout, project)
     local_dir.parent.mkdir(parents=True, exist_ok=True)
     if not local_dir.exists():
         clone_git_project(project, local_dir, cwd=layout.package_root, source=str(cache_dir))
     else:
         update_git_checkout(project, local_dir)
-    bootstrap_reference_checkout(project_dir=local_dir / project.project_root)
+    cache_project_dir = cache_dir / project.project_root
+    local_project_dir = local_dir / project.project_root
+    bootstrap_reference_checkout(project_dir=local_project_dir)
 
-    cache_lake = cache_dir / ".lake"
+    cache_lake = cache_project_dir / ".lake"
     if cache_lake.exists():
         # Seed dependency state from the shared cache, but preserve the
         # worktree-local project's own build products. Those artifacts are
         # produced after rewriting the reference project to depend on the local
         # VersoBlueprint checkout, so deleting them defeats the local cache.
+        if package_mode == REFERENCE_PACKAGE_MODE_MOVE:
+            moved_packages = move_lake_packages(
+                cache_project_dir,
+                local_project_dir,
+                action="moved reference cache packages into",
+            )
+            try:
+                run(
+                    [
+                        "rsync",
+                        "-a",
+                        "--exclude",
+                        "/build/",
+                        "--exclude",
+                        "/packages/",
+                        f"{cache_lake}/",
+                        f"{local_project_dir / '.lake'}/",
+                    ],
+                    cwd=layout.package_root,
+                )
+            except Exception:
+                if moved_packages is not None:
+                    move_lake_packages(
+                        local_project_dir,
+                        cache_project_dir,
+                        action="restored reference cache packages to",
+                    )
+                raise
+            return local_dir
         run(
-            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_dir / '.lake'}/"],
+            ["rsync", "-a", "--exclude", "/build/", f"{cache_lake}/", f"{local_project_dir / '.lake'}/"],
             cwd=layout.package_root,
         )
     return local_dir
@@ -652,50 +730,82 @@ def generate_in_repo_command_project(layout, output_root: Path, project: Harness
         restore_tracked_project_manifest(original_manifest)
 
 
-def generate_git_project(layout, output_root: Path, project: HarnessProject, *, skip_build: bool) -> None:
+def generate_git_project(
+    layout,
+    output_root: Path,
+    project: HarnessProject,
+    *,
+    skip_build: bool,
+    package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
+) -> None:
+    package_mode = validate_reference_package_mode(package_mode)
     rebuild_and_log_embedded_asset_owners(layout.package_root)
-    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False)
-    checkout_root = sync_reference_local_checkout(layout, project, cache_dir)
+    cache_dir = sync_reference_cache_checkout(layout, project, warm_build=False, package_mode=package_mode)
+    cache_project_dir = cache_dir / project.project_root
+    cache_packages = lake_packages_dir(cache_project_dir)
+    cache_packages_available = cache_packages.exists() or cache_packages.is_symlink()
+    checkout_root = sync_reference_local_checkout(layout, project, cache_dir, package_mode=package_mode)
     project_dir = checkout_root / project.project_root
-    discard_untracked_project_manifest(project_dir)
-    output_dir = output_dir_for(project, output_root)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    bootstrap_reference_checkout(project_dir=project_dir)
-    with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
-        run_project_update_build_generate(
-            layout.package_root,
-            project_dir,
-            update_project=lambda: run_reference_lake_update(
+    borrowed_packages = (
+        package_mode == REFERENCE_PACKAGE_MODE_MOVE
+        and cache_packages_available
+        and lake_packages_dir(project_dir).exists()
+    )
+    try:
+        discard_untracked_project_manifest(project_dir)
+        output_dir = output_dir_for(project, output_root)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        bootstrap_reference_checkout(project_dir=project_dir)
+        with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
+            run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
-                reconcile_toolchains=True,
-            ),
-            build_command=project.build_command,
-            generate_command=project.generate_command or (),
-            format_command=lambda command: format_project_command(
-                command,
-                reference_command_placeholders(
-                    project,
-                    package_root=layout.package_root,
-                    checkout_root=checkout_root,
-                    project_dir=project_dir,
-                    output_dir=output_dir,
+                update_project=lambda: run_reference_lake_update(
+                    layout.package_root,
+                    project_dir,
+                    reconcile_toolchains=True,
                 ),
-            ),
-            skip_build=skip_build,
-        )
+                build_command=project.build_command,
+                generate_command=project.generate_command or (),
+                format_command=lambda command: format_project_command(
+                    command,
+                    reference_command_placeholders(
+                        project,
+                        package_root=layout.package_root,
+                        checkout_root=checkout_root,
+                        project_dir=project_dir,
+                        output_dir=output_dir,
+                    ),
+                ),
+                skip_build=skip_build,
+            )
+    finally:
+        if borrowed_packages:
+            move_lake_packages(
+                project_dir,
+                cache_project_dir,
+                action="restored reference cache packages to",
+            )
 
 
-def sync_reference_blueprints(layout, projects: list[HarnessProject], *, warm_build: bool, prepare_local_checkout: bool) -> None:
+def sync_reference_blueprints(
+    layout,
+    projects: list[HarnessProject],
+    *,
+    warm_build: bool,
+    prepare_local_checkout: bool,
+    package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
+) -> None:
+    package_mode = validate_reference_package_mode(package_mode)
     git_projects = [project for project in projects if project.git_checkout]
     if not git_projects:
         return
     if shutil.which("rsync") is None:
         raise SystemExit("[blueprint-harness] `rsync` is required for reference blueprint cache sync.")
     for project in git_projects:
-        cache_dir = sync_reference_cache_checkout(layout, project, warm_build=warm_build)
+        cache_dir = sync_reference_cache_checkout(layout, project, warm_build=warm_build, package_mode=package_mode)
         if prepare_local_checkout:
-            local_dir = sync_reference_local_checkout(layout, project, cache_dir)
+            local_dir = sync_reference_local_checkout(layout, project, cache_dir, package_mode=package_mode)
             print(f"[blueprint-harness] prepared local reference checkout: {local_dir}")
 
 
