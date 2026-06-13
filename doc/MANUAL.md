@@ -854,7 +854,9 @@ interfaces can reuse:
 - `BlueprintNodeConfig.toNode` normalizes that selection into
   `Informal.Graft.BlueprintNode`, including the exact preview `key`.
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
-  stable DOM shell used by Slides and other generated interfaces.
+  stable DOM shell used by Slides and other generated interfaces. The shell
+  carries the neutral `bp_graft_manifest_node` class as a stable selector for
+  non-slide consumers.
 - `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
   `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
   CSS classes without creating duplicate `class` attributes.
