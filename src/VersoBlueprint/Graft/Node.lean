@@ -73,9 +73,9 @@ public def appendClassAttr (attrs : Array (String × String)) (className : Strin
 
 private def BlueprintNode.domClassName (node : BlueprintNode) : String :=
   if node.compact then
-    "bp_slide_node bp_slide_node_compact"
+    "bp_slide_node bp_graft_manifest_node bp_slide_node_compact"
   else
-    "bp_slide_node"
+    "bp_slide_node bp_graft_manifest_node"
 
 def BlueprintNode.toAttrs (node : BlueprintNode) : Array (String × String) :=
   nodeMarkerAttrs ++

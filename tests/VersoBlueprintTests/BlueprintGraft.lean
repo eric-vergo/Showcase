@@ -124,7 +124,8 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
     let rendered := renderedHtml.asString
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
-        hasSubstr rendered "bp_slide_node bp_test_graft_node" &&
+        hasSubstr rendered "bp_graft_manifest_node" &&
+        hasSubstr rendered "bp_test_graft_node" &&
         hasSubstr rendered "bp_test_graft_node_blueprint" &&
         hasSubstr rendered "bp_test_graft_code_body" &&
         hasSubstr rendered "API view" &&
@@ -135,7 +136,7 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
 
 #guard
   let attrs := (graftNode "def:graft.manual.left").renderedAttrsWithClass "audit_graft_node"
-  attrs.contains ("class", "bp_slide_node audit_graft_node") &&
+  attrs.contains ("class", "bp_slide_node bp_graft_manifest_node audit_graft_node") &&
     attrs.contains ("data-bp-rendered", "static") &&
     (attrs.filter (fun attr => attr.1 == "class")).size == 1
 
