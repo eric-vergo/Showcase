@@ -911,9 +911,15 @@ missing rendered HTML-cache body for a manifest entry. The cache-miss branch
 also calls the context's `logError` callback so generators can fail or report
 broken manifest/cache pairs consistently.
 
-For lower-level consumers, the final shared assembly point remains
-`Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass it the
-semantic manifest entry plus `BlockRender.RenderedContent`, using
+Consumers that already have a semantic manifest entry and rendered body content
+can call `Informal.Graft.renderNodeWithContent` directly. This keeps the graft
+node attributes, wrapper classes, and `displayLabel`/`compact`/`showHeader`
+behavior aligned with `{blueprint_node}` while letting the caller decide where
+the content came from.
+
+For still lower-level consumers, the final shared block-shell assembly point
+remains `Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass
+it the semantic manifest entry plus `BlockRender.RenderedContent`, using
 `BlockRender.RenderedContent.ofHtmlStrings` when the body came from
 `blueprint-html-cache.json`. The render options map directly to graft behavior:
 `displayLabelOverride?`, `compact`, and `showHeader`. This lets an audit
