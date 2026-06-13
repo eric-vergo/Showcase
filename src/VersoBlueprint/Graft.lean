@@ -5,7 +5,6 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoManual
-import VersoSlides
 import Verso.Doc.Elab
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.LeanCodePreview
@@ -13,7 +12,6 @@ import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Graft.Node
 import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
-import VersoBlueprint.Slides.Node
 import VersoBlueprint.TraversalIndex
 
 set_option doc.verso true
@@ -192,19 +190,14 @@ private meta def currentGenreIs (genreTerm : Term) : DocElabM Bool := do
 private meta def inManualGenre : DocElabM Bool := do
   currentGenreIs (← `(Verso.Genre.Manual))
 
-private meta def inSlidesGenre : DocElabM Bool := do
-  currentGenreIs (← `(VersoSlides.Slides))
-
 public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) :
     DocElabM Term := do
   if ← inManualGenre then
     ``(Verso.Doc.Block.other
         (Informal.Graft.Block.blueprintGraftNode $(quote cfg))
         #[])
-  else if ← inSlidesGenre then
-    Informal.Slides.blueprintNodeBlock cfg
   else
-    throwError "Blueprint graft nodes are only available in Manual and Slides documents"
+    throwError "Blueprint graft nodes are only available in Manual documents on v4.29"
 
 public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Graft.SideBySideConfig
   | cfg, stxs => do
@@ -213,21 +206,15 @@ public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Graft.SideByS
         ``(Verso.Doc.Block.other
             (Informal.Graft.Block.blueprintGraftSideBySide $(quote cfg))
             #[$contents,*])
-      else if ← inSlidesGenre then
-        let attrs := cfg.slideAttrs
-        ``(Verso.Doc.Block.other
-            (VersoSlides.BlockExt.wrap $(quote attrs))
-            #[$contents,*])
       else
-        throwError "Blueprint side-by-side grafts are only available in Manual and Slides documents"
+        throwError "Blueprint side-by-side grafts are only available in Manual documents on v4.29"
 
 end Informal.Graft
 
 open Verso Doc Elab
 
 /--
-Render a Blueprint preview node by label in either a Manual document or a Slides
-deck.
+Render a Blueprint preview node by label in a Manual document.
 -/
 @[block_command]
 public meta def blueprint_node : BlockCommandOf Informal.Graft.BlueprintNodeConfig

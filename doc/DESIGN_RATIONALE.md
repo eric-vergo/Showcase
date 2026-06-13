@@ -199,12 +199,13 @@ rather than page-local template bodies:
    traversal preview through `PreviewSource.lean`, project that preview into the
    same semantic entry shape emitted by `PreviewManifest.lean`, then use the
    shared manifest-backed block renderer. `VersoBlueprint.Graft.Render` owns the
-   reusable manifest/cache rendering path for generated consumers; Slides supply
-   slide-specific link attributes, classes, and diagnostics while delegating the
-   semantic lookup and block assembly to that shared path. Browser JavaScript
-   then hydrates links, math, and related-entry preview panels; it does not
-   reconstruct Blueprint block markup or relationship topology from ad hoc
-   manifest scans.
+   reusable manifest/cache rendering path for generated consumers. On the
+   v4.29 line, the public `VersoBlueprint` entry point exposes Manual grafts
+   only because the required Verso Slides rendering hooks are not available;
+   v4.30 layers Slides support on the same semantic lookup and block assembly
+   path. Browser JavaScript then hydrates links, math, and related-entry preview
+   panels; it does not reconstruct Blueprint block markup or relationship
+   topology from ad hoc manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
