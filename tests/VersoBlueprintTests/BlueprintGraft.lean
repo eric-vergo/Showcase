@@ -95,6 +95,7 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
     pure <|
       hasSubstr html "bp_graft_side_by_side" &&
         hasSubstr html "bp_graft_side_by_side_boxed" &&
+        hasSubstr html "bp_graft_manifest_node" &&
         countSubstr html "data-bp-blueprint-node=\"true\"" == 4 &&
         countSubstr html "Manual left graft body with inline math" == 2 &&
         countSubstr html "The grafted theorem states" == 2 &&

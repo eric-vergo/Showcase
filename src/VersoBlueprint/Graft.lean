@@ -36,9 +36,9 @@ private def renderNotice (kind title detail : String) : Html :=
 
 private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
-    "bp_graft_node bp_graft_node_compact"
+    "bp_graft_node bp_graft_manifest_node bp_graft_node_compact"
   else
-    "bp_graft_node"
+    "bp_graft_node bp_graft_manifest_node"
 
 private def manualNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
