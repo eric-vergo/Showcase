@@ -74,12 +74,20 @@ private def firstNonEmptyEntry?
       if entry.blocks.isEmpty then none else some entry
     | none => none
 
+def traversalEntryByKey?
+    (s : Verso.Genre.Manual.TraverseState) (key : String) : Option PreviewCache.Entry :=
+  Informal.TraversalIndex.TraversalPreviews.entry? s key
+
+def traversalFacetEntry?
+    (s : Verso.Genre.Manual.TraverseState)
+    (label : Name)
+    (facet : PreviewCache.Facet) : Option PreviewCache.Entry :=
+  let key := Informal.TraversalIndex.TraversalPreviews.key label facet
+  traversalEntryByKey? s key
+
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
-  let traversalFacetEntry? (facet : PreviewCache.Facet) : Option PreviewCache.Entry := do
-    let key := Informal.TraversalIndex.TraversalPreviews.key label facet
-    Informal.TraversalIndex.TraversalPreviews.entry? s key
-  firstNonEmptyEntry? traversalFacetEntry?
+  firstNonEmptyEntry? (traversalFacetEntry? s label)
 
 def traversalLookupKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String := do

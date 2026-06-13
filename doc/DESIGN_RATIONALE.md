@@ -194,11 +194,17 @@ rather than page-local template bodies:
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
-5. `VersoBlueprint.Slides` consumes the semantic manifest and rendered HTML
-   cache during slide generation to render `{blueprint_node}` shells into the
-   deck HTML. Browser JavaScript then hydrates links, math, and related-entry
-   preview panels; it does not reconstruct Blueprint block markup or
-   relationship topology from ad hoc manifest scans.
+5. `VersoBlueprint.Graft` provides the `{blueprint_node}` and
+   `blueprint_side_by_side` grafting commands. Manual grafts resolve their exact
+   traversal preview through `PreviewSource.lean`, project that preview into the
+   same semantic entry shape emitted by `PreviewManifest.lean`, then use the
+   shared manifest-backed block renderer. `VersoBlueprint.Graft.Render` owns the
+   reusable manifest/cache rendering path for generated consumers; Slides supply
+   slide-specific link attributes, classes, and diagnostics while delegating the
+   semantic lookup and block assembly to that shared path. Browser JavaScript
+   then hydrates links, math, and related-entry preview panels; it does not
+   reconstruct Blueprint block markup or relationship topology from ad hoc
+   manifest scans.
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
@@ -402,7 +408,7 @@ reasons:
 | --- | --- | --- | --- |
 | `InlineCode` | `Block.informalCode.traverse` | Informal block/code renderers | Store at most one inline Lean code payload per informal label. The rendered statement then resolves inline code separately from the semantic node metadata, and inline code takes precedence over external declaration hints when both are available. |
 | `ExternalMarkup` | `Block.externalMarkup.traverse` | Preview-manifest construction and optional external-markup display | Store markup attachments outside `Nodes` so late source blocks can be merged by label during traversal. Preview-backed labels expose the deterministic language/slot array on their block manifest entry; witness-only labels become semantic `externalMarkup` manifest entries without HTML-cache bodies. |
-| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?` and preview-data construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys, but they do not duplicate declaration-preview payloads. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
+| `TraversalPreviews` | Informal block traversal, once per statement/proof block | `PreviewSource.traversalEntry?`, `PreviewSource.traversalEntryByKey?`, and preview-data construction | Store rendered-preview source blocks once per `(label, facet)`, where facet is statement or proof. Entries may point at associated Lean-code HTML-cache keys, but they do not duplicate declaration-preview payloads. This keeps hover/cache consumers from embedding preview bodies into every link or node entry. |
 | `LeanCodePreviews` | Inline Lean code traversal and external declaration snapshot registration | Lean-code preview-data construction and Lean declaration links via the shared lookup key | Store declaration previews by canonical Lean declaration target, not by the Blueprint block or link occurrence that mentions it. Inline and external declaration previews therefore share the same declaration-preview namespace. |
 | `ExternalDeclAnchors` | Informal block traversal for rendered external declarations | Informal block rendering plus summary/graph/code-summary links that jump to rendered external rows | Store only occurrence-specific row anchors keyed by `(informal label, canonical declaration)`. The same Lean declaration may be rendered under multiple Blueprint labels, and each rendered row needs its own destination. |
 | `CitationPreviews` | Citation inline traversal | Preview-manifest construction and citation inline hovers via the shared lookup key | Store bibliography hover data once per rendered citation target and locator. Inline citations then carry a manifest key instead of owning page-local preview templates. |

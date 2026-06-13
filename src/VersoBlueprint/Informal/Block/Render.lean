@@ -385,6 +385,7 @@ structure InformalBlockRenderModel where
   content : Array Verso.Output.Html := #[]
   companionPanels : Array Verso.Output.Html := #[]
   wrapperClass? : Option String := none
+  showHeader : Bool := true
 
 /--
 Genre-neutral inputs for the reusable Blueprint informal-block shell.
@@ -403,6 +404,7 @@ structure InformalBlockShell where
   headerExtras : HeaderExtras := {}
   metadataPanel : Verso.Output.Html := .empty
   folded : Bool := false
+  showHeader : Bool := true
 
 private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html :=
   let titleRow := renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
@@ -419,7 +421,14 @@ def renderInformalBlockShell (shell : InformalBlockShell)
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
   let titleRow := renderShellTitleRow shell
   let extras := renderHeaderExtras shell.headerExtras
-  if shell.folded then
+  if !shell.showHeader then
+    {{
+      <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
+        {{shell.metadataPanel}}
+        <div class={{contentClass}}> {{content}} </div>
+      </div>
+    }}
+  else if shell.folded then
     {{
       <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
         <summary class={{headingClass}}>
@@ -450,7 +459,7 @@ already-rendered content plus the resolved metadata in
 {name}`InformalBlockRenderContext`.
 -/
 def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext)
-    (content : Array Verso.Output.Html) : Verso.Output.Html :=
+    (content : Array Verso.Output.Html) (showHeader : Bool := true) : Verso.Output.Html :=
   open Verso.Output.Html in
   let style := blockKindRenderStyle data
   let labelText := s!"{data.label}"
@@ -469,6 +478,7 @@ def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext
       headerExtras := ctx.headerExtras
       metadataPanel
       folded := ctx.folded
+      showHeader
     }
     (.seq content)
 
@@ -479,6 +489,7 @@ def htmlClassAttrs (className : String) : Array (String × String) :=
 /-- Render a complete informal block model, including companion panels. -/
 def renderInformalBlockModel (model : InformalBlockRenderModel) : Verso.Output.Html :=
   let blockHtml := renderInformalBlockHtml model.data model.context model.content
+    (showHeader := model.showHeader)
   let html := Verso.Output.Html.seq (#[blockHtml] ++ model.companionPanels)
   match model.wrapperClass? with
   | some className => Verso.Output.Html.tag "div" (htmlClassAttrs className) html
