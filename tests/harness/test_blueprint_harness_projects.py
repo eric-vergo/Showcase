@@ -132,7 +132,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[0].generate_command,
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
-        self.assertEqual([target.release for target in projects[0].targets], ["v4.29.0", "v4.30.0"])
+        self.assertEqual([target.release for target in projects[0].targets], ["v4.30.0"])
         release_430 = catalog.release_target("v4.30.0")
         self.assertIsNotNone(release_430)
         assert release_430 is not None
@@ -142,10 +142,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(release_430.deploy_pages)
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
-        self.assertEqual([target.release for target in projects[1].targets], ["v4.29.0", "v4.30.0"])
-        self.assertFalse(projects[1].targets[0].publish_reference)
-        self.assertTrue(projects[1].targets[1].publish_reference)
-        self.assertEqual(projects[1].targets[1].rc, "4.30-rc2")
+        self.assertEqual([target.release for target in projects[1].targets], ["v4.30.0"])
+        self.assertTrue(projects[1].targets[0].publish_reference)
+        self.assertEqual(projects[1].targets[0].rc, "4.30-rc2")
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
@@ -157,10 +156,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual([target.release for target in projects[2].targets], ["v4.29.0"])
         self.assertTrue(projects[2].targets[0].publish_reference)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
-        self.assertEqual([target.release for target in projects[3].targets], ["v4.29.0", "v4.30.0"])
-        self.assertFalse(projects[3].targets[0].publish_reference)
-        self.assertTrue(projects[3].targets[1].publish_reference)
-        self.assertEqual(projects[3].targets[1].rc, "4.30-rc2")
+        self.assertEqual([target.release for target in projects[3].targets], ["v4.30.0"])
+        self.assertTrue(projects[3].targets[0].publish_reference)
+        self.assertEqual(projects[3].targets[0].rc, "4.30-rc2")
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.30.0"])
         self.assertTrue(projects[4].targets[0].publish_reference)
