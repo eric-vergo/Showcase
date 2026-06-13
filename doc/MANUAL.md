@@ -855,11 +855,16 @@ interfaces can reuse:
   `Informal.Graft.BlueprintNode`, including the exact preview `key`.
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
   stable DOM shell used by Slides and other generated interfaces.
-- `BlueprintNode.renderedAttrsWithClass` appends a custom class to that shell
-  without creating duplicate `class` attributes.
+- `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
+  `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
+  CSS classes without creating duplicate `class` attributes.
 - `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
   Its `attrs` and `slideAttrs` helpers produce the standard wrapper classes,
   but consumers can also ignore them and arrange nodes in their own UI.
+- `Informal.Slides.BlueprintSlideNode` and
+  `Informal.Slides.BlueprintNodeConfig` remain compatibility aliases for older
+  slide-oriented code. New generated consumers should import and use the
+  `Informal.Graft` names directly.
 
 For server-side or generator-side renderers, prefer the manifest/cache path over
 ad hoc browser scans. Read or build the semantic

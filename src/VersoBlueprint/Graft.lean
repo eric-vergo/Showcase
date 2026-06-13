@@ -34,22 +34,6 @@ private def renderNotice (kind title detail : String) : Html :=
     </div>
   }}
 
-private def replaceClassAttr (attrs : Array (String × String)) (className : String) :
-    Array (String × String) :=
-  Id.run do
-    let mut out := #[]
-    let mut found := false
-    for attr in attrs do
-      if attr.1 == "class" then
-        out := out.push ("class", className)
-        found := true
-      else
-        out := out.push attr
-    if found then
-      out
-    else
-      out.push ("class", className)
-
 private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
     "bp_graft_node bp_graft_node_compact"
@@ -58,7 +42,7 @@ private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
 
 private def manualNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
-  replaceClassAttr node.renderedAttrs (manualNodeClass node)
+  setClassAttr node.renderedAttrs (manualNodeClass node)
 
 private def manualBlockRenderConfig : Informal.PreviewManifest.BlockRender.RenderConfig :=
   {

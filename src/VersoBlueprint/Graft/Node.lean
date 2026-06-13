@@ -33,8 +33,11 @@ deriving Repr, BEq
 private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
   (attrs.find? fun attr => attr.1 == name).map (·.2)
 
-/-- Append a CSS class to an HTML attribute array, creating the `class` attribute if needed. -/
-public def appendClassAttr (attrs : Array (String × String)) (className : String) :
+/--
+Set the CSS class in an HTML attribute array, replacing an existing `class`
+attribute or creating one when needed.
+-/
+public def setClassAttr (attrs : Array (String × String)) (className : String) :
     Array (String × String) :=
   Id.run do
     let className := className.trimAscii.toString
@@ -44,13 +47,7 @@ public def appendClassAttr (attrs : Array (String × String)) (className : Strin
     let mut found := false
     for attr in attrs do
       if attr.1 == "class" then
-        let current := attr.2.trimAscii.toString
-        let value :=
-          if current.isEmpty then
-            className
-          else
-            current ++ " " ++ className
-        out := out.push ("class", value)
+        out := out.push ("class", className)
         found := true
       else
         out := out.push attr
@@ -58,6 +55,21 @@ public def appendClassAttr (attrs : Array (String × String)) (className : Strin
       out
     else
       out.push ("class", className)
+
+/-- Append a CSS class to an HTML attribute array, creating the `class` attribute if needed. -/
+public def appendClassAttr (attrs : Array (String × String)) (className : String) :
+    Array (String × String) :=
+  let className := className.trimAscii.toString
+  if className.isEmpty then
+    attrs
+  else
+    let current := (attrValue? attrs "class").map (·.trimAscii.toString) |>.getD ""
+    let value :=
+      if current.isEmpty then
+        className
+      else
+        current ++ " " ++ className
+    setClassAttr attrs value
 
 private def BlueprintNode.domClassName (node : BlueprintNode) : String :=
   if node.compact then

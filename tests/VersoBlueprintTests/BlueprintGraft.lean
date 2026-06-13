@@ -133,11 +133,17 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
         hasSubstr rendered "bp_code_panel_wrapper" &&
         !hasSubstr rendered "Blueprint node not found"
 
-/-- info: true -/
-#guard_msgs in
-#eval
+#guard
   let attrs := (graftNode "def:graft.manual.left").renderedAttrsWithClass "audit_graft_node"
   attrs.contains ("class", "bp_slide_node audit_graft_node") &&
+    attrs.contains ("data-bp-rendered", "static") &&
+    (attrs.filter (fun attr => attr.1 == "class")).size == 1
+
+#guard
+  let attrs := Informal.Graft.setClassAttr
+    (graftNode "def:graft.manual.left").renderedAttrs
+    "bp_graft_node"
+  attrs.contains ("class", "bp_graft_node") &&
     attrs.contains ("data-bp-rendered", "static") &&
     (attrs.filter (fun attr => attr.1 == "class")).size == 1
 
