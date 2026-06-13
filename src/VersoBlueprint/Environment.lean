@@ -14,7 +14,14 @@ namespace Informal.Environment
 open Lean
 open Informal.Data
 
--- TODO: Consolidate with Data.Node
+/--
+Elaboration-time builder for a node that is currently open on the directive
+stack.
+
+This intentionally stays separate from `Data.Node`: it carries phase-specific
+inputs such as preview blocks and elaboration syntax before the final persisted
+semantic node can be assembled.
+-/
 structure InProgress where
   label : Label
   kind : Data.InProgressKind := .proof
@@ -41,7 +48,14 @@ structure ImportedConflict where
   label : Name
 deriving Inhabited, Repr, DecidableEq
 
--- TODO: Consolidate with traversal information
+/--
+Persisted semantic state collected during elaboration.
+
+Rendered traversal stores project from this state and add site-local facts such
+as numbering, hrefs, preview ids, and HTML-cache keys. Keep those traversal
+facts out of this environment extension unless they become stable semantic
+data.
+-/
 structure State where
   data : Data := Data.empty
   localData : NameMap Node := {}

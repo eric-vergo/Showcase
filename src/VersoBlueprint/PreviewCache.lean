@@ -31,9 +31,12 @@ def key (label : Name) (facet : Facet) : String :=
 /--
 Preview payload stored during traversal.
 `blocks` are already in the Manual genre and can be rendered by later HTML consumers.
+
+This is a traversal-phase cache, not the canonical semantic node record. The
+interactive widget path still reads syntax from `Environment.InProgress`
+because it needs elaboration-time data before Manual preview blocks are
+available.
 -/
--- TODO: long-term, consider a single shared preview representation that can also
--- serve the widget path (currently fed from `elabStx`) in a phase-safe way.
 structure Entry where
   label : Name
   facet : Facet

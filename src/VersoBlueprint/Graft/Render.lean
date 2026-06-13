@@ -15,8 +15,7 @@ open Verso.Output
 open Verso.Output.Html
 
 public structure RenderContext where
-  manifest? : Option Informal.PreviewManifest.File := none
-  index : Informal.PreviewManifest.Index := {}
+  manifestIndex? : Option Informal.PreviewManifest.Index := none
   htmlCacheIndex : Informal.PreviewManifest.HtmlCache.Index := {}
   logError : String → IO Unit := fun _ => pure ()
 
@@ -28,15 +27,10 @@ public def ofPreviewData?
     (logError : String → IO Unit := fun _ => pure ()) : RenderContext :=
   let htmlCache := htmlCache?.getD {}
   {
-    manifest?
-    index := manifest?.map (·.index) |>.getD {}
+    manifestIndex? := manifest?.map (·.index)
     htmlCacheIndex := htmlCache.index
     logError
   }
-
-public def findEntry? (ctx : RenderContext) (key : String) :
-    Option Informal.PreviewManifest.Entry :=
-  ctx.index.findEntry? key
 
 public def renderedContent?
     (ctx : RenderContext)
@@ -61,11 +55,17 @@ public def renderedContent?
 
 end RenderContext
 
-private def defaultRenderMissingNode (node : BlueprintNode) (title detail : String) : Html :=
-  .tag "div" node.renderedAttrs <| {{
-    <strong>{{Html.ofString title}}</strong><br/>
-    {{Html.ofString detail}}
+public def renderNotice (baseClass kind title detail : String) : Html :=
+  {{
+    <div class={{baseClass ++ " " ++ baseClass ++ "_" ++ kind}}>
+      <strong>{{Html.ofString title}}</strong><br/>
+      {{Html.ofString detail}}
+    </div>
   }}
+
+private def defaultRenderMissingNode (node : BlueprintNode) (title detail : String) : Html :=
+  .tag "div" node.renderedAttrs <|
+    renderNotice "bp_graft_node_notice" "error" title detail
 
 public structure ManifestRenderConfig where
   blockRenderConfig : Informal.PreviewManifest.BlockRender.RenderConfig := {}
@@ -101,20 +101,20 @@ public def renderNodeFromManifestCache
     (cfg : ManifestRenderConfig)
     (ctx : RenderContext)
     (node : BlueprintNode) : IO Html := do
-  match ctx.manifest? with
+  match ctx.manifestIndex? with
   | none =>
-      pure <| cfg.renderMissingNode node "Preview manifest unavailable"
-        cfg.manifestUnavailableDetail
-  | some _manifest =>
-      match ctx.findEntry? node.key with
-      | none =>
-          pure <| cfg.renderMissingNode node "Blueprint node not found" node.selectionDescription
-      | some entry =>
-          match ← ctx.renderedContent? node entry with
-          | none =>
-              pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
-          | some content =>
-              pure <| renderNodeWithContent cfg node entry content
+    pure <| cfg.renderMissingNode node "Preview manifest unavailable"
+      cfg.manifestUnavailableDetail
+  | some index =>
+    match index.findEntry? node.key with
+    | none =>
+        pure <| cfg.renderMissingNode node "Blueprint node not found" node.selectionDescription
+    | some entry =>
+        match ← ctx.renderedContent? node entry with
+        | none =>
+            pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
+        | some content =>
+            pure <| renderNodeWithContent cfg node entry content
 
 public def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=

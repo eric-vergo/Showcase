@@ -61,6 +61,14 @@ def renderManualDocHtmlString (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre
   let html ← renderManualDocHtml impls doc
   pure html.asString
 
+def buildManualPreviewDataFiles
+    (impls : ExtensionImpls)
+    (doc : Doc.VersoDoc Genre.Manual)
+    (logError : String → IO Unit := fun _ => pure ()) :
+    IO Informal.PreviewManifest.Files := do
+  let (_html, st) ← renderManualDocHtmlStringAndState impls doc
+  Informal.PreviewManifest.buildPreviewDataFiles impls logError st
+
 def findExtraJsContaining? (st : TraverseState) (needle : String) : Option String :=
   st.toHtmlAssets.extraJs.toArray.findSome? fun js =>
     if hasSubstr js.js needle then some js.js else none

@@ -105,6 +105,21 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   else
     pure root
 
+private def buildPreviewDataFor
+    (doc : Doc.VersoDoc Genre.Manual) : IO Informal.PreviewManifest.Files :=
+  buildManualPreviewDataFiles manualImpls doc
+
+private def writeSlidesPreviewDataFiles
+    (root : System.FilePath)
+    (files : Informal.PreviewManifest.Files) : IO System.FilePath := do
+  let manifestPath := root / Informal.PreviewManifest.manifestFilename
+  let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
+  if !(← root.pathExists) then
+    IO.FS.createDirAll root
+  IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
+  IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
+  pure manifestPath
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -206,8 +221,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let file := files.manifest
     let cache := files.htmlCache
     let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
@@ -235,8 +249,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor usedByPreviewDoc
     let cache := files.htmlCache
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
@@ -254,8 +267,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor usedByPreviewDoc
     let file := files.manifest
     let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:used.target") .statement
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
@@ -268,8 +280,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
     let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
@@ -288,8 +299,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideMetadataPanelDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor slideMetadataPanelDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
     let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
@@ -308,8 +318,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor groupPreviewDoc
     let file := files.manifest
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.target") .statement
     let some entry := file.previews.find? (fun entry => entry.key == key)
@@ -346,8 +355,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls missingGroupPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor missingGroupPreviewDoc
     let file := files.manifest
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.missing.target") .statement
     let some entry := file.previews.find? (fun entry => entry.key == key)
@@ -371,16 +379,10 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let root ← freshSlidesSmokeRoot
     let outDir := root / "slides"
-    let manifestPath := root / Informal.PreviewManifest.manifestFilename
-    let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
-    if !(← root.pathExists) then
-      IO.FS.createDirAll root
-    IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
-    IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
+    let manifestPath ← writeSlidesPreviewDataFiles root files
     let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
       { outputDir := outDir }
       (previewManifest? := some manifestPath)
@@ -410,16 +412,10 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideGraftSourceDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildPreviewDataFor slideGraftSourceDoc
     let root ← freshSlidesSmokeRoot
     let outDir := root / "slides"
-    let manifestPath := root / Informal.PreviewManifest.manifestFilename
-    let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
-    if !(← root.pathExists) then
-      IO.FS.createDirAll root
-    IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
-    IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
+    let manifestPath ← writeSlidesPreviewDataFiles root files
     let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
       { outputDir := outDir }
       (previewManifest? := some manifestPath)

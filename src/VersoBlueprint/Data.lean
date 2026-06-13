@@ -533,8 +533,9 @@ inductive CodeRef where
   - informal object labels are blueprint-owned metadata;
   - `(lean := "...")` declaration names are Lean-owned and must not be rewritten by blueprint label policies.
 
-  TODO (external-definitions task): complete and encode the intended behavior from
-  the "We'd like to:" portion of the design spec.
+  External-definition metadata should be attached to `ExternalRef` or a sibling
+  external-declaration record. The `.external` names themselves remain Lean
+  declaration names, not Blueprint labels.
   -/
   | external (decls : Array ExternalRef)
   | literate (code : Code)

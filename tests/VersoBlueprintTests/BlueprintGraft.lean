@@ -134,8 +134,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let node := { graftNode "def:graft.manual.left" with displayLabel? := some "API view" }
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
@@ -159,8 +158,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
     let renderedHtml ← renderAuditNode files.manifest files.htmlCache "def:graft.manual.left"
     let rendered := renderedHtml.asString
     pure <|
@@ -207,8 +205,7 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
     let node := graftNode "def:graft.manual.missing"
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
@@ -227,10 +224,9 @@ private def renderAuditNode
 #guard_msgs in
 #eval
   show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
     let logs ← IO.mkRef #[]
     let logError (msg : String) : IO Unit := logs.modify (·.push msg)
+    let files ← buildManualPreviewDataFiles manualImpls manualSideBySideGraftDoc
     let node := graftNode "def:graft.manual.left"
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some {}) logError
     let renderedHtml ← Informal.Graft.renderNodeFromManifestCache

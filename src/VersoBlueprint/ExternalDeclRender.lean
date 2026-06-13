@@ -493,14 +493,6 @@ def renderDeclHtmlDirectFromInfoE
   catch ex =>
     return .error (.exception decl (← ex.toMessageData.toString))
 
-/--
-String compatibility wrapper over `renderDeclHtmlDirectFromInfoE`.
-Core external-rendering dataflow should use typed HTML payloads.
--/
-def renderDeclHtmlStringDirectFromInfoE
-    (decl : Name) (cinfo : ConstantInfo) : MetaM (Except ExternalDeclRenderError String) := do
-  return (← renderDeclHtmlDirectFromInfoE decl cinfo).map (·.selfContained)
-
 /-- Render one declaration directly from the in-memory `Environment` (no database, no source parsing). -/
 def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) := do
   let decl := decl.eraseMacroScopes
@@ -516,12 +508,6 @@ def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) :=
   catch ex =>
     logError m!"External declaration rendering failed for {decl}: {← ex.toMessageData.toString}"
     return none
-
-/-- String wrapper over `renderDeclHtmlNodeDirect?`. -/
-def renderDeclHtmlStringDirect? (decl : Name) : MetaM (Option String) := do
-  match ← renderDeclHtmlNodeDirect? decl with
-  | some html => return some html.asString
-  | none => return none
 
 /--
 Optional fallback path for non-`MetaM` contexts.

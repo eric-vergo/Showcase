@@ -36,7 +36,7 @@ Current shape:
 2. Verso still owns traversal, TeX, word counts, search, page shell, and HTML
    emission.
 3. Blueprint owns asset injection, public-xref filtering, preview-data
-   emission, and local compatibility rewrites.
+   emission, and local upstream-workaround rewrites.
 
 Work:
 
@@ -60,12 +60,13 @@ model instead of recomputing similar facts in several layers.
 
 Work:
 
-1. consolidate `Informal.Environment.InProgress` with `Data.Node` or document
-   the remaining phase-specific fields that require a separate elaboration
-   record
-2. consolidate `Informal.Environment.State` with traversal information so node,
-   group, and author data do not drift between environment state and rendered
-   traversal stores
+1. revisit `Informal.Environment.InProgress` after the widget path no longer
+   needs elaboration-time syntax; today it remains separate from `Data.Node`
+   because it owns directive-stack state, preview blocks, and `elabStx`
+2. keep `Informal.Environment.State` as the persisted semantic store and
+   traversal indexes as rendered-site projections; consolidate only if the
+   replacement keeps numbering, hrefs, preview ids, and HTML-cache keys
+   phase-safe
 3. define a shared status record derived from `Data.Node` plus external
    declaration checks, and route graph, summary, and local block badges through
    it

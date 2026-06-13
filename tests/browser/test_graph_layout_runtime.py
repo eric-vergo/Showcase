@@ -274,7 +274,7 @@ class TestGraphLayoutRuntime:
         assert switched["width"] > switched["height"]
         assert_graph_is_well_placed(page)
 
-    def test_graph_preview_defaults_to_click_to_pin(self, server: str, page: Page):
+    def test_graph_preview_defaults_to_pinned(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
@@ -308,7 +308,7 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-    def test_preview_utils_normalize_graph_preview_aliases(self, server: str, page: Page):
+    def test_preview_utils_read_graph_preview_behavior(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
@@ -318,25 +318,38 @@ class TestGraphLayoutRuntime:
                 const utils = window.bpPreviewUtils;
                 if (
                     !utils ||
-                    typeof utils.normalizePreviewMode !== "function" ||
-                    typeof utils.normalizePreviewPlacement !== "function" ||
+                    typeof utils.normalizePreviewMode !== "undefined" ||
+                    typeof utils.normalizePreviewPlacement !== "undefined" ||
                     typeof utils.readPanelBehavior !== "function"
                 ) {
                     return false;
                 }
-                const behavior = utils.readPanelBehavior(null, {
-                    mode: "click-and-stay",
-                    placement: "near-node",
+                const defaultBehavior = utils.readPanelBehavior(null, {
+                    mode: "pinned",
+                    placement: "anchored",
+                });
+                const fallbackBehavior = utils.readPanelBehavior(null, {
+                    mode: "invalid",
+                    placement: "invalid",
+                });
+                const panel = document.createElement("div");
+                panel.setAttribute("data-bp-preview-mode", "hover");
+                panel.setAttribute("data-bp-preview-placement", "docked");
+                const panelBehavior = utils.readPanelBehavior(panel, {
+                    mode: "pinned",
+                    placement: "anchored",
                 });
                 return (
-                    utils.normalizePreviewMode("transient", "pinned") === "hover" &&
-                    utils.normalizePreviewMode("click-to-pin", "hover") === "pinned" &&
-                    utils.normalizePreviewPlacement("fixed", "anchored") === "docked" &&
-                    utils.normalizePreviewPlacement("near-node", "docked") === "anchored" &&
-                    behavior.mode === "pinned" &&
-                    behavior.placement === "anchored" &&
-                    behavior.isPinned &&
-                    behavior.isAnchored
+                    defaultBehavior.mode === "pinned" &&
+                    defaultBehavior.placement === "anchored" &&
+                    defaultBehavior.isPinned &&
+                    defaultBehavior.isAnchored &&
+                    fallbackBehavior.mode === "hover" &&
+                    fallbackBehavior.placement === "anchored" &&
+                    panelBehavior.mode === "hover" &&
+                    panelBehavior.placement === "docked" &&
+                    panelBehavior.isHover &&
+                    panelBehavior.isDocked
                 );
             }"""
         )

@@ -552,17 +552,8 @@ def previewHoverUtilsJs : String := r##"(function () {
   function normalizePreviewMode(rawMode, fallback) {
     const defaultMode = fallback === "hover" || fallback === "pinned" ? fallback : "hover";
     const mode = String(rawMode || "").trim().toLowerCase();
-    if (mode === "hover" || mode === "transient") return "hover";
-    if (
-      mode === "pinned" ||
-      mode === "pin" ||
-      mode === "click" ||
-      mode === "click-to-pin" ||
-      mode === "click-and-stay" ||
-      mode === "click-to-stay"
-    ) {
-      return "pinned";
-    }
+    if (mode === "hover") return "hover";
+    if (mode === "pinned") return "pinned";
     return defaultMode;
   }
 
@@ -570,23 +561,8 @@ def previewHoverUtilsJs : String := r##"(function () {
     const defaultPlacement =
       fallback === "anchored" || fallback === "docked" ? fallback : "anchored";
     const placement = String(rawPlacement || "").trim().toLowerCase();
-    if (
-      placement === "anchored" ||
-      placement === "anchor" ||
-      placement === "near" ||
-      placement === "near-node" ||
-      placement === "node"
-    ) {
-      return "anchored";
-    }
-    if (
-      placement === "docked" ||
-      placement === "dock" ||
-      placement === "fixed" ||
-      placement === "panel"
-    ) {
-      return "docked";
-    }
+    if (placement === "anchored") return "anchored";
+    if (placement === "docked") return "docked";
     return defaultPlacement;
   }
 
@@ -967,8 +943,6 @@ def previewHoverUtilsJs : String := r##"(function () {
     bindCloseOnce: bindCloseOnce,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
-    normalizePreviewMode: normalizePreviewMode,
-    normalizePreviewPlacement: normalizePreviewPlacement,
     readPanelBehavior: readPanelBehavior,
     resetPanelPosition: resetPanelPosition,
     configureCloseButton: configureCloseButton,

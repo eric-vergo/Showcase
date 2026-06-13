@@ -53,6 +53,16 @@ Base statement for graph preview mode option coverage.
 {blueprint_graph}
 :::::::
 
+#guard (Informal.Commands.parseGraphPreviewMode? "hover").map (·.dataValue) == some "hover"
+#guard (Informal.Commands.parseGraphPreviewMode? "pinned").map (·.dataValue) == some "pinned"
+#guard (Informal.Commands.parseGraphPreviewMode? "transient").isNone
+#guard (Informal.Commands.parseGraphPreviewMode? "click").isNone
+#guard (Informal.Commands.parseGraphPreviewMode? "click-to-pin").isNone
+#guard (Informal.Commands.parseGraphPreviewPlacement? "docked").map (·.dataValue) == some "docked"
+#guard (Informal.Commands.parseGraphPreviewPlacement? "anchored").map (·.dataValue) == some "anchored"
+#guard (Informal.Commands.parseGraphPreviewPlacement? "fixed").isNone
+#guard (Informal.Commands.parseGraphPreviewPlacement? "near-node").isNone
+
 /-- info: true -/
 #guard_msgs in
 #eval
