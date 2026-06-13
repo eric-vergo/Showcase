@@ -13,7 +13,16 @@ namespace Informal.Slides
 open Lean
 open Verso Doc Elab
 
+/--
+Compatibility alias for the original slide-node API. New generated consumers
+should use `Informal.Graft.BlueprintNode` directly.
+-/
 public abbrev BlueprintSlideNode := Informal.Graft.BlueprintNode
+
+/--
+Compatibility alias for the original slide-node command config. New generated
+consumers should use `Informal.Graft.BlueprintNodeConfig` directly.
+-/
 public abbrev BlueprintNodeConfig := Informal.Graft.BlueprintNodeConfig
 
 namespace BlueprintSlideNode
