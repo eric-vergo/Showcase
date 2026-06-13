@@ -854,19 +854,19 @@ interfaces can reuse:
 - `BlueprintNodeConfig.toNode` normalizes that selection into
   `Informal.Graft.BlueprintNode`, including the exact preview `key`.
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
-  stable DOM shell used by Slides and other generated interfaces. The shell
-  carries the neutral `bp_graft_manifest_node` class as a stable selector for
-  non-slide consumers.
+  neutral DOM shell used by generated interfaces. The shell carries the
+  `bp_graft_manifest_node` class as a stable selector for custom consumers.
+  Slides use `BlueprintNode.slideAttrs` and `BlueprintNode.slideRenderedAttrs`
+  to add slide-specific classes without making them part of the generic graft
+  contract.
 - `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
   `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
   CSS classes without creating duplicate `class` attributes.
 - `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
   Its `attrs` and `slideAttrs` helpers produce the standard wrapper classes,
   but consumers can also ignore them and arrange nodes in their own UI.
-- `Informal.Slides.BlueprintSlideNode` and
-  `Informal.Slides.BlueprintNodeConfig` remain compatibility aliases for older
-  slide-oriented code. New generated consumers should import and use the
-  `Informal.Graft` names directly.
+- Slide generators and other generated consumers should import and use the
+  `Informal.Graft` node/config names directly.
 
 For server-side or generator-side renderers, prefer the manifest/cache path over
 ad hoc browser scans. Read or build the semantic
@@ -957,6 +957,8 @@ markup instead of embedding duplicate hover payloads into each code token.
 - `Blueprint node not found` means the label/facet pair did not match a
   rendered Blueprint preview. Check the label spelling and use
   `(facet := "proof")` when grafting a proof block instead of the statement.
+  The diagnostic includes the requested label, facet, and normalized manifest
+  key.
 - `Preview manifest unavailable` in Slides means the deck generator did not pass
   `previewManifest?` to `slidesMainWithBlueprintPreviews`.
 - `Blueprint HTML cache entry not found` means the manifest entry was found, but

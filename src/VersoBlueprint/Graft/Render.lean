@@ -108,7 +108,7 @@ public def renderNodeFromManifestCache
   | some _manifest =>
       match ctx.findEntry? node.key with
       | none =>
-          pure <| cfg.renderMissingNode node "Blueprint node not found" node.key
+          pure <| cfg.renderMissingNode node "Blueprint node not found" node.selectionDescription
       | some entry =>
           match ← ctx.renderedContent? node entry with
           | none =>

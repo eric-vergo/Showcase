@@ -125,7 +125,7 @@ private def renderManualGraftNode
   match Informal.PreviewManifest.findTraversalBlockEntry? state node.key with
   | none =>
       pure <| Html.tag "div" (manualNodeAttrs node) <|
-        renderNotice "error" "Blueprint node not found" node.key
+        renderNotice "error" "Blueprint node not found" node.selectionDescription
   | some (preview, entry) =>
       if preview.blocks.isEmpty then
         pure <| Html.tag "div" (manualNodeAttrs node) <|

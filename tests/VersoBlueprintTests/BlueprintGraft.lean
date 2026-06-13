@@ -174,7 +174,7 @@ private def renderAuditNode
 
 #guard
   let attrs := (graftNode "def:graft.manual.left").renderedAttrsWithClass "audit_graft_node"
-  attrs.contains ("class", "bp_slide_node bp_graft_manifest_node audit_graft_node") &&
+  attrs.contains ("class", "bp_graft_manifest_node audit_graft_node") &&
     attrs.contains ("data-bp-rendered", "static") &&
     (attrs.filter (fun attr => attr.1 == "class")).size == 1
 
@@ -218,6 +218,8 @@ private def renderAuditNode
     let rendered := renderedHtml.asString
     pure <|
       hasSubstr rendered "Blueprint node not found" &&
+        hasSubstr rendered "label `def:graft.manual.missing`" &&
+        hasSubstr rendered "facet `statement`" &&
         hasSubstr rendered node.key &&
         hasSubstr rendered "bp_test_graft_notice"
 
