@@ -76,6 +76,26 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
         Html.ofString s!"{title}: {detail}"
   }
 
+private def renderAuditNode
+    (manifest : Informal.PreviewManifest.File)
+    (htmlCache : Informal.PreviewManifest.HtmlCache.File)
+    (label : String) : IO Html := do
+  let node :=
+    ({ label, compact := true, showHeader := false } :
+      Informal.Graft.BlueprintNodeConfig).toNode
+  let ctx := Informal.Graft.RenderContext.ofPreviewData? (some manifest) (some htmlCache)
+  Informal.Graft.renderNodeFromManifestCache
+    {
+      blockRenderConfig := {
+        wrapperClass := "audit_blueprint_node"
+        codeBodyClass := "audit_blueprint_code"
+      }
+      nodeAttrs := fun node =>
+        node.renderedAttrsWithClass "audit_graft_node"
+    }
+    ctx
+    node
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -133,6 +153,23 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
         hasSubstr rendered "Manual left graft body with inline math" &&
         hasSubstr rendered "graftManualLeftValue" &&
         hasSubstr rendered "bp_code_panel_wrapper" &&
+        !hasSubstr rendered "Blueprint node not found"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let renderedHtml ← renderAuditNode files.manifest files.htmlCache "def:graft.manual.left"
+    let rendered := renderedHtml.asString
+    pure <|
+      hasSubstr rendered "audit_graft_node" &&
+        hasSubstr rendered "audit_blueprint_node" &&
+        hasSubstr rendered "data-bp-rendered=\"static\"" &&
+        hasSubstr rendered "Manual left graft body with inline math" &&
+        !hasSubstr rendered "bp_heading" &&
+        !hasSubstr rendered "bp_code_panel_wrapper" &&
         !hasSubstr rendered "Blueprint node not found"
 
 #guard

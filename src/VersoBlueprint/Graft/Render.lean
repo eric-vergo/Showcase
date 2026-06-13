@@ -74,6 +74,29 @@ public structure ManifestRenderConfig where
   manifestUnavailableDetail : String :=
     "Provide a Blueprint preview manifest and rendered HTML cache before rendering graft nodes."
 
+/--
+Render a graft node when the semantic manifest entry and already-rendered body
+content are both available.
+
+This is the shared assembly point for same-document Manual grafts and
+manifest/cache-backed generated consumers.
+-/
+public def renderNodeWithContent
+    (cfg : ManifestRenderConfig)
+    (node : BlueprintNode)
+    (entry : Informal.PreviewManifest.Entry)
+    (content : Informal.PreviewManifest.BlockRender.RenderedContent) : Html :=
+  .tag "div" (cfg.nodeAttrs node) <|
+    Informal.PreviewManifest.BlockRender.renderWithRenderedContent
+      cfg.blockRenderConfig
+      entry
+      content
+      {
+        displayLabelOverride? := node.displayLabel?
+        compact := node.compact
+        showHeader := node.showHeader
+      }
+
 public def renderNodeFromManifestCache
     (cfg : ManifestRenderConfig)
     (ctx : RenderContext)
@@ -91,16 +114,7 @@ public def renderNodeFromManifestCache
           | none =>
               pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
           | some content =>
-              pure <| .tag "div" (cfg.nodeAttrs node) <|
-                Informal.PreviewManifest.BlockRender.renderWithRenderedContent
-                  cfg.blockRenderConfig
-                  entry
-                  content
-                  {
-                    displayLabelOverride? := node.displayLabel?
-                    compact := node.compact
-                    showHeader := node.showHeader
-                  }
+              pure <| renderNodeWithContent cfg node entry content
 
 public def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=

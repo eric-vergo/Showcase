@@ -58,6 +58,12 @@ private def manualBlockRenderConfig : Informal.PreviewManifest.BlockRender.Rende
     }
   }
 
+private def manualManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
+  {
+    blockRenderConfig := manualBlockRenderConfig
+    nodeAttrs := manualNodeAttrs
+  }
+
 private def pushDistinctHtml (bodies : Array Html) (body : Html) : Array Html :=
   let html := body.asString
   if bodies.any (fun existing => existing.asString == html) then
@@ -135,16 +141,11 @@ private def renderManualGraftNode
           body
           codeBodies
         }
-        pure <| Html.tag "div" (manualNodeAttrs node) <|
-          Informal.PreviewManifest.BlockRender.renderWithRenderedContent
-            manualBlockRenderConfig
-            entry
-            content
-            {
-              displayLabelOverride? := node.displayLabel?
-              compact := node.compact
-              showHeader := node.showHeader
-            }
+        pure <| Informal.Graft.renderNodeWithContent
+          manualManifestRenderConfig
+          node
+          entry
+          content
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where
