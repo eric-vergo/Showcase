@@ -33,6 +33,32 @@ deriving Repr, BEq
 private def attrValue? (attrs : Array (String × String)) (name : String) : Option String :=
   (attrs.find? fun attr => attr.1 == name).map (·.2)
 
+/-- Append a CSS class to an HTML attribute array, creating the `class` attribute if needed. -/
+public def appendClassAttr (attrs : Array (String × String)) (className : String) :
+    Array (String × String) :=
+  Id.run do
+    let className := className.trimAscii.toString
+    if className.isEmpty then
+      return attrs
+    let mut out := #[]
+    let mut found := false
+    for attr in attrs do
+      if attr.1 == "class" then
+        let current := attr.2.trimAscii.toString
+        let value :=
+          if current.isEmpty then
+            className
+          else
+            current ++ " " ++ className
+        out := out.push ("class", value)
+        found := true
+      else
+        out := out.push attr
+    if found then
+      out
+    else
+      out.push ("class", className)
+
 private def BlueprintNode.domClassName (node : BlueprintNode) : String :=
   if node.compact then
     "bp_slide_node bp_slide_node_compact"
@@ -65,6 +91,11 @@ def BlueprintNode.fromAttrs? (attrs : Array (String × String)) : Option Bluepri
 
 def BlueprintNode.renderedAttrs (node : BlueprintNode) : Array (String × String) :=
   node.toAttrs ++ #[("data-bp-rendered", "static")]
+
+/-- Rendered DOM attributes with one additional CSS class. -/
+def BlueprintNode.renderedAttrsWithClass (node : BlueprintNode) (className : String) :
+    Array (String × String) :=
+  appendClassAttr node.renderedAttrs className
 
 def BlueprintNode.fallbackText (node : BlueprintNode) : String :=
   s!"Loading Blueprint node {node.label}..."
