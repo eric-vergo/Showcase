@@ -144,7 +144,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
         self.assertEqual([target.release for target in projects[1].targets], ["v4.30.0"])
         self.assertTrue(projects[1].targets[0].publish_reference)
-        self.assertEqual(projects[1].targets[0].rc, "4.30-rc2")
+        self.assertIsNone(projects[1].targets[0].rc)
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
             projects[1].generate_command,
@@ -158,7 +158,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual([target.release for target in projects[3].targets], ["v4.30.0"])
         self.assertTrue(projects[3].targets[0].publish_reference)
-        self.assertEqual(projects[3].targets[0].rc, "4.30-rc2")
+        self.assertIsNone(projects[3].targets[0].rc)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
         self.assertEqual([target.release for target in projects[4].targets], ["v4.30.0"])
         self.assertTrue(projects[4].targets[0].publish_reference)
@@ -442,10 +442,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             for entry in payload["reference_matrix"]["include"]
         }
         self.assertEqual(set(rows), {"noperthedron", "verso-flt", "verso-carleson"})
-        for row in rows.values():
-            self.assertEqual(row["rc"], "4.30-rc2")
-            self.assertEqual(row["toolchain"], "v4.30.0-rc2")
-            self.assertEqual(row["verso_ref"], "v4.30.0-rc2")
+        expected_rows = {
+            "noperthedron": ("", "v4.30.0", "v4.30.0"),
+            "verso-flt": ("", "v4.30.0", "v4.30.0"),
+            "verso-carleson": ("4.30-rc2", "v4.30.0-rc2", "v4.30.0-rc2"),
+        }
+        for project_id, (rc, toolchain, verso_ref) in expected_rows.items():
+            row = rows[project_id]
+            self.assertEqual(row["rc"], rc)
+            self.assertEqual(row["toolchain"], toolchain)
+            self.assertEqual(row["verso_ref"], verso_ref)
 
     def test_deploy_matrix_uses_controller_publish_targets_for_generated_manifests(self) -> None:
         controller_catalog = load_project_catalog_text(
