@@ -14,13 +14,13 @@ jobs:
     name: Blueprint Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -29,7 +29,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -49,13 +49,13 @@ jobs:
     name: Blueprint Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -64,7 +64,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -81,7 +81,7 @@ jobs:
     name: Harness Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
@@ -96,7 +96,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Lint GitHub workflows
         uses: docker://rhysd/actionlint:latest
         with:
@@ -115,7 +115,7 @@ jobs:
       - name: Run fresh-repo template CI smoke
         run: python3 ./scripts/check_project_template_fresh_repo.py --site-output _out/project-template-fresh-repo/html-multi
       - name: Upload fresh-repo template artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-template-fresh-repo
           path: _out/project-template-fresh-repo

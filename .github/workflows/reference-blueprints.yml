@@ -24,7 +24,7 @@ jobs:
       reference_project_count: ${{ steps.resolve.outputs.reference_project_count }}
       reference_matrix: ${{ steps.resolve.outputs.reference_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve release metadata
         id: resolve
         run: python3 ./scripts/emit_reference_release_matrix.py --github-output >> "$GITHUB_OUTPUT"
@@ -40,7 +40,7 @@ jobs:
     env:
       BP_REFERENCE_CHECKOUT_MODE: shared
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Show resolved release target
         run: |
           echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
@@ -55,7 +55,7 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -64,7 +64,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -85,7 +85,7 @@ jobs:
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation" --artifact-path "${{ matrix.artifact_path }}"
       - name: Upload reference blueprint artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
@@ -94,13 +94,13 @@ jobs:
     name: Build Test Blueprints
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -109,7 +109,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-lake-packages-v2-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -125,7 +125,7 @@ jobs:
       - name: Generate test blueprints
         run: ./scripts/generate-test-blueprints.sh
       - name: Upload test blueprint artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-blueprints
           path: _out/test-blueprints
@@ -139,26 +139,26 @@ jobs:
       - build-test-blueprints
     if: ${{ needs.resolve-reference-release.outputs.deploy_pages == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Show deploy release target
         run: |
           echo "release_id=${{ needs.resolve-reference-release.outputs.release_id }}"
           echo "deploy_pages=${{ needs.resolve-reference-release.outputs.deploy_pages }}"
       - name: Download reference blueprint artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: reference-blueprints-*
           path: _out/reference-blueprints
           merge-multiple: true
       - name: Download test blueprints artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: test-blueprints
           path: _out/test-blueprints
       - name: Prepare site artifact
         run: python3 ./scripts/prepare_reference_blueprints_pages.py
       - name: Upload site artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reference-blueprints-site
           path: _site

@@ -35,7 +35,7 @@ jobs:
       deployable_project_count: ${{ steps.resolve.outputs.deployable_project_count }}
       deployable_project_matrix: ${{ steps.resolve.outputs.deployable_project_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
           fetch-depth: 0
@@ -54,7 +54,7 @@ jobs:
     env:
       BP_REFERENCE_CHECKOUT_MODE: shared
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ matrix.branch }}
       - name: Show deployable release target
@@ -72,7 +72,7 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -81,7 +81,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -109,7 +109,7 @@ jobs:
         if: ${{ always() }}
         run: ./scripts/report-ci-disk-usage.sh "after reference generation" --artifact-path "${{ matrix.artifact_path }}"
       - name: Upload release reference artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
@@ -120,7 +120,7 @@ jobs:
     needs: resolve-deploy-releases
     if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
       - name: Install elan
@@ -128,7 +128,7 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Restore Lake package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib
@@ -137,7 +137,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-reference-deploy-lake-packages-v2-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}-
       - name: Restore Lake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             .lake/packages/mathlib/.lake/build
@@ -153,7 +153,7 @@ jobs:
       - name: Generate test blueprints
         run: ./scripts/generate-test-blueprints.sh
       - name: Upload test blueprints artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-blueprints
           path: _out/test-blueprints
@@ -167,7 +167,7 @@ jobs:
       - build-test-blueprints
     if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
       - name: Show deploy release summary
@@ -176,21 +176,21 @@ jobs:
           echo "deployable_release_count=${{ needs.resolve-deploy-releases.outputs.deployable_release_count }}"
           echo "deployable_project_count=${{ needs.resolve-deploy-releases.outputs.deployable_project_count }}"
       - name: Download release reference artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: reference-blueprints-release-*
           path: _out/reference-artifact-downloads
       - name: Stage release reference artifacts
         run: python3 ./scripts/stage_reference_deploy_artifacts.py
       - name: Download test blueprints artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: test-blueprints
           path: _out/test-blueprints
       - name: Prepare combined Pages artifact
         run: python3 ./scripts/prepare_reference_blueprints_pages.py
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
@@ -205,4 +205,4 @@ jobs:
     if: ${{ needs.resolve-deploy-releases.outputs.deployable_release_count != '0' }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
