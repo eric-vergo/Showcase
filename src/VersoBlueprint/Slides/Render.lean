@@ -58,18 +58,24 @@ private def renderNotice (kind title detail : String) : Html :=
     </div>
   }}
 
-private def renderMissingNode (node : BlueprintSlideNode) (title detail : String) : Html :=
-  .tag "div" node.renderedAttrs (renderNotice "error" title detail)
+private def slideNodeAttrs (node : Informal.Graft.BlueprintNode) : Array (String × String) :=
+  node.slideRenderedAttrs
+
+private def renderMissingNode (node : Informal.Graft.BlueprintNode) (title detail : String) : Html :=
+  .tag "div" (slideNodeAttrs node) (renderNotice "error" title detail)
 
 private def slideManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
   {
     blockRenderConfig := slideManifestBlockConfig
+    nodeAttrs := slideNodeAttrs
     renderMissingNode := renderMissingNode
     manifestUnavailableDetail :=
       "Pass previewManifest? to slidesMainWithBlueprintPreviews so Blueprint slide nodes can be rendered during slide generation."
   }
 
-public def renderBlueprintSlideNode (ctx : RenderContext) (node : BlueprintSlideNode) : IO Html := do
+public def renderBlueprintSlideNode
+    (ctx : RenderContext)
+    (node : Informal.Graft.BlueprintNode) : IO Html := do
   Informal.Graft.renderNodeFromManifestCache slideManifestRenderConfig ctx node
 
 /--
@@ -79,7 +85,7 @@ Render a Blueprint slide node from the structured attributes carried by the
 public def renderBlueprintSlideNodeFromAttrs?
     (ctx : RenderContext)
     (attrs : Array (String × String)) : Option (IO Html) := do
-  let node ← BlueprintSlideNode.fromAttrs? attrs
+  let node ← Informal.Graft.BlueprintNode.fromAttrs? attrs
   some (renderBlueprintSlideNode ctx node)
 
 def readBlueprintManifest (path : System.FilePath) :

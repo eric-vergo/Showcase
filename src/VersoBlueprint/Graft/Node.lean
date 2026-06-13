@@ -73,9 +73,9 @@ public def appendClassAttr (attrs : Array (String × String)) (className : Strin
 
 private def BlueprintNode.domClassName (node : BlueprintNode) : String :=
   if node.compact then
-    "bp_slide_node bp_graft_manifest_node bp_slide_node_compact"
+    "bp_graft_manifest_node bp_graft_manifest_node_compact"
   else
-    "bp_slide_node bp_graft_manifest_node"
+    "bp_graft_manifest_node"
 
 def BlueprintNode.toAttrs (node : BlueprintNode) : Array (String × String) :=
   nodeMarkerAttrs ++
@@ -104,6 +104,16 @@ def BlueprintNode.fromAttrs? (attrs : Array (String × String)) : Option Bluepri
 def BlueprintNode.renderedAttrs (node : BlueprintNode) : Array (String × String) :=
   node.toAttrs ++ #[("data-bp-rendered", "static")]
 
+def BlueprintNode.slideAttrs (node : BlueprintNode) : Array (String × String) :=
+  appendClassAttr node.toAttrs <|
+    if node.compact then
+      "bp_slide_node bp_slide_node_compact"
+    else
+      "bp_slide_node"
+
+def BlueprintNode.slideRenderedAttrs (node : BlueprintNode) : Array (String × String) :=
+  node.slideAttrs ++ #[("data-bp-rendered", "static")]
+
 /-- Rendered DOM attributes with one additional CSS class. -/
 def BlueprintNode.renderedAttrsWithClass (node : BlueprintNode) (className : String) :
     Array (String × String) :=
@@ -111,6 +121,9 @@ def BlueprintNode.renderedAttrsWithClass (node : BlueprintNode) (className : Str
 
 def BlueprintNode.fallbackText (node : BlueprintNode) : String :=
   s!"Loading Blueprint node {node.label}..."
+
+def BlueprintNode.selectionDescription (node : BlueprintNode) : String :=
+  s!"label `{node.label}`, facet `{node.facet}`, key `{node.key}`"
 
 public structure BlueprintNodeConfig where
   label : String

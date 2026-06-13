@@ -13,35 +13,9 @@ namespace Informal.Slides
 open Lean
 open Verso Doc Elab
 
-/--
-Compatibility alias for the original slide-node API. New generated consumers
-should use `Informal.Graft.BlueprintNode` directly.
--/
-public abbrev BlueprintSlideNode := Informal.Graft.BlueprintNode
-
-/--
-Compatibility alias for the original slide-node command config. New generated
-consumers should use `Informal.Graft.BlueprintNodeConfig` directly.
--/
-public abbrev BlueprintNodeConfig := Informal.Graft.BlueprintNodeConfig
-
-namespace BlueprintSlideNode
-
-def fromAttrs? (attrs : Array (String × String)) : Option BlueprintSlideNode :=
-  Informal.Graft.BlueprintNode.fromAttrs? attrs
-
-end BlueprintSlideNode
-
-namespace BlueprintNodeConfig
-
-def toSlideNode (cfg : BlueprintNodeConfig) : BlueprintSlideNode :=
-  cfg.toNode
-
-end BlueprintNodeConfig
-
-public meta def blueprintNodeBlock (cfg : BlueprintNodeConfig) : DocElabM Term := do
-  let node := cfg.toSlideNode
-  let attrs := node.toAttrs
+public meta def blueprintNodeBlock (cfg : Informal.Graft.BlueprintNodeConfig) : DocElabM Term := do
+  let node := cfg.toNode
+  let attrs := node.slideAttrs
   let fallback := node.fallbackText
   ``(Verso.Doc.Block.other (VersoSlides.BlockExt.wrap $(quote attrs))
       #[Verso.Doc.Block.para #[Verso.Doc.Inline.text $(quote fallback)]])
