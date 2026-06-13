@@ -34,6 +34,17 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 {blueprint_node "def:code.preview" (siteBase := "blueprint")}
 :::::::
 
+#docs (Slides) sideBySideBlueprintNodeSlideFixture "Side-by-Side Blueprint Node Slide" :=
+:::::::
+# Side-by-Side Blueprint Nodes
+
+:::blueprint_side_by_side +boxed
+{blueprint_node "def:graft.slide.left" -header (siteBase := "blueprint")}
+
+{blueprint_node "def:graft.slide.right" -header (siteBase := "blueprint")}
+:::
+:::::::
+
 #docs (Genre.Manual) slideMetadataPanelDoc "Slide Metadata Panel" :=
 :::::::
 :::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
@@ -41,7 +52,18 @@ Manifest-backed slide rendering should use the standard Blueprint block renderer
 :::
 :::::::
 
-private def blueprintNode (label key : String) : Informal.Slides.BlueprintSlideNode where
+#docs (Genre.Manual) slideGraftSourceDoc "Slide Blueprint Graft Sources" :=
+:::::::
+:::definition "def:graft.slide.left"
+Slide left graft body.
+:::
+
+:::definition "def:graft.slide.right"
+Slide right graft body.
+:::
+:::::::
+
+private def blueprintNode (label key : String) : Informal.Graft.BlueprintNode where
   label := label
   facet := "statement"
   key := key
@@ -105,7 +127,7 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
 #guard_msgs in
 #eval
   let node := blueprintNode "def:code.preview" "def:code.preview--statement"
-  Informal.Slides.BlueprintSlideNode.fromAttrs? node.toAttrs == some node
+  Informal.Graft.BlueprintNode.fromAttrs? node.toAttrs == some node
 
 /-- info: true -/
 #guard_msgs in
@@ -113,9 +135,18 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
   let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
     displayLabel? := some "Custom slide label" }
   let attrs := node.toAttrs
-  Informal.Slides.BlueprintSlideNode.fromAttrs? attrs == some node &&
+  Informal.Graft.BlueprintNode.fromAttrs? attrs == some node &&
     attrs.contains ("data-bp-display-label", "Custom slide label") &&
     !(attrs.any (fun attr => attr.1 == "data-bp-title"))
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let node := { blueprintNode "def:code.preview" "def:code.preview--statement" with
+    showHeader := false }
+  let attrs := node.toAttrs
+  Informal.Graft.BlueprintNode.fromAttrs? attrs == some node &&
+    attrs.contains ("data-bp-show-header", "false")
 
 /-- info: true -/
 #guard_msgs in
@@ -373,6 +404,39 @@ private partial def freshSlidesSmokeRoot : IO System.FilePath := do
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
         hasSubstr index "href=\"#--informal-preview" &&
+        !hasSubstr index "Loading Blueprint node"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls slideGraftSourceDoc
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let root ← freshSlidesSmokeRoot
+    let outDir := root / "slides"
+    let manifestPath := root / Informal.PreviewManifest.manifestFilename
+    let htmlCachePath := root / Informal.PreviewManifest.htmlCacheFilename
+    if !(← root.pathExists) then
+      IO.FS.createDirAll root
+    IO.FS.writeFile manifestPath (Lean.toJson files.manifest).compress
+    IO.FS.writeFile htmlCachePath (Lean.toJson files.htmlCache).compress
+    let rc ← Informal.Slides.slidesMainWithBlueprintPreviews
+      { outputDir := outDir }
+      (previewManifest? := some manifestPath)
+      sideBySideBlueprintNodeSlideFixture.toPart
+      (quiet := true)
+    if rc != 0 then
+      return false
+    let indexPath := outDir / "index.html"
+    if !(← indexPath.pathExists) then
+      return false
+    let index ← IO.FS.readFile indexPath
+    pure <|
+      hasSubstr index "bp_graft_side_by_side" &&
+        countSubstr index "data-bp-rendered=\"static\"" == 2 &&
+        hasSubstr index "Slide left graft body." &&
+        hasSubstr index "Slide right graft body." &&
+        !hasSubstr index "Blueprint node not found" &&
         !hasSubstr index "Loading Blueprint node"
 
 end Verso.VersoBlueprintTests.BlueprintSlides

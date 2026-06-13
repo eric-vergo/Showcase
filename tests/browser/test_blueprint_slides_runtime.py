@@ -327,11 +327,12 @@ class TestBlueprintSlidesRuntime:
 
         page.evaluate("window.Reveal.slide(1)")
         page.wait_for_function("() => window.Reveal.getIndices().h === 1")
-        theorem_node = page.locator(
+        current_slide = page.locator(".reveal .slides section.present").first
+        theorem_node = current_slide.locator(
             ".bp_slide_node[data-bp-label='multiplication_one_right']"
             "[data-bp-facet='statement']"
         )
-        proof_node = page.locator(
+        proof_node = current_slide.locator(
             ".bp_slide_node[data-bp-label='multiplication_one_right']"
             "[data-bp-facet='proof']"
         )
@@ -396,6 +397,37 @@ class TestBlueprintSlidesRuntime:
             "[data-bp-facet='proof'] .bp_slide_node_heading_link",
             "Multiplication/#--informal-preview-multiplication_one_right--proof",
             "/blueprint/Multiplication/#--informal-preview-multiplication_one_right--proof",
+        )
+
+        page.evaluate("window.Reveal.slide(2)")
+        page.wait_for_function("() => window.Reveal.getIndices().h === 2")
+        current_slide = page.locator(".reveal .slides section.present").first
+        graft_grid = current_slide.locator(".bp_graft_side_by_side").first
+        expect(graft_grid).to_be_visible()
+        assert graft_grid.evaluate(
+            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+        )
+        expect(graft_grid.locator(".bp_slide_node")).to_have_count(2)
+        expect(graft_grid.locator(".bp_heading")).to_have_count(0)
+        expect(graft_grid.locator(".bp_code_panel_wrapper")).to_have_count(0)
+        expect(
+            graft_grid.locator(".bp_slide_node[data-bp-label='collatz_step']")
+        ).to_contain_text("n / 2")
+        expect(
+            graft_grid.locator(
+                ".bp_slide_node[data-bp-label='multiplication_one_right']"
+                "[data-bp-facet='proof']"
+            )
+        ).to_contain_text("Unfold the definition of multiplication")
+        assert graft_grid.evaluate(
+            """grid => getComputedStyle(grid).display"""
+        ) == "grid"
+        expect_slide_link(
+            page,
+            ".bp_graft_side_by_side "
+            ".bp_slide_node[data-bp-label='collatz_step'] .bp_content a[title='multiplication_spec']",
+            "Multiplication/#--informal-preview-multiplication_spec--statement",
+            "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
 
         page.evaluate("window.bpSlideNodeRuntime.hydrate(document)")

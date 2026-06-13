@@ -114,16 +114,3 @@ public def slidesMainWithBlueprintPreviews
   pure rc
 
 end Informal.Slides
-
-open Verso Doc Elab
-
-/--
-Render a Blueprint manifest/cache entry by label inside a Verso Slides deck.
-
-Use {name}`Informal.Slides.slidesMainWithBlueprintPreviews` in the deck
-generator, or add {name}`Informal.Slides.withBlueprintSlidesAssets` to the
-config and call {name}`Informal.Slides.writeBlueprintSlidesJs` manually.
--/
-@[block_command]
-public meta def blueprint_node : BlockCommandOf Informal.Slides.BlueprintNodeConfig
-  | cfg => Informal.Slides.blueprintNodeBlock cfg

@@ -69,6 +69,7 @@ structure RenderConfig where
 structure RenderOptions where
   displayLabelOverride? : Option String := none
   compact : Bool := false
+  showHeader : Bool := true
 
 /--
 Rendered content for a Blueprint block shell.
@@ -239,6 +240,7 @@ def renderWithRenderedContent
       content := #[content.body]
       companionPanels := #[codePanel]
       wrapperClass? := some cfg.wrapperClass
+      showHeader := opts.showHeader
     }
 
 end Informal.PreviewManifest.BlockRender

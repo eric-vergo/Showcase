@@ -763,13 +763,160 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## Verso Slides Integration
+## Blueprint Grafts in Manual Documents
+
+`VersoBlueprint` adds a `{blueprint_node ...}` block command that grafts an
+existing Blueprint node into another place in a Manual document.
+
+In Manual documents, grafts use the current traversal state and render through
+the same manifest-backed Blueprint block shell used by generated preview data.
+Use them for same-document reuse while writing an overview, introduction, or
+roadmap page.
 
 The v4.29 backport does not build `VersoBlueprint.Slides`, because the required
-Verso Slides rendering hooks are only available on the v4.30 line. The semantic
-manifest and rendered HTML cache described above are still emitted on v4.29 so
-the shared preview-data refactorings remain available and future patches apply
-cleanly. Use v4.30 or newer for `{blueprint_node}` support in slide decks.
+Verso Slides rendering hooks are only available on the v4.30 line. Use v4.30 or
+newer for `{blueprint_node}` support in slide decks.
+
+Manual source:
+
+```lean
+import VersoBlueprint
+
+open Verso
+open Verso.Genre.Manual
+open Informal
+
+#docs (Genre.Manual) doc "Overview" :=
+:::::::
+:::theorem "thm:key"
+The statement to feature.
+:::
+
+{blueprint_node "thm:key" -header +compact}
+:::::::
+```
+
+The first positional argument is the Blueprint label to graft. Available options
+are:
+
+- `(facet := "statement")` or `(facet := "proof")`; statement is the default
+- `(displayLabel := "...")`, which overrides the displayed label/number in the
+  grafted shell without changing the semantic manifest entry
+- `+compact`, which omits attached Lean-code panels
+- `+header` or `-header`; headers are shown by default
+
+Use `blueprint_side_by_side` to place grafts next to each other. Add `+boxed`
+when each side should be visually framed:
+
+```lean
+:::blueprint_side_by_side +boxed
+{blueprint_node "thm:key" -header +compact}
+
+{blueprint_node "thm:key" (facet := "proof") -header +compact}
+:::
+```
+
+The side-by-side directive is presentation-only. Each child remains an ordinary
+`{blueprint_node ...}` command with its own label and options; the directive does
+not create dependencies, groups, or new manifest entries.
+
+### API for Custom Graft Consumers
+
+The graft commands are built on the same small data boundary that other
+interfaces can reuse:
+
+- `Informal.Graft.BlueprintNodeConfig` is the command-level selection shape. It
+  records the label plus options such as `facet`, `displayLabel`, `compact`,
+  `showHeader`, and `siteBase`.
+- `BlueprintNodeConfig.toNode` normalizes that selection into
+  `Informal.Graft.BlueprintNode`, including the exact preview `key`.
+- `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
+  neutral DOM shell used by generated interfaces. The shell carries the
+  `bp_graft_manifest_node` class as a stable selector for custom consumers.
+  Consumers can layer their own classes on top without making them part of the
+  generic graft contract.
+- `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
+  `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
+  CSS classes without creating duplicate `class` attributes.
+- `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
+  Its `attrs` helper produces the standard wrapper classes, but consumers can
+  also ignore it and arrange nodes in their own UI.
+- Generated consumers should import and use the `Informal.Graft` node/config
+  names directly.
+
+For server-side or generator-side renderers, prefer the manifest/cache path over
+ad hoc browser scans. Read or build the semantic
+`Informal.PreviewManifest.File` and rendered
+`Informal.PreviewManifest.HtmlCache.File`, then look up the same normalized node
+key with `PreviewManifest.File.findEntry?` and
+`PreviewManifest.HtmlCache.File.findHtml?`. Code panels can reuse
+`HtmlCache.File.codeHtmlBodies`.
+
+`VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
+interfaces. A consumer such as an audit view can provide its own wrapper
+classes and diagnostics while reusing the same manifest/cache content:
+
+```lean
+import VersoBlueprint.Graft
+
+def renderAuditNode
+    (manifest : Informal.PreviewManifest.File)
+    (htmlCache : Informal.PreviewManifest.HtmlCache.File)
+    (label : String) : IO Verso.Output.Html := do
+  let node :=
+    ({ label := label, compact := true, showHeader := false } :
+      Informal.Graft.BlueprintNodeConfig).toNode
+  let ctx := Informal.Graft.RenderContext.ofPreviewData? (some manifest) (some htmlCache)
+  Informal.Graft.renderNodeFromManifestCache
+    {
+      blockRenderConfig := {
+        wrapperClass := "audit_blueprint_node"
+        codeBodyClass := "audit_blueprint_code"
+      }
+      nodeAttrs := fun node =>
+        node.renderedAttrsWithClass "audit_graft_node"
+    }
+    ctx
+    node
+```
+
+`renderNodeFromManifestCache` has three diagnostic branches that custom
+interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:
+missing manifest, missing manifest entry for the normalized node key, and
+missing rendered HTML-cache body for a manifest entry. The cache-miss branch
+also calls the context's `logError` callback so generators can fail or report
+broken manifest/cache pairs consistently.
+
+Consumers that already have a semantic manifest entry and rendered body content
+can call `Informal.Graft.renderNodeWithContent` directly. This keeps the graft
+node attributes, wrapper classes, and `displayLabel`/`compact`/`showHeader`
+behavior aligned with `{blueprint_node}` while letting the caller decide where
+the content came from.
+
+For still lower-level consumers, the final shared block-shell assembly point
+remains `Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass
+it the semantic manifest entry plus `BlockRender.RenderedContent`, using
+`BlockRender.RenderedContent.ofHtmlStrings` when the body came from
+`blueprint-html-cache.json`. The render options map directly to graft behavior:
+`displayLabelOverride?`, `compact`, and `showHeader`. This lets an audit
+interface or dashboard use the same semantic entry and cached HTML while
+placing the rendered nodes in its own side-by-side, tabbed, or comparison
+wrapper.
+
+### Troubleshooting Grafts
+
+- `Blueprint node not found` means the label/facet pair did not match a
+  rendered Blueprint preview. Check the label spelling and use
+  `(facet := "proof")` when grafting a proof block instead of the statement.
+  The diagnostic includes the requested label, facet, and normalized manifest
+  key.
+- `Blueprint HTML cache entry not found` means the manifest entry was found, but
+  the matching rendered body was not in `blueprint-html-cache.json`. Keep the
+  manifest and cache from the same Blueprint render.
+- Manual grafts resolve from the current document traversal state and do not
+  need a preview manifest path.
+- `-header`, `+compact`, and `+boxed` are presentation options only. They do not
+  create new nodes, dependencies, groups, or manifest entries.
 
 ## The Generator Entry Point
 
