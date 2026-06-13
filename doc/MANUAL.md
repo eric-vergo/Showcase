@@ -855,6 +855,8 @@ interfaces can reuse:
   `Informal.Graft.BlueprintNode`, including the exact preview `key`.
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
   stable DOM shell used by Slides and other generated interfaces.
+- `BlueprintNode.renderedAttrsWithClass` appends a custom class to that shell
+  without creating duplicate `class` attributes.
 - `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
   Its `attrs` and `slideAttrs` helpers produce the standard wrapper classes,
   but consumers can also ignore them and arrange nodes in their own UI.
@@ -889,15 +891,18 @@ def renderAuditNode
         codeBodyClass := "audit_blueprint_code"
       }
       nodeAttrs := fun node =>
-        node.renderedAttrs.map (fun attr =>
-          if attr.1 == "class" then
-            ("class", attr.2 ++ " audit_graft_node")
-          else
-            attr)
+        node.renderedAttrsWithClass "audit_graft_node"
     }
     ctx
     node
 ```
+
+`renderNodeFromManifestCache` has three diagnostic branches that custom
+interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:
+missing manifest, missing manifest entry for the normalized node key, and
+missing rendered HTML-cache body for a manifest entry. The cache-miss branch
+also calls the context's `logError` callback so generators can fail or report
+broken manifest/cache pairs consistently.
 
 For lower-level consumers, the final shared assembly point remains
 `Informal.PreviewManifest.BlockRender.renderWithRenderedContent`. Pass it the

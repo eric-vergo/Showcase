@@ -70,8 +70,10 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
       wrapperClass := "bp_test_graft_node_blueprint"
       codeBodyClass := "bp_test_graft_code_body"
     }
+    nodeAttrs := fun node => node.renderedAttrsWithClass "bp_test_graft_node"
     renderMissingNode := fun node title detail =>
-      .tag "div" node.renderedAttrs <| Html.ofString s!"{title}: {detail}"
+      .tag "div" (node.renderedAttrsWithClass "bp_test_graft_notice") <|
+        Html.ofString s!"{title}: {detail}"
   }
 
 /-- info: true -/
@@ -122,6 +124,7 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
     let rendered := renderedHtml.asString
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
+        hasSubstr rendered "bp_slide_node bp_test_graft_node" &&
         hasSubstr rendered "bp_test_graft_node_blueprint" &&
         hasSubstr rendered "bp_test_graft_code_body" &&
         hasSubstr rendered "API view" &&
@@ -129,5 +132,70 @@ private def graftManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
         hasSubstr rendered "graftManualLeftValue" &&
         hasSubstr rendered "bp_code_panel_wrapper" &&
         !hasSubstr rendered "Blueprint node not found"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let attrs := (graftNode "def:graft.manual.left").renderedAttrsWithClass "audit_graft_node"
+  attrs.contains ("class", "bp_slide_node audit_graft_node") &&
+    attrs.contains ("data-bp-rendered", "static") &&
+    (attrs.filter (fun attr => attr.1 == "class")).size == 1
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let node := graftNode "def:graft.manual.left"
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? none none
+    let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
+      graftManifestRenderConfig
+      ctx
+      node
+    let rendered := renderedHtml.asString
+    pure <|
+      hasSubstr rendered "Preview manifest unavailable" &&
+        hasSubstr rendered "Provide a Blueprint preview manifest" &&
+        hasSubstr rendered "bp_test_graft_notice" &&
+        hasSubstr rendered "data-bp-rendered=\"static\""
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let node := graftNode "def:graft.manual.missing"
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
+      graftManifestRenderConfig
+      ctx
+      node
+    let rendered := renderedHtml.asString
+    pure <|
+      hasSubstr rendered "Blueprint node not found" &&
+        hasSubstr rendered node.key &&
+        hasSubstr rendered "bp_test_graft_notice"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState manualImpls manualSideBySideGraftDoc
+    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls (fun _ => pure ()) st
+    let logs ← IO.mkRef #[]
+    let logError (msg : String) : IO Unit := logs.modify (·.push msg)
+    let node := graftNode "def:graft.manual.left"
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some {}) logError
+    let renderedHtml ← Informal.Graft.renderNodeFromManifestCache
+      graftManifestRenderConfig
+      ctx
+      node
+    let rendered := renderedHtml.asString
+    let logs ← logs.get
+    pure <|
+      hasSubstr rendered "Blueprint HTML cache entry not found" &&
+        hasSubstr rendered node.key &&
+        logs.any (fun msg => hasSubstr msg "Blueprint HTML cache: missing rendered body") &&
+        logs.any (fun msg => hasSubstr msg node.key)
 
 end Verso.VersoBlueprintTests.BlueprintGraft
