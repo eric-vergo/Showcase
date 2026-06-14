@@ -135,6 +135,11 @@ end
 structure TexConfig where
   label? : Option Data.Label := none
   slot : String := Data.defaultTexSourceSlot
+  path? : Option String := none
+  startLine? : Option Nat := none
+  startCharacter? : Option Nat := none
+  endLine? : Option Nat := none
+  endCharacter? : Option Nat := none
 
 section
 variable [Monad m] [MonadError m]
@@ -156,12 +161,22 @@ private def texSlot : ValDesc m String := {
 }
 
 def TexConfig.parse : ArgParse m TexConfig :=
-  (fun labelArg? slotArg? =>
+  (fun labelArg? slotArg? path? startLine? startCharacter? endLine? endCharacter? =>
     {
       label? := labelArg?.map (fun labelArg => LabelNameParsing.parse labelArg.val)
       slot := slotArg?.getD Data.defaultTexSourceSlot
+      path? := path?.map (·.trimAscii.toString)
+      startLine?
+      startCharacter?
+      endLine?
+      endCharacter?
     }) <$> ((some <$> .positional `label (.withSyntax .string)) <|> pure none)
         <*> .named `slot texSlot true
+        <*> .named `path .string true
+        <*> .named' `start_line true
+        <*> .named' `start_character true
+        <*> .named' `end_line true
+        <*> .named' `end_character true
 
 instance : FromArgs TexConfig m where
   fromArgs := TexConfig.parse

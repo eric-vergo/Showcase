@@ -28,7 +28,7 @@ private def texSourceRaw? (sources : Array (String × Informal.Data.TexSource)) 
 Statement body.
 :::
 
-```tex "tex.source"
+```tex "tex.source" (path := "blueprint/src/chapter/main.tex") (start_line := 12) (start_character := 0) (end_line := 15) (end_character := 0)
 \begin{theorem}\label{thm:tex-source}
 For every natural number $n$, adding zero on the right leaves it unchanged.
 \end{theorem}
