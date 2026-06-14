@@ -46,8 +46,8 @@
       },
       "targets": [
         {
-          "release": "v4.29.0",
-          "ref": "3ce49aa20b55cb760c54626ccd7fc0bfc62ee740",
+          "release": "v4.30.0",
+          "ref": "34495d60302b699e5a260ed23d50c3d16e9cd0a9",
           "publish_reference": true
         }
       ],
