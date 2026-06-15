@@ -153,7 +153,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
-        self.assertEqual([target.release for target in projects[2].targets], ["v4.29.0"])
+        self.assertEqual([target.release for target in projects[2].targets], ["v4.30.0"])
         self.assertTrue(projects[2].targets[0].publish_reference)
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assertEqual([target.release for target in projects[3].targets], ["v4.30.0"])
@@ -436,14 +436,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(payload["rc"], "")
         self.assertEqual(payload["toolchain"], "v4.30.0")
         self.assertEqual(payload["verso_ref"], "v4.30.0")
-        self.assertEqual(payload["reference_project_count"], 3)
+        self.assertEqual(payload["reference_project_count"], 4)
         rows = {
             entry["project_id"]: entry
             for entry in payload["reference_matrix"]["include"]
         }
-        self.assertEqual(set(rows), {"noperthedron", "verso-flt", "verso-carleson"})
+        self.assertEqual(set(rows), {"noperthedron", "spherepackingblueprint", "verso-flt", "verso-carleson"})
         expected_rows = {
             "noperthedron": ("", "v4.30.0", "v4.30.0"),
+            "spherepackingblueprint": ("", "v4.30.0", "v4.30.0"),
             "verso-flt": ("", "v4.30.0", "v4.30.0"),
             "verso-carleson": ("4.30-rc2", "v4.30.0-rc2", "v4.30.0-rc2"),
         }
