@@ -50,8 +50,8 @@ Common starting points:
 python3 -m scripts.blueprint_harness create-worktree <name> --owner codex --lock --priority P1 --summary "short description"
 python3 -m scripts.blueprint_harness create-worktree <name> --lightweight  # docs/Python-only work
 python3 -m scripts.blueprint_harness release-status --require-sync
-python3 -m scripts.blueprint_harness start-release-line 4.30-rc2
-python3 -m scripts.blueprint_harness set-default-dev-branch v4.30.0
+python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.31.0
 python3 -m scripts.blueprint_harness paths
 python3 -m scripts.blueprint_reference_harness projects
 python3 -m scripts.blueprint_reference_harness status

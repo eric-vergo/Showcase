@@ -81,24 +81,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         expected_projects: list[str] = []
         expected_refs: dict[str, str | None] = {}
         expected_rcs: dict[str, str | None] = {}
-        published_targets = [
+        expected_targets = [
             (project, target)
             for project in catalog.projects
             if (target := project.target_for_release(release.release_id)) is not None and target.publish_reference
         ]
-        if published_targets:
-            for project, target in published_targets:
-                expected_projects.append(project.project_id)
-                expected_refs[project.project_id] = target.ref
-                expected_rcs[project.project_id] = target.rc
-        else:
-            for project in catalog.projects:
-                target = next((target for target in project.targets if target.release == release.release_id), None)
-                if target is None:
-                    continue
-                expected_projects.append(project.project_id)
-                expected_refs[project.project_id] = target.ref
-                expected_rcs[project.project_id] = target.rc
+        for project, target in expected_targets:
+            expected_projects.append(project.project_id)
+            expected_refs[project.project_id] = target.ref
+            expected_rcs[project.project_id] = target.rc
 
         self.assertEqual([project.project_id for project in projects], expected_projects)
         for project in projects:
@@ -126,6 +117,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         catalog = load_project_catalog(manifest)
         projects = list(catalog.projects)
         current_release = resolve_release_target(catalog, None, PACKAGE_ROOT)
+        branch_policy = load_branch_policy(PACKAGE_ROOT)
 
         self.assertEqual(
             [project.project_id for project in projects],
@@ -137,7 +129,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 "verso-carleson",
             ],
         )
-        self.assertEqual(catalog.release_targets, load_branch_policy(PACKAGE_ROOT).release_targets)
+        self.assertEqual(catalog.release_targets, branch_policy.release_targets)
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
@@ -146,7 +138,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[0].generate_command,
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
-        self.assert_single_current_release_target(projects[0], current_release.release_id)
+        expected_template_targets = [current_release.release_id]
+        if branch_policy.default_dev_branch != current_release.release_id:
+            expected_template_targets.append(branch_policy.default_dev_branch)
+        self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         self.assertTrue(current_release.deploy_pages)
@@ -411,7 +406,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
     def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
-        release = resolve_release_target(catalog, "v4.29.0", PACKAGE_ROOT)
+        release = resolve_release_target(catalog, "v4.30.0", PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
         matrix = reference_build_matrix(projects, release)
         workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
@@ -693,8 +688,18 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
         self.assert_resolved_projects_match_manifest("v4.30.0")
 
-    def test_resolve_projects_for_older_release_uses_matching_targets(self) -> None:
-        self.assert_resolved_projects_match_manifest("v4.29.0")
+    def test_resolve_projects_for_default_release_uses_matching_targets(self) -> None:
+        self.assert_resolved_projects_match_manifest(load_branch_policy(PACKAGE_ROOT).default_dev_branch)
+
+    def test_project_template_has_default_release_target(self) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        default_release = load_branch_policy(PACKAGE_ROOT).default_dev_branch
+
+        projects = resolve_projects_for_release(catalog, default_release, ["project-template"])
+
+        self.assertEqual([project.project_id for project in projects], ["project-template"])
+        self.assertEqual(projects[0].selected_release, default_release)
+        self.assertTrue(projects[0].in_repo_project)
 
     def test_publish_reference_targets_select_default_release_catalog(self) -> None:
         catalog = load_project_catalog_text(

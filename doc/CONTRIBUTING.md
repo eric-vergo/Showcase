@@ -26,9 +26,9 @@ This repository keeps local parallel work simple:
   default-dev slug with a release marker in front of it.
   Examples:
   - default-dev branch: `fix/backport-discipline`
-  - paired `v4.28.0` backport branch: `fix/backport-v428-backport-discipline`
+  - paired `v4.30.0` backport branch: `fix/backport-v430-backport-discipline`
   - default-dev docs branch: `docs/manual-cleanup`
-  - paired `v4.28.0` docs backport branch: `docs/backport-v428-manual-cleanup`
+  - paired `v4.30.0` docs backport branch: `docs/backport-v430-manual-cleanup`
 
 Prefer short, descriptive slugs over opaque branch names.
 
@@ -124,8 +124,8 @@ Do those upstream write actions only when they are explicitly requested.
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs
-  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.29.0 --main-pr <pr>` to scaffold one paired backport PR branch name, title, and body
-  - apply the scaffolded release label, for example `backport-v4.29.0`, to the
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>` to scaffold one paired backport PR branch name, title, and body
+  - apply the scaffolded release label, for example `backport-v4.30.0`, to the
     paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>` or
@@ -138,12 +138,9 @@ Do those upstream write actions only when they are explicitly requested.
 - Record the pairing in the PR body using plain lines like:
 
 ```text
-Backport v4.29.0: pending
-Backport v4.29.0: #122
-Backport v4.29.0: exempt: release setup only
-Backport v4.28.0: pending
-Backport v4.28.0: #123
-Backport v4.28.0: exempt: docs-only change
+Backport v4.30.0: pending
+Backport v4.30.0: #122
+Backport v4.30.0: exempt: docs-only change
 ```
 
 See the repository PR template for the preferred structure.

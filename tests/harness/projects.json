@@ -11,6 +11,9 @@
       "targets": [
         {
           "release": "v4.30.0"
+        },
+        {
+          "release": "v4.31.0"
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],

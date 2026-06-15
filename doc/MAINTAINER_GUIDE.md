@@ -210,7 +210,7 @@ Use the harness to generate public PR/backport scaffolds:
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.28.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
@@ -218,7 +218,7 @@ Use `git cherry-pick -x` for paired backport branches so the paired-backport
 check can verify recorded source SHAs and patch IDs.
 
 Each paired backport PR should carry the scaffolded release label, such as
-`backport-v4.28.0`, so release-specific queues remain visible when several
+`backport-v4.30.0`, so release-specific queues remain visible when several
 maintenance lines are active.
 
 Land reviewed local work from the clean root checkout:
@@ -243,8 +243,8 @@ fixtures, and pin the matching `verso` release or release candidate in the root
 package:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain 4.30-rc2
-python3 -m scripts.blueprint_harness bump-toolchain v4.29.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain 4.31-rc2
+python3 -m scripts.blueprint_harness bump-toolchain v4.31.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
@@ -252,8 +252,8 @@ package's direct `require verso` pin, refreshes the committed manifests for the
 root package, `project_template`, and
 `tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
 build/test validation pass that maintainers would otherwise do manually. Release
-candidates use the official short RC name, for example `4.30-rc2`; the harness
-writes the corresponding Lean and `verso` tag ref, such as `v4.30.0-rc2`.
+candidates use the official short RC name, for example `4.31-rc2`; the harness
+writes the corresponding Lean and `verso` tag ref, such as `v4.31.0-rc2`.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
 release tag need to differ.
 
@@ -264,10 +264,10 @@ default-development branch, then let the harness do the branch-local release
 setup:
 
 ```bash
-python3 -m scripts.blueprint_harness start-release-line 4.30-rc2
+python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
 ```
 
-Run this from the new local branch, for example `v4.30.0`. The command:
+Run this from the new local branch, for example `v4.31.0`. The command:
 
 - rewrites the managed `lean-toolchain` files, the root `verso` pin, and the
   committed manifests for the root package, `project_template`, and the
@@ -278,14 +278,14 @@ Run this from the new local branch, for example `v4.30.0`. The command:
 - enables the in-repo reference projects, currently `project-template`, on the
   new release target
 
-For release candidates, use the official short RC name such as `4.30-rc2`.
-The branch name remains the stable release branch, for example `v4.30.0`, while
-the command pins the managed root-package files to `v4.30.0-rc2`.
+For release candidates, use the official short RC name such as `4.31-rc2`.
+The branch name remains the stable release branch, for example `v4.31.0`, while
+the command pins the managed root-package files to `v4.31.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
 validated on the new Lean release. If one project target still needs a release
-candidate, put the short RC name, for example `"rc": "4.30-rc2"`, on that
+candidate, put the short RC name, for example `"rc": "4.31-rc2"`, on that
 specific project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
@@ -294,12 +294,12 @@ policy metadata on each older release branch so the harness recognizes them as
 backport-only:
 
 ```bash
-python3 -m scripts.blueprint_harness set-default-dev-branch v4.30.0
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.31.0
 ```
 
 Commit that metadata-only change separately on each older branch that still
-carries `branch-policy.json`, such as `v4.29.0` and `v4.28.0`. Preserve their
-own Lean toolchain pins.
+carries `branch-policy.json`, such as `v4.30.0`. Preserve their own Lean
+toolchain pins.
 
 To remove stale harness-managed reference caches and orphaned local clones:
 
@@ -403,15 +403,14 @@ python3 -m scripts.blueprint_harness prepare-backports
 Paste the emitted backport lines into the draft PR body. While the PR is still draft,
 each required line may remain:
 
-- `Backport v4.29.0: pending`
-- `Backport v4.28.0: pending`
-- or `Backport v4.29.0: exempt: <reason>`
+- `Backport v4.30.0: pending`
+- or `Backport v4.30.0: exempt: <reason>`
 
 Once the default-development PR is ready for review it must replace each `pending` line
 with either:
 
-- link the paired backport PR in the PR body with `Backport v4.29.0: #<pr>`
-- or record `Backport v4.29.0: exempt: <reason>`
+- link the paired backport PR in the PR body with `Backport v4.30.0: #<pr>`
+- or record `Backport v4.30.0: exempt: <reason>`
 
 Use the default-development PR as the main review surface. The paired backport
 PR is primarily a maintenance-line artifact for CI, merge state, and any
@@ -423,16 +422,16 @@ prefix and reuse the default-development slug with a release marker. For
 example:
 
 - default-development branch: `fix/backport-discipline`
-- paired `v4.29.0` branch: `fix/backport-v429-backport-discipline`
+- paired `v4.30.0` branch: `fix/backport-v430-backport-discipline`
 
 To keep paired backport PRs consistent, scaffold them with:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.29.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.30.0 --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.29.0] ...`, a `backport-v4.29.0` release label, and a PR body
+`[backport v4.30.0] ...`, a `backport-v4.30.0` release label, and a PR body
 that points back to the primary
 default-development review.
 
@@ -466,7 +465,7 @@ python3 -m scripts.blueprint_harness land-release feat/some-branch --cleanup
 ```
 
 `land-release` refuses to proceed unless the root checkout is on a clean,
-in-sync local release branch such as `v4.29.0`, and it only accepts
+in-sync local release branch such as `v4.30.0`, and it only accepts
 fast-forward source refs. With `--cleanup`, it also removes the source worktree
 and deletes the source branch when that can be done safely.
 
@@ -618,7 +617,7 @@ The repository includes these GitHub Actions workflows:
 - `.github/workflows/reference-blueprints-deploy.yml`
 
 `ci.yml` is the main verification workflow. It keeps the always-on checks for
-pull requests and pushes to release branches named like `v4.29.0`:
+pull requests and pushes to release branches named like `v4.30.0`:
 
 - `Blueprint Build`
 - `Blueprint Tests`
@@ -629,7 +628,7 @@ the in-repo template as a fresh standalone repository and smoke-tests the
 template-owned CI path.
 
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
-pushes to release branches named like `v4.29.0`, and manual dispatch, it:
+pushes to release branches named like `v4.30.0`, and manual dispatch, it:
 
 - resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
@@ -648,7 +647,7 @@ pushes to release branches named like `v4.29.0`, and manual dispatch, it:
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
-`v4.29.0`, checks out the repository default-development branch as the source
+`v4.30.0`, checks out the repository default-development branch as the source
 of truth for deployment policy, resolves every release target with
 `deploy_pages: true`, selects project targets marked `publish_reference: true`,
 rebuilds those selected blueprints in isolation, and assembles one combined
@@ -742,7 +741,7 @@ Minimal external catalog entry shape:
       },
       "targets": [
         {
-          "release": "v4.29.0",
+          "release": "v4.30.0",
           "ref": "0123456789abcdef0123456789abcdef01234567",
           "publish_reference": true
         }
