@@ -110,7 +110,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         if publish_reference is not None:
             self.assertEqual(project.targets[0].publish_reference, publish_reference)
 
-    def test_default_manifest_contains_current_external_projects(self) -> None:
+    def test_default_manifest_contains_release_projects(self) -> None:
         manifest = default_project_manifest(PACKAGE_ROOT)
         manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
         self.assertNotIn("release_targets", manifest_data)
@@ -138,16 +138,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             projects[0].generate_command,
             ("lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"),
         )
-        expected_template_targets = [current_release.release_id]
-        if branch_policy.default_dev_branch != current_release.release_id:
-            expected_template_targets.append(branch_policy.default_dev_branch)
+        expected_template_targets = [target.release_id for target in branch_policy.release_targets]
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         self.assertTrue(current_release.deploy_pages)
+        external_release_id = (
+            branch_policy.required_backport_branches[0]
+            if current_release.release_id == branch_policy.default_dev_branch
+            else current_release.release_id
+        )
         self.assertTrue(projects[1].git_checkout)
         self.assertEqual(projects[1].repository, "https://github.com/ejgallego/verso-noperthedron.git")
-        self.assert_single_current_release_target(projects[1], current_release.release_id, publish_reference=True)
+        self.assert_single_current_release_target(projects[1], external_release_id, publish_reference=True)
         self.assertIsNone(projects[1].targets[0].rc)
         self.assertEqual(projects[1].build_command, ("lake", "build", "Contents"))
         self.assertEqual(
@@ -157,14 +160,14 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[1].browser_tests_path, None)
         self.assertEqual(projects[1].panel_regression_script, None)
         self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
-        self.assert_single_current_release_target(projects[2], current_release.release_id, publish_reference=True)
+        self.assert_single_current_release_target(projects[2], external_release_id, publish_reference=True)
         self.assertIsNone(projects[2].targets[0].rc)
         self.assertEqual(projects[2].build_command, ("bash", "scripts/ci-reference-build.sh"))
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
-        self.assert_single_current_release_target(projects[3], current_release.release_id, publish_reference=True)
+        self.assert_single_current_release_target(projects[3], external_release_id, publish_reference=True)
         self.assertIsNone(projects[3].targets[0].rc)
         self.assertEqual(projects[4].repository, "https://github.com/ejgallego/verso-carleson.git")
-        self.assert_single_current_release_target(projects[4], current_release.release_id, publish_reference=True)
+        self.assert_single_current_release_target(projects[4], external_release_id, publish_reference=True)
         self.assertIsNotNone(projects[4].targets[0].rc)
         self.assertEqual(projects[4].build_command, ("lake", "build", "CarlesonBlueprint"))
         self.assertEqual(
