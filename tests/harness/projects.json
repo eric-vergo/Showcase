@@ -51,7 +51,7 @@
           "publish_reference": true
         }
       ],
-      "build_command": ["lake", "build", "+SpherePackingBlueprint.Contents"],
+      "build_command": ["lake", "build", "+SpherePackingBlueprintMain"],
       "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },

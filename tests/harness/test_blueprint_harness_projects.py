@@ -164,6 +164,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual(projects[2].repository, "https://github.com/ejgallego/verso-sphere-packing.git")
         self.assert_single_current_release_target(projects[2], current_release.release_id, publish_reference=True)
         self.assertIsNone(projects[2].targets[0].rc)
+        self.assertEqual(projects[2].build_command, ("lake", "build", "+SpherePackingBlueprintMain"))
         self.assertEqual(projects[3].repository, "https://github.com/ejgallego/verso-flt.git")
         self.assert_single_current_release_target(projects[3], current_release.release_id, publish_reference=True)
         self.assertIsNone(projects[3].targets[0].rc)
