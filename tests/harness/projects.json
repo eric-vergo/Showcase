@@ -47,11 +47,11 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "26a012834912352760f9a0d6efdef613a872caf8",
+          "ref": "a9e4c8ccd23b757e3e922d4251f579e4300f0005",
           "publish_reference": true
         }
       ],
-      "build_command": ["lake", "build", "+SpherePackingBlueprintMain"],
+      "build_command": ["bash", "scripts/ci-reference-build.sh"],
       "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
