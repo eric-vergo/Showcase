@@ -29,6 +29,10 @@ OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>\s*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?\s*$',
     re.MULTILINE,
 )
+MATHLIB_STANDARD_LINTER_OPTION_PATTERN = re.compile(
+    r"^(?P<indent>\s*)⟨`weak\.linter\.mathlibStandardSet,\s*true⟩",
+    re.MULTILINE,
+)
 
 
 def _require_official_blueprint_git_dependency(project_dir: Path, *, action: str) -> tuple[Path, str, re.Match[str]]:
@@ -62,8 +66,25 @@ def rewrite_local_blueprint_dependency(project_dir: Path, package_root: Path) ->
     relative_path = os.path.relpath(package_root, start=project_dir)
     replacement = f'{match.group("indent")}require VersoBlueprint from "{relative_path}"'
     rewritten = text[: match.start()] + replacement + text[match.end() :]
+    rewritten = disable_header_linter_for_mathlib_blueprint_lakefile(rewritten)
     lakefile.write_text(rewritten, encoding="utf-8")
     return lakefile
+
+
+def disable_header_linter_for_mathlib_blueprint_lakefile(text: str) -> str:
+    # The Mathlib header linter parses the leading file text as Lean commands.
+    # Top-level Verso documents contain non-command markup, so keep the rest of
+    # the Mathlib linter set while disabling only that header check.
+    if "`weak.linter.style.header" in text:
+        return text
+
+    match = MATHLIB_STANDARD_LINTER_OPTION_PATTERN.search(text)
+    if match is None:
+        return text
+
+    indent = match.group("indent")
+    replacement = f"{indent}⟨`weak.linter.style.header, false⟩,\n{match.group(0)}"
+    return text[: match.start()] + replacement + text[match.end() :]
 
 
 def rewrite_pinned_blueprint_dependency(project_dir: Path, ref: str) -> tuple[Path, str | None]:

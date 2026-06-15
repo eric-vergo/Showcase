@@ -61,6 +61,58 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             self.assertIn('require VersoBlueprint from "', text)
             self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
 
+    def test_rewrite_local_blueprint_dependency_disables_mathlib_header_linter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                "\n".join(
+                    [
+                        "import Lake",
+                        "open Lake DSL",
+                        OFFICIAL_BLUEPRINT_REQUIRE,
+                        "",
+                        "package Blueprint where",
+                        "  leanOptions := #[",
+                        "    ⟨`autoImplicit, false⟩,",
+                        "    ⟨`weak.linter.mathlibStandardSet, true⟩",
+                        "  ]",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
+            text = lakefile.read_text(encoding="utf-8")
+            self.assertIn("    ⟨`weak.linter.style.header, false⟩,\n", text)
+            self.assertIn("    ⟨`weak.linter.mathlibStandardSet, true⟩\n", text)
+
+    def test_rewrite_local_blueprint_dependency_does_not_duplicate_header_linter_option(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                "\n".join(
+                    [
+                        OFFICIAL_BLUEPRINT_REQUIRE,
+                        "package Blueprint where",
+                        "  leanOptions := #[",
+                        "    ⟨`weak.linter.style.header, false⟩,",
+                        "    ⟨`weak.linter.mathlibStandardSet, true⟩",
+                        "  ]",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
+            text = lakefile.read_text(encoding="utf-8")
+            self.assertEqual(text.count("`weak.linter.style.header"), 1)
+
     def test_rewrite_local_blueprint_dependency_rejects_unofficial_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
