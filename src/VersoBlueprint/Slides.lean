@@ -16,12 +16,12 @@ namespace Informal.Slides
 open Verso Doc Elab
 
 @[reducible] private def defaultSlidesGenreHtml :
-    Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
+    Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
   inferInstance
 
 @[reducible] private def blueprintSlidesGenreHtml
     (renderContext : Informal.Slides.RenderContext) :
-    Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
+    Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
   { defaultSlidesGenreHtml with
     block := fun inlineHtml blockHtml container contents => do
       match container with
@@ -49,12 +49,21 @@ private def slidesMainWithBlueprintRenderer
   let logError (msg : String) : IO Unit := do
     hasError.set true
     IO.eprintln msg
+  let logger : Verso.Logger IO := {
+    log severity text loc := do
+      match severity with
+      | .error => hasError.set true
+      | .warning => pure ()
+      IO.eprintln (Verso.LogMessage.format { severity, text, loc })
+    errors := pure #[]
+    warnings := pure #[]
+  }
   let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
   let (doc, traverseState) ←
     (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
-  let ctx : Verso.Doc.Html.HtmlT.Context VersoSlides.Slides IO := {
-    options := { logError := logError }
+  let ctx : Verso.Doc.Html.HtmlT.Context VersoSlides.Slides := {
+    options := {}
     traverseContext := ()
     traverseState := traverseState
     definitionIds := {}
@@ -62,10 +71,12 @@ private def slidesMainWithBlueprintRenderer
     codeOptions := {}
   }
   let initialHoverState := htmlCache?.map (·.hoverState) |>.getD {}
+  let render : Verso.Doc.Html.HtmlT VersoSlides.Slides (Verso.BuildLogT IO) Verso.Output.Html :=
+    let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
+      blueprintSlidesGenreHtml renderContext
+    VersoSlides.renderDocument config doc
   let (slidesHtml, hoverState) ←
-    (let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
-        blueprintSlidesGenreHtml renderContext
-     (VersoSlides.renderDocument config doc).run ctx |>.run initialHoverState)
+    ((render.run ctx).run initialHoverState).run logger
   let title := VersoSlides.inlinesToPlainText doc.title
   let fullHtml := VersoSlides.renderFullHtml config title slidesHtml traverseState.cssBlocks
   let dir := config.outputDir

@@ -28,23 +28,34 @@ private partial def collectBlocks (part : Doc.Part Genre.Manual) : Array (Doc.Bl
     acc ++ collectBlocks child
   part.content ++ childBlocks
 
+private def discardLogger : Logger IO where
+  log _severity _text _loc := pure ()
+  errors := pure #[]
+  warnings := pure #[]
+
 /-- Keep extension impls explicit so each test renders with its own imported extension set. -/
 def renderManualDocHtmlAndState
     (impls : ExtensionImpls)
     (doc : Doc.VersoDoc Genre.Manual) : IO (Output.Html × TraverseState) := do
-  let opts : Doc.Html.Options (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls IO)) := {
+  let opts : Doc.Html.Options := {
     headerLevel := 1
-    logError := fun _ => pure ()
   }
   let (blocks, st) ← Informal.traverseManualBlocks (collectBlocks doc.toPart) impls
-  let ctxt : TraverseContext := { logError := fun _ => pure () }
+  let ctxt : TraverseContext := {}
   let definitionIds : Lean.NameMap String := {}
   let linkTargets : Code.LinkTargets TraverseContext := {}
   let codeOptions : Code.HighlightHtmlM.Options := {}
   let remotes : Multi.AllRemotes := {}
   let block := Doc.Block.concat blocks
-  let htmlState := Verso.Genre.Manual.toHtml opts ctxt st definitionIds linkTargets codeOptions block
-  let (html, _hover) ← ((htmlState.run {}).run remotes).run impls
+  let htmlState :
+      StateT (Code.Hover.State Output.Html)
+        (ReaderT Multi.AllRemotes (ReaderT ExtensionImpls (BuildLogT IO)))
+        Output.Html :=
+    Verso.Genre.Manual.toHtml opts ctxt st definitionIds linkTargets codeOptions block
+  let (html, _hover) ←
+    ((htmlState.run {}).run remotes)
+      |>.run impls
+      |>.run discardLogger
   pure (html, st)
 
 def renderManualDocHtml (impls : ExtensionImpls) (doc : Doc.VersoDoc Genre.Manual) : IO Output.Html := do

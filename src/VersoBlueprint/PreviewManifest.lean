@@ -152,6 +152,15 @@ private def outputDirNameForMode : Mode → String
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / outputDirNameForMode mode
 
+private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
+  log severity text loc := do
+    let msg := Verso.LogMessage.format { severity, text, loc }
+    match severity with
+    | .error => logError msg
+    | .warning => IO.eprintln msg
+  errors := pure #[]
+  warnings := pure #[]
+
 private def readTrimmedFile? (path : System.FilePath) : IO (Option String) := do
   try
     unless ← path.pathExists do
@@ -422,18 +431,17 @@ def insertBuildMetadataHtml? (html metadataHtml : String) : Option String :=
 
 private def writeBuildMetadataHtml
     (metadata : BuildMetadata)
-    (logError : String → IO Unit)
-    (path : System.FilePath) : IO Unit := do
+    (path : System.FilePath) : BuildLogT IO Unit := do
   unless ← path.pathExists do
-    logError s!"Blueprint build metadata: missing root page {path}"
+    Verso.reportError s!"Blueprint build metadata: missing root page {path}"
     return
   let html ← IO.FS.readFile path
   match insertBuildMetadataHtml? html (buildMetadataHtmlString metadata) with
   | some html => IO.FS.writeFile path html
-  | none => logError s!"Blueprint build metadata: could not find title page heading in {path}"
+  | none => Verso.reportError s!"Blueprint build metadata: could not find title page heading in {path}"
 
-def emitBuildMetadata (metadata : BuildMetadata) : ExtraStep := fun mode logError cfg _state _text => do
-  writeBuildMetadataHtml metadata logError (outDirForMode cfg mode / "index.html")
+def emitBuildMetadata (metadata : BuildMetadata) : ExtraStep := fun mode cfg _state _text => do
+  writeBuildMetadataHtml metadata (outDirForMode cfg mode / "index.html")
 
 private def highlightedDocstringInnerTextRead : String :=
   "const str = d.innerText;"
@@ -1424,7 +1432,9 @@ private def dumpManifest
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
-  let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
+  let (_text, traverseState) ←
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+      |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState
   IO.println <| jsonPretty <| toJson files.manifest
   if (← errorCount.get) == 0 then pure 0 else pure 1
@@ -1439,7 +1449,9 @@ private def dumpHtmlCache
     errorCount.modify (· + 1)
     IO.eprintln msg
   let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
-  let (_text, traverseState) ← ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti logError cfg text) extensionImpls
+  let (_text, traverseState) ←
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+      |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
@@ -1466,7 +1478,9 @@ The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
 or citation key. The HTML cache contains the corresponding rendered HTML
 fragments for browser hover previews and file-mode consumers such as slides.
 -/
-def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
+def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode cfg state _text => do
+  let logger : Verso.Logger IO ← read
+  let logError := fun msg => logger.reportError msg
   let files ← buildPreviewDataFiles extensionImpls logError state
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
@@ -1530,44 +1544,43 @@ def handleCliFlags
     handleDumpSchemaFlag options
 
 private abbrev HtmlTraverse :=
-  (String → IO Unit) → RenderConfig → Part Manual → ReaderT ExtensionImpls IO (Part Manual × TraverseState)
+  RenderConfig → Part Manual → EmitM (Part Manual × TraverseState)
 
 private abbrev HtmlEmitter :=
-  (String → IO Unit) → RenderConfig → Part Manual → TraverseState → ReaderT ExtensionImpls IO Unit
+  RenderConfig → Part Manual → TraverseState → EmitM Unit
 
 private def emitBlueprintHtml
     (extraSteps : List ExtraStep)
     (how : EmitHtml)
     (mode : Mode)
-    (logError : String → IO Unit)
     (cfg : RenderConfig)
     (text : Part Manual)
     (traverse : HtmlTraverse)
     (emit : HtmlEmitter) :
-    ReaderT ExtensionImpls IO Unit := do
+    EmitM Unit := do
   let outDir := outputDirNameForMode mode
   match how with
   | .no => pure ()
   | .immediately =>
       if cfg.verbose then
         IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
-      let (text', traverseState) ← traverse logError cfg text
+      let (text', traverseState) ← traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
       emitXrefsJson (cfg.destination / outDir) traverseState
-      emit logError cfg text' traverseState
+      emit cfg text' traverseState
       for step in extraSteps do
-        step mode logError cfg.toConfig traverseState text'
+        step mode cfg.toConfig traverseState text'
   | .delay f =>
-      let (text', traverseState) ← traverse logError cfg text
+      let (text', traverseState) ← traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
       emitXrefsJson (cfg.destination / outDir) traverseState
       SavedState.mk text' traverseState |>.save f
   | .resumeFrom f =>
       let { text, traverseState } ← SavedState.load f
       let traverseState := patchBlueprintTraverseState traverseState
-      emit logError cfg text traverseState
+      emit cfg text traverseState
       for step in extraSteps do
-        step mode logError cfg.toConfig traverseState text
+        step mode cfg.toConfig traverseState text
 
 def blueprintMain (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
@@ -1577,37 +1590,27 @@ def blueprintMain (text : Part Manual)
   ReaderT.run go extensionImpls
 where
   go : ReaderT ExtensionImpls IO UInt32 := do
-    let errorCount : IO.Ref Nat ← IO.mkRef 0
-    let logError msg := do
-      errorCount.modify (· + 1)
-      IO.eprintln msg
+    let extensionImpls ← read
     let cfg ← parseRenderConfigOptions (withBuildMetadataAssets config) options
     let buildMetadata ← readBuildMetadata
     let extraSteps := emitBuildMetadata buildMetadata :: extraSteps
 
-    if cfg.emitTeX then
-      if cfg.verbose then
-        IO.println "Saving TeX"
-      emitTeX logError cfg.toConfig text
+    let action : ReaderT ExtensionImpls (BuildLogT IO) Unit := do
+      if cfg.emitTeX then
+        if cfg.verbose then
+          IO.println "Saving TeX"
+        emitTeX cfg.toConfig text
 
-    emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single logError cfg text
-      traverseHtmlSingle emitHtmlSingle
-    emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi logError cfg text
-      traverseHtmlMulti emitHtmlMulti
+      emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single cfg text
+        traverseHtmlSingle emitHtmlSingle
+      emitBlueprintHtml extraSteps cfg.emitHtmlMulti .multi cfg text
+        traverseHtmlMulti emitHtmlMulti
 
-    if let some wcFile := cfg.wordCount then
-      if cfg.verbose then
-        IO.println s!"Saving word counts to {wcFile}"
-      wordCount wcFile logError cfg.toConfig text
-
-    match ← errorCount.get with
-    | 0 => return 0
-    | 1 =>
-        IO.eprintln "An error was encountered!"
-        return 1
-    | n =>
-        IO.eprintln s!"{n} errors were encountered!"
-        return 1
+      if let some wcFile := cfg.wordCount then
+        if cfg.verbose then
+          IO.println s!"Saving word counts to {wcFile}"
+        wordCount wcFile cfg.toConfig text
+    Verso.runWithLogger (action.run extensionImpls)
 
 def blueprintMainWithPreviewData
     (text : Part Manual)

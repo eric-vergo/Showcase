@@ -92,7 +92,7 @@ private abbrev ExternalDeclHighlightRender :=
 
 private def highlightedHtmlContext : Verso.Code.HighlightHtmlM.Context Verso.Genre.Manual := {
   linkTargets := {}
-  traverseContext := { logError := fun _ => pure () }
+  traverseContext := {}
   definitionIds := {}
   options := {}
 }

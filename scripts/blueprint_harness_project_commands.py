@@ -17,7 +17,7 @@ from scripts.blueprint_harness_utils import (
 
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
 OFFICIAL_BLUEPRINT_REQUIRE = (
-    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.30.0"'
+    f'require VersoBlueprint from git "https://github.com/{OFFICIAL_BLUEPRINT_REPOSITORY}"@"v4.31.0"'
 )
 OFFICIAL_BLUEPRINT_URL_PATTERNS = (
     rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",

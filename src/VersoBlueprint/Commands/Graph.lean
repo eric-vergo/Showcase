@@ -826,7 +826,7 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let graphData : GraphBlockData := { graph, options, previewMode, previewPlacement, groupTitles }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
-  pure <| FinishedPart.mk stx expandedTitle titlePreview metadata #[block] subParts endPos
+  pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
 open Verso Doc Elab Syntax PartElabM in
 @[part_command Lean.Doc.Syntax.command]

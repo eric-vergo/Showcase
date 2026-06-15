@@ -151,7 +151,7 @@ def mkBibliographyPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM Fini
     (Informal.Commands.Block.bibliography
       (BibliographyData.mk (entries := ([$refs,*] : List BibliographyEntry)))) #[])
   let subParts := #[]
-  pure <| FinishedPart.mk stx expandedTitle titlePreview metadata #[block] subParts endPos
+  pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
 open Verso Doc Elab Syntax PartElabM in
 @[part_command Lean.Doc.Syntax.command]

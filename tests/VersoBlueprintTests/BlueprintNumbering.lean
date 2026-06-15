@@ -66,7 +66,6 @@ private def header (title : String) (number? : Option Numbering) : PartHeader :=
     ]
     blockContext := #[]
     draft := false
-    logError := fun _ => pure ()
   }
   numberedPartPrefix? .full context == some "1.3.A" &&
   numberedPartPrefix? .first context == some "1"

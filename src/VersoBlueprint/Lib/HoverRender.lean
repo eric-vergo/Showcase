@@ -52,17 +52,20 @@ def PreviewPlacement.dataValue : PreviewPlacement → String
 
 private def hexDigits : Array Char := "0123456789ABCDEF".toList.toArray
 
+private theorem hexDigits_size : hexDigits.size = 16 := by
+  native_decide
+
 private def toHex (n : Nat) : String := Id.run do
   let mut n := n
   let mut digits := #[]
   repeat
     if h : n < 16 then
-      digits := digits.push hexDigits[n]
+      digits := digits.push <| hexDigits[n]'(by
+        simpa [hexDigits_size] using h)
       break
     else
       digits := digits.push <| hexDigits[n % 16]'(by
-        have : n % 16 < 16 := Nat.mod_lt _ (by decide)
-        simpa using this)
+        simpa [hexDigits_size] using Nat.mod_lt n (by decide : 0 < 16))
       n := n >>> 4
   let padding := (4 - digits.size).fold (init := "") (fun _ _ p => p.push '0')
   digits.foldr (init := padding) fun c s => s.push c

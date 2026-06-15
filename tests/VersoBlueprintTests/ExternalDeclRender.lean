@@ -157,12 +157,11 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         missing?.isNone)
 
 private def htmlTestContext :
-    Verso.Doc.Html.HtmlT.Context Verso.Genre.Manual Id := {
+    Verso.Doc.Html.HtmlT.Context Verso.Genre.Manual := {
   options := {
     headerLevel := 1
-    logError := fun _ => pure ()
   }
-  traverseContext := { logError := fun _ => pure () }
+  traverseContext := {}
   traverseState := Verso.Genre.Manual.TraverseState.initialize {}
   definitionIds := {}
   linkTargets := {}
@@ -205,14 +204,19 @@ private def htmlTestContext :
       | .error _ => none)
       | return false
     let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.asString
-    let renderPage :=
+    let renderPage :
+        Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Informal.ExternalCode.RenderParts :=
       Informal.ExternalCode.renderPartsWithPageHovers
         { caption := "Code for theorem", number? := some "1" }
         "Lean declarations"
         .empty
         #[ref, ref]
         (fun _ => none)
-    let (parts, hoverState) := (renderPage htmlTestContext).run {}
+    let result :
+        Informal.ExternalCode.RenderParts × Verso.Code.Hover.State Verso.Output.Html :=
+      Id.run <| (renderPage htmlTestContext).run {}
+    let parts := result.fst
+    let hoverState := result.snd
     let pageHtml := parts.externalCodePanel.asString
     pure <|
       payloadCount > 0 &&

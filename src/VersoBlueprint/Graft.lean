@@ -72,6 +72,7 @@ private def renderManualBlocks
 
 private def renderLeanCodePreviewBody?
     [Monad m]
+    [MonadBuildLog (Doc.Html.HtmlT Verso.Genre.Manual m)]
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (state : TraverseState)
     (key : String) :
@@ -92,6 +93,7 @@ private def renderLeanCodePreviewBody?
 
 private def renderLeanCodeBodies
     [Monad m]
+    [MonadBuildLog (Doc.Html.HtmlT Verso.Genre.Manual m)]
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (state : TraverseState)
     (entry : Informal.PreviewManifest.Entry) :
@@ -109,6 +111,7 @@ private def renderLeanCodeBodies
 
 private def renderManualGraftNode
     [Monad m]
+    [MonadBuildLog (Doc.Html.HtmlT Verso.Genre.Manual m)]
     (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Html)
     (cfg : Informal.Graft.BlueprintNodeConfig) :
     Doc.Html.HtmlT Verso.Genre.Manual m Html := do
