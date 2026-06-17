@@ -68,6 +68,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "bp_relation_badge_origin_automatic" &&
       hasSubstr out "bp_relation_badge_intent_technical" &&
       hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      !hasSubstr out "bp_uses_chip" &&
+      !hasSubstr out "bp_uses_origin_badge" &&
+      !hasSubstr out "bp_uses_intent_badge" &&
       hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
       hasExtraCss st ".bp_preview_header_label" &&
       hasExtraCss st ".bp_relation_badge_origin::before" &&
@@ -128,7 +131,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
     pure (
       hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
-      hasSubstr out "class=\"bp_relation_chip bp_uses_chip\"" &&
+      hasSubstr out "class=\"bp_relation_chip\"" &&
       hasSubstr out "class=\"bp_relation_panel\"" &&
       hasSubstr out "Statement uses 2" &&
       hasSubstr out "Statement dependency previews" &&
@@ -153,6 +156,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "bp_relation_badge_origin_automatic" &&
       hasSubstr out "bp_relation_badge_intent_technical" &&
       hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      !hasSubstr out "bp_uses_chip" &&
+      !hasSubstr out "bp_uses_origin_badge" &&
+      !hasSubstr out "bp_uses_intent_badge" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with

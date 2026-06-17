@@ -13,14 +13,14 @@ from scripts.blueprint_harness_branches import (
     active_release_branch,
     current_branch_name,
     local_release_ref,
-    main_sync_status,
+    release_sync_status,
     ref_oid,
     ref_sync_status,
     root_checkout_namespace,
 )
 from scripts.blueprint_harness_cli import (
     add_allow_local_build_argument,
-    add_allow_unsafe_root_main_argument,
+    add_allow_unsafe_root_release_argument,
     add_manifest_argument,
     add_output_root_argument,
     add_project_selection_argument,
@@ -550,7 +550,7 @@ def should_use_local_build(layout, allow_local_build: bool) -> bool:
     return (not layout.in_linked_worktree) or allow_local_build
 
 
-def root_main_safety_findings(layout) -> list[str]:
+def root_release_safety_findings(layout) -> list[str]:
     if layout.in_linked_worktree:
         return []
     release_branch = active_release_branch(layout.repo_root)
@@ -560,14 +560,14 @@ def root_main_safety_findings(layout) -> list[str]:
     findings: list[str] = []
     if not worktree_is_clean(layout.package_root):
         findings.append("root checkout has local modifications")
-    status = main_sync_status(layout.repo_root)
+    status = release_sync_status(layout.repo_root)
     if status.relationship != "in_sync":
         findings.append(f"local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`")
     return findings
 
 
-def require_safe_root_main(layout, *, allow_unsafe: bool, command_name: str) -> None:
-    findings = root_main_safety_findings(layout)
+def require_safe_root_release(layout, *, allow_unsafe: bool, command_name: str) -> None:
+    findings = root_release_safety_findings(layout)
     if not findings:
         return
 
@@ -717,7 +717,7 @@ def generate_projects(
 
 def command_generate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
+    require_safe_root_release(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="generate")
     output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="generate")
@@ -794,7 +794,7 @@ def project_validation_failures(
 
 def command_validate(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
+    require_safe_root_release(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="validate")
     output_root = resolve_output_root(selected_output_root(args), Path(__file__))
     _manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="validate")
@@ -866,14 +866,14 @@ def command_status(args: argparse.Namespace) -> int:
     release_target = resolve_release_target(catalog, release_id, layout.package_root)
     release_branch = release_target.branch
     upstream_ref = f"origin/{release_branch}"
-    main_status = ref_sync_status(layout.package_root, release_branch, upstream_ref)
+    release_status = ref_sync_status(layout.package_root, release_branch, upstream_ref)
     print(f"project_manifest={manifest_path}")
     print(f"selected_release_target={release_id}")
     print(f"verso_blueprint_ref={release_branch}")
-    print(f"preferred_release_ref={main_status.upstream_ref}")
-    print(f"release_relationship={main_status.relationship}")
-    print(f"release_oid={main_status.local_oid or ''}")
-    print(f"{main_status.upstream_ref}_oid={main_status.upstream_oid or ''}")
+    print(f"preferred_release_ref={release_status.upstream_ref}")
+    print(f"release_relationship={release_status.relationship}")
+    print(f"release_oid={release_status.local_oid or ''}")
+    print(f"{release_status.upstream_ref}_oid={release_status.upstream_oid or ''}")
 
     for project in projects:
         print_reference_project_status(
@@ -934,7 +934,7 @@ def command_release_status(args: argparse.Namespace) -> int:
 
 def command_reference_sync(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
-    require_safe_root_main(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
+    require_safe_root_release(layout, allow_unsafe=args.allow_unsafe_root_release, command_name="sync")
     _manifest_path, _catalog, release_id, projects = select_reference_projects_from_args(layout, args)
     require_checkout_release(layout, release_id, command_name="sync")
     sync_reference_blueprints(
@@ -1086,7 +1086,7 @@ def add_generation_commands(subparsers) -> None:
         action="store_true",
         help="Skip project builds and only run already-built or command-only generation steps.",
     )
-    add_allow_unsafe_root_main_argument(generate)
+    add_allow_unsafe_root_release_argument(generate)
     add_serial_argument(generate)
     add_allow_local_build_argument(
         generate,
@@ -1118,7 +1118,7 @@ def add_generation_commands(subparsers) -> None:
         action="store_true",
         help="Skip configured Playwright browser regression suites.",
     )
-    add_allow_unsafe_root_main_argument(validate)
+    add_allow_unsafe_root_release_argument(validate)
     add_serial_argument(validate)
     validate.add_argument(
         "--pytest-arg",
@@ -1202,7 +1202,7 @@ def add_checkout_sync_commands(subparsers) -> None:
         action="store_true",
         help="Update and clone the reference projects without warming their build artifacts.",
     )
-    add_allow_unsafe_root_main_argument(sync)
+    add_allow_unsafe_root_release_argument(sync)
     sync.add_argument(
         "--skip-local-checkout",
         action="store_true",

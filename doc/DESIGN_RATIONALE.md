@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-05-04
+Last updated: 2026-06-16
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -103,6 +103,222 @@ The same Blueprint object data is consumed in three broad ways:
 This split is why one-source-of-truth pressure matters so much: local blocks,
 global pages, and runtime widgets all need to agree on the same semantics while
 projecting them differently.
+
+## Blueprint Data Workflow
+
+Blueprint has one semantic authoring model, but it deliberately crosses several
+phase boundaries before a generated site is interactive. Each boundary exists
+because the next phase owns facts that the previous phase cannot know yet:
+compiled Lean elaboration owns local object semantics, Verso traversal owns
+site-local anchors and numbering, preview-data emission owns whole-site cache
+artifacts, and browser JavaScript owns interaction and hydration.
+
+The current workflow is:
+
+```mermaid
+flowchart TD
+  source["Blueprint source modules<br/>informal directives, Lean code, citations, groups"]
+  elab["Lean / Verso elaboration<br/>directive parsing and local semantic registration"]
+  env["Environment.State<br/>persistent semantic data in oleans"]
+  traverse["Verso traversal<br/>numbering, hrefs, anchors, local preview blocks"]
+  indexes["TraversalIndex domains<br/>Nodes, InlineCode, TraversalPreviews,<br/>LeanCodePreviews, citations, external-decl anchors"]
+  render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
+  manifest["PreviewManifest extra step<br/>semantic manifest and rendered HTML cache"]
+  artifacts["Generated artifacts<br/>HTML pages, assets, -verso-docs.json,<br/>blueprint-manifest.json, blueprint-html-cache.json"]
+  browser["Browser runtime<br/>bpPreviewUtils, graph/summary/block/slides JS"]
+  consumers["External/custom consumers<br/>Slides, audit views, dashboards, custom wrappers"]
+
+  source --> elab
+  elab --> env
+  env --> traverse
+  traverse --> indexes
+  indexes --> render
+  indexes --> manifest
+  render --> artifacts
+  manifest --> artifacts
+  artifacts --> browser
+  artifacts --> consumers
+  browser --> consumers
+```
+
+The same flow can be read as four contracts:
+
+1. **Elaboration to environment.**
+   Source directives, inline Lean blocks, `@[blueprint "..."]` attributes,
+   external `(lean := "...")` references, group declarations, author
+   declarations, citations, and metadata are elaborated into
+   `Informal.Environment.State`. This is the canonical semantic store for
+   Blueprint-owned facts. It is persisted through Lean environment extensions
+   and imported through compiled oleans, so downstream modules see one merged
+   object database.
+
+2. **Environment to traversal.**
+   During Verso traversal, Blueprint reads the semantic environment and writes
+   render-time indexes into `TraverseState` through `TraversalIndex`. This is
+   where site-local facts are created: rendered anchors, numbering caches,
+   code-panel destinations, group and reverse-use panels, citation use sites,
+   statement/proof preview entries, Lean declaration preview entries, and
+   external declaration row anchors. These facts are intentionally not pushed
+   back into `Environment.State`, because their values depend on the current
+   rendered document and output mode.
+
+3. **Traversal to generated artifacts.**
+   Page rendering and preview-data emission both consume the traversal state.
+   HTML pages get the visible document, graph, summary, bibliography, inline
+   preview triggers, and feature-specific assets. The Blueprint preview-data
+   extra step emits two structured files under `-verso-data/`:
+   `blueprint-manifest.json`, which contains semantic preview entries and
+   metadata, and `blueprint-html-cache.json`, which contains rendered HTML
+   fragments plus the hover side data needed to hydrate those fragments inside
+   generated pages.
+
+4. **Artifacts to runtime and external consumers.**
+   Browser code should treat the generated artifacts as immutable inputs. Page
+   markup carries stable lookup keys and lightweight data attributes. Shared
+   runtime helpers in `bpPreviewUtils` load cache entries, decode cached
+   fragments, hydrate nested preview widgets, render math, and apply panel
+   behavior. Feature-owned JavaScript such as graph, summary, relation-panel,
+   inline-preview, and slide code binds those generic helpers to a concrete UI.
+   Custom consumers should prefer the manifest/cache pair over scraping page
+   HTML or re-solving Blueprint labels.
+
+### Workflow Sources Of Truth
+
+The main rule is: each fact has one owning phase, and later phases project from
+that owner.
+
+| Fact family | Owner | Stored as | Main consumers |
+| --- | --- | --- | --- |
+| Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` and related environment maps | traversal, graph, summary, manifest construction |
+| Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
+| Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` | block renderers, code panels, manifest entries |
+| External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
+| Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
+| Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
+| Lean declaration preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
+| Rendered preview bodies | Preview-data emission | `blueprint-html-cache.json` | browser runtime, Slides, custom generated consumers |
+| Semantic preview/catalog entries | Preview-data emission | `blueprint-manifest.json` | browser runtime, Slides, audit/custom UIs |
+| Interaction state | Browser runtime | DOM state only | previews, panels, graph controls, custom wrappers |
+
+This is why Blueprint keeps manifest state and traversal state separate even
+when they describe the same object. Traversal state is the live, generator-local
+working set. Manifest state is the serialized interchange artifact for
+generated consumers. A renderer may project traversal state into manifest-shaped
+entries for code reuse, but it should not pretend that generated manifest files
+are the traversal source of truth inside the current generator.
+
+### Render Path Inventory
+
+There are several Blueprint render callers, but only a few true assembly
+layers. The useful split is:
+
+```mermaid
+flowchart TD
+  manualMain["Manual site generator<br/>PreviewManifest.blueprintMainWithPreviewData"]
+  versoEmit["Verso Manual HTML emitters<br/>single-page and multi-page output"]
+  informalManual["Informal Manual block renderer<br/>Informal.Block.toHtml"]
+  commandRenderers["Command/inline renderers<br/>graph, summary, bibliography, math, cite, code"]
+  previewExtra["Preview-data extra step<br/>emitBlueprintPreviewData"]
+  previewFiles["Manifest/cache files<br/>blueprint-manifest.json<br/>blueprint-html-cache.json"]
+
+  manualGraft["Manual graft command<br/>Graft.renderManualGraftNode"]
+  traversalPreview["Traversal preview lookup<br/>PreviewSource / TraversalPreviews"]
+  manualPreviewHtml["Manual preview-body render<br/>renderManualBlocksHtmlWithStateAndHovers"]
+
+  slideMain["Slide deck generator<br/>Slides.slidesMainWithBlueprintPreviews"]
+  slideRender["Slide node render<br/>Slides.Render.renderBlueprintSlideNode"]
+  customRender["Custom generated consumer<br/>audit UI, dashboard, wrapper"]
+  graftCache["Manifest/cache node render<br/>Graft.renderNodeFromManifestCache"]
+  graftContent["Shared node assembly<br/>Graft.renderNodeWithContent"]
+  manifestBlock["Manifest-backed block shell<br/>PreviewManifest.BlockRender.renderWithRenderedContent"]
+  blockShell["Canonical block shell<br/>Informal.Block.Render.renderInformalBlockModel"]
+  browserRuntime["Browser hydration<br/>bpPreviewUtils and feature hydrators"]
+
+  manualMain --> versoEmit
+  versoEmit --> informalManual
+  versoEmit --> commandRenderers
+  manualMain --> previewExtra
+  previewExtra --> previewFiles
+
+  manualGraft --> traversalPreview
+  traversalPreview --> manualPreviewHtml
+  manualPreviewHtml --> graftContent
+
+  previewFiles --> slideMain
+  slideMain --> slideRender
+  slideRender --> graftCache
+  previewFiles --> customRender
+  customRender --> graftCache
+  previewFiles --> graftCache
+  graftCache --> graftContent
+  graftContent --> manifestBlock
+  manifestBlock --> blockShell
+  informalManual --> blockShell
+  previewFiles --> browserRuntime
+```
+
+The current paths are:
+
+| Path | Entry point | Data input | Shared assembly point | Output |
+| --- | --- | --- | --- | --- |
+| Normal Manual site pages | `Informal.PreviewManifest.blueprintMainWithPreviewData` | `Environment.State` plus `TraverseState` | `Informal.Block.Render.renderInformalBlockModel` for informal blocks; command-specific renderers for graph, summary, and bibliography | generated Manual HTML pages and assets |
+| Preview manifest/cache emission | `Informal.PreviewManifest.emitBlueprintPreviewData` via `blueprintMainWithPreviewData` | completed Manual `TraverseState` and `TraversalIndex` domains | Manual preview render helpers plus manifest entry builders | `blueprint-manifest.json`, `blueprint-html-cache.json`, merged hover docs |
+| Manual same-document graft | `Informal.Graft.renderManualGraftNode` through `{blueprint_node}` in Manual | current page traversal preview entry and current `TraverseState` | `Informal.Graft.renderNodeWithContent` | grafted Manual HTML block |
+| Manual side-by-side graft wrapper | `Block.blueprintGraftSideBySide.toHtml` | already elaborated/rendered child blocks | wrapper only; child nodes follow the Manual graft path | side-by-side Manual HTML wrapper |
+| Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
+| Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
+| External/custom generated consumers | direct calls to `Informal.Graft.renderNodeFromManifestCache` | serialized manifest/cache files | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | consumer-owned HTML wrapper |
+| Browser preview/panel hydration | `bpPreviewUtils` and registered feature hydrators | generated page markup, manifest/cache files, `-verso-docs.json` | JavaScript hydration only | interactive previews, panels, math, links |
+
+This inventory is also the answer to "how many render contexts do we have?" for
+grafted Blueprint nodes. `VersoBlueprint.Graft.Render` owns the one concrete
+manifest/cache render context, `Informal.Graft.RenderContext`. It stores the
+manifest index, HTML-cache index, and error logger. `VersoBlueprint.Slides.Render`
+only aliases that type and supplies slide-specific render configuration. Manual
+grafts do not use a manifest render context, because they already have the live
+`TraverseState`; they still end at `Informal.Graft.renderNodeWithContent` so the
+block shell is assembled the same way.
+
+### Render-Path Consequences
+
+The workflow implies a few constraints for renderers:
+
+- **Manual rendering can use traversal directly.**
+  Same-document commands such as Manual grafts can resolve the target through
+  traversal indexes because the current page traversal state is available. They
+  may still project the result into the manifest entry shape so the block shell
+  and relationship panels use the same assembly code as generated consumers.
+
+- **Generated consumers use manifest/cache.**
+  Slides, external audit interfaces, and custom dashboards should read
+  `blueprint-manifest.json` plus `blueprint-html-cache.json`. They should not
+  reconstruct relationship panels, code bodies, status badges, or hover payloads
+  by scanning raw document HTML.
+
+- **Browser JavaScript hydrates; it does not own semantics.**
+  Runtime code may load cached HTML, insert it into panels, render math, and
+  bind nested preview handlers. It should not decide whether a node is
+  formalized, which dependencies exist, or how related panels are structured.
+
+- **Fallbacks should be diagnostic, not alternative data paths.**
+  If a manifest entry or HTML-cache body is missing, the UI should expose a
+  clear local diagnostic. Silently falling back to page-local stale templates
+  or ad hoc label scans creates a second source of truth.
+
+### Phase Boundary Checklist
+
+When adding a new Blueprint surface, choose its data boundary explicitly:
+
+1. If the fact is authored by a directive or Lean declaration, put it in
+   `Environment.State` or a typed semantic model referenced from it.
+2. If the fact depends on document placement, rendered numbering, hrefs, or
+   anchors, put it in a `TraversalIndex` domain.
+3. If the fact must be consumed outside the current generator process, emit it
+   through `PreviewManifest` and the HTML cache.
+4. If the fact is only UI interaction state, keep it in browser-owned DOM or JS
+   state.
+5. If two phases need the same shape, share a projection or renderer, not the
+   mutable phase-local store itself.
 
 ## External Declaration Model
 
@@ -231,9 +447,9 @@ layer:
 The important boundary is that Blueprint may adapt `TraverseState` and
 `HtmlAssets` after traversal and before HTML emission, but it should not fork
 Verso's HTML emitters unless upstream APIs leave no alternative. This keeps
-local compatibility workarounds, such as the highlighted-code docstring
-`textContent` asset rewrite, on structured assets rather than on generated HTML
-files.
+local upstream workarounds, such as the highlighted-code docstring
+`textContent` asset rewrite, on structured assets rather than on generated
+HTML files.
 
 The current public-xref filter still has a post-emit component: upstream Verso's
 find-page writer embeds the full xref payload while emitting HTML, so Blueprint
@@ -342,8 +558,7 @@ rendering:
 - `Informal.Environment.State` for canonical semantic data authored in Lean
   modules
 - `TraverseState.contents` for tiny traversal-local scalar state
-- `TraverseState.domains` for link-oriented indexes plus some legacy local
-  caches
+- `TraverseState.domains` for link-oriented indexes plus local runtime caches
 
 That mix is intentional, but the roles should stay explicit:
 
@@ -422,9 +637,8 @@ and block-local rendering inputs, not to the semantic node index itself.
 Most traversal payloads use compact internal JSON to keep repeated preview and
 cross-reference data small. That JSON is not a public interchange schema:
 callers should go through `TraversalIndex` or the relevant typed model module.
-Where a payload replaced a previously derived object encoding, readers keep
-legacy object support so existing cached traversal/domain data can still be
-understood during the transition.
+Internal traversal/domain cache data is regenerated by the current generator;
+old cache files are not a public API contract.
 
 This does not mean every internal store has already moved off traversal
 domains. Under current upstream Verso APIs, domains are still operationally

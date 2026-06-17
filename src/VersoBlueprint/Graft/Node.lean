@@ -104,16 +104,6 @@ def BlueprintNode.fromAttrs? (attrs : Array (String × String)) : Option Bluepri
 def BlueprintNode.renderedAttrs (node : BlueprintNode) : Array (String × String) :=
   node.toAttrs ++ #[("data-bp-rendered", "static")]
 
-def BlueprintNode.slideAttrs (node : BlueprintNode) : Array (String × String) :=
-  appendClassAttr node.toAttrs <|
-    if node.compact then
-      "bp_slide_node bp_slide_node_compact"
-    else
-      "bp_slide_node"
-
-def BlueprintNode.slideRenderedAttrs (node : BlueprintNode) : Array (String × String) :=
-  node.slideAttrs ++ #[("data-bp-rendered", "static")]
-
 /-- Rendered DOM attributes with one additional CSS class. -/
 def BlueprintNode.renderedAttrsWithClass (node : BlueprintNode) (className : String) :
     Array (String × String) :=
@@ -180,14 +170,8 @@ public def className (cfg : SideBySideConfig) : String :=
   else
     "bp_graft_side_by_side"
 
-public def slideClassName (cfg : SideBySideConfig) : String :=
-  cfg.className ++ " bp_slide_graft_side_by_side"
-
 public def attrs (cfg : SideBySideConfig) : Array (String × String) :=
   #[("class", cfg.className)]
-
-public def slideAttrs (cfg : SideBySideConfig) : Array (String × String) :=
-  #[("class", cfg.slideClassName)]
 
 end SideBySideConfig
 

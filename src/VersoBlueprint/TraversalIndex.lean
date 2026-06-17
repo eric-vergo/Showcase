@@ -288,21 +288,6 @@ def htmlIdAttrs (state : TraverseState) (label decl : Name) : Array (String × S
     | some targetId => state.htmlId targetId
     | none => #[]
 
-/--
-HTML `id` attributes for an external reference row.
-
-Rendered external-declaration rows are keyed by canonical declaration names.
-The written-name fallback keeps links stable for older traversal objects that
-were stored before canonicalization became the convention.
--/
-def refHtmlIdAttrs (state : TraverseState) (label : Name)
-    (decl : Informal.Data.ExternalRef) : Array (String × String) :=
-  let canonicalAttrs := htmlIdAttrs state label decl.canonical
-  if canonicalAttrs.isEmpty then
-    htmlIdAttrs state label decl.written
-  else
-    canonicalAttrs
-
 def saveId
     (state : TraverseState) (targetKey : String) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName targetKey id

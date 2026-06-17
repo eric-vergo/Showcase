@@ -34,9 +34,9 @@ open Verso Doc Elab
   }
 
 /--
-Local compatibility layer pending the upstream Verso Slides `Block.ofHtml`
-constructor tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream
-`slidesMain` so the copied asset/write loop can disappear.
+Local upstream workaround pending the Verso Slides `Block.ofHtml` constructor
+tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream `slidesMain`
+so the copied asset/write loop can disappear.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
@@ -102,8 +102,8 @@ public def slidesMainWithBlueprintPreviews
   let config := withBlueprintSlidesAssets config
   let htmlCachePath? := previewHtmlCache? <|> previewManifest?.map (fun path =>
     path.parent.getD "." / Informal.PreviewManifest.htmlCacheFilename)
-  let manifest? ← previewManifest?.mapM readBlueprintManifest
-  let htmlCache? ← htmlCachePath?.mapM readBlueprintHtmlCache
+  let manifest? ← previewManifest?.mapM Informal.Graft.readBlueprintManifest
+  let htmlCache? ← htmlCachePath?.mapM Informal.Graft.readBlueprintHtmlCache
   let rc ← slidesMainWithBlueprintRenderer config manifest? htmlCache? doc (quiet := quiet)
   if rc == 0 then
     writeBlueprintSlidesJs config.outputDir

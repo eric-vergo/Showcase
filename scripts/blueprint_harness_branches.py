@@ -333,10 +333,6 @@ def is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     )
 
 
-def preferred_main_ref(repo_root: Path) -> str:
-    return preferred_release_ref(repo_root)
-
-
 def current_branch_name(repo_root: Path) -> str | None:
     branch = subprocess.run(
         ["git", "branch", "--show-current"],
@@ -376,8 +372,8 @@ def ref_sync_status(repo_root: Path, local_ref: str, upstream_ref: str) -> RefSy
     )
 
 
-def main_sync_status(repo_root: Path) -> RefSyncStatus:
-    upstream_ref = preferred_main_ref(repo_root)
+def release_sync_status(repo_root: Path) -> RefSyncStatus:
+    upstream_ref = preferred_release_ref(repo_root)
     return ref_sync_status(repo_root, local_release_ref(repo_root), upstream_ref)
 
 

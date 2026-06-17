@@ -104,7 +104,7 @@ block_extension Block.informal (data : BlockData) where
         let getDeclHref (decl : Name) : Option String :=
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
-          Informal.TraversalIndex.ExternalDeclAnchors.refHtmlIdAttrs s data.label decl
+          Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s data.label decl.canonical
         let cdata := {
           codeHref
           source := codeSource

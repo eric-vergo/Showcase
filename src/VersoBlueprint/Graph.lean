@@ -18,7 +18,7 @@ See `doc/DESIGN_RATIONALE.md` for the human-readable graph
 status/completion and warning/color mapping rationale.
 -/
 
-/-- Upstream-compatible statement-track status (node border). -/
+/-- Upstream-aligned statement-track status (node border). -/
 inductive StatementStatus where
   | blocked
   | ready
@@ -26,7 +26,7 @@ inductive StatementStatus where
   | mathlib
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson
 
-/-- Upstream-compatible background status (proof-track for theorem-like nodes). -/
+/-- Upstream-aligned background status (proof-track for theorem-like nodes). -/
 inductive ProofStatus where
   | none
   | ready

@@ -146,8 +146,6 @@ private def usesPanelConfigForScope (sourceLabel : Data.Label) (scope : UsesScop
     s!"{scope.titlecase} dependency preview"
   previewEmptyText :=
     s!"{scope.titlecase} dependency preview content is loaded from the Blueprint HTML cache."
-  chipClass := "bp_relation_chip bp_uses_chip"
-  emptyChipClass := "bp_relation_chip bp_relation_chip_empty bp_uses_chip"
 }
 
 /-- Standard forward-dependency panel presentation for statement dependencies. -/
@@ -342,24 +340,24 @@ private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
 private def previewLookupKey (source : BlockData) : String :=
   PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
-/-- Render a relation-row badge with both legacy and semantic styling classes. -/
+/-- Render a relation-row badge with semantic relation styling classes. -/
 private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
   {{<span class={{className}} title={{title}}>{{.text true text}}</span>}}
 
 private def useOriginBadgeClass : Data.UseOrigin → String
   | .manual =>
-    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_manual"
+    "bp_relation_axis_badge bp_relation_badge_origin bp_relation_badge_origin_manual"
   | .automatic =>
-    "bp_relation_axis_badge bp_relation_badge_origin bp_uses_origin_badge bp_relation_badge_origin_automatic"
+    "bp_relation_axis_badge bp_relation_badge_origin bp_relation_badge_origin_automatic"
 
 private def useIntentBadgeClass : Data.UseIntent → String
   | .regular =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_regular"
+    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_regular"
   | .auxiliary =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_auxiliary"
+    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_auxiliary"
   | .technical =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_uses_intent_badge bp_relation_badge_intent_technical"
+    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_technical"
 
 private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let statementBadge : Array Output.Html :=

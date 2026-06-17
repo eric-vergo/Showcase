@@ -21,8 +21,7 @@ from scripts.blueprint_harness_branches import (
     is_ancestor,
     load_branch_policy,
     local_release_ref,
-    main_sync_status,
-    preferred_main_ref,
+    release_sync_status,
     preferred_release_ref,
     require_checkout_role,
     ref_oid,
@@ -179,7 +178,7 @@ def validate_public_pr_title(title: str) -> str:
 
 def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
     result = subprocess.run(
-        ["git", "rev-list", "--reverse", f"{preferred_main_ref(repo_root)}..{source_branch}"],
+        ["git", "rev-list", "--reverse", f"{preferred_release_ref(repo_root)}..{source_branch}"],
         cwd=repo_root,
         check=True,
         text=True,
@@ -190,12 +189,12 @@ def source_commit_series(repo_root: Path, source_branch: str) -> list[str]:
 
 def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
     release_branch = active_release_branch(layout.repo_root)
-    preferred_base = preferred_main_ref(layout.repo_root)
+    preferred_base = preferred_release_ref(layout.repo_root)
     if requested_base is None:
         requested_base = preferred_base
 
     if requested_base == release_branch and preferred_base != release_branch:
-        status = main_sync_status(layout.repo_root)
+        status = release_sync_status(layout.repo_root)
         if status.relationship != "in_sync":
             raise SystemExit(
                 f"[blueprint-harness] local `{release_branch}` is {status.relationship} relative to `{status.upstream_ref}`; "
@@ -463,7 +462,7 @@ def command_set_default_dev_branch(args: argparse.Namespace) -> int:
 
 def print_branch_policy_status(layout) -> RefSyncStatus:
     release_branch = active_release_branch(layout.package_root)
-    status = main_sync_status(layout.package_root)
+    status = release_sync_status(layout.package_root)
     print(f"current_branch={current_branch_name(layout.package_root) or ''}")
     print(f"branch_policy={branch_policy_path(layout.package_root)}")
     print(f"default_dev_branch={default_dev_branch(layout.package_root)}")
@@ -526,7 +525,7 @@ def command_create_worktree(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_main_status(args: argparse.Namespace) -> int:
+def command_release_status(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     release_branch = active_release_branch(layout.package_root)
     status = print_branch_policy_status(layout)
@@ -856,12 +855,12 @@ def cleanup_source_branch(layout, branch: str, *, delete_remote: bool) -> None:
         print(f"[blueprint-harness] deleted remote branch `{branch}`")
 
 
-def command_land_main(args: argparse.Namespace) -> int:
+def command_land_release(args: argparse.Namespace) -> int:
     layout = detect_harness_layout(Path(__file__))
     release_branch = active_release_branch(layout.package_root)
     if layout.in_linked_worktree:
         raise SystemExit("[blueprint-harness] run `land-release` from the root checkout, not from a linked worktree")
-    status = main_sync_status(layout.repo_root)
+    status = release_sync_status(layout.repo_root)
     tracking_ref = status.local_ref
     if current_branch_name(layout.repo_root) != tracking_ref:
         raise SystemExit(f"[blueprint-harness] root checkout must be on `{tracking_ref}` before landing changes")
@@ -888,7 +887,7 @@ def command_land_main(args: argparse.Namespace) -> int:
     run(["git", "merge", "--ff-only", source_ref], cwd=layout.repo_root)
     print(f"[blueprint-harness] landed `{source_ref}` onto local `{tracking_ref}`")
 
-    if preferred_main_ref(layout.repo_root) == f"origin/{tracking_ref}" and not args.no_push:
+    if preferred_release_ref(layout.repo_root) == f"origin/{tracking_ref}" and not args.no_push:
         run(["git", "push", "origin", tracking_ref], cwd=layout.repo_root)
         print(f"[blueprint-harness] pushed `{tracking_ref}` to origin")
 
@@ -1173,17 +1172,16 @@ def add_release_management_commands(subparsers) -> None:
     )
     set_default_dev_branch.set_defaults(func=command_set_default_dev_branch)
 
-    main_status = subparsers.add_parser(
+    release_status = subparsers.add_parser(
         "release-status",
-        aliases=["main-status"],
         help="Show whether the active local release branch is in sync with its preferred upstream ref.",
     )
-    main_status.add_argument(
+    release_status.add_argument(
         "--require-sync",
         action="store_true",
         help="Exit nonzero when the active local release branch is not in sync with its preferred upstream ref.",
     )
-    main_status.set_defaults(func=command_main_status)
+    release_status.set_defaults(func=command_release_status)
 
 
 def add_pr_preparation_commands(subparsers) -> None:
@@ -1277,31 +1275,30 @@ def add_landing_commands(subparsers) -> None:
     )
     require_role.set_defaults(func=command_require_branch_role)
 
-    land_main = subparsers.add_parser(
+    land_release = subparsers.add_parser(
         "land-release",
-        aliases=["land-main"],
         help="Fast-forward land one reviewed source ref onto the active root release branch, optionally push, and clean up the source branch.",
     )
-    land_main.add_argument(
+    land_release.add_argument(
         "source",
         help="Source ref to land onto the active release branch. This must be a fast-forward descendant of that local release branch.",
     )
-    land_main.add_argument(
+    land_release.add_argument(
         "--no-push",
         action="store_true",
         help="Update the local release branch but do not push the matching `origin/<release>` branch afterward.",
     )
-    land_main.add_argument(
+    land_release.add_argument(
         "--cleanup",
         action="store_true",
         help="After landing, remove the source worktree and delete the source branch when it can be identified safely.",
     )
-    land_main.add_argument(
+    land_release.add_argument(
         "--keep-remote",
         action="store_true",
         help="With `--cleanup`, keep the remote source branch instead of deleting it.",
     )
-    land_main.set_defaults(func=command_land_main)
+    land_release.set_defaults(func=command_land_release)
 
 
 def add_worktree_commands(subparsers) -> None:

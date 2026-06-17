@@ -57,12 +57,12 @@ register_option verso.blueprint.graph.defaultPack : Bool := {
 
 register_option verso.blueprint.graph.defaultPreviewMode : String := {
   defValue := "pinned"
-  descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned`/`click` or `hover`)"
+  descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned` or `hover`)"
 }
 
 register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
   defValue := "docked"
-  descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked`/`fixed` or `anchored`/`near-node`)"
+  descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked` or `anchored`)"
 }
 
 structure GraphOptions where
@@ -87,15 +87,14 @@ def graphPackAttr (pack : Bool) : String :=
 
 def parseGraphPreviewMode? (s : String) : Option Informal.HoverRender.PreviewMode :=
   match s.trimAscii.toString.toLower with
-  | "hover" | "transient" => some .hover
-  | "pinned" | "pin" | "click" | "click-to-pin" | "click-and-stay" | "click-to-stay" =>
-      some .pinned
+  | "hover" => some .hover
+  | "pinned" => some .pinned
   | _ => none
 
 def parseGraphPreviewPlacement? (s : String) : Option Informal.HoverRender.PreviewPlacement :=
   match s.trimAscii.toString.toLower with
-  | "docked" | "dock" | "fixed" | "panel" => some .docked
-  | "anchored" | "anchor" | "near" | "near-node" | "node" => some .anchored
+  | "docked" => some .docked
+  | "anchored" => some .anchored
   | _ => none
 
 /-- Common DOT header for rendered Blueprint graphs.
@@ -713,34 +712,34 @@ instance : FromArgVal GraphDirection Verso.Doc.Elab.PartElabM where
 
 instance : FromArgVal Informal.HoverRender.PreviewMode Verso.Doc.Elab.PartElabM where
   fromArgVal := {
-    description := doc!"graph preview mode (`pinned`/`click` or `hover`)"
+    description := doc!"graph preview mode (`pinned` or `hover`)"
     signature := CanMatch.Ident ∪ CanMatch.String
     get := fun
       | .name id =>
         match parseGraphPreviewMode? id.getId.toString with
         | some mode => pure mode
-        | none => throwErrorAt id "Expected `pinned`, `click`, or `hover`"
+        | none => throwErrorAt id "Expected `pinned` or `hover`"
       | .str s =>
         match parseGraphPreviewMode? s.getString with
         | some mode => pure mode
-        | none => throwErrorAt s "Expected \"pinned\", \"click\", or \"hover\""
+        | none => throwErrorAt s "Expected \"pinned\" or \"hover\""
       | other =>
         throwError "Expected a preview mode identifier or string, got {toMessageData other}"
   }
 
 instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartElabM where
   fromArgVal := {
-    description := doc!"graph preview placement (`docked`/`fixed` or `anchored`/`near-node`)"
+    description := doc!"graph preview placement (`docked` or `anchored`)"
     signature := CanMatch.Ident ∪ CanMatch.String
     get := fun
       | .name id =>
         match parseGraphPreviewPlacement? id.getId.toString with
         | some placement => pure placement
-        | none => throwErrorAt id "Expected `docked`, `fixed`, `anchored`, or `near-node`"
+        | none => throwErrorAt id "Expected `docked` or `anchored`"
       | .str s =>
         match parseGraphPreviewPlacement? s.getString with
         | some placement => pure placement
-        | none => throwErrorAt s "Expected \"docked\", \"fixed\", \"anchored\", or \"near-node\""
+        | none => throwErrorAt s "Expected \"docked\" or \"anchored\""
       | other =>
         throwError "Expected a preview placement identifier or string, got {toMessageData other}"
   }
@@ -793,7 +792,7 @@ def parseGraphPreviewMode
     match parseGraphPreviewMode? configured with
     | some mode => pure mode
     | none =>
-      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewMode'; expected pinned, click, or hover. Falling back to pinned."
+      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewMode'; expected pinned or hover. Falling back to pinned."
       pure .pinned
   | some mode => pure mode
 
@@ -808,7 +807,7 @@ def parseGraphPreviewPlacement
     match parseGraphPreviewPlacement? configured with
     | some placement => pure placement
     | none =>
-      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewPlacement'; expected docked, fixed, anchored, or near-node. Falling back to docked."
+      logWarning m!"Invalid value '{configured}' for option 'verso.blueprint.graph.defaultPreviewPlacement'; expected docked or anchored. Falling back to docked."
       pure .docked
   | some placement => pure placement
 

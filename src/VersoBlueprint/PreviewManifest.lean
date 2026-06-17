@@ -1622,6 +1622,8 @@ def blueprintMainWithPreviewData
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
     (extraSteps := emitBlueprintPreviewData extensionImpls :: extraSteps)
 
+-- Compatibility for reference generators pinned before preview data was renamed.
+@[deprecated blueprintMainWithPreviewData (since := "2026-06-08")]
 def manualMainWithPreviewData
     (text : Part Manual)
     (options : List String)
@@ -1630,14 +1632,13 @@ def manualMainWithPreviewData
     (extraSteps : List ExtraStep := []) : IO UInt32 :=
   blueprintMainWithPreviewData text options extensionImpls config extraSteps
 
--- Compatibility for reference generators pinned before preview data was renamed.
-@[deprecated manualMainWithPreviewData (since := "2026-06-08")]
+@[deprecated blueprintMainWithPreviewData (since := "2026-06-08")]
 def manualMainWithSharedPreviewManifest
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
     (extraSteps : List ExtraStep := []) : IO UInt32 :=
-  manualMainWithPreviewData text options extensionImpls config extraSteps
+  blueprintMainWithPreviewData text options extensionImpls config extraSteps
 
 end Informal.PreviewManifest

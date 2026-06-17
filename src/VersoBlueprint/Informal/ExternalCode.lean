@@ -177,23 +177,35 @@ private def externalDeclGapStatusText? (item : LinkedExternalDecl) : Option Stri
   else
     none
 
-private def externalDeclStatusClass (item : LinkedExternalDecl) : String :=
-  if !item.decl.present then
-    "bp_external_decl_missing"
-  else if (externalRenderFailure? item.decl).isSome then
-    "bp_external_decl_error"
-  else if externalDeclHasGap item.decl then
-    "bp_external_decl_sorry"
-  else
-    "bp_external_decl_ok"
+/--
+Status-derived rendering data for one linked external declaration.
 
-private def externalDeclPanelStatusText (item : LinkedExternalDecl) : String :=
-  if !item.decl.present then
-    "missing declaration"
-  else if (externalRenderFailure? item.decl).isSome then
-    "render failed"
-  else
-    (externalDeclGapStatusText? item).getD "complete"
+The panel badge and rendered footer intentionally share one view so status
+wording and CSS classification cannot drift between compact and expanded rows.
+-/
+private structure ExternalDeclStatusView where
+  className : String
+  panelText : String
+  renderedMetaText : String
+
+private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclStatusView :=
+  let className :=
+    if !item.decl.present then
+      "bp_external_decl_missing"
+    else if (externalRenderFailure? item.decl).isSome then
+      "bp_external_decl_error"
+    else if externalDeclHasGap item.decl then
+      "bp_external_decl_sorry"
+    else
+      "bp_external_decl_ok"
+  let panelText :=
+    if !item.decl.present then
+      "missing declaration"
+    else if (externalRenderFailure? item.decl).isSome then
+      "render failed"
+    else
+      (externalDeclGapStatusText? item).getD "complete"
+  { className, panelText, renderedMetaText := panelText }
 
 private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
   open Verso.Output.Html in
@@ -219,41 +231,25 @@ private structure ExternalDeclRowData where
   body : Output.Html := .empty
   footer : Output.Html := .empty
 
-private def externalDeclHead (item : LinkedExternalDecl) (statusTxt : String) : Output.Html :=
+private def externalDeclHead (item : LinkedExternalDecl) (status : ExternalDeclStatusView) : Output.Html :=
   open Verso.Output.Html in
-  let statusClass := externalDeclStatusClass item
   {{
     <div class="bp_external_decl_head">
       {{externalDeclNode item}}
-      <span class={{statusClass}}>{{.text true statusTxt}}</span>
+      <span class={{status.className}}>{{.text true status.panelText}}</span>
     </div>
   }}
 
-/--
-TODO(external-code): revisit footer/status semantics once we surface real
-out-of-workspace declarations and can distinguish "declaration complete" from
-"declaration plus dependencies complete". For now, keep the footer minimal and
-avoid repeating declaration kind/provenance that is either redundant or
-misleading in Noperthedron.
--/
-private def externalDeclRenderedMetaText (_item : LinkedExternalDecl) (statusTxt : String) : String :=
-  let parts :=
-    #[
-      some statusTxt
-    ].filterMap id
-  String.intercalate " · " parts.toList
-
 private def externalDeclRenderedMeta
-    (item : LinkedExternalDecl) (statusTxt : String) (includeStatus : Bool := true) : Output.Html :=
+    (item : LinkedExternalDecl) (status : ExternalDeclStatusView) (includeStatus : Bool := true) : Output.Html :=
   open Verso.Output.Html in
   if !includeStatus then
     .empty
   else
-  let metaText := externalDeclRenderedMetaText item statusTxt
-  let statusClass := externalDeclStatusClass item
+  let metaText := status.renderedMetaText
   let statusBadge : Output.Html :=
     if !metaText.isEmpty then
-      {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {statusClass}"}}>{{.text true metaText}}</span>}}
+      {{<span class={{s!"bp_external_status_badge bp_external_decl_footer_status {status.className}"}}>{{.text true metaText}}</span>}}
     else
       .empty
   let sourceRef? := externalDeclSourceRef? item
@@ -331,11 +327,11 @@ private def missingExternalDeclBody : Output.Html :=
 private def externalDeclRowDataWith [Monad m]
     (renderBody : LinkedExternalDecl → m Output.Html)
     (item : LinkedExternalDecl) : m ExternalDeclRowData := do
-  let statusTxt := externalDeclPanelStatusText item
+  let status := externalDeclStatusView item
   if !item.decl.present then
     pure {
       liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
-      head := externalDeclHead item statusTxt
+      head := externalDeclHead item status
       body := missingExternalDeclBody
     }
   else
@@ -343,15 +339,15 @@ private def externalDeclRowDataWith [Monad m]
     if (externalRenderFailure? item.decl).isSome then
       pure {
         liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
-        head := externalDeclHead item statusTxt
+        head := externalDeclHead item status
         body
-        footer := externalDeclRenderedMeta item statusTxt
+        footer := externalDeclRenderedMeta item status
       }
     else
       pure {
         liAttrs := #[("class", "bp_external_decl_item bp_external_decl_item_rendered")] ++ item.anchorAttrs
         body
-        footer := externalDeclRenderedMeta item statusTxt (includeStatus := false)
+        footer := externalDeclRenderedMeta item status (includeStatus := false)
       }
 
 private def renderExternalDeclRow (row : ExternalDeclRowData) : Output.Html :=

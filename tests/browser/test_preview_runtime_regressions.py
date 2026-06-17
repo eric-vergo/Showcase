@@ -258,10 +258,11 @@ class TestPreviewRuntimeRegressions:
         expect(trigger).to_have_count(1)
         trigger.hover()
 
-        summary_panel = wrapper.locator(
-            ".bp_extra_slot_code .bp_code_summary_preview_panel"
-        ).first
+        summary_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
         expect(summary_panel).to_be_visible()
+        expect(summary_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+            "panel_external_short_name_definition"
+        )
         expect(summary_panel.locator(".bp_code_decl_item").first).to_contain_text(
             "previewExternalDefinition"
         )
@@ -374,7 +375,10 @@ class TestPreviewRuntimeRegressions:
         assert previews["proof"]["facet"] == "proof"
         assert previews["statement"]["href"].startswith("Preview-Relationships/")
         assert "#--informal-preview-" in previews["statement"]["href"]
-        assert previews["proof"]["href"] == previews["statement"]["href"]
+        assert previews["proof"]["href"].startswith("Preview-Relationships/")
+        assert previews["proof"]["href"] != previews["statement"]["href"]
+        assert previews["statement"]["href"].endswith("preview_facets--statement")
+        assert previews["proof"]["href"].endswith("preview_facets--proof")
         assert "bp_label_preview_tpl" not in page.content()
 
         assert_no_runtime_errors(errors)

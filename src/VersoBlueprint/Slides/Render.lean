@@ -50,19 +50,12 @@ private def slideManifestBlockConfig : Informal.PreviewManifest.BlockRender.Rend
     }
   }
 
-private def renderNotice (kind title detail : String) : Html :=
-  {{
-    <div class={{"bp_slide_node_notice bp_slide_node_notice_" ++ kind}}>
-      <strong>{{Html.ofString title}}</strong><br/>
-      {{Html.ofString detail}}
-    </div>
-  }}
-
 private def slideNodeAttrs (node : Informal.Graft.BlueprintNode) : Array (String × String) :=
-  node.slideRenderedAttrs
+  renderedBlueprintNodeAttrs node
 
 private def renderMissingNode (node : Informal.Graft.BlueprintNode) (title detail : String) : Html :=
-  .tag "div" (slideNodeAttrs node) (renderNotice "error" title detail)
+  .tag "div" (slideNodeAttrs node) <|
+    Informal.Graft.renderNotice "bp_slide_node_notice" "error" title detail
 
 private def slideManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
   {
@@ -87,13 +80,5 @@ public def renderBlueprintSlideNodeFromAttrs?
     (attrs : Array (String × String)) : Option (IO Html) := do
   let node ← Informal.Graft.BlueprintNode.fromAttrs? attrs
   some (renderBlueprintSlideNode ctx node)
-
-def readBlueprintManifest (path : System.FilePath) :
-    IO Informal.PreviewManifest.File :=
-  Informal.Graft.readBlueprintManifest path
-
-def readBlueprintHtmlCache (path : System.FilePath) :
-    IO Informal.PreviewManifest.HtmlCache.File :=
-  Informal.Graft.readBlueprintHtmlCache path
 
 end Informal.Slides

@@ -639,7 +639,7 @@ behavior. The default is `pinned`: clicking a node opens a persistent preview
 panel that stays open until closed. `hover` opens a transient preview that
 disappears after the pointer leaves the node and preview panel.
 The `(previewPlacement := docked | anchored)` option chooses where the preview
-panel appears. The default is `docked`, so both click-pinned and hover previews
+panel appears. The default is `docked`, so both pinned and hover previews
 open in the graph corner unless `anchored` is selected to place the panel near
 the active node.
 
@@ -658,8 +658,8 @@ The command-side options and the runtime graph controls are compatible:
 - `(direction := ...)` chooses the initial graph direction when the page first
   loads
 - the rendered `Graph options` control lets readers switch among the supported
-  directions, toggle component packing, and choose between click-pinned and
-  hover previews and docked or near-node placement without regenerating the site
+  directions, toggle component packing, and choose between pinned and
+  hover previews and docked or anchored placement without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
@@ -856,15 +856,16 @@ interfaces can reuse:
 - `BlueprintNode.toAttrs` and `BlueprintNode.fromAttrs?` encode and decode the
   neutral DOM shell used by generated interfaces. The shell carries the
   `bp_graft_manifest_node` class as a stable selector for custom consumers.
-  Slides use `BlueprintNode.slideAttrs` and `BlueprintNode.slideRenderedAttrs`
-  to add slide-specific classes without making them part of the generic graft
-  contract.
+  Slides use `Informal.Slides.blueprintNodeAttrs` and
+  `Informal.Slides.renderedBlueprintNodeAttrs` to add slide-specific classes
+  without making them part of the generic graft contract.
 - `Informal.Graft.setClassAttr`, `Informal.Graft.appendClassAttr`, and
   `BlueprintNode.renderedAttrsWithClass` let custom renderers replace or extend
   CSS classes without creating duplicate `class` attributes.
 - `Informal.Graft.SideBySideConfig` parses wrapper options such as `+boxed`.
-  Its `attrs` and `slideAttrs` helpers produce the standard wrapper classes,
-  but consumers can also ignore them and arrange nodes in their own UI.
+  Its `attrs` helper produces the standard wrapper classes. Slides layer
+  `Informal.Slides.sideBySideAttrs` on top for deck-specific wrappers, and
+  custom consumers can ignore both helpers and arrange nodes in their own UI.
 - Slide generators and other generated consumers should import and use the
   `Informal.Graft` node/config names directly.
 
@@ -999,6 +1000,13 @@ Blueprint-specific rendered surfaces, applies Blueprint's preview-data and
 public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 
+Blueprint does not keep broad compatibility layers for internal helper names,
+read-through aliases, command aliases, or old rendering paths. Public entry
+points used by real Blueprint projects are different: when such an entry point
+is renamed, keep the old exported name as a deprecated thin forwarder to the
+canonical function until the affected projects migrate. New generators should
+call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
+
 Recommended CI usage builds the Lean library or formalization targets needed by
 the document, then runs the generator file directly:
 
@@ -1046,7 +1054,7 @@ Current options:
   - `sub`: prefixed numbering such as `Theorem 1.3.2`; the prefix and counter
     are controlled by the sub-numbering options below
   - `global`: document-order numbering such as `Theorem 27`
-  - `local`: legacy local numbering without a chapter prefix
+  - `local`: unprefixed local numbering without a chapter prefix
 - `verso.blueprint.subNumberingPrefix`
   - default: `full`
   - `full`: use the full numbered section path, such as `1.3`
@@ -1100,12 +1108,11 @@ prefixes with document-order block counts.
 - `verso.blueprint.graph.defaultPreviewMode`
   - default: `pinned`
   - sets the fallback graph-node preview behavior for `blueprint_graph` when
-    `(preview := ...)` is omitted; accepts `pinned`/`click` and `hover`
+    `(preview := ...)` is omitted; accepts `pinned` and `hover`
 - `verso.blueprint.graph.defaultPreviewPlacement`
   - default: `docked`
   - sets the fallback graph-node preview placement for `blueprint_graph` when
-    `(previewPlacement := ...)` is omitted; accepts `docked`/`fixed` and
-    `anchored`/`near-node`
+    `(previewPlacement := ...)` is omitted; accepts `docked` and `anchored`
 - `verso.blueprint.debug.commands`
   - default: `false`
   - emits debug info logs while elaborating Blueprint graph, summary, and

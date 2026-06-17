@@ -26,14 +26,6 @@ open Verso.Genre Manual
 open Verso.Output
 open Verso.Output.Html
 
-private def renderNotice (kind title detail : String) : Html :=
-  {{
-    <div class={{"bp_graft_node_notice bp_graft_node_notice_" ++ kind}}>
-      <strong>{{Html.ofString title}}</strong><br/>
-      {{Html.ofString detail}}
-    </div>
-  }}
-
 private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
     "bp_graft_node bp_graft_manifest_node bp_graft_node_compact"
@@ -125,11 +117,13 @@ private def renderManualGraftNode
   match Informal.PreviewManifest.findTraversalBlockEntry? state node.key with
   | none =>
       pure <| Html.tag "div" (manualNodeAttrs node) <|
-        renderNotice "error" "Blueprint node not found" node.selectionDescription
+        renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
+          node.selectionDescription
   | some (preview, entry) =>
       if preview.blocks.isEmpty then
         pure <| Html.tag "div" (manualNodeAttrs node) <|
-          renderNotice "error" "Blueprint node has no cached content" node.key
+          renderNotice "bp_graft_node_notice" "error"
+            "Blueprint node has no cached content" node.key
       else
         let body ← renderManualBlocks goB preview.blocks
         let codeBodies ←
@@ -214,7 +208,7 @@ public meta def blueprintSideBySide : DirectiveExpanderOf Informal.Graft.SideByS
             (Informal.Graft.Block.blueprintGraftSideBySide $(quote cfg))
             #[$contents,*])
       else if ← inSlidesGenre then
-        let attrs := cfg.slideAttrs
+        let attrs := Informal.Slides.sideBySideAttrs cfg
         ``(Verso.Doc.Block.other
             (VersoSlides.BlockExt.wrap $(quote attrs))
             #[$contents,*])
