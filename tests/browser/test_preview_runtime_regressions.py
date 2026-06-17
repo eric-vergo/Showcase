@@ -116,6 +116,24 @@ class TestPreviewRuntimeRegressions:
         expect(cls.locator(".bp_external_decl_body").first).to_contain_text("Methods")
         expect(cls.locator(".bp_external_decl_body").first).to_contain_text("The neutral preview value")
 
+    def test_issue_130_showcase_labels_external_decl_subsections_without_h1(
+        self, server: str, page: Page
+    ):
+        page.goto(f"{server}/External-Declaration-Heading-Repro/Nested-External-Declaration-Panels/")
+
+        expect(
+            page.get_by_role("heading", name=re.compile("Nested External Declaration Panels"))
+        ).to_be_visible()
+        expect(page.locator(".bp_external_decl_body h1")).to_have_count(0)
+
+        section_labels = page.locator(".bp_external_decl_section_label")
+        expect(page.locator("p.bp_external_decl_section_label")).to_have_count(section_labels.count())
+        labels = {label.strip() for label in section_labels.all_text_contents()}
+        assert {"Fields", "Methods", "Constructors", "Extends"} <= labels
+
+        groups = page.locator(".bp_external_decl_section[role='group'][aria-labelledby]")
+        expect(groups).to_have_count(section_labels.count())
+
     def test_inline_docstringed_constructs_showcase(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Code-Panels/")
