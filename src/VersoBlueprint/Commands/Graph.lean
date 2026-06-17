@@ -11,6 +11,7 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
@@ -142,10 +143,7 @@ def allGraphDirections : Array GraphDirection := #[.TB, .LR, .RL, .BT]
 def graphCss := include_str "graph.css"
 
 def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : String :=
-  let raw := toString id
-  let sanitized := raw.foldl (init := "") fun acc c =>
-    acc.push <| if c.isAlphanum then c else '-'
-  s!"bp-graph-{sanitized}{suffix}"
+  s!"{Informal.HtmlId.prefixed "bp-graph" (toString id)}{suffix}"
 
 def groupVariantKey : String := "group"
 def parentVariantKey (parent : Name) : String := s!"parent:{parent}"

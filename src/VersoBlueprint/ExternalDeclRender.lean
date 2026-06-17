@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.HoverInline
 
 open Lean Meta
@@ -198,15 +199,21 @@ private def docsHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
   {{<div class="docs">{{plainDocstringHtml docs?}}</div>}}
 
-private def renderTitledSection? (title : String) (rows : Array ExternalDeclHtml) :
+private def externalDeclSectionLabelId (decl : Name) (title : String) : String :=
+  Informal.HtmlId.prefixed "bp-external-decl-section" s!"{decl.toString}:{title}"
+
+private def renderTitledSection? (decl : Name) (title : String) (rows : Array ExternalDeclHtml) :
     Option ExternalDeclHtml :=
   open Verso.Output.Html in
   if rows.isEmpty then
     none
   else
+    let labelId := externalDeclSectionLabelId decl title
     some {{
-      <h1>{{.text true title}}</h1>
-      {{rows}}
+      <div class="bp_external_decl_section" role="group" aria-labelledby={{labelId}}>
+        <p class="bp_external_decl_section_label" id={{labelId}}>{{.text true title}}</p>
+        {{rows}}
+      </div>
     }}
 
 private def kindMarkerOfDeclType : Verso.Genre.Manual.Block.Docstring.DeclType → String
@@ -365,6 +372,7 @@ private def renderFieldSignature (field : Verso.Genre.Manual.Block.Docstring.Fie
   }}
 
 private def renderParentsSection
+    (decl : Name)
     (parents : Array Verso.Genre.Manual.Block.Docstring.ParentInfo) :
     ExternalDeclHighlightRender (Option ExternalDeclHtml) :=
   open Verso.Output.Html in do
@@ -374,9 +382,12 @@ private def renderParentsSection
     let rows ← parents.mapM fun parent => do
       let parentHtml ← highlightedToHtml parent.parent
       pure {{<li><code class="hl lean inline">{{parentHtml}}</code></li>}}
+    let labelId := externalDeclSectionLabelId decl "Extends"
     pure <| some {{
-      <h1>"Extends"</h1>
-      <ul class="extends">{{rows}}</ul>
+      <div class="bp_external_decl_section" role="group" aria-labelledby={{labelId}}>
+        <p class="bp_external_decl_section_label" id={{labelId}}>"Extends"</p>
+        <ul class="extends">{{rows}}</ul>
+      </div>
     }}
 
 private def safetyHeaderMeta (cinfo : ConstantInfo) : Array String :=
@@ -432,7 +443,7 @@ private def renderDeclHtmlDocstringFromInfoE
         | some ctor =>
           let title := if isClass then "Instance Constructor" else "Constructor"
           let ctorHtml ← renderDocNameCtor ctor
-          pure <| renderTitledSection? title #[ctorHtml]
+          pure <| renderTitledSection? decl title #[ctorHtml]
         | none => pure none
       | _ => pure none
 
@@ -440,19 +451,19 @@ private def renderDeclHtmlDocstringFromInfoE
       match declType with
       | .structure isClass _ _ fieldInfo _ _ =>
         let rows ← fieldInfo.filter (fun f => f.subobject?.isNone) |>.mapM renderFieldSignature
-        pure <| renderTitledSection? (if isClass then "Methods" else "Fields") rows
+        pure <| renderTitledSection? decl (if isClass then "Methods" else "Fields") rows
       | _ => pure none
 
     let parentsSection? : Option ExternalDeclHtml ←
       match declType with
-      | .structure _ _ _ _ parents _ => renderParentsSection parents
+      | .structure _ _ _ _ parents _ => renderParentsSection decl parents
       | _ => pure none
 
     let inductiveCtorsSection? : Option ExternalDeclHtml ←
       match declType with
       | .inductive ctors _ _ =>
         let rows ← ctors.mapM renderDocNameCtor
-        pure <| renderTitledSection? "Constructors" rows
+        pure <| renderTitledSection? decl "Constructors" rows
       | _ => pure none
 
     let mut sections : Array ExternalDeclHtml := #[]

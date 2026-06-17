@@ -87,6 +87,7 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
 /-- info: true -/
 #guard_msgs in
 #eval
+  graphNodeSvgId `group_alpha == "bp-node-group-005Falpha" &&
   match groupedVariants.find? (·.key == Informal.Commands.groupVariantKey) with
   | none => false
   | some variant =>
