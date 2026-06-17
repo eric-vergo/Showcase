@@ -1,10 +1,24 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.blueprint_harness_branches import load_branch_policy
 import scripts.check_backport_pr as backport_mod
+from tests.harness.release_fixtures import (
+    SAMPLE_DEFAULT_RELEASE,
+    SAMPLE_PREVIOUS_RELEASE,
+    backport_line,
+)
+
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+BRANCH_POLICY = load_branch_policy(PACKAGE_ROOT)
+DEFAULT_DEV_RELEASE = BRANCH_POLICY.default_dev_branch
+REQUIRED_BACKPORT_RELEASES = BRANCH_POLICY.required_backport_branches
+REQUIRED_BACKPORT_RELEASE = REQUIRED_BACKPORT_RELEASES[0]
 
 
 class FakeGitHubApi:
@@ -40,13 +54,30 @@ def diff_for(line: str) -> str:
     )
 
 
+def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "repository": {"full_name": "leanprover/verso-blueprint"},
+                "pull_request": {
+                    "base": {"ref": DEFAULT_DEV_RELEASE},
+                    "draft": draft,
+                    "body": body,
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 class BackportPrCheckTests(unittest.TestCase):
     def test_pr_template_backport_placeholder_is_safe_for_drafts(self) -> None:
         template = Path(__file__).resolve().parents[2] / ".github" / "PULL_REQUEST_TEMPLATE.md"
         entries = backport_mod.parse_backport_entries(template.read_text(encoding="utf-8"))
 
-        self.assertEqual(set(entries), {"v4.30.0"})
-        self.assertTrue(entries["v4.30.0"].pending)
+        self.assertEqual(set(entries), set(REQUIRED_BACKPORT_RELEASES))
+        self.assertTrue(entries[REQUIRED_BACKPORT_RELEASE].pending)
 
     def test_parse_backport_entries_accepts_pr_pending_and_exemption(self) -> None:
         body = """
@@ -70,47 +101,27 @@ Backport v4.26.0: exempt: no longer maintained
             backport_mod.parse_backport_entries("Backport v4.28.0: exempt\n")
 
     def test_should_enforce_accepts_draft_default_dev_prs(self) -> None:
-        pull_request = {"base": {"ref": "v4.29.0"}, "draft": True}
-        self.assertTrue(backport_mod.should_enforce(pull_request, "v4.29.0", ("v4.28.0",)))
+        pull_request = {"base": {"ref": SAMPLE_DEFAULT_RELEASE}, "draft": True}
+        self.assertTrue(backport_mod.should_enforce(pull_request, SAMPLE_DEFAULT_RELEASE, (SAMPLE_PREVIOUS_RELEASE,)))
 
     def test_should_enforce_skips_non_default_dev_targets(self) -> None:
-        pull_request = {"base": {"ref": "v4.28.0"}, "draft": False}
-        self.assertFalse(backport_mod.should_enforce(pull_request, "v4.29.0", ("v4.28.0",)))
+        pull_request = {"base": {"ref": SAMPLE_PREVIOUS_RELEASE}, "draft": False}
+        self.assertFalse(backport_mod.should_enforce(pull_request, SAMPLE_DEFAULT_RELEASE, (SAMPLE_PREVIOUS_RELEASE,)))
 
     def test_run_requires_metadata_for_draft_default_dev_prs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
-            event_path.write_text(
-                """
-{
-  "repository": {"full_name": "leanprover/verso-blueprint"},
-  "pull_request": {
-    "base": {"ref": "v4.31.0"},
-    "draft": true,
-    "body": ""
-  }
-}
-""".strip(),
-                encoding="utf-8",
-            )
+            write_pull_request_event(event_path, draft=True, body="")
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing paired backport metadata"):
                 backport_mod.run(str(event_path), token=None)
 
     def test_run_accepts_pending_entries_for_draft_default_dev_prs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
-            event_path.write_text(
-                """
-{
-  "repository": {"full_name": "leanprover/verso-blueprint"},
-  "pull_request": {
-    "base": {"ref": "v4.31.0"},
-    "draft": true,
-    "body": "Backport v4.30.0: pending\\n"
-  }
-}
-""".strip(),
-                encoding="utf-8",
+            write_pull_request_event(
+                event_path,
+                draft=True,
+                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'pending')}\n",
             )
             self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
 
@@ -202,18 +213,10 @@ Backport v4.26.0: exempt: no longer maintained
     def test_run_rejects_pending_entries_for_ready_default_dev_prs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
-            event_path.write_text(
-                """
-{
-  "repository": {"full_name": "leanprover/verso-blueprint"},
-  "pull_request": {
-    "base": {"ref": "v4.31.0"},
-    "draft": false,
-    "body": "Backport v4.30.0: pending\\n"
-  }
-}
-""".strip(),
-                encoding="utf-8",
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'pending')}\n",
             )
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending backport entries are not allowed"):
                 backport_mod.run(str(event_path), token=None)
@@ -221,18 +224,10 @@ Backport v4.26.0: exempt: no longer maintained
     def test_run_accepts_ready_default_dev_prs_with_only_exemptions_and_no_token(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
-            event_path.write_text(
-                """
-{
-  "repository": {"full_name": "leanprover/verso-blueprint"},
-  "pull_request": {
-    "base": {"ref": "v4.31.0"},
-    "draft": false,
-    "body": "Backport v4.30.0: exempt: docs-only change\\n"
-  }
-}
-""".strip(),
-                encoding="utf-8",
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'exempt: docs-only change')}\n",
             )
             self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
 

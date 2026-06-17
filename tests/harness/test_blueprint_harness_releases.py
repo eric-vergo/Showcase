@@ -5,6 +5,13 @@ import tempfile
 import unittest
 
 import scripts.blueprint_harness_releases as releases_mod
+from tests.harness.release_fixtures import (
+    SAMPLE_DEFAULT_RELEASE,
+    SAMPLE_NEXT_RC,
+    SAMPLE_NEXT_RC_REF,
+    SAMPLE_NEXT_RELEASE,
+    lean_toolchain,
+)
 
 
 class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
@@ -13,26 +20,26 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
 
     def test_release_candidate_names_normalize_to_tags_and_branch_ids(self) -> None:
-        self.assertEqual(releases_mod.normalize_release_candidate_name("4.30-rc2"), "4.30-rc2")
-        self.assertEqual(releases_mod.normalize_release_candidate_name("v4.30.0-rc2"), "4.30-rc2")
-        self.assertEqual(releases_mod.release_candidate_name_or_none("v4.30.0-rc2"), "4.30-rc2")
-        self.assertIsNone(releases_mod.release_candidate_name_or_none("v4.30.0"))
-        self.assertEqual(releases_mod.release_candidate_ref("4.30-rc2"), "v4.30.0-rc2")
-        self.assertEqual(releases_mod.normalize_lean_release_ref("4.30-rc2"), "v4.30.0-rc2")
-        self.assertEqual(releases_mod.release_branch_from_lean_ref("leanprover/lean4:v4.30.0-rc2"), "v4.30.0")
+        self.assertEqual(releases_mod.normalize_release_candidate_name(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC)
+        self.assertEqual(releases_mod.normalize_release_candidate_name(SAMPLE_NEXT_RC_REF), SAMPLE_NEXT_RC)
+        self.assertEqual(releases_mod.release_candidate_name_or_none(SAMPLE_NEXT_RC_REF), SAMPLE_NEXT_RC)
+        self.assertIsNone(releases_mod.release_candidate_name_or_none(SAMPLE_NEXT_RELEASE))
+        self.assertEqual(releases_mod.release_candidate_ref(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC_REF)
+        self.assertEqual(releases_mod.normalize_lean_release_ref(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC_REF)
+        self.assertEqual(releases_mod.release_branch_from_lean_ref(lean_toolchain(SAMPLE_NEXT_RC_REF)), SAMPLE_NEXT_RELEASE)
 
     def test_lean_release_order_key_orders_release_candidates_before_final_release(self) -> None:
         self.assertLess(
             releases_mod.lean_release_order_key("v4.30.0-rc1"),
-            releases_mod.lean_release_order_key("v4.30.0-rc2"),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
         )
         self.assertLess(
-            releases_mod.lean_release_order_key("v4.30.0-rc2"),
-            releases_mod.lean_release_order_key("v4.30.0"),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RELEASE),
         )
         self.assertEqual(
             releases_mod.lean_release_order_key("v4.30-rc2"),
-            releases_mod.lean_release_order_key("v4.30.0-rc2"),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
         )
         self.assertIsNone(releases_mod.lean_release_order_key("nightly-testing"))
 
@@ -41,14 +48,14 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
             root = Path(tmp)
             with_newline = root / "with-newline" / "lean-toolchain"
             without_newline = root / "without-newline" / "lean-toolchain"
-            self.write(with_newline, "leanprover/lean4:v4.29.0\n")
-            self.write(without_newline, "leanprover/lean4:v4.29.0")
+            self.write(with_newline, f"{lean_toolchain(SAMPLE_DEFAULT_RELEASE)}\n")
+            self.write(without_newline, lean_toolchain(SAMPLE_DEFAULT_RELEASE))
 
-            releases_mod.rewrite_lean_toolchain(with_newline, "v4.30.0")
-            releases_mod.rewrite_lean_toolchain(without_newline, "v4.30.0")
+            releases_mod.rewrite_lean_toolchain(with_newline, SAMPLE_NEXT_RELEASE)
+            releases_mod.rewrite_lean_toolchain(without_newline, SAMPLE_NEXT_RELEASE)
 
-            self.assertEqual(with_newline.read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0\n")
-            self.assertEqual(without_newline.read_text(encoding="utf-8"), "leanprover/lean4:v4.30.0")
+            self.assertEqual(with_newline.read_text(encoding="utf-8"), f"{lean_toolchain(SAMPLE_NEXT_RELEASE)}\n")
+            self.assertEqual(without_newline.read_text(encoding="utf-8"), lean_toolchain(SAMPLE_NEXT_RELEASE))
 
 
 if __name__ == "__main__":
