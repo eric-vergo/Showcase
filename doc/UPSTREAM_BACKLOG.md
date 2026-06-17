@@ -146,7 +146,8 @@ pull requests unless that upstream write action is explicitly requested.
 ## Lake and Package Management
 
 - [ ] Honor package overrides during `lake update` bootstrap.
-  - confirmed locally on Lean `v4.29.0`
+  - originally confirmed locally on Lean `v4.29.0`; re-check against the active
+    Lean release before upstreaming
   - current limitation:
     `loadWorkspace` passes `packageOverrides` only to `materializeDeps`, while
     `updateManifest` calls `updateAndMaterialize` without threading overrides
