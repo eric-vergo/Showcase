@@ -60,6 +60,34 @@ def css : String := r##"
 .bp_graft_side_by_side .bp_extras {
   margin-left: 0;
 }
+
+.bp_graft_side_by_side .bp_code_block summary {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.bp_graft_side_by_side .bp_code_summary_text {
+  white-space: normal;
+}
+
+.bp_graft_side_by_side .bp_code_summary_indicator {
+  margin-left: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.bp_graft_side_by_side .bp_code_summary_indicator .bp_code_summary_preview_root,
+.bp_graft_side_by_side .bp_code_summary_indicator .bp_code_summary_preview_wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.bp_graft_side_by_side .bp_code_progress {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
 "##
 
 def cssAssets : List String := [css]
