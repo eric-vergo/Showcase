@@ -140,6 +140,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         expected_template_targets = [target.release_id for target in branch_policy.release_targets]
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
+        default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
+        self.assertIsNotNone(default_template_target)
+        self.assertTrue(default_template_target.publish_reference)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         self.assertTrue(current_release.deploy_pages)
