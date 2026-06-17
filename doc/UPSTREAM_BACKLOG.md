@@ -66,18 +66,18 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Runtime Assets and Browser Rendering
 
-- [ ] Add a Verso Slides `Block.ofHtml` constructor.
+- [ ] Expose Verso Slides hooks for quiet rendering and initial hover state.
   - current Blueprint workaround:
-    `VersoBlueprint.Slides.slidesMainWithBlueprintPreviews` supplies a local
-    `GenreHtml Slides IO` instance so slide graft blocks elaborated through
-    `{blueprint_node}` render from the Blueprint manifest/cache data before the
-    HTML document is serialized; because `VersoSlides.slidesMain` owns both
-    rendering and file emission, Blueprint also mirrors the small config-asset
-    plan and write loop
+    `VersoBlueprint.Slides.slidesMainWithBlueprintPreviews` rewrites
+    `{blueprint_node}` blocks from Blueprint manifest/cache data to
+    `VersoSlides.BlockExt.ofHtml` during Slides traversal, then mirrors the
+    small `slidesMain` output loop so `quiet := true` remains honored and the
+    generated `-verso-docs.json` starts from the rendered HTML cache's hover
+    payload table
   - desired upstream behavior:
-    downstream packages should be able to elaborate a slide block to an
-    already-rendered HTML body, while reusing the upstream `slidesMain` asset
-    validation and output writer
+    downstream packages should be able to call upstream `slidesMain` with an
+    optional initial hover state and quiet-output behavior, while still reusing
+    the upstream asset validation and output writer
   - removable Blueprint code:
     local `SlideAssetPayload`, `recordSlideAsset`, `collectSlideAssets`, and
     the copied `slidesMain` output loop in `VersoBlueprint.Slides`

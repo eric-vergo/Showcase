@@ -73,7 +73,11 @@ public def renderBlueprintSlideNode
 
 /--
 Render a Blueprint slide node from the structured attributes carried by the
-`VersoSlides.BlockExt.wrap` emitted by `blueprint_node`.
+legacy `VersoSlides.BlockExt.wrap` carrier emitted by `blueprint_node`.
+
+The Lean 4.31 slide path rewrites these carriers to
+`VersoSlides.BlockExt.ofHtml` during Slides traversal; the 4.30 maintenance line
+keeps the older HTML-renderer interception path.
 -/
 public def renderBlueprintSlideNodeFromAttrs?
     (ctx : RenderContext)
