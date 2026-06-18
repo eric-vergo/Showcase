@@ -165,6 +165,9 @@ def previewPanelCss : String := r##"
 -- here should land whenever preview runtime assets are intentionally refreshed.
 def previewHoverUtilsJs : String := include_str "preview-runtime.js"
 
+-- Keep this module rebuilt when the preview client readiness shim changes.
+def previewClientReadyJs : String := include_str "preview-ready.js"
+
 def previewHeaderCss : String := r##"
 .bp_preview_header_heading {
   display: flex;
@@ -363,8 +366,11 @@ def inlinePreviewCss : String := r##"
 -- Keep this module rebuilt when target-opening runtime changes.
 def openTargetDetailsJs : String := include_str "open-target-details.js"
 
+def withPreviewClientReadyJs (js : String) : String :=
+  previewClientReadyJs ++ "\n" ++ js
+
 -- Keep this module rebuilt when the embedded inline preview runtime changes.
-def inlineLinkPreviewJs : String := include_str "inline-preview.js"
+def inlineLinkPreviewJs : String := withPreviewClientReadyJs (include_str "inline-preview.js")
 
 def withBlueprintCssAssets (extras : List String := []) : List String :=
   [blueprintTokensCss] ++ extras

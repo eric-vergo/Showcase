@@ -798,7 +798,7 @@ private def Summary.previewLabels (data : Summary) : Array Name :=
 def summaryCss := include_str "summary.css"
 
 -- Keep this module rebuilt when the embedded summary preview runtime changes.
-def summaryPreviewJs : String := include_str "summary-preview.js"
+def summaryPreviewJs : String := withPreviewClientReadyJs (include_str "summary-preview.js")
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html

@@ -39,8 +39,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match summaryJs?, previewRuntimeJs?, inlineJs?, mathJs? with
       | some summaryJs, some previewRuntimeJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasSubstr summaryJs "function onBlueprintRenderReady(fn)" &&
-        hasSubstr summaryJs "onBlueprintRenderReady(function (previewUtils) {" &&
+        hasSubstr summaryJs "namespace.onRenderReady = function (fn) {" &&
+        hasSubstr summaryJs "window.VersoBlueprint.onRenderReady(function (previewUtils) {" &&
         hasSubstr summaryJs "previewUtils.bindTemplatePreviewRoots({" &&
         hasSubstr summaryJs "rootBoundAttr: \"data-bp-summary-preview-bound\"" &&
         hasSubstr summaryJs "panelSelector: \".bp_summary_preview_panel\"" &&
@@ -71,8 +71,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewRuntimeJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
         hasSubstr previewRuntimeJs "data-bp-preview-header-label" &&
         hasSubstr previewRuntimeJs "window.setTimeout(function () {" &&
-        hasSubstr inlineJs "function onBlueprintRenderReady(fn)" &&
-        hasSubstr inlineJs "onBlueprintRenderReady(function () {" &&
+        hasSubstr inlineJs "namespace.onRenderReady = function (fn) {" &&
+        hasSubstr inlineJs "window.VersoBlueprint.onRenderReady(function () {" &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
@@ -83,6 +83,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
         !hasSubstr inlineJs "typeof previewUtils.readPanelBehavior" &&
         !hasSubstr inlineJs "typeof previewUtils.previewDebug" &&
+        !hasSubstr inlineJs "function onBlueprintRenderReady(fn)" &&
         !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
         !hasSubstr inlineJs "ensureInlinePreviewStore" &&
         !hasSubstr inlineJs "template.bp_inline_preview_tpl"

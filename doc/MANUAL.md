@@ -944,8 +944,27 @@ if (result.ok) {
 }
 ```
 
+If a script is emitted as a Blueprint inline asset, do not assume it will run
+after the shared preview runtime. Verso stores inline JavaScript assets as a
+set, so source-list order is not a synchronization guarantee. Register startup
+code through `window.VersoBlueprint.onRenderReady` instead:
+
+```javascript
+window.VersoBlueprint.onRenderReady(function (api) {
+  const target = document.querySelector("#audit-preview");
+  if (!target) return;
+  api.renderPreviewInto(target, api.previewKey("addition_right_identity", "statement"));
+});
+```
+
+Blueprint's bundled preview clients get a small readiness bootstrap before
+their client code so `onRenderReady` is available even when the client asset is
+emitted before `preview-runtime.js`.
+
 The stable custom-client API calls are:
 
+- `window.VersoBlueprint.onRenderReady(callback)`, for startup code that needs
+  the render API and may execute before the runtime asset
 - `api.loadManifest()` and `api.loadHtmlCache()`, returning `Map` values keyed
   by preview key
 - `api.readManifestStatus()` and `api.readHtmlCacheStatus()`, for diagnostics

@@ -1,21 +1,5 @@
 (function () {
-  function onBlueprintRenderReady(fn) {
-    const namespace =
-      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-        ? window.VersoBlueprint
-        : {};
-    window.VersoBlueprint = namespace;
-    if (namespace.render) {
-      namespace.onRenderReady(fn);
-      return;
-    }
-    if (!Array.isArray(namespace.renderReadyCallbacks)) {
-      namespace.renderReadyCallbacks = [];
-    }
-    namespace.renderReadyCallbacks.push(fn);
-  }
-
-  onBlueprintRenderReady(function (previewUtils) {
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
     previewUtils.bindTemplatePreviewRoots({
       rootSelector: ".bp_code_summary_preview_root",
       rootBoundAttr: "data-bp-code-summary-preview-bound",

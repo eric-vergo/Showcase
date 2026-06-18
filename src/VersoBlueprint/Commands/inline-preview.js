@@ -5,22 +5,6 @@
     return window.VersoBlueprint.render;
   }
 
-  function onBlueprintRenderReady(fn) {
-    const namespace =
-      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-        ? window.VersoBlueprint
-        : {};
-    window.VersoBlueprint = namespace;
-    if (namespace.render) {
-      namespace.onRenderReady(fn);
-      return;
-    }
-    if (!Array.isArray(namespace.renderReadyCallbacks)) {
-      namespace.renderReadyCallbacks = [];
-    }
-    namespace.renderReadyCallbacks.push(fn);
-  }
-
   function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
     if (!(trigger instanceof Element)) return "";
     const title = (trigger.getAttribute("data-bp-preview-title") || key || "").trim();
@@ -566,7 +550,7 @@
     refresh(document);
   }
 
-  onBlueprintRenderReady(function () {
+  window.VersoBlueprint.onRenderReady(function () {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", bindInlinePreview);
     } else {
