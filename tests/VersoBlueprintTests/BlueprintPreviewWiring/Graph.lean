@@ -62,6 +62,9 @@ Base statement for graph preview mode option coverage.
 #guard (Informal.Commands.parseGraphPreviewPlacement? "anchored").map (·.dataValue) == some "anchored"
 #guard (Informal.Commands.parseGraphPreviewPlacement? "fixed").isNone
 #guard (Informal.Commands.parseGraphPreviewPlacement? "near-node").isNone
+#guard
+  Informal.Commands.fallbackGraphControlId (default : Verso.Multi.InternalId) "--view" ==
+    "bp-graph--0023-003C0-003E--view"
 
 /-- info: true -/
 #guard_msgs in
