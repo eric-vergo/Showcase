@@ -10,9 +10,6 @@
       },
       "targets": [
         {
-          "release": "v4.30.0"
-        },
-        {
           "release": "v4.31.0",
           "publish_reference": true
         }
@@ -32,7 +29,7 @@
       "targets": [
         {
           "release": "v4.31.0",
-          "ref": "65c76fcd50d405bd0ce4bef8178c665ef1273cea",
+          "ref": "a8e00a25ee048b68c792052d816b4605abf430f9",
           "publish_reference": true
         }
       ],
@@ -69,9 +66,8 @@
       },
       "targets": [
         {
-          "release": "v4.30.0",
-          "ref": "13bcd04fc6a7a63e5b351c1cf104205022e23813",
-          "publish_reference": true
+          "release": "v4.31.0",
+          "ref": "68c0c0bc1a3a668e6c5d72e53085821ee5bc474e"
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
