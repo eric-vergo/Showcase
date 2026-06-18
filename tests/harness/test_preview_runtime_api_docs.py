@@ -6,13 +6,36 @@ import unittest
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
+
+
+def _blueprint_js_source() -> str:
+    return "\n\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(BLUEPRINT_SRC.rglob("*.js"))
+    )
+
+
+def _find_balanced_js_object_body(source: str, name: str) -> str:
+    match = re.search(rf"\bconst\s+{re.escape(name)}\s*=\s*{{", source)
+    if match is None:
+        raise AssertionError(f"missing JavaScript object literal {name}")
+    depth = 1
+    pos = match.end()
+    while pos < len(source):
+        char = source[pos]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[match.end():pos]
+        pos += 1
+    raise AssertionError(f"unterminated JavaScript object literal {name}")
 
 
 def _js_object_methods(source: str, name: str) -> set[str]:
-    marker = f"  const {name} = {{"
-    start = source.index(marker) + len(marker)
-    end = source.index("\n  };", start)
-    body = source[start:end]
+    body = _find_balanced_js_object_body(source, name)
     return set(re.findall(r"^\s+([A-Za-z][A-Za-z0-9_]*):", body, flags=re.MULTILINE))
 
 
@@ -27,9 +50,7 @@ def _manual_stable_api_methods(source: str) -> set[str]:
 
 class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_manual_stable_api_table_matches_runtime_source(self) -> None:
-        runtime = (
-            PACKAGE_ROOT / "src" / "VersoBlueprint" / "Commands" / "preview-runtime.js"
-        ).read_text(encoding="utf-8")
+        runtime = _blueprint_js_source()
         manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
 
         source_methods = _js_object_methods(runtime, "stableCustomClientApi")
@@ -40,9 +61,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("namespace.onRenderReady = onRenderReady", runtime)
 
     def test_manual_stable_api_table_excludes_bundled_feature_helpers(self) -> None:
-        runtime = (
-            PACKAGE_ROOT / "src" / "VersoBlueprint" / "Commands" / "preview-runtime.js"
-        ).read_text(encoding="utf-8")
+        runtime = _blueprint_js_source()
         manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
 
         documented_methods = _manual_stable_api_methods(manual)
