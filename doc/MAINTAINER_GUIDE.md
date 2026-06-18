@@ -134,6 +134,13 @@ interaction behavior:
 uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
 ```
 
+Browser tests that need the public Blueprint render API should use
+`blueprint_render_api_script` or `wait_for_blueprint_render_api` from
+`tests/browser/support.py`. Those helpers synchronize through
+`window.VersoBlueprint.onRenderReady`, which keeps browser fixtures aligned with
+the runtime readiness contract instead of reading `window.VersoBlueprint.render`
+directly.
+
 ### Generate Review Artifacts
 
 For patch review artifacts without the full validation stack, run:

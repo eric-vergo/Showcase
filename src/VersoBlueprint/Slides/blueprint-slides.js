@@ -72,18 +72,22 @@
       });
   }
 
-  function blueprintRender() {
-    return window.VersoBlueprint.render;
-  }
-
   function hydrate(root, previewUtils) {
-    const utils = previewUtils || blueprintRender();
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
       if (!(node instanceof Element)) return;
       const baseUrl = rememberBlueprintBaseUrl(node);
       prepareBlueprintLinks(node, baseUrl);
-      utils.hydrate(node);
+      previewUtils.hydrate(node);
+    });
+  }
+
+  function hydrateWhenReady(root) {
+    return new Promise(function (resolve) {
+      window.VersoBlueprint.onRenderReady(function (previewUtils) {
+        hydrate(root, previewUtils);
+        resolve();
+      });
     });
   }
 
@@ -118,5 +122,5 @@
     }
   });
 
-  window.bpSlideNodeRuntime = { hydrate: hydrate };
+  window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady };
 })();
