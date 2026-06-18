@@ -310,14 +310,16 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
         self.assertIsNone(pin)
 
-    def test_create_worktree_uses_preferred_release_ref_by_default(self) -> None:
+    def test_create_worktree_uses_default_dev_ref_by_default(self) -> None:
         layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
         with patched_attrs(
             harness_mod,
+            default_dev_branch=lambda _repo_root: "v4.30.0",
+            ref_oid=lambda _repo_root, ref: "abc" if ref == "origin/v4.30.0" else None,
             preferred_release_ref=lambda _repo_root: "origin/v4.29.0",
             active_release_branch=lambda _repo_root: "v4.29.0",
         ):
-            self.assertEqual(harness_mod.resolve_create_worktree_base(layout, None), "origin/v4.29.0")
+            self.assertEqual(harness_mod.resolve_create_worktree_base(layout, None), "origin/v4.30.0")
 
     def test_create_worktree_rejects_unsynced_local_release_base(self) -> None:
         layout = SimpleNamespace(repo_root=Path("/tmp/repo"))
