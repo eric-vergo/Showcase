@@ -10,9 +10,19 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 open Verso
 open Verso.Genre.Manual
+open Verso.VersoBlueprintTests.Blueprint.Support
 open Informal
 
 set_option doc.verso true
+
+def hasRenderReadyBootstrap (js : String) : Bool :=
+  hasSubstr js "namespace.onRenderReady = function (fn) {"
+
+def hasRenderReadyCallback (js param : String) : Bool :=
+  hasSubstr js ("window.VersoBlueprint.onRenderReady(function (" ++ param ++ ") {")
+
+def hasRenderReadyCallbackNoParam (js : String) : Bool :=
+  hasSubstr js "window.VersoBlueprint.onRenderReady(function () {"
 
 def manualImpls : ExtensionImpls := extension_impls%
 
