@@ -534,7 +534,7 @@ structure RelatedEntry where
   title : String
   /-- Canonical link target for the related informal node, if available. -/
   href : Option String := none
-  /-- HTML-cache key for this related node's statement preview. -/
+  /-- Rendered-fragment cache key for this related node's statement preview. -/
   previewKey : String
   /-- Statement/proof dependency axes through which this related node is connected. -/
   axes : Array RelationAxis := #[]
@@ -552,6 +552,14 @@ structure GroupRelation where
   entries : Array RelatedEntry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
+/--
+Semantic preview entry consumed by generated renderers and custom tools.
+
+This is the authoritative home for portable Blueprint facts: labels, facets,
+titles, hrefs, relations, code associations, ownership, tags, and other
+metadata. Do not add rendered HTML bodies here; put reusable presentation in
+`HtmlCache.Entry` and join it to this semantic entry by `key` at render time.
+-/
 structure Entry where
   /-- Composite manifest lookup key for this target family. -/
   key : String
@@ -579,7 +587,7 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
-  /-- HTML-cache keys for Lean declaration previews associated with this entry. -/
+  /-- Rendered-fragment cache keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
@@ -655,6 +663,14 @@ structure File where
   previews : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-
+Rendered-fragment cache paired with the semantic preview manifest.
+
+This namespace owns presentation artifacts only: opaque rendered HTML fragments
+and the Verso hover payloads referenced by those fragments. Semantic facts that
+custom consumers may need to query belong in `PreviewManifest.Entry`, not in
+HTML attributes or text that consumers would need to scrape from cached markup.
+-/
 namespace HtmlCache
 
 /--
@@ -678,12 +694,18 @@ deriving Inhabited, Repr, ToJson, FromJson
 structure Entry where
   /-- Composite preview lookup key for this rendered HTML fragment. -/
   key : String
-  /-- Rendered HTML fragment for this preview/cache entry. -/
+  /--
+  Opaque rendered HTML fragment for this preview/cache entry.
+
+  Consumers may insert and hydrate this fragment, but should not parse it to
+  recover labels, relationships, code metadata, or status facts. Those belong
+  to the semantic manifest entry with the same key.
+  -/
   html : String
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure File where
-  /-- Rendered HTML fragments keyed by preview/cache entry key. -/
+  /-- Opaque rendered HTML fragments keyed by preview/cache entry key. -/
   entries : Array Entry := #[]
   /-- Verso hover payloads referenced by the rendered HTML fragments. -/
   hoverDocs : Array HoverDoc := #[]
@@ -750,7 +772,7 @@ private def pushDistinctHtml (values : Array String) (html : String) : Array Str
 
 /--
 Rendered Lean-code preview bodies for an informal entry, deduplicated by the
-actual rendered HTML fragment.
+actual rendered fragment.
 -/
 def Index.codeHtmlBodies (index : Index) (entry : _root_.Informal.PreviewManifest.Entry) :
     Array String :=
@@ -1371,8 +1393,8 @@ private def buildCitationEntries
   pure (entries, htmlEntries, hoverState)
 
 /--
-Build the semantic Blueprint manifest and rendered HTML cache from a completed
-Manual traversal state.
+Build the semantic Blueprint manifest and rendered-fragment cache from a
+completed Manual traversal state.
 -/
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
@@ -1483,11 +1505,12 @@ private def mergeHtmlCacheHoverDocsIntoVersoDocs
   IO.FS.writeFile docsPath (toString <| docs.mergeObj htmlCache.hoverDocsJson)
 
 /--
-Emit the canonical Blueprint manifest and rendered HTML cache files.
+Emit the canonical Blueprint manifest and rendered-fragment cache files.
 
 The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
-or citation key. The HTML cache contains the corresponding rendered HTML
-fragments for browser hover previews and file-mode consumers such as slides.
+or citation key. The rendered-fragment cache contains the corresponding opaque
+rendered fragments for browser hover previews and file-mode consumers such as
+slides.
 -/
 def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode logError cfg state _text => do
   let files ← buildPreviewDataFiles extensionImpls logError state
