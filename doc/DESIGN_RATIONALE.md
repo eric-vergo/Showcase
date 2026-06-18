@@ -54,8 +54,10 @@ Command modules are split by concern:
 - `VersoBlueprint/Commands/Bibliography.lean`
 - generic command CSS and shared preview/runtime asset injection in
   `VersoBlueprint/Commands/Common.lean`
+- the target-details opener in `VersoBlueprint/Commands/open-target-details.js`
 - the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
 - the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
+- summary preview binding in `VersoBlueprint/Commands/summary-preview.js`
 
 Informal-block support is now split across smaller modules instead of one large
 `Block.lean` bucket:
@@ -63,8 +65,12 @@ Informal-block support is now split across smaller modules instead of one large
 - `Informal/Block.lean`:
   statement/proof block elaboration plus the top-level HTML block renderer
 - `Informal/Block/Assets.lean`:
-  block-specific CSS and browser JS bundles, including the block-owned preview
-  handlers (`used by` and code-summary preview wiring)
+  block-specific CSS and browser JS bundle wiring; the block-owned preview
+  handlers live in adjacent JS assets
+- `Informal/Block/code-summary-preview.js`:
+  code-summary preview binding
+- `Informal/Block/relation-panel.js`:
+  relation-panel preview binding (`uses`, `used by`, and group panels)
 - `Informal/Block/Store.lean`:
   stored-block lookup, merge, and numbering-resolution helpers used during
   traversal/rendering
@@ -84,7 +90,11 @@ Shared and feature-specific browser assets stay with their owning commands:
 
 - `Commands/preview-runtime.js`
 - `Commands/inline-preview.js`
+- `Commands/open-target-details.js`
+- `Commands/summary-preview.js`
 - `Commands/graph.js`
+- `Informal/Block/code-summary-preview.js`
+- `Informal/Block/relation-panel.js`
 
 Per-command CSS overlays stay with their commands:
 
