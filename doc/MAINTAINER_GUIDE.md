@@ -774,8 +774,8 @@ validation.
 
 ## Preview Data Artifacts
 
-Each generated Blueprint site includes semantic preview data and rendered HTML
-cache files at:
+Each generated Blueprint site includes semantic preview data and the
+rendered-fragment cache at:
 
 - `html-multi/-verso-data/blueprint-manifest.json`
 - `html-multi/-verso-data/blueprint-html-cache.json`

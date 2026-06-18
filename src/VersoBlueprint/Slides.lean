@@ -53,8 +53,8 @@ the normal Verso Slides traversal.
 The 4.30 branch keeps the older compatibility path that overrides
 `GenreHtml.block`, because `verso-slides` 4.30 does not provide
 `BlockExt.ofHtml`. This 4.31 path still mirrors the small `slidesMain` output
-loop so `quiet := true` remains supported and the rendered HTML cache can seed
-the generated hover table.
+loop so `quiet := true` remains supported and the rendered-fragment cache can
+seed the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
@@ -119,7 +119,7 @@ private def slidesMainWithBlueprintRenderer
 Generate a slide deck with Blueprint preview-node assets enabled.
 
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
-rendered HTML cache are read during slide generation so `{blueprint_node}`
+rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
 deck's `-verso-data/` directory after the deck is written.
 -/

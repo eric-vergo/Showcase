@@ -1,6 +1,8 @@
 (function () {
   if (window.VersoBlueprint && window.VersoBlueprint.render) return;
 
+  // Debug and local-template utilities.
+
   function previewDebugEnabled() {
     try {
       return window.localStorage.getItem("bp-debug-preview") === "1";
@@ -92,6 +94,8 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
   }
+
+  // Manifest and rendered-fragment cache stores.
 
   function blueprintDataUrl(filename) {
     const safeFilename = String(filename || "").trim();
@@ -218,7 +222,7 @@
     unavailableTitle: "Preview HTML cache unavailable.",
     requiredFilename: "blueprint-html-cache.json",
     missingTitle: "Preview entry missing from HTML cache.",
-    missingReadyText: "The site emitted a rendered HTML cache, but this preview key was not present."
+    missingReadyText: "The site emitted a rendered-fragment cache, but this preview key was not present."
   };
 
   function defaultBlueprintStoreStatus(store) {
@@ -409,6 +413,8 @@
     return previewKey(label, "statement");
   }
 
+  // Preview resolution joins semantic manifest entries with opaque fragments.
+
   async function loadBlueprintStoreEntry(store, previewKey) {
     const exact = readBlueprintStoreEntry(store, previewKey);
     if (exact) return exact;
@@ -481,6 +487,8 @@
     };
   }
 
+  // Rendered-fragment insertion and hydration.
+
   function hydrateRenderedPreview(root, options) {
     const opts = options && typeof options === "object" ? options : {};
     if (!(root instanceof Element || root instanceof Document)) return false;
@@ -546,6 +554,8 @@
     renderAll(".bp_math.inline", false);
     renderAll(".bp_math.display", true);
   }
+
+  // Panel behavior helpers shared by bundled Blueprint features.
 
   function bindCloseOnce(button, onClose) {
     if (!(button instanceof Element)) return;
@@ -756,6 +766,8 @@
     }
     return true;
   }
+
+  // Template preview binding adapts the shared helpers to concrete surfaces.
 
   function bindTemplatePreview(options) {
     const root =
@@ -1066,6 +1078,8 @@
       refresh: refresh
     };
   }
+
+  // API assembly and readiness synchronization.
 
   const stableCustomClientApi = {
     dataUrl: blueprintDataUrl,

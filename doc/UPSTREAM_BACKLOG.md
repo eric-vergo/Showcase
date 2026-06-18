@@ -72,7 +72,7 @@ pull requests unless that upstream write action is explicitly requested.
     `{blueprint_node}` blocks from Blueprint manifest/cache data to
     `VersoSlides.BlockExt.ofHtml` during Slides traversal, then mirrors the
     small `slidesMain` output loop so `quiet := true` remains honored and the
-    generated `-verso-docs.json` starts from the rendered HTML cache's hover
+    generated `-verso-docs.json` starts from the rendered-fragment cache's hover
     payload table
   - desired upstream behavior:
     downstream packages should be able to call upstream `slidesMain` with an

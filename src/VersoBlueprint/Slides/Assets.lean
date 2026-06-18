@@ -131,7 +131,7 @@ public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
 public def blueprintSlidesManifestPath (outputDir : System.FilePath) : System.FilePath :=
   outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
 
-/-- Output path where slide decks expect the rendered Blueprint HTML cache. -/
+/-- Output path where slide decks expect the rendered-fragment cache. -/
 public def blueprintSlidesHtmlCachePath (outputDir : System.FilePath) : System.FilePath :=
   outputDir / "-verso-data" / Informal.PreviewManifest.htmlCacheFilename
 
@@ -141,7 +141,7 @@ public def copyBlueprintManifest
   let contents ← IO.FS.readFile source
   writeTextFileWithDirs (blueprintSlidesManifestPath outputDir) contents
 
-/-- Copy a generated rendered Blueprint HTML cache into a slide deck output directory. -/
+/-- Copy a generated rendered-fragment cache into a slide deck output directory. -/
 public def copyBlueprintHtmlCache
     (outputDir source : System.FilePath) : IO Unit := do
   let contents ← IO.FS.readFile source
