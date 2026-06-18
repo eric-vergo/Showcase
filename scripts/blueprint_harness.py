@@ -191,7 +191,14 @@ def resolve_create_worktree_base(layout, requested_base: str | None) -> str:
     release_branch = active_release_branch(layout.repo_root)
     preferred_base = preferred_release_ref(layout.repo_root)
     if requested_base is None:
-        requested_base = preferred_base
+        default_branch = default_dev_branch(layout.repo_root)
+        remote_default_branch = f"origin/{default_branch}"
+        if ref_oid(layout.repo_root, remote_default_branch) is not None:
+            requested_base = remote_default_branch
+        elif ref_oid(layout.repo_root, default_branch) is not None:
+            requested_base = default_branch
+        else:
+            requested_base = remote_default_branch
 
     if requested_base == release_branch and preferred_base != release_branch:
         status = release_sync_status(layout.repo_root)

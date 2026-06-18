@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprintTests.Blueprint.Support
+import VersoBlueprint.Lib.HtmlId
 import VersoManual.Bibliography
 
 namespace Verso.VersoBlueprintTests.BlueprintLinkHover
@@ -35,6 +36,13 @@ private def hoverCitePreviewKey : String :=
     Informal.Cite.CitationStyle.textual
     (some Informal.Cite.CitePartKind.lemma)
     (some "3")
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  Informal.Cite.citationAnchorId "hover.cite" == "hover-cite" &&
+  Informal.Cite.citationAnchorId "Hover.Cite" == "hover-cite" &&
+  Informal.HtmlId.key "hover.cite" == "hover-002Ecite"
 
 /-- info: true -/
 #guard_msgs in

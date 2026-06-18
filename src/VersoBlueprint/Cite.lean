@@ -36,6 +36,13 @@ private def parseBibLabel (s : String) : Name :=
 def normalizeLabel (label : String) : String :=
   (parseBibLabel label).toString
 
+/--
+Stable slug used in bibliography fragment URLs and citation preview keys.
+
+This intentionally keeps the historical lowercase, hyphen-separated bibliography
+anchor form instead of `Informal.HtmlId.key`. Use the `HtmlId` encoder for
+opaque generated element ids; citation anchors are user-visible URL fragments.
+-/
 def citationAnchorId (label : String) : String :=
   let base := normalizeLabel label
   base.foldl (init := "") fun acc c =>
