@@ -1,10 +1,6 @@
 (function () {
   const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
-  function blueprintRender() {
-    return window.VersoBlueprint.render;
-  }
-
   function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
     if (!(trigger instanceof Element)) return "";
     const title = (trigger.getAttribute("data-bp-preview-title") || key || "").trim();
@@ -57,12 +53,11 @@
     return makePanel(id, extraClass);
   }
 
-  function bindInlinePreview() {
+  function bindInlinePreview(previewUtils) {
     if (!(document.body instanceof Element)) return;
     if (document.body.getAttribute("data-bp-inline-preview-bound") === "1") return;
     document.body.setAttribute("data-bp-inline-preview-bound", "1");
 
-    const previewUtils = blueprintRender();
     const escapeHtml = previewUtils.escapeHtml;
     const previewDebug = previewUtils.previewDebug;
     const previewDebugLabel = previewUtils.previewDebugLabel;
@@ -550,11 +545,13 @@
     refresh(document);
   }
 
-  window.VersoBlueprint.onRenderReady(function () {
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", bindInlinePreview);
+      document.addEventListener("DOMContentLoaded", function () {
+        bindInlinePreview(previewUtils);
+      });
     } else {
-      bindInlinePreview();
+      bindInlinePreview(previewUtils);
     }
   });
 })();
