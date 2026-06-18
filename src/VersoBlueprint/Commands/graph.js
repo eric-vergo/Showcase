@@ -840,11 +840,7 @@
           {
             clearBody: function (body) { body.innerHTML = ""; },
             renderBody: function (body, html) {
-              if (previewUtils && typeof previewUtils.renderHtmlInto === "function") {
-                previewUtils.renderHtmlInto(body, html);
-              } else {
-                body.innerHTML = html;
-              }
+              previewUtils.renderHtmlInto(body, html);
             },
             positionPanel: makeHtmlPanelPositioner(function () {
               return previewController ? previewController.behavior : previewPanelBehavior;
