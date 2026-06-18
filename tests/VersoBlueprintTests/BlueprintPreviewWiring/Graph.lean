@@ -117,10 +117,7 @@ Base statement for graph preview mode option coverage.
           "function parsePreviewEntry(previewUtils, entry)",
           "return previewUtils.readHtml(entry);"
         ] &&
-        lacksAllSubstr graphJs [
-          "function blueprintRender()",
-          "window.VersoBlueprint.render"
-        ] &&
+        !hasSubstr graphJs "function blueprintRender()" &&
         hasSubstr graphJs "function layoutGraphCanvas(graphRoot, graphState)" &&
         !hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
         !hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&

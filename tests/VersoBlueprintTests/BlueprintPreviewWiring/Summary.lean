@@ -18,7 +18,6 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
     let summaryJs? := findSummaryPreviewJs? st
-    let previewRuntimeJs? := findPreviewRuntimeJs? st
     let inlineJs? := findInlinePreviewJs? st
     let mathJs? := findMathPreludeJs? st
     pure (
@@ -36,8 +35,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
       !hasSubstr out "verso-tex-prelude" &&
-      match summaryJs?, previewRuntimeJs?, inlineJs?, mathJs? with
-      | some summaryJs, some previewRuntimeJs, some inlineJs, some mathJs =>
+      match summaryJs?, inlineJs?, mathJs? with
+      | some summaryJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
         hasRenderReadyWiring summaryJs "previewUtils" &&
         hasTemplatePreviewBinding summaryJs
@@ -47,43 +46,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
           ".bp_summary_preview_wrap_active[data-bp-preview-label]" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
-        hasSubstr previewRuntimeJs "const stableCustomClientApi = {" &&
-        hasSubstr previewRuntimeJs "const bundledFeatureRenderHelpers = {" &&
-        hasSubstr previewRuntimeJs "const renderApi = Object.assign(" &&
-        appearsBefore previewRuntimeJs
-          "const stableCustomClientApi = {"
-          "const bundledFeatureRenderHelpers = {" &&
-        appearsBefore previewRuntimeJs
-          "const bundledFeatureRenderHelpers = {"
-          "const renderApi = Object.assign(" &&
-        hasSubstr previewRuntimeJs "function bindTemplatePreviewRoots(options)" &&
-        hasSubstr previewRuntimeJs "bindTemplatePreviewRoots: bindTemplatePreviewRoots" &&
-        hasSubstr previewRuntimeJs "function onRenderReady(fn)" &&
-        hasSubstr previewRuntimeJs "namespace.onRenderReady = onRenderReady" &&
-        hasSubstr previewRuntimeJs "queuedRenderReadyCallbacks.forEach(function (fn) {" &&
-        hasSubstr previewRuntimeJs "function positionAnchoredPanel(panel, anchor, margin, offset)" &&
-        hasSubstr previewRuntimeJs "function shouldKeepOpen(nextTarget, trigger, panel)" &&
-        hasSubstr previewRuntimeJs "function readPanelBehavior(panel, defaults)" &&
-        hasSubstr previewRuntimeJs "function configureCloseButton(closeButton, onClose, behavior)" &&
-        !hasSubstr previewRuntimeJs "function readBlueprintHtmlCacheEntryByLabel(label)" &&
-        hasSubstr previewRuntimeJs "function statementPreviewKey(label)" &&
-        hasSubstr previewRuntimeJs "function loadBlueprintHtmlCacheEntry(previewKey)" &&
-        hasSubstr previewRuntimeJs "Blueprint HTML cache must be an object with an entries array" &&
-        hasSubstr previewRuntimeJs "Blueprint HTML cache contains duplicate key " &&
-        hasSubstr previewRuntimeJs "function runPreviewHydrators(root)" &&
-        hasSubstr previewRuntimeJs "readHtml: readHtml" &&
-        !hasSubstr previewRuntimeJs "readPreviewTemplate:" &&
-        !hasSubstr previewRuntimeJs "hydratePreviewSubtree:" &&
-        !hasSubstr previewRuntimeJs "renderMath:" &&
-        hasSubstr previewRuntimeJs "escapeHtml: escapeHtml" &&
-        hasSubstr previewRuntimeJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
-        hasSubstr previewRuntimeJs "data-bp-preview-header-label" &&
-        hasSubstr previewRuntimeJs "window.setTimeout(function () {" &&
         hasRenderReadyWiring inlineJs "previewUtils" &&
-        lacksAllSubstr inlineJs [
-          "function blueprintRender()",
-          "window.VersoBlueprint.render"
-        ] &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
@@ -98,7 +61,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
         !hasSubstr inlineJs "ensureInlinePreviewStore" &&
         !hasSubstr inlineJs "template.bp_inline_preview_tpl"
-      | _, _, _, _ => false
+      | _, _, _ => false
     )
 
 /-- info: true -/

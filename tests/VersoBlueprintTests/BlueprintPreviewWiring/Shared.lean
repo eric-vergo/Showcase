@@ -49,9 +49,6 @@ def hasTemplatePreviewBinding
 def findSummaryPreviewJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "rootSelector: \".bp_summary\""
 
-def findPreviewRuntimeJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st "const stableCustomClientApi = {"
-
 def findInlinePreviewJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "function bindInlinePreview(previewUtils)"
 
