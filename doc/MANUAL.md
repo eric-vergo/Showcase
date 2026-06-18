@@ -928,34 +928,29 @@ interface, dashboard, or slide generator use the same semantic entry and cached
 HTML while placing the rendered nodes in its own side-by-side, tabbed, or
 comparison wrapper.
 
-Browser-side custom interfaces should use `window.VersoBlueprint.render`, which
-is installed by the standard Blueprint preview/runtime asset. It loads the
+Browser-side custom interfaces should start through
+`window.VersoBlueprint.onRenderReady`. The callback receives the shared render
+API installed by the standard Blueprint preview/runtime asset. It loads the
 semantic manifest and rendered HTML cache from the page's `-verso-data/`
 directory, keeps load status for diagnostics, and hydrates inserted fragments:
 
 ```javascript
-const api = window.VersoBlueprint.render;
-const key = api.previewKey("addition_right_identity", "statement");
-const target = document.querySelector("#audit-preview");
-
-const result = await api.renderPreviewInto(target, key);
-if (result.ok) {
-  console.log(result.manifestEntry.title);
-}
-```
-
-If a script is emitted as a Blueprint inline asset, do not assume it will run
-after the shared preview runtime. Verso stores inline JavaScript assets as a
-set, so source-list order is not a synchronization guarantee. Register startup
-code through `window.VersoBlueprint.onRenderReady` instead:
-
-```javascript
-window.VersoBlueprint.onRenderReady(function (api) {
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const key = api.previewKey("addition_right_identity", "statement");
   const target = document.querySelector("#audit-preview");
   if (!target) return;
-  api.renderPreviewInto(target, api.previewKey("addition_right_identity", "statement"));
+
+  const result = await api.renderPreviewInto(target, key);
+  if (result.ok) {
+    console.log(result.manifestEntry.title);
+  }
 });
 ```
+
+After readiness, the same API is available as `window.VersoBlueprint.render`.
+Scripts that are emitted as Blueprint inline assets should still use
+`onRenderReady`: Verso stores inline JavaScript assets as a set, so source-list
+order is not a synchronization guarantee.
 
 Blueprint's bundled preview clients get a small readiness bootstrap before
 their client code so `onRenderReady` is available even when the client asset is

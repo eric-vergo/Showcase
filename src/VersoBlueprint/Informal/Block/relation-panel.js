@@ -1,13 +1,6 @@
 (function () {
-  function blueprintRender() {
-    return window.VersoBlueprint.render;
-  }
-
-  function escapeHtml(text) {
-    return blueprintRender().escapeHtml(text);
-  }
-
-  function previewMessageHtml(kind, title, detail) {
+  function previewMessageHtml(previewUtils, kind, title, detail) {
+    const escapeHtml = previewUtils.escapeHtml;
     const safeKind = String(kind || "info").trim() || "info";
     let html =
       '<div class="bp_relation_preview_message" data-bp-preview-message="' +
@@ -27,8 +20,9 @@
     return html;
   }
 
-  function loadingPreviewHtml() {
+  function loadingPreviewHtml(previewUtils) {
     return previewMessageHtml(
+      previewUtils,
       "loading",
       "Loading preview",
       "Reading this preview from the Blueprint HTML cache."
@@ -43,6 +37,7 @@
     const status = readCacheStatus(previewUtils);
     if (!previewKey) {
       return previewMessageHtml(
+        previewUtils,
         "error",
         "Preview unavailable",
         "This entry did not provide a preview cache key."
@@ -50,6 +45,7 @@
     }
     if (status && status.state === "error") {
       return previewMessageHtml(
+        previewUtils,
         "error",
         "Preview HTML cache unavailable",
         "Rebuild the site or refresh after the current build finishes."
@@ -57,12 +53,14 @@
     }
     if (status && status.state === "ready") {
       return previewMessageHtml(
+        previewUtils,
         "error",
         "Preview entry not found",
         "The Blueprint HTML cache loaded, but it does not contain this entry yet. Rebuild the Blueprint output to resync generated data."
       );
     }
     return previewMessageHtml(
+      previewUtils,
       "error",
       "Preview unavailable",
       fallbackDetail || "The preview cache content could not be loaded."
@@ -73,12 +71,11 @@
     previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false });
   }
 
-  function bindRelationPanel(panel) {
+  function bindRelationPanel(previewUtils, panel) {
     if (!(panel instanceof Element)) return;
     if (panel.getAttribute("data-bp-bound") === "1") return;
     panel.setAttribute("data-bp-bound", "1");
 
-    const previewUtils = blueprintRender();
     const wrap = panel.closest(".bp_relation_wrap");
     const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
     const title = panel.querySelector(".bp_relation_preview_title");
@@ -167,7 +164,7 @@
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
       const requestToken = ++activateRequestToken;
       selectItem(item);
-      setRelationBodyHtml(previewUtils, body, loadingPreviewHtml());
+      setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils));
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }
@@ -253,19 +250,23 @@
     }
   }
 
-  function bindAllRelationPanels(root) {
+  function bindAllRelationPanels(previewUtils, root) {
     if (!(root instanceof Element || root instanceof Document)) return;
-    root.querySelectorAll(".bp_relation_panel").forEach(bindRelationPanel);
+    root.querySelectorAll(".bp_relation_panel").forEach(function (panel) {
+      bindRelationPanel(previewUtils, panel);
+    });
   }
 
   window.VersoBlueprint.onRenderReady(function (previewUtils) {
-    previewUtils.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
+    previewUtils.registerPreviewHydrator("relationPanel", function (root) {
+      bindAllRelationPanels(previewUtils, root);
+    });
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", function () {
-        bindAllRelationPanels(document);
+        bindAllRelationPanels(previewUtils, document);
       });
     } else {
-      bindAllRelationPanels(document);
+      bindAllRelationPanels(previewUtils, document);
     }
   });
 })();

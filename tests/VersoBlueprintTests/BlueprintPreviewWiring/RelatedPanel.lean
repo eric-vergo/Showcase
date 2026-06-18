@@ -38,7 +38,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
     pure (
       hasSubstr out "used by 2" &&
       !hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
@@ -79,12 +79,17 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
+        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
         hasRenderReadyWiring relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", bindAllRelationPanels)" &&
+        lacksAllSubstr relationJs [
+          "function blueprintRender()",
+          "window.VersoBlueprint.render"
+        ] &&
+        hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {" &&
+        hasSubstr relationJs "bindAllRelationPanels(previewUtils, root)" &&
         hasSubstr relationJs "function setRelationBodyHtml(previewUtils, body, html)" &&
-        hasSubstr relationJs "setRelationBodyHtml(previewUtils, body, loadingPreviewHtml())" &&
+        hasSubstr relationJs "setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils))" &&
         hasSubstr relationJs "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })" &&
         hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
         !hasSubstr relationJs "fallbackTemplates" &&
@@ -131,7 +136,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
     pure (
       hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
@@ -167,7 +172,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
+        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
         hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
         hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
@@ -180,7 +185,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
     pure (
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
@@ -200,7 +205,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "used by 1" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
+        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
         hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
         hasSubstr relationJs "selectItem(initialItem)" &&

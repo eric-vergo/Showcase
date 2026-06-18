@@ -4,7 +4,11 @@ import urllib.request
 
 from playwright.sync_api import expect, Locator, Page
 
-from support import assert_no_runtime_errors, record_runtime_errors
+from support import (
+    assert_no_runtime_errors,
+    blueprint_render_api_script,
+    record_runtime_errors,
+)
 
 
 def require_box(locator: Locator):
@@ -187,20 +191,16 @@ class TestPreviewRuntimeRegressions:
         page.wait_for_timeout(250)
 
         status = page.evaluate(
-            """() => {
-                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
-                return utils.readHtmlCacheStatus();
-            }"""
+            blueprint_render_api_script("return api.readHtmlCacheStatus();")
         )
         assert attempts["count"] == 0
         assert status["state"] == "idle"
 
         used_by_wrap.locator(".bp_relation_chip").first.hover()
         page.wait_for_function(
-            """() => {
-                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
-                return utils.readHtmlCacheStatus().state === "ready";
-            }"""
+            blueprint_render_api_script(
+                'return api.readHtmlCacheStatus().state === "ready";'
+            )
         )
         assert attempts["count"] == 1
 
@@ -216,11 +216,12 @@ class TestPreviewRuntimeRegressions:
         page.goto(f"{server}/Preview-Relationships/")
 
         status = page.evaluate(
-            """async () => {
-                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
-                await utils.loadHtmlCacheEntry("used_source--statement");
-                return utils.readHtmlCacheStatus();
-            }"""
+            blueprint_render_api_script(
+                """
+                await api.loadHtmlCacheEntry("used_source--statement");
+                return api.readHtmlCacheStatus();
+                """
+            )
         )
 
         assert status["state"] == "error"
@@ -354,8 +355,8 @@ class TestPreviewRuntimeRegressions:
         page.goto(f"{server}/Preview-Relationships/")
 
         previews = page.evaluate(
-            """async () => {
-                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+            blueprint_render_api_script(
+                """
                 const manifestResp = await fetch("-verso-data/blueprint-manifest.json");
                 const manifest = await manifestResp.json();
                 const metaByKey = new Map(
@@ -363,25 +364,26 @@ class TestPreviewRuntimeRegressions:
                     ? manifest.previews.map((entry) => [entry.key, entry])
                     : []
                 );
-                const statement = await utils.loadHtmlCacheEntry("preview_facets--statement");
-                const proof = await utils.loadHtmlCacheEntry("preview_facets--proof");
+                const statement = await api.loadHtmlCacheEntry("preview_facets--statement");
+                const proof = await api.loadHtmlCacheEntry("preview_facets--proof");
                 const statementMeta = metaByKey.get("preview_facets--statement") || null;
                 const proofMeta = metaByKey.get("preview_facets--proof") || null;
                 return {
                     statement: {
-                        html: utils.readHtml(statement),
+                        html: api.readHtml(statement),
                         label: statementMeta ? statementMeta.label : null,
                         facet: statementMeta ? statementMeta.facet : null,
                         href: statementMeta ? statementMeta.href : null
                     },
                     proof: {
-                        html: utils.readHtml(proof),
+                        html: api.readHtml(proof),
                         label: proofMeta ? proofMeta.label : null,
                         facet: proofMeta ? proofMeta.facet : null,
                         href: proofMeta ? proofMeta.href : null
                     }
                 };
-            }"""
+                """
+            )
         )
 
         assert "Proof facet marker" in previews["proof"]["html"]
@@ -408,9 +410,8 @@ class TestPreviewRuntimeRegressions:
         page.goto(f"{server}/Preview-Relationships/")
 
         rendered = page.evaluate(
-            """async () => {
-                const api = window.VersoBlueprint && window.VersoBlueprint.render;
-                if (!api) return { hasApi: false };
+            blueprint_render_api_script(
+                """
                 const host = document.createElement("div");
                 host.id = "custom-preview-render-root";
                 document.body.appendChild(host);
@@ -456,7 +457,8 @@ class TestPreviewRuntimeRegressions:
                     manifestStatusAfterMutation: api.readManifestStatus(),
                     htmlCacheStatusAfterMutation: api.readHtmlCacheStatus()
                 };
-            }"""
+                """
+            )
         )
 
         assert rendered["hasApi"]
@@ -512,8 +514,8 @@ class TestPreviewRuntimeRegressions:
         page.goto(f"{server}/Blueprint-Summary/")
 
         cache = page.evaluate(
-            """async () => {
-                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+            blueprint_render_api_script(
+                """
                 const trigger = document.querySelector(
                     ".bp_summary_preview_wrap_active[data-bp-preview-key]"
                 );
@@ -521,18 +523,19 @@ class TestPreviewRuntimeRegressions:
                     trigger instanceof Element
                         ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
                         : "";
-                const first = await utils.loadHtmlCacheEntry(previewKey);
-                const statusAfterFirst = utils.readHtmlCacheStatus();
-                const second = await utils.loadHtmlCacheEntry(previewKey);
-                const statusAfterSecond = utils.readHtmlCacheStatus();
+                const first = await api.loadHtmlCacheEntry(previewKey);
+                const statusAfterFirst = api.readHtmlCacheStatus();
+                const second = await api.loadHtmlCacheEntry(previewKey);
+                const statusAfterSecond = api.readHtmlCacheStatus();
                 return {
                     previewKey: previewKey,
-                    firstHtml: utils.readHtml(first),
-                    secondHtml: utils.readHtml(second),
+                    firstHtml: api.readHtml(first),
+                    secondHtml: api.readHtml(second),
                     statusAfterFirst: statusAfterFirst,
                     statusAfterSecond: statusAfterSecond
                 };
-            }"""
+                """
+            )
         )
 
         assert cache["previewKey"]

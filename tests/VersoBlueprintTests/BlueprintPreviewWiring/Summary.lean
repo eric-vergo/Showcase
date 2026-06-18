@@ -19,7 +19,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
     let summaryJs? := findExtraJsContaining? st "rootSelector: \".bp_summary\""
     let previewRuntimeJs? := findExtraJsContaining? st "const renderApi = {"
-    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
+    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview(previewUtils)"
     let mathJs? := findExtraJsContaining? st "window.bpTexPreludeTable"
     pure (
       !hasSubstr out "class=\"bp_summary_preview_store\"" &&
@@ -70,7 +70,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewRuntimeJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
         hasSubstr previewRuntimeJs "data-bp-preview-header-label" &&
         hasSubstr previewRuntimeJs "window.setTimeout(function () {" &&
-        hasRenderReadyWiringNoParam inlineJs &&
+        hasRenderReadyWiring inlineJs "previewUtils" &&
+        lacksAllSubstr inlineJs [
+          "function blueprintRender()",
+          "window.VersoBlueprint.render"
+        ] &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
@@ -93,7 +97,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
+    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview(previewUtils)"
     let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 1 &&
