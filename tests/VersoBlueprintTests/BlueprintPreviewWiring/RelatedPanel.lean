@@ -82,10 +82,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasSubstr relationJs "function previewExceptionHtml(previewUtils, fallbackDetail)" &&
         hasRenderReadyWiring relationJs "previewUtils" &&
-        lacksAllSubstr relationJs [
-          "function blueprintRender()",
-          "window.VersoBlueprint.render"
-        ] &&
+        !hasSubstr relationJs "function blueprintRender()" &&
         hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {" &&
         hasSubstr relationJs "bindAllRelationPanels(previewUtils, root)" &&
         hasSubstr relationJs "function setRelationBodyHtml(previewUtils, body, html)" &&

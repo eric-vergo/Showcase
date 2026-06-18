@@ -418,10 +418,10 @@
   async function loadBlueprintStoreEntry(store, previewKey) {
     const exact = readBlueprintStoreEntry(store, previewKey);
     if (exact) return exact;
-    const cache = await loadBlueprintStore(store);
-    if (!(cache instanceof Map)) return null;
-    if (typeof previewKey === "string" && previewKey.length > 0 && cache.has(previewKey)) {
-      return cache.get(previewKey) || null;
+    const entryMap = await loadBlueprintStore(store);
+    if (!(entryMap instanceof Map)) return null;
+    if (typeof previewKey === "string" && previewKey.length > 0 && entryMap.has(previewKey)) {
+      return entryMap.get(previewKey) || null;
     }
     return null;
   }
@@ -908,13 +908,11 @@
       if (localHtml) return localHtml;
       if (!allowHtmlCache) return "";
       const lookupKey = readLookupKey(trigger, key, localEntry);
-      const cacheEntry =
-        typeof loadBlueprintHtmlCacheEntry === "function"
-          ? await loadBlueprintHtmlCacheEntry(lookupKey)
-          : null;
-      const cacheHtml = readHtml(cacheEntry);
-      if (cacheHtml) return cacheHtml;
-      return blueprintHtmlCacheDiagnosticHtml(lookupKey || key);
+      const result = await resolveBlueprintPreview(lookupKey);
+      if (result && result.ok) return result.html;
+      const diagnosticHtml =
+        result && typeof result.diagnosticHtml === "string" ? result.diagnosticHtml : "";
+      return diagnosticHtml || blueprintHtmlCacheDiagnosticHtml(lookupKey || key);
     }
 
     async function showFromTrigger(trigger) {

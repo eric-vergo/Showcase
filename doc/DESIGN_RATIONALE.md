@@ -344,6 +344,16 @@ The workflow implies a few constraints for renderers:
   insert opaque fragments, or call hydrators; it should not infer Blueprint
   relation topology, ownership, status, or code associations from HTML markup.
 
+- **Keep readiness and API guards source-level.**
+  Feature JavaScript must start through `window.VersoBlueprint.onRenderReady`;
+  direct reads from `window.VersoBlueprint.render` are limited to the runtime
+  bootstrap path. Stable render API additions must be reflected in the Manual's
+  custom-client table, while bundled helper additions stay out of that table
+  unless intentionally promoted. The harness test
+  `tests/harness/test_preview_runtime_api_docs.py` owns these source-level
+  guardrails so Lean rendering tests can focus on emitted markup, assets, and
+  behavior instead of brittle JavaScript object-shape assertions.
+
 - **Fallbacks should be diagnostic, not alternative data paths.**
   If a manifest entry or rendered-fragment body is missing, the UI should
   expose a clear local diagnostic. Silently falling back to page-local stale

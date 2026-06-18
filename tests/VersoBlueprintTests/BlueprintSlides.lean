@@ -133,7 +133,6 @@ private def writeSlidesPreviewDataFiles
     hasSubstr js "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"" &&
     hasSubstr js "data-bp-slide-href" &&
     !hasSubstr js "function blueprintRender()" &&
-    !hasSubstr js "return window.VersoBlueprint.render;" &&
     !hasSubstr js "if (utils && typeof utils.hydrate === \"function\")" &&
     !hasSubstr js "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")" &&
     !hasSubstr js "function openBlueprintHref(href)" &&
