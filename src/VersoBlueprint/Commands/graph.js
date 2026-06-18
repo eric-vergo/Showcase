@@ -118,13 +118,8 @@
     });
   }
 
-  function blueprintRender() {
-    return window.VersoBlueprint.render;
-  }
-
-  function collectPreviewTemplates(rootNode) {
-    const utils = blueprintRender();
-    return utils.collectPreviewTemplates(
+  function collectPreviewTemplates(previewUtils, rootNode) {
+    return previewUtils.collectPreviewTemplates(
       rootNode || document,
       "template.bp_graph_preview_tpl[data-bp-preview-label]"
     );
@@ -287,9 +282,8 @@
     }
   }
 
-  function parsePreviewEntry(entry) {
-    const utils = blueprintRender();
-    return utils.readHtml(entry);
+  function parsePreviewEntry(previewUtils, entry) {
+    return previewUtils.readHtml(entry);
   }
 
   function readPanelNodes(panel, titleSelector, bodySelector) {
@@ -357,10 +351,9 @@
     return behaviorSource && typeof behaviorSource === "object" ? behaviorSource : null;
   }
 
-  function makeHtmlPanelPositioner(behaviorSource) {
+  function makeHtmlPanelPositioner(previewUtils, behaviorSource) {
     return function (panel, anchorNode) {
       const behavior = readBehaviorSource(behaviorSource);
-      const previewUtils = blueprintRender();
       if (
         behavior &&
         behavior.isAnchored &&
@@ -373,10 +366,9 @@
     };
   }
 
-  function makeGroupPanelPositioner(graphBlock, behavior) {
+  function makeGroupPanelPositioner(previewUtils, graphBlock, behavior) {
     return function (panel, anchorNode) {
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
-      const previewUtils = blueprintRender();
       if (!behavior || !behavior.isAnchored) {
         previewUtils.resetPanelPosition(panel);
         return;
@@ -463,10 +455,9 @@
     };
   }
 
-  function attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
+  function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
-    const previewUtils = blueprintRender();
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
     const hoverLifetime = bindHoverablePanelLifetime(
@@ -488,7 +479,7 @@
       const requestToken = ++graphState.previewRequestToken;
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      let html = parsePreviewEntry(previewMap.get(label));
+      let html = parsePreviewEntry(previewUtils, previewMap.get(label));
       if (!html && previewKey) {
         const result = await previewUtils.resolvePreview(previewKey);
         html = result && result.ok ? result.html : "";
@@ -746,10 +737,11 @@
     );
   }
 
-  Promise.resolve()
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
-    .then(function () {
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
+    Promise.resolve()
+      .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
+      .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
+      .then(function () {
       const graphBlocks = Array.from(document.querySelectorAll(".bp_graph_fullwidth"));
       if (graphBlocks.length === 0) return;
 
@@ -765,12 +757,11 @@
         const packInput = graphBlock.querySelector(".bp_graph_pack_input");
         const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
         const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
-        const previewMap = collectPreviewTemplates(graphBlock);
+        const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
         const previewClose = previewPanelNode
           ? previewPanelNode.querySelector(".bp_graph_preview_close")
           : null;
-        const previewUtils = blueprintRender();
         const previewPanelBehavior =
           previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
         let previewController = null;
@@ -784,7 +775,7 @@
             renderBody: function (body, html) {
               previewUtils.renderHtmlInto(body, html);
             },
-            positionPanel: makeHtmlPanelPositioner(function () {
+            positionPanel: makeHtmlPanelPositioner(previewUtils, function () {
               return previewController ? previewController.behavior : previewPanelBehavior;
             }),
             onHide: function () {
@@ -927,7 +918,7 @@
                 .height(height)
                 .renderDot(dotForVariantOptions(variant, getActiveOptions()));
             },
-            positionPanel: makeGroupPanelPositioner(graphBlock, groupHoverBehavior),
+            positionPanel: makeGroupPanelPositioner(previewUtils, graphBlock, groupHoverBehavior),
             onHide: function () {
               graphState.groupHoverAnchorNode = null;
               graphState.groupHoverShownKey = "";
@@ -1068,6 +1059,7 @@
             if (graphState.renderFinalizedToken === renderToken) return;
             graphState.renderFinalizedToken = renderToken;
             attachPreviewHandlers(
+              previewUtils,
               graphBlock,
               graphContainer,
               previewMap,
@@ -1187,5 +1179,6 @@
       }
 
       graphBlocks.forEach(initGraphBlock);
-    });
+      });
+  });
 })();

@@ -73,7 +73,7 @@ Base statement for graph preview mode option coverage.
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
     let graphJs? :=
       findExtraJsContaining? st
-        "function attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)"
+        "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)"
     pure (
       hasSubstr out "bp_graph_preview" &&
       hasSubstr out "class=\"bp_graph_preview bp_preview_panel\"" &&
@@ -113,7 +113,16 @@ Base statement for graph preview mode option coverage.
       !hasSubstr out "bp_preview_tex_prelude" &&
       match graphJs? with
       | some graphJs =>
-        hasSubstr graphJs "return utils.readHtml(entry);" &&
+        hasRenderReadyWiring graphJs "previewUtils" &&
+        hasAllSubstr graphJs [
+          "function collectPreviewTemplates(previewUtils, rootNode)",
+          "function parsePreviewEntry(previewUtils, entry)",
+          "return previewUtils.readHtml(entry);"
+        ] &&
+        lacksAllSubstr graphJs [
+          "function blueprintRender()",
+          "window.VersoBlueprint.render"
+        ] &&
         hasSubstr graphJs "function layoutGraphCanvas(graphRoot, graphState)" &&
         !hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
         !hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
@@ -129,7 +138,7 @@ Base statement for graph preview mode option coverage.
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "previewUtils.renderHtmlInto(body, html)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
-        hasSubstr graphJs "attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)" &&
+        hasSubstr graphJs "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)" &&
         hasSubstr graphJs "graphState.previewActiveNode === node && !previewController.panel.hidden" &&
         hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isHover) return;" &&
         hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isPinned) return;" &&

@@ -81,8 +81,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
         hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
-        hasRenderReadyBootstrap relationJs &&
-        hasRenderReadyCallback relationJs "previewUtils" &&
+        hasRenderReadyWiring relationJs "previewUtils" &&
         hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", bindAllRelationPanels)" &&
         hasSubstr relationJs "function setRelationBodyHtml(previewUtils, body, html)" &&
         hasSubstr relationJs "setRelationBodyHtml(previewUtils, body, loadingPreviewHtml())" &&
