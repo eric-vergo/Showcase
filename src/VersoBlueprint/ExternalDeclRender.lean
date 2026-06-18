@@ -520,32 +520,4 @@ def renderDeclHtmlNodeDirect? (decl : Name) : MetaM (Option ExternalDeclHtml) :=
     logError m!"External declaration rendering failed for {decl}: {← ex.toMessageData.toString}"
     return none
 
-/--
-Optional fallback path for non-`MetaM` contexts.
-Database fallback is currently unavailable, so this returns `none`.
--/
-def renderDeclHtmlNodeFromDb? (_dbPath : System.FilePath) (_decl : Name) :
-    IO (Option ExternalDeclHtml) := do
-  IO.eprintln "[external render db] fallback unavailable"
-  return none
-
-/-- Smoke demo targets: theorem/def (`Nat.add`), structure (`Prod`), and a missing name. -/
-def externalDeclRenderSmokeDecls : Array Name := #[`Nat.add, `Prod, `No.Such.Declaration]
-
-/-- Measure textual payload length in rendered declaration HTML. -/
-def ExternalDeclHtml.textLength : ExternalDeclHtml → Nat
-  | .text _ s => s.length
-  | .tag _ _ content => textLength content
-  | .seq contents => contents.foldl (fun acc child => acc + textLength child) 0
-
-/-- Smoke demo helper for quick direct-path checks. -/
-def runExternalDeclRenderSmokeDirect : MetaM (Array (Name × Option ExternalDeclHtml)) := do
-  externalDeclRenderSmokeDecls.mapM fun decl => do
-    let rendered? ← renderDeclHtmlNodeDirect? decl
-    if let some html := rendered? then
-      logInfo m!"[external decl render smoke] {decl}: rendered ({ExternalDeclHtml.textLength html} chars)"
-    else
-      logInfo m!"[external decl render smoke] {decl}: none"
-    pure (decl, rendered?)
-
 end Informal

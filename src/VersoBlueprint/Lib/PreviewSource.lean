@@ -51,12 +51,6 @@ deriving Inhabited, Repr
 private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
   if xs.isEmpty then none else some xs
 
-private def firstNonEmptyFacet? {α}
-    (fetch : PreviewCache.Facet → Option (Array α)) : Option (Array α) :=
-  match (fetch .statement).bind nonEmptyOrNone with
-  | some xs => some xs
-  | none => (fetch .proof).bind nonEmptyOrNone
-
 private def firstNonEmptyEntry?
     (fetch : PreviewCache.Facet → Option PreviewCache.Entry) : Option PreviewCache.Entry :=
   match fetch .statement with
@@ -99,19 +93,6 @@ def traversalPreview?
   let entry ← traversalEntry? s label
   return { blocks := entry.blocks }
 
-def traversalBlocks?
-    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option (Array ManualBlock) :=
-  (traversalPreview? s label).map (·.blocks)
-
-def renderTraversalPreview? {m} [Monad m]
-    (s : Verso.Genre.Manual.TraverseState)
-    (renderBlock : ManualBlock → m Verso.Output.Html)
-    (label : Name) : m (Option (Array Verso.Output.Html)) := do
-  match traversalPreview? s label with
-  | none => pure none
-  | some preview =>
-    pure <| some (← preview.blocks.mapM renderBlock)
-
 private def envFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
   let informalData ←
     match facet with
@@ -133,11 +114,6 @@ private def firstNonEmptyPreview?
     else
       fetch .proof
   | none => fetch .proof
-
-private def envFacetStxs? (node : Data.Node) (facet : PreviewCache.Facet) : Option (Array Syntax) :=
-  match facet with
-  | .statement => node.statement.bind (nonEmptyOrNone ·.elabStx)
-  | .proof => node.proof.bind (nonEmptyOrNone ·.elabStx)
 
 def fromEnvironment? (env : Environment) (label : Name) : Option Preview := do
   let state := informalExt.getState env

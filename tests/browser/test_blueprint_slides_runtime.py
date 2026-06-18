@@ -428,6 +428,89 @@ class TestBlueprintSlidesRuntime:
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
 
+        page.evaluate("window.Reveal.slide(3)")
+        page.wait_for_function("() => window.Reveal.getIndices().h === 3")
+        current_slide = page.locator(".reveal .slides section.present").first
+        full_grid = current_slide.locator(".bp_graft_side_by_side").first
+        expect(full_grid).to_be_visible()
+        assert not full_grid.evaluate(
+            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+        )
+        full_statement = full_grid.locator(
+            ".bp_slide_node[data-bp-label='addition_right_identity']"
+            "[data-bp-facet='statement']"
+        )
+        full_proof = full_grid.locator(
+            ".bp_slide_node[data-bp-label='addition_right_identity']"
+            "[data-bp-facet='proof']"
+        )
+        expect(full_grid.locator(".bp_slide_node")).to_have_count(2)
+        expect(full_statement).to_have_attribute(
+            "data-bp-display-label", "Addition identity"
+        )
+        expect(full_statement).to_have_attribute("data-bp-show-header", "true")
+        expect(full_statement).to_contain_text("adding zero on the right")
+        expect(full_proof).to_have_attribute("data-bp-display-label", "Proof sketch")
+        expect(full_proof).to_contain_text("Induct on")
+        expect(full_statement.locator(".bp_kind_theorem_heading")).to_have_count(1)
+        expect(full_proof.locator(".bp_kind_proof_heading")).to_have_count(1)
+
+        page.evaluate("window.Reveal.slide(4)")
+        page.wait_for_function("() => window.Reveal.getIndices().h === 4")
+        current_slide = page.locator(".reveal .slides section.present").first
+        compact_grid = current_slide.locator(".bp_graft_side_by_side").first
+        expect(compact_grid).to_be_visible()
+        assert compact_grid.evaluate(
+            """grid => grid.classList.contains("bp_graft_side_by_side_boxed")"""
+        )
+        expect(compact_grid.locator(".bp_slide_node")).to_have_count(2)
+        expect(compact_grid.locator(".bp_heading")).to_have_count(0)
+        for label, display_label in [
+            ("addition_spec", "Addition"),
+            ("multiplication_spec", "Multiplication"),
+        ]:
+            compact_node = compact_grid.locator(
+                f".bp_slide_node[data-bp-label='{label}']"
+            )
+            expect(compact_node).to_have_attribute("data-bp-compact", "true")
+            expect(compact_node).to_have_attribute("data-bp-show-header", "false")
+            expect(compact_node).to_have_attribute("data-bp-display-label", display_label)
+
+        page.evaluate("window.Reveal.slide(5)")
+        page.wait_for_function("() => window.Reveal.getIndices().h === 5")
+        current_slide = page.locator(".reveal .slides section.present").first
+        four_up_grid = current_slide.locator(".bp_graft_side_by_side").first
+        expect(four_up_grid).to_be_visible()
+        expect(four_up_grid.locator(".bp_slide_node")).to_have_count(4)
+        expect(four_up_grid.locator(".bp_heading")).to_have_count(0)
+        expect(
+            four_up_grid.locator(
+                ".bp_slide_node[data-bp-label='collatz_conjecture']"
+                "[data-bp-facet='proof']"
+            )
+        ).to_contain_text("No proof is currently known")
+        expect(
+            four_up_grid.locator(
+                ".bp_slide_node[data-bp-label='multiplication_assoc']"
+                "[data-bp-display-label='Mul assoc']"
+            )
+        ).to_contain_text("multiplication is associative")
+        four_up_metrics = four_up_grid.evaluate(
+            """grid => {
+              const boxes = [...grid.querySelectorAll(".bp_slide_node")].map(node =>
+                node.getBoundingClientRect()
+              );
+              const content = grid.querySelector(".bp_content");
+              return {
+                maxBottom: Math.max(...boxes.map(box => box.bottom)),
+                viewportHeight: window.innerHeight,
+                contentFontSize: parseFloat(getComputedStyle(content).fontSize)
+              };
+            }"""
+        )
+        assert four_up_metrics["maxBottom"] <= four_up_metrics["viewportHeight"] - 24
+        assert four_up_metrics["contentFontSize"] >= 12
+
         page.evaluate("window.bpSlideNodeRuntime.hydrate(document)")
         expect_slide_link(
             page,

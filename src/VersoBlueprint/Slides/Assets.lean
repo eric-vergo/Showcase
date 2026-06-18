@@ -42,9 +42,6 @@ def blueprintSlidesJs : String :=
       , slideNodeHydrationJs
       ]
 
-public def blueprintSlidesExtraJs : Array String :=
-  #[blueprintSlidesJsFilename]
-
 private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 

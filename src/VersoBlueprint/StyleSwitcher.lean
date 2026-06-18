@@ -487,8 +487,6 @@ def js (cfg : JsConfig := {}) : String :=
   (jsTemplate.replace "__BP_ENABLE_PROOF_HIDER__" (boolLit cfg.proofHider)).replace
     "__BP_ENABLE_HASH_REVEAL__" (boolLit cfg.hashReveal)
 
-def jsBasic : String := js {}
-
 def jsInteractive : String := js { proofHider := true, hashReveal := true }
 
 end Informal.StyleSwitcher

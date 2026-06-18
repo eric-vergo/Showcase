@@ -15,28 +15,46 @@ namespace Informal.Slides
 
 open Verso Doc Elab
 
-@[reducible] private def defaultSlidesGenreHtml :
-    Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
+@[reducible] private def defaultSlidesTraverse :
+    Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
   inferInstance
 
-@[reducible] private def blueprintSlidesGenreHtml
+/--
+During the normal Verso Slides traversal, turn `{blueprint_node}` placeholders
+into already-rendered HTML blocks.
+
+`blueprint_node` elaboration only knows the requested label/options, so it emits
+a `BlockExt.wrap` placeholder. At `slidesMainWithBlueprintPreviews` time we also
+have the Blueprint manifest/cache and can render that placeholder to static
+Blueprint HTML. `BlockExt.ofHtml` is the 4.31 handoff back to the normal Slides
+renderer.
+-/
+@[reducible] private def blueprintSlidesTraverse
     (renderContext : Informal.Slides.RenderContext) :
-    Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
-  { defaultSlidesGenreHtml with
-    block := fun inlineHtml blockHtml container contents => do
+    Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
+  { defaultSlidesTraverse with
+    genreBlock := fun container contents => do
       match container with
       | .wrap attrs =>
-        match renderBlueprintSlideNodeFromAttrs? renderContext attrs with
-        | some render => render
-        | none => defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
+          match Informal.Graft.BlueprintNode.fromAttrs? attrs with
+          | some node =>
+              let html ← renderBlueprintSlideNode renderContext node
+              pure <| some <| .other (VersoSlides.BlockExt.ofHtml html) #[]
+          | none =>
+              defaultSlidesTraverse.genreBlock container contents
       | _ =>
-        defaultSlidesGenreHtml.block inlineHtml blockHtml container contents
+          defaultSlidesTraverse.genreBlock container contents
   }
 
 /--
-Local upstream workaround pending the Verso Slides `Block.ofHtml` constructor
-tracked in `doc/UPSTREAM_BACKLOG.md`: keep this close to upstream `slidesMain`
-so the copied asset/write loop can disappear.
+Render Blueprint slide-node carriers to `VersoSlides.BlockExt.ofHtml` during
+the normal Verso Slides traversal.
+
+The 4.30 branch keeps the older compatibility path that overrides
+`GenreHtml.block`, because `verso-slides` 4.30 does not provide
+`BlockExt.ofHtml`. This 4.31 path still mirrors the small `slidesMain` output
+loop so `quiet := true` remains supported and the rendered HTML cache can seed
+the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
@@ -60,8 +78,11 @@ private def slidesMainWithBlueprintRenderer
   }
   let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
-  let (doc, traverseState) ←
-    (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
+  let traverseDoc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides) :=
+    let _ : Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
+      blueprintSlidesTraverse renderContext
+    VersoSlides.Slides.traverse doc
+  let (doc, traverseState) ← traverseDoc () {}
   let ctx : Verso.Doc.Html.HtmlT.Context VersoSlides.Slides := {
     options := {}
     traverseContext := ()
@@ -72,8 +93,6 @@ private def slidesMainWithBlueprintRenderer
   }
   let initialHoverState := htmlCache?.map (·.hoverState) |>.getD {}
   let render : Verso.Doc.Html.HtmlT VersoSlides.Slides (Verso.BuildLogT IO) Verso.Output.Html :=
-    let _ : Verso.Doc.Html.GenreHtml VersoSlides.Slides (Verso.BuildLogT IO) :=
-      blueprintSlidesGenreHtml renderContext
     VersoSlides.renderDocument config doc
   let (slidesHtml, hoverState) ←
     ((render.run ctx).run initialHoverState).run logger
