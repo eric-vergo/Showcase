@@ -62,7 +62,7 @@ block_extension Block.informal (data : BlockData) where
     -- XXX: (maybe) lift the Except into the main monad error thread
     match fromJson? (α := BlockData) data with
     | .error err =>
-      logError s!"Malformed data ({err}): {data}"
+      Verso.reportError s!"Malformed data ({err}): {data}"
       pure none
     | .ok blockData =>
       let blockData := blockData.withTraversalNumberingContext (← read)
@@ -78,7 +78,7 @@ block_extension Block.informal (data : BlockData) where
     some <| fun _goI goB id data blocks => do
       match fromJson? (α := BlockData) data with
       | .error err =>
-        HtmlT.logError s!"Malformed data ({err}): {data}"
+        Verso.reportError s!"Malformed data ({err}): {data}"
         pure .empty
       | .ok data =>
         let s ← HtmlT.state

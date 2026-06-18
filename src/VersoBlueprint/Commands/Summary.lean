@@ -1047,7 +1047,7 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
       pure ("contains sorry", "Declaration with sorry: ", "bp_summary_badge bp_summary_badge_warn",
         item.status.sorryLocationText, refsTxt)
     | .proved =>
-      HtmlT.logError s!"Unexpected proved status in summary sorry details for {item.decl}"
+      Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
       pure ("proved", "Declaration: ", "bp_summary_badge", "proved", "0")
   let (statusLabel, declPrefix, badgeClass, whereTxt, refsTxt) := statusInfo
   pure {{ <li class="bp_summary_item">
@@ -1725,7 +1725,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let .ok data := fromJson? (α := Summary) json
-      | HtmlT.logError "Malformed data in Block.summary.toHtml"
+      | Verso.reportError "Malformed data in Block.summary.toHtml"
         pure .empty
     let s ← HtmlT.state
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>

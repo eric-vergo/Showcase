@@ -24,7 +24,7 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
   data := toJson data
   traverse id data _contents := do
     let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
-      | logError s!"Malformed Rust data: {data}"
+      | Verso.reportError s!"Malformed Rust data: {data}"
         pure none
     if let some _ := (← get).getDomainObject? Informal.Rust.informalRustCodeDomain cdata.label.toString then
       pure none
@@ -42,7 +42,7 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
     open Verso.Output.Html in
     some <| fun _goI _goB id data _blocks => do
       let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
-        | HtmlT.logError s!"Malformed Rust code data: {data}"
+        | Verso.reportError s!"Malformed Rust code data: {data}"
           pure .empty
       let s ← HtmlT.state
       let ctxt ← HtmlT.context

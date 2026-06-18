@@ -47,7 +47,7 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
   data := toJson groupData
   traverse _id data _contents := do
     let .ok groupData := fromJson? (α := GroupBlockData) data
-      | logError "Malformed data in Block.groupMetadata.traverse"
+      | Verso.reportError "Malformed data in Block.groupMetadata.traverse"
         return none
     modify fun st =>
       Informal.TraversalIndex.Groups.saveData st groupData.label (toJson groupData)
@@ -58,7 +58,7 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
     open Verso.Output.Html in
     some <| fun _ _ _ data _ => do
       let .ok _ := fromJson? (α := GroupBlockData) data
-        | HtmlT.logError "Malformed data in Block.groupMetadata.toHtml"
+        | Verso.reportError "Malformed data in Block.groupMetadata.toHtml"
           pure .empty
       pure .empty
 
