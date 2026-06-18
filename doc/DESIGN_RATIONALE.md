@@ -136,7 +136,7 @@ flowchart TD
   traverse["Verso traversal<br/>numbering, hrefs, anchors, local preview blocks"]
   indexes["TraversalIndex domains<br/>Nodes, InlineCode, TraversalPreviews,<br/>LeanCodePreviews, citations, external-decl anchors"]
   render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
-  manifest["PreviewManifest extra step<br/>semantic manifest and rendered HTML cache"]
+  manifest["PreviewManifest extra step<br/>semantic manifest and rendered-fragment cache"]
   artifacts["Generated artifacts<br/>HTML pages, assets, -verso-docs.json,<br/>blueprint-manifest.json, blueprint-html-cache.json"]
   browser["Browser runtime<br/>onRenderReady -> render API,<br/>graph/summary/block/slides JS"]
   consumers["External/custom consumers<br/>Slides, audit views, dashboards, custom wrappers"]
@@ -336,9 +336,34 @@ The workflow implies a few constraints for renderers:
   contract unless promoted into the manual's stable API table.
 
 - **Fallbacks should be diagnostic, not alternative data paths.**
-  If a manifest entry or HTML-cache body is missing, the UI should expose a
-  clear local diagnostic. Silently falling back to page-local stale templates
-  or ad hoc label scans creates a second source of truth.
+  If a manifest entry or rendered-fragment body is missing, the UI should
+  expose a clear local diagnostic. Silently falling back to page-local stale
+  templates or ad hoc label scans creates a second source of truth.
+
+### Manifest And Rendered-Fragment Cache Contract
+
+The preview manifest and rendered-fragment cache have separate responsibilities:
+the manifest owns semantics, and the cache owns presentation. The manifest is
+the authoritative source for labels, facets, titles, hrefs, group membership,
+relation topology, Lean-code associations, ownership metadata, tags, priority,
+effort, and external markup metadata. The rendered-fragment cache stores opaque
+HTML bodies keyed by the same preview keys, plus the Verso hover payloads needed
+by those bodies.
+
+Consumers should join the two files by preview key at the last responsible
+moment. A renderer may use the manifest entry to decide what the object means
+and how to wrap it, then use the cached fragment as the already-rendered body.
+Browser clients may insert that fragment and hydrate it. They should not scrape
+cached fragments to rediscover labels, dependencies, code status, group
+membership, or other semantic facts. If a new generated consumer needs another
+semantic fact, add that fact to `PreviewManifest.Entry` or a typed structure
+referenced from it; do not encode it only in rendered HTML.
+
+This rule keeps custom consumers independent of presentation markup. It also
+lets Blueprint change CSS, heading layout, relation-panel markup, or rendered
+code-panel structure without changing the semantic data contract. Cached HTML
+may visibly contain relation panels, code panels, and headings, but those are a
+rendering of manifest semantics, not a second data source.
 
 ### Phase Boundary Checklist
 
@@ -348,11 +373,14 @@ When adding a new Blueprint surface, choose its data boundary explicitly:
    `Environment.State` or a typed semantic model referenced from it.
 2. If the fact depends on document placement, rendered numbering, hrefs, or
    anchors, put it in a `TraversalIndex` domain.
-3. If the fact must be consumed outside the current generator process, emit it
-   through `PreviewManifest` and the HTML cache.
-4. If the fact is only UI interaction state, keep it in browser-owned DOM or JS
+3. If a semantic fact must be consumed outside the current generator process,
+   emit it through `PreviewManifest`.
+4. If a rendered body must be reused outside the current page render, put the
+   already-rendered fragment in the rendered-fragment cache and keep it opaque
+   to consumers.
+5. If the fact is only UI interaction state, keep it in browser-owned DOM or JS
    state.
-5. If two phases need the same shape, share a projection or renderer, not the
+6. If two phases need the same shape, share a projection or renderer, not the
    mutable phase-local store itself.
 
 ## External Declaration Model
@@ -434,14 +462,14 @@ rather than page-local template bodies:
    preview payloads under their own preview-data keys.
 2. `PreviewManifest.lean` owns the Blueprint generator entry point and emits
    two files consumed by generated sites: the semantic Blueprint manifest and
-   the rendered HTML cache. The cache stores rendered fragments plus their
+   the rendered-fragment cache. The cache stores rendered fragments plus their
    Verso hover side table, while generated pages merge those hover payloads into
    `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
    is still available.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
-   HTML-cache loading, missing-cache diagnostics, hydration, math rendering,
-   and anchored panel behavior.
+   rendered-fragment loading, missing-fragment diagnostics, hydration, math
+   rendering, and anchored panel behavior.
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
@@ -459,11 +487,11 @@ rather than page-local template bodies:
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
-stable lookup key, while the preview body comes from the HTML cache. Those
-surfaces deliberately avoid page-local fallback templates so preview content has
-one generated source of truth. If the cache is unavailable or missing an entry,
-the browser renders a local diagnostic message instead of silently using stale
-local preview HTML.
+stable lookup key, while the preview body comes from the rendered-fragment
+cache. Those surfaces deliberately avoid page-local fallback templates so
+preview content has one generated source of truth. If the cache is unavailable
+or missing an entry, the browser renders a local diagnostic message instead of
+silently using stale local preview HTML.
 
 ### Blueprint render entry point
 

@@ -741,12 +741,12 @@ useful for:
 
 For informal blocks, the manifest contains semantic metadata needed by generated
 consumers: direct uses, reverse uses, group-panel entries, code-preview keys,
-ownership, tags, priority, and effort. Rendered preview bodies are stored in the
-HTML cache under the same keys. The cache also carries the Verso hover payloads
-referenced by those rendered fragments; generated Blueprint pages merge them into
-`-verso-docs.json`, and Slides preloads them when rendering a deck. This keeps
-cross-toolchain consumers such as Slides from needing to deserialize Manual
-blocks or re-run the Blueprint toolchain.
+ownership, tags, priority, and effort. Rendered preview bodies are stored in
+the rendered-fragment cache under the same keys. The cache also carries the
+Verso hover payloads referenced by those rendered fragments; generated
+Blueprint pages merge them into `-verso-docs.json`, and Slides preloads them
+when rendering a deck. This keeps cross-toolchain consumers such as Slides from
+needing to deserialize Manual blocks or re-run the Blueprint toolchain.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
@@ -773,10 +773,10 @@ also available in Verso Slides decks through `VersoBlueprint.Slides`.
 
 In Manual documents, grafts use the current traversal state and render through
 the same manifest-backed Blueprint block shell used by generated preview data.
-In Slides decks, grafts render from the semantic manifest plus rendered HTML
-cache emitted by a Blueprint site. The slide deck generator reads those files
-and writes the Blueprint node shell into the generated slide HTML; it does not
-re-traverse the Blueprint source document itself.
+In Slides decks, grafts render from the semantic manifest plus
+rendered-fragment cache emitted by a Blueprint site. The slide deck generator
+reads those files and writes the Blueprint node shell into the generated slide
+HTML; it does not re-traverse the Blueprint source document itself.
 
 Use Manual grafts for same-document reuse while writing an overview,
 introduction, or roadmap page. Use Slides grafts when the deck is generated
@@ -869,13 +869,14 @@ interfaces can reuse:
 - Slide generators and other generated consumers should import and use the
   `Informal.Graft` node/config names directly.
 
-For server-side or generator-side renderers, prefer the manifest/cache path over
-ad hoc browser scans. Read or build the semantic
-`Informal.PreviewManifest.File` and rendered
+For server-side or generator-side renderers, prefer the manifest plus
+rendered-fragment cache path over ad hoc browser scans. Read or build the
+semantic `Informal.PreviewManifest.File` and rendered-fragment
 `Informal.PreviewManifest.HtmlCache.File`, then look up the same normalized node
 key with `PreviewManifest.File.findEntry?` and
-`PreviewManifest.HtmlCache.File.findHtml?`. Code panels can reuse
-`HtmlCache.File.codeHtmlBodies`.
+`PreviewManifest.HtmlCache.File.findHtml?`. Treat the manifest entry as the
+source of semantic facts and the cached fragment as an opaque rendered body.
+Code panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
 interfaces. A consumer such as an audit view can provide its own wrapper
@@ -908,9 +909,9 @@ def renderAuditNode
 `renderNodeFromManifestCache` has three diagnostic branches that custom
 interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:
 missing manifest, missing manifest entry for the normalized node key, and
-missing rendered HTML-cache body for a manifest entry. The cache-miss branch
-also calls the context's `logError` callback so generators can fail or report
-broken manifest/cache pairs consistently.
+missing rendered-fragment body for a manifest entry. The cache-miss branch also
+calls the context's `logError` callback so generators can fail or report broken
+manifest/cache pairs consistently.
 
 Consumers that already have a semantic manifest entry and rendered body content
 can call `Informal.Graft.renderNodeWithContent` directly. This keeps the graft
@@ -924,14 +925,14 @@ it the semantic manifest entry plus `BlockRender.RenderedContent`, using
 `BlockRender.RenderedContent.ofHtmlStrings` when the body came from
 `blueprint-html-cache.json`. The render options map directly to graft behavior:
 `displayLabelOverride?`, `compact`, and `showHeader`. This lets an audit
-interface, dashboard, or slide generator use the same semantic entry and cached
-HTML while placing the rendered nodes in its own side-by-side, tabbed, or
-comparison wrapper.
+interface, dashboard, or slide generator use the same semantic entry and opaque
+rendered fragment while placing the rendered nodes in its own side-by-side,
+tabbed, or comparison wrapper.
 
 Browser-side custom interfaces should start through
 `window.VersoBlueprint.onRenderReady`. The callback receives the shared render
 API installed by the standard Blueprint preview/runtime asset. It loads the
-semantic manifest and rendered HTML cache from the page's `-verso-data/`
+semantic manifest and rendered-fragment cache from the page's `-verso-data/`
 directory, keeps load status for diagnostics, and hydrates inserted fragments:
 
 ```javascript
@@ -966,9 +967,9 @@ Stable custom-client entrypoints:
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolvePreview(key)` | Resolve manifest data and rendered HTML together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
+| `api.resolvePreview(key)` | Resolve manifest data and a rendered fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body or diagnostic HTML into `element`, then hydrate nested previews and math. |
-| `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached HTML themselves. |
+| `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. |
 
 Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
 JavaScript use the same `window.VersoBlueprint.render` object. Custom clients
@@ -976,6 +977,12 @@ should do the same so preview lookup, diagnostics, and hydration stay on one
 runtime path. The runtime keeps manifest/cache load state private; clients
 should inspect it through `readManifestStatus()` and `readHtmlCacheStatus()`
 rather than reading `window` globals.
+
+For semantic queries, use the manifest entry returned by `resolvePreview` or
+`loadManifestEntry`. Do not parse inserted or cached fragments to rediscover
+labels, dependencies, group membership, Lean-code associations, or status
+metadata. The cached fragment is presentation: it may display those facts, but
+the manifest is the data contract.
 
 Bundled-feature helper APIs are intentionally narrower. They are exported on
 `window.VersoBlueprint.render` so Blueprint's own clients can share panel
@@ -1020,8 +1027,8 @@ markup instead of embedding duplicate hover payloads into each code token.
 - `Preview manifest unavailable` in Slides means the deck generator did not pass
   `previewManifest?` to `slidesMainWithBlueprintPreviews`.
 - `Blueprint HTML cache entry not found` means the manifest entry was found, but
-  the matching rendered body was not in `blueprint-html-cache.json`. Keep the
-  manifest and cache from the same Blueprint render.
+  the matching rendered-fragment body was not in `blueprint-html-cache.json`.
+  Keep the manifest and cache from the same Blueprint render.
 - `siteBase` only affects Slides link rewriting. Manual grafts resolve from the
   current document traversal state and do not need it.
 - `-header`, `+compact`, and `+boxed` are presentation options only. They do not
