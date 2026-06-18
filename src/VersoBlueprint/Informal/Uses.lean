@@ -115,7 +115,7 @@ inline_extension Inline.informal (data : InlineData) where
   data := toJson data
   traverse _id data _contents := do
     let .ok _ := fromJson? (α := InlineData) data
-      | logError s!"Malformed data in Inline.informal traversal: {data}"
+      | Verso.reportError s!"Malformed data in Inline.informal traversal: {data}"
         pure none
     pure none
   extraCss := Informal.Commands.withInlinePreviewCssAssets
@@ -125,7 +125,7 @@ inline_extension Inline.informal (data : InlineData) where
     open Verso.Output.Html in
     some <| fun goI _id data inlines => do
       let .ok { label, block } := fromJson? (α := InlineData) data
-        | HtmlT.logError "Malformed data in Inline.informal traversal"
+        | Verso.reportError "Malformed data in Inline.informal traversal"
           pure .empty
       let st ← HtmlT.state
       let storedBlock? := resolveStoredBlockData? st label
