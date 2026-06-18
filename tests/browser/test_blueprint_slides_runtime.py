@@ -21,6 +21,17 @@ from scripts.blueprint_harness_project_commands import (
 )
 from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
 
+COLLATZ_STEP_HREF = "Collatz/Source-Entries/#--informal-preview-collatz_step--statement"
+COLLATZ_STEP_REWRITTEN = (
+    "/blueprint/Collatz/Source-Entries/#--informal-preview-collatz_step--statement"
+)
+COLLATZ_CONJECTURE_HREF = (
+    "Collatz/Source-Entries/#--informal-preview-collatz_conjecture--statement"
+)
+COLLATZ_CONJECTURE_REWRITTEN = (
+    "/blueprint/Collatz/Source-Entries/#--informal-preview-collatz_conjecture--statement"
+)
+
 
 def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path]:
     project_dir = PACKAGE_ROOT / "project_template"
@@ -301,8 +312,8 @@ class TestBlueprintSlidesRuntime:
         expect_slide_link(
             page,
             ".bp_slide_node_heading_link",
-            "Collatz/#--informal-preview-collatz_step--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_step--statement",
+            COLLATZ_STEP_HREF,
+            COLLATZ_STEP_REWRITTEN,
         )
         expect_slide_link(
             page,
@@ -313,14 +324,14 @@ class TestBlueprintSlidesRuntime:
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
-            "Collatz/#--informal-preview-collatz_conjecture--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
+            COLLATZ_CONJECTURE_HREF,
+            COLLATZ_CONJECTURE_REWRITTEN,
         )
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",
-            "Collatz/#--informal-preview-collatz_conjecture--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
+            COLLATZ_CONJECTURE_HREF,
+            COLLATZ_CONJECTURE_REWRITTEN,
         )
 
         page.evaluate("window.Reveal.slide(1)")
@@ -432,8 +443,8 @@ class TestBlueprintSlidesRuntime:
         expect_slide_link(
             page,
             ".bp_slide_node_heading_link",
-            "Collatz/#--informal-preview-collatz_step--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_step--statement",
+            COLLATZ_STEP_HREF,
+            COLLATZ_STEP_REWRITTEN,
         )
 
         assert_no_runtime_errors(errors)

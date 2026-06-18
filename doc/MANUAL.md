@@ -961,31 +961,32 @@ Blueprint's bundled preview clients get a small readiness bootstrap before
 their client code so `onRenderReady` is available even when the client asset is
 emitted before `preview-runtime.js`.
 
-The stable custom-client API calls are:
+Stable custom-client entrypoints:
 
-- `window.VersoBlueprint.onRenderReady(callback)`, for startup code that needs
-  the render API and may execute before the runtime asset
-- `api.loadManifest()` and `api.loadHtmlCache()`, returning `Map` values keyed
-  by preview key
-- `api.readManifestStatus()` and `api.readHtmlCacheStatus()`, for diagnostics
-  such as `idle`, `loading`, `ready`, and `error`
-- `api.loadManifestEntry(key)` and `api.loadHtmlCacheEntry(key)`, for direct
-  keyed lookup
-- `api.resolvePreview(key)`, returning `{ ok, key, reason, manifestEntry,
-  htmlCacheEntry, html, diagnosticHtml }`
-- `api.renderPreviewInto(element, key, options)`, which writes the rendered
-  body or diagnostic HTML into `element`, then hydrates nested previews and math
-- `api.hydrate(element, options)`, for custom wrappers that insert cached HTML
-  themselves and only need Blueprint's nested-preview and math hydration
+| Entry point | Use |
+| --- | --- |
+| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before `preview-runtime.js`. |
+| `api.loadManifest()` / `api.loadHtmlCache()` | Load the generated `Map` values keyed by preview key. |
+| `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
+| `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
+| `api.resolvePreview(key)` | Resolve manifest data and rendered HTML together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
+| `api.renderPreviewInto(element, key, options)` | Write the rendered body or diagnostic HTML into `element`, then hydrate nested previews and math. |
+| `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached HTML themselves. |
 
 Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
 JavaScript use the same `window.VersoBlueprint.render` object. Custom clients
 should do the same so preview lookup, diagnostics, and hydration stay on one
 runtime path. The runtime keeps manifest/cache load state private; clients
 should inspect it through `readManifestStatus()` and `readHtmlCacheStatus()`
-rather than reading `window` globals. Additional helper methods on
-`window.VersoBlueprint.render` are for Blueprint's bundled feature scripts and
-should not be treated as stable custom-client API unless they are listed above.
+rather than reading `window` globals.
+
+Bundled-feature helper APIs are intentionally narrower. They are exported on
+`window.VersoBlueprint.render` so Blueprint's own clients can share panel
+positioning, close-button behavior, template binding, and hydrator registration
+without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
+`registerPreviewHydrator`, `readPanelBehavior`, `showPanelContent`, and
+`setPreviewHeaderLink` should not be treated as stable custom-client API unless
+they are promoted into the table above.
 
 Use the Blueprint slide wrapper in the deck generator:
 

@@ -125,9 +125,13 @@ private def writeSlidesPreviewDataFiles
 #eval
   let js := Informal.Slides.blueprintSlidesJs
   hasSubstr js "function bindRelationPanel(panel)" &&
-    hasSubstr js "function hydrate(root)" &&
+    hasSubstr js "function hydrate(root, previewUtils)" &&
     hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
+    hasSubstr js "window.VersoBlueprint.onRenderReady(function (previewUtils) {" &&
+    hasSubstr js "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"" &&
     hasSubstr js "data-bp-slide-href" &&
+    !hasSubstr js "if (utils && typeof utils.hydrate === \"function\")" &&
+    !hasSubstr js "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")" &&
     !hasSubstr js "function openBlueprintHref(href)" &&
     !hasSubstr js "function renderDocstrings(root)" &&
     !hasSubstr js "function ensureLeanHover(target)" &&

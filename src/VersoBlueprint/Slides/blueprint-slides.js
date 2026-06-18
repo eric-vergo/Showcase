@@ -73,48 +73,50 @@
   }
 
   function blueprintRender() {
-    return window.VersoBlueprint && window.VersoBlueprint.render;
+    return window.VersoBlueprint.render;
   }
 
-  function hydrate(root) {
+  function hydrate(root, previewUtils) {
+    const utils = previewUtils || blueprintRender();
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
       if (!(node instanceof Element)) return;
       const baseUrl = rememberBlueprintBaseUrl(node);
       prepareBlueprintLinks(node, baseUrl);
-      const utils = blueprintRender();
-      if (utils && typeof utils.hydrate === "function") utils.hydrate(node);
+      utils.hydrate(node);
     });
   }
 
-  function registerPreviewHydrator() {
-    const utils = blueprintRender();
-    if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
-    utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
+  function registerPreviewHydrator(previewUtils) {
+    previewUtils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;
       prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
     });
   }
 
-  function start() {
-    registerPreviewHydrator();
-    hydrate(document);
+  function start(previewUtils) {
+    registerPreviewHydrator(previewUtils);
+    hydrate(document, previewUtils);
     if (window.Reveal && typeof window.Reveal.on === "function") {
       window.Reveal.on("slidechanged", function (event) {
         hideSlidePreviewPanels();
-        hydrate(event.currentSlide || document);
+        hydrate(event.currentSlide || document, previewUtils);
       });
       window.Reveal.on("ready", function (event) {
-        hydrate(event.currentSlide || document);
+        hydrate(event.currentSlide || document, previewUtils);
       });
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start);
-  } else {
-    start();
-  }
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        start(previewUtils);
+      });
+    } else {
+      start(previewUtils);
+    }
+  });
 
   window.bpSlideNodeRuntime = { hydrate: hydrate };
 })();
