@@ -1,16 +1,26 @@
 (function () {
   function blueprintRender() {
-    return window.VersoBlueprint && window.VersoBlueprint.render;
+    return window.VersoBlueprint.render;
+  }
+
+  function onBlueprintRenderReady(fn) {
+    const namespace =
+      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+        ? window.VersoBlueprint
+        : {};
+    window.VersoBlueprint = namespace;
+    if (namespace.render) {
+      namespace.onRenderReady(fn);
+      return;
+    }
+    if (!Array.isArray(namespace.renderReadyCallbacks)) {
+      namespace.renderReadyCallbacks = [];
+    }
+    namespace.renderReadyCallbacks.push(fn);
   }
 
   function escapeHtml(text) {
-    const previewUtils = blueprintRender();
-    if (previewUtils && typeof previewUtils.escapeHtml === "function") {
-      return previewUtils.escapeHtml(text);
-    }
-    const scratch = document.createElement("div");
-    scratch.textContent = String(text || "");
-    return scratch.innerHTML;
+    return blueprintRender().escapeHtml(text);
   }
 
   function previewMessageHtml(kind, title, detail) {
@@ -42,10 +52,7 @@
   }
 
   function readCacheStatus(previewUtils) {
-    if (previewUtils && typeof previewUtils.readHtmlCacheStatus === "function") {
-      return previewUtils.readHtmlCacheStatus();
-    }
-    return null;
+    return previewUtils.readHtmlCacheStatus();
   }
 
   function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail) {
@@ -55,16 +62,6 @@
         "error",
         "Preview unavailable",
         "This entry did not provide a preview cache key."
-      );
-    }
-    if (
-      !previewUtils ||
-      typeof previewUtils.renderPreviewInto !== "function"
-    ) {
-      return previewMessageHtml(
-        "error",
-        "Preview unavailable",
-        "The page preview runtime is not available. Rebuild this page with the Blueprint JavaScript assets enabled."
       );
     }
     if (status && status.state === "error") {
@@ -86,6 +83,10 @@
       "Preview unavailable",
       fallbackDetail || "The preview cache content could not be loaded."
     );
+  }
+
+  function setRelationBodyHtml(previewUtils, body, html) {
+    previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false });
   }
 
   function bindRelationPanel(panel) {
@@ -134,10 +135,8 @@
         }
       });
       title.textContent = itemTitle;
-      if (previewUtils && typeof previewUtils.setPreviewHeaderLink === "function") {
-        previewUtils.setPreviewHeaderLink(headerLabel, item);
-      }
-      body.innerHTML = "";
+      previewUtils.setPreviewHeaderLink(headerLabel, item);
+      setRelationBodyHtml(previewUtils, body, "");
     }
 
     function loadActivePreview() {
@@ -182,35 +181,30 @@
       if (!(item instanceof Element)) return;
       const opts = options && typeof options === "object" ? options : {};
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
-      const itemTitle = (item.getAttribute("data-bp-relation-preview-title") || "").trim() || defaultTitle;
       const requestToken = ++activateRequestToken;
       selectItem(item);
-      body.innerHTML = loadingPreviewHtml();
+      setRelationBodyHtml(previewUtils, body, loadingPreviewHtml());
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }
-      if (
-        !previewKey ||
-        !previewUtils ||
-        typeof previewUtils.renderPreviewInto !== "function"
-      ) {
-        body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
+      if (!previewKey) {
+        setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(previewUtils, previewKey, ""));
         return;
       }
       try {
         const result = await previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false });
         if (requestToken !== activateRequestToken) return;
         if (!result || !result.ok) {
-          body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
+          setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(previewUtils, previewKey, ""));
           return;
         }
       } catch (_err) {
         if (requestToken !== activateRequestToken) return;
-        body.innerHTML = previewUnavailableHtml(
+        setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(
           previewUtils,
           previewKey,
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
-        );
+        ));
       }
     }
 
@@ -233,10 +227,6 @@
     if (wrap instanceof Element && chip instanceof Element) {
       setExpanded(wrap.classList.contains("bp_relation_wrap_open"));
       const previewAwareClose = function (ev) {
-        if (!previewUtils || typeof previewUtils.shouldKeepOpen !== "function") {
-          scheduleClose();
-          return;
-        }
         if (previewUtils.shouldKeepOpen(ev.relatedTarget, wrap, panel)) return;
         scheduleClose();
       };
@@ -284,16 +274,14 @@
     root.querySelectorAll(".bp_relation_panel").forEach(bindRelationPanel);
   }
 
-  const previewUtils = blueprintRender();
-  if (previewUtils && typeof previewUtils.registerPreviewHydrator === "function") {
+  onBlueprintRenderReady(function (previewUtils) {
     previewUtils.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        bindAllRelationPanels(document);
+      });
+    } else {
       bindAllRelationPanels(document);
-    });
-  } else {
-    bindAllRelationPanels(document);
-  }
+    }
+  });
 })();

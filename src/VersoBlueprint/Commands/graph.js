@@ -39,23 +39,10 @@
   }
 
   function previewBehaviorForMode(previewUtils, mode, placement) {
-    if (previewUtils && typeof previewUtils.readPanelBehavior === "function") {
-      return previewUtils.readPanelBehavior(null, {
-        mode: mode,
-        placement: placement
-      });
-    }
-    const normalized = mode === "hover" || mode === "pinned" ? mode : "pinned";
-    const normalizedPlacement =
-      placement === "anchored" || placement === "docked" ? placement : "docked";
-    return {
-      mode: normalized,
-      placement: normalizedPlacement,
-      isPinned: normalized === "pinned",
-      isHover: normalized === "hover",
-      isAnchored: normalizedPlacement === "anchored",
-      isDocked: normalizedPlacement === "docked"
-    };
+    return previewUtils.readPanelBehavior(null, {
+      mode: mode,
+      placement: placement
+    });
   }
 
   function normalizeGraphOptions(rawOptions) {
@@ -132,14 +119,11 @@
   }
 
   function blueprintRender() {
-    return window.VersoBlueprint && window.VersoBlueprint.render;
+    return window.VersoBlueprint.render;
   }
 
   function collectPreviewTemplates(rootNode) {
     const utils = blueprintRender();
-    if (!utils || typeof utils.collectPreviewTemplates !== "function") {
-      return new Map();
-    }
     return utils.collectPreviewTemplates(
       rootNode || document,
       "template.bp_graph_preview_tpl[data-bp-preview-label]"
@@ -305,13 +289,7 @@
 
   function parsePreviewEntry(entry) {
     const utils = blueprintRender();
-    if (utils && typeof utils.readHtml === "function") {
-      return utils.readHtml(entry);
-    }
-    if (typeof entry === "string") {
-      return entry;
-    }
-    return "";
+    return utils.readHtml(entry);
   }
 
   function readPanelNodes(panel, titleSelector, bodySelector) {
@@ -333,7 +311,7 @@
     const clearBody =
       typeof opts.clearBody === "function"
         ? opts.clearBody
-        : function (body) { body.innerHTML = ""; };
+        : function (body) { body.replaceChildren(); };
     const renderBody =
       typeof opts.renderBody === "function" ? opts.renderBody : function () {};
     const positionPanel =
@@ -386,12 +364,10 @@
       if (
         behavior &&
         behavior.isAnchored &&
-        previewUtils &&
-        typeof previewUtils.positionAnchoredPanel === "function" &&
         anchorNode instanceof Element
       ) {
         previewUtils.positionAnchoredPanel(panel, anchorNode, 12, 10);
-      } else if (previewUtils && typeof previewUtils.resetPanelPosition === "function") {
+      } else {
         previewUtils.resetPanelPosition(panel);
       }
     };
@@ -402,9 +378,7 @@
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
       const previewUtils = blueprintRender();
       if (!behavior || !behavior.isAnchored) {
-        if (previewUtils && typeof previewUtils.resetPanelPosition === "function") {
-          previewUtils.resetPanelPosition(panel);
-        }
+        previewUtils.resetPanelPosition(panel);
         return;
       }
       if (!(anchorNode instanceof Element)) return;
@@ -428,31 +402,7 @@
 
   function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior) {
     if (!(closeButton instanceof Element)) return;
-    if (previewUtils && typeof previewUtils.configureCloseButton === "function") {
-      previewUtils.configureCloseButton(closeButton, hidePanel, behavior);
-      return;
-    }
-    if (behavior && behavior.isPinned) {
-      closeButton.hidden = false;
-      closeButton.style.display = "";
-      closeButton.setAttribute("aria-hidden", "false");
-      closeButton.tabIndex = 0;
-      if (previewUtils && typeof previewUtils.bindCloseOnce === "function") {
-        previewUtils.bindCloseOnce(closeButton, hidePanel);
-      } else if (closeButton.getAttribute("data-bp-bound") !== "1") {
-        closeButton.setAttribute("data-bp-bound", "1");
-        closeButton.addEventListener("click", function (ev) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          hidePanel();
-        });
-      }
-    } else {
-      closeButton.hidden = true;
-      closeButton.style.display = "none";
-      closeButton.setAttribute("aria-hidden", "true");
-      closeButton.tabIndex = -1;
-    }
+    previewUtils.configureCloseButton(closeButton, hidePanel, behavior);
   }
 
   function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr) {
@@ -488,8 +438,6 @@
 
     function maybeScheduleHide(ev) {
       if (
-        previewUtils &&
-        typeof previewUtils.shouldKeepOpen === "function" &&
         previewUtils.shouldKeepOpen(
           ev.relatedTarget,
           typeof getActiveAnchor === "function" ? getActiveAnchor() : null,
@@ -519,8 +467,6 @@
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
     const previewUtils = blueprintRender();
-    const canResolveHtmlCache =
-      previewUtils && typeof previewUtils.resolvePreview === "function";
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
     const hoverLifetime = bindHoverablePanelLifetime(
@@ -534,7 +480,7 @@
       previewController.hide();
       return;
     }
-    if (!previewController.title || !previewController.body || (previewMap.size === 0 && !canResolveHtmlCache)) {
+    if (!previewController.title || !previewController.body || (previewMap.size === 0 && previewKeys.size === 0)) {
       previewController.hide();
       return;
     }
@@ -543,7 +489,7 @@
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
       let html = parsePreviewEntry(previewMap.get(label));
-      if (!html && canResolveHtmlCache && previewKey) {
+      if (!html && previewKey) {
         const result = await previewUtils.resolvePreview(previewKey);
         html = result && result.ok ? result.html : "";
       }
@@ -558,7 +504,7 @@
       const label = graphNodeLabel(node);
       const nodeId = graphNodeId(node);
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      return !!label && (previewMap.has(label) || !!(canResolveHtmlCache && previewKey));
+      return !!label && (previewMap.has(label) || !!previewKey);
     };
     svg.querySelectorAll("g.node").forEach(function (node) {
       if (!canPreviewNode(node)) return;
@@ -612,8 +558,6 @@
     const hideIfLeaving = function (ev) {
       if (!previewController.behavior || !previewController.behavior.isHover) return;
       if (
-        previewUtils &&
-        typeof previewUtils.shouldKeepOpen === "function" &&
         previewUtils.shouldKeepOpen(ev.relatedTarget, graphState.previewActiveNode, previewController.panel)
       ) {
         return;
@@ -828,9 +772,7 @@
           : null;
         const previewUtils = blueprintRender();
         const previewPanelBehavior =
-          previewUtils && typeof previewUtils.readPanelBehavior === "function"
-            ? previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" })
-            : { mode: "pinned", placement: "docked", isPinned: true, isHover: false, isAnchored: false, isDocked: true };
+          previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
         let previewController = null;
         previewController = createPanelController(
           previewPanelNode,
@@ -838,7 +780,7 @@
           ".bp_graph_preview_title",
           ".bp_graph_preview_body",
           {
-            clearBody: function (body) { body.innerHTML = ""; },
+            clearBody: function (body) { body.replaceChildren(); },
             renderBody: function (body, html) {
               previewUtils.renderHtmlInto(body, html);
             },
@@ -965,16 +907,14 @@
           : null;
         let groupHoverGraphviz = null;
         const groupHoverBehavior =
-          previewUtils && typeof previewUtils.readPanelBehavior === "function"
-            ? previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" })
-            : { mode: "pinned", placement: "docked", isPinned: true, isHover: false, isAnchored: false, isDocked: true };
+          previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" });
         const groupHoverController = createPanelController(
           groupHoverPanel,
           groupHoverBehavior,
           ".bp_group_hover_preview_title",
           ".bp_group_hover_preview_graph",
           {
-            clearBody: function (body) { body.innerHTML = ""; },
+            clearBody: function (body) { body.replaceChildren(); },
             renderBody: function (body, variant) {
               const width = Math.max(320, body.clientWidth || 0);
               const height = Math.max(220, body.clientHeight || 0);

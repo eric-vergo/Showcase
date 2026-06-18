@@ -39,7 +39,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match summaryJs?, previewRuntimeJs?, inlineJs?, mathJs? with
       | some summaryJs, some previewRuntimeJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasSubstr summaryJs "window.VersoBlueprint.render.bindTemplatePreviewRoots({" &&
+        hasSubstr summaryJs "function onBlueprintRenderReady(fn)" &&
+        hasSubstr summaryJs "onBlueprintRenderReady(function (previewUtils) {" &&
+        hasSubstr summaryJs "previewUtils.bindTemplatePreviewRoots({" &&
         hasSubstr summaryJs "rootBoundAttr: \"data-bp-summary-preview-bound\"" &&
         hasSubstr summaryJs "panelSelector: \".bp_summary_preview_panel\"" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
@@ -48,6 +50,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
         hasSubstr previewRuntimeJs "function bindTemplatePreviewRoots(options)" &&
         hasSubstr previewRuntimeJs "bindTemplatePreviewRoots: bindTemplatePreviewRoots" &&
+        hasSubstr previewRuntimeJs "function onRenderReady(fn)" &&
+        hasSubstr previewRuntimeJs "namespace.onRenderReady = onRenderReady" &&
+        hasSubstr previewRuntimeJs "queuedRenderReadyCallbacks.forEach(function (fn) {" &&
         hasSubstr previewRuntimeJs "function positionAnchoredPanel(panel, anchor, margin, offset)" &&
         hasSubstr previewRuntimeJs "function shouldKeepOpen(nextTarget, trigger, panel)" &&
         hasSubstr previewRuntimeJs "function readPanelBehavior(panel, defaults)" &&
@@ -66,6 +71,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewRuntimeJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
         hasSubstr previewRuntimeJs "data-bp-preview-header-label" &&
         hasSubstr previewRuntimeJs "window.setTimeout(function () {" &&
+        hasSubstr inlineJs "function onBlueprintRenderReady(fn)" &&
+        hasSubstr inlineJs "onBlueprintRenderReady(function () {" &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
@@ -74,6 +81,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr inlineJs "data-bp-preview-footer-html" &&
         hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
         hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
+        !hasSubstr inlineJs "typeof previewUtils.readPanelBehavior" &&
+        !hasSubstr inlineJs "typeof previewUtils.previewDebug" &&
         !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
         !hasSubstr inlineJs "ensureInlinePreviewStore" &&
         !hasSubstr inlineJs "template.bp_inline_preview_tpl"

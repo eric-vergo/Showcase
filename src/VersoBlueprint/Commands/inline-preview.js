@@ -2,7 +2,23 @@
   const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
   function blueprintRender() {
-    return window.VersoBlueprint && window.VersoBlueprint.render;
+    return window.VersoBlueprint.render;
+  }
+
+  function onBlueprintRenderReady(fn) {
+    const namespace =
+      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+        ? window.VersoBlueprint
+        : {};
+    window.VersoBlueprint = namespace;
+    if (namespace.render) {
+      namespace.onRenderReady(fn);
+      return;
+    }
+    if (!Array.isArray(namespace.renderReadyCallbacks)) {
+      namespace.renderReadyCallbacks = [];
+    }
+    namespace.renderReadyCallbacks.push(fn);
   }
 
   function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
@@ -63,31 +79,9 @@
     document.body.setAttribute("data-bp-inline-preview-bound", "1");
 
     const previewUtils = blueprintRender();
-    if (
-      !previewUtils ||
-      typeof previewUtils.readPanelBehavior !== "function" ||
-      typeof previewUtils.showPanelContent !== "function" ||
-      typeof previewUtils.hidePanelContent !== "function" ||
-      typeof previewUtils.setPreviewHeaderLink !== "function" ||
-      typeof previewUtils.shouldKeepOpen !== "function" ||
-      typeof previewUtils.escapeHtml !== "function" ||
-      typeof previewUtils.configureCloseButton !== "function" ||
-      typeof previewUtils.positionAnchoredPanel !== "function" ||
-      typeof previewUtils.resolvePreview !== "function" ||
-      typeof previewUtils.renderHtmlInto !== "function" ||
-      typeof previewUtils.hydrate !== "function"
-    ) {
-      return;
-    }
     const escapeHtml = previewUtils.escapeHtml;
-    const previewDebug =
-      typeof previewUtils.previewDebug === "function"
-        ? previewUtils.previewDebug
-        : function () {};
-    const previewDebugLabel =
-      typeof previewUtils.previewDebugLabel === "function"
-        ? previewUtils.previewDebugLabel
-        : function (node) { return String(node); };
+    const previewDebug = previewUtils.previewDebug;
+    const previewDebugLabel = previewUtils.previewDebugLabel;
 
     const panel = getPanel("bp-inline-preview-panel", "");
     const title = panel.querySelector(".bp_inline_preview_panel_title");
@@ -572,9 +566,11 @@
     refresh(document);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindInlinePreview);
-  } else {
-    bindInlinePreview();
-  }
+  onBlueprintRenderReady(function () {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bindInlinePreview);
+    } else {
+      bindInlinePreview();
+    }
+  });
 })();

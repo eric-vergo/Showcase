@@ -35,7 +35,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasExtraCss st ".bp_code_summary_preview_panel" &&
       match codeSummaryJs? with
       | some codeSummaryJs =>
-        hasSubstr codeSummaryJs "window.VersoBlueprint.render.bindTemplatePreviewRoots({" &&
+        hasSubstr codeSummaryJs "function onBlueprintRenderReady(fn)" &&
+        hasSubstr codeSummaryJs "onBlueprintRenderReady(function (previewUtils) {" &&
+        hasSubstr codeSummaryJs "previewUtils.bindTemplatePreviewRoots({" &&
         hasSubstr codeSummaryJs "rootBoundAttr: \"data-bp-code-summary-preview-bound\"" &&
         hasSubstr codeSummaryJs "panelSelector: \".bp_code_summary_preview_panel\"" &&
         hasSubstr codeSummaryJs "templateSelector: \"template.bp_code_summary_preview_tpl[data-bp-preview-id]\"" &&
