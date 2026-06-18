@@ -7,12 +7,20 @@ import unittest
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
+RUNTIME_BOOTSTRAP_JS = {
+    Path("Commands/preview-runtime.js"),
+    Path("Commands/preview-ready.js"),
+}
+
+
+def _blueprint_js_files() -> list[Path]:
+    return sorted(BLUEPRINT_SRC.rglob("*.js"))
 
 
 def _blueprint_js_source() -> str:
     return "\n\n".join(
         path.read_text(encoding="utf-8")
-        for path in sorted(BLUEPRINT_SRC.rglob("*.js"))
+        for path in _blueprint_js_files()
     )
 
 
@@ -68,6 +76,35 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         helper_methods = _js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(documented_methods & helper_methods)
+
+    def test_runtime_api_tiers_remain_disjoint(self) -> None:
+        runtime = _blueprint_js_source()
+
+        source_methods = _js_object_methods(runtime, "stableCustomClientApi")
+        helper_methods = _js_object_methods(runtime, "bundledFeatureRenderHelpers")
+
+        self.assertFalse(source_methods & helper_methods)
+
+    def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
+        direct_runtime_reads: list[str] = []
+        missing_ready_callbacks: list[str] = []
+
+        for path in _blueprint_js_files():
+            relative_path = path.relative_to(BLUEPRINT_SRC)
+            if relative_path in RUNTIME_BOOTSTRAP_JS:
+                continue
+            source = path.read_text(encoding="utf-8")
+            display_path = relative_path.as_posix()
+            if "window.VersoBlueprint.render" in source:
+                direct_runtime_reads.append(display_path)
+            if (
+                "window.VersoBlueprint" in source
+                and "window.VersoBlueprint.onRenderReady(" not in source
+            ):
+                missing_ready_callbacks.append(display_path)
+
+        self.assertEqual([], direct_runtime_reads)
+        self.assertEqual([], missing_ready_callbacks)
 
 
 if __name__ == "__main__":

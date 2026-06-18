@@ -80,7 +80,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
-        hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
+        hasSubstr relationJs "function previewExceptionHtml(previewUtils, fallbackDetail)" &&
         hasRenderReadyWiring relationJs "previewUtils" &&
         lacksAllSubstr relationJs [
           "function blueprintRender()",
@@ -91,7 +91,11 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         hasSubstr relationJs "function setRelationBodyHtml(previewUtils, body, html)" &&
         hasSubstr relationJs "setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils))" &&
         hasSubstr relationJs "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })" &&
-        hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
+        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
+        hasSubstr relationJs "const diagnosticHtml = result && typeof result.diagnosticHtml === \"string\"" &&
+        hasSubstr relationJs "previewUtils.renderHtmlInto(body, result.html)" &&
+        !hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
+        !hasSubstr relationJs "previewUtils.readHtmlCacheStatus()" &&
         !hasSubstr relationJs "fallbackTemplates" &&
         hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
         hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
@@ -174,7 +178,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
+        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
         hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)"
       | none => false
@@ -207,7 +211,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
+        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
         hasSubstr relationJs "selectItem(initialItem)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false

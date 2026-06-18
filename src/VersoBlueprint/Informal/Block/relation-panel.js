@@ -25,40 +25,11 @@
       previewUtils,
       "loading",
       "Loading preview",
-      "Reading this preview from the Blueprint HTML cache."
+      "Reading this preview from the rendered-fragment cache."
     );
   }
 
-  function readCacheStatus(previewUtils) {
-    return previewUtils.readHtmlCacheStatus();
-  }
-
-  function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail) {
-    const status = readCacheStatus(previewUtils);
-    if (!previewKey) {
-      return previewMessageHtml(
-        previewUtils,
-        "error",
-        "Preview unavailable",
-        "This entry did not provide a preview cache key."
-      );
-    }
-    if (status && status.state === "error") {
-      return previewMessageHtml(
-        previewUtils,
-        "error",
-        "Preview HTML cache unavailable",
-        "Rebuild the site or refresh after the current build finishes."
-      );
-    }
-    if (status && status.state === "ready") {
-      return previewMessageHtml(
-        previewUtils,
-        "error",
-        "Preview entry not found",
-        "The Blueprint HTML cache loaded, but it does not contain this entry yet. Rebuild the Blueprint output to resync generated data."
-      );
-    }
+  function previewExceptionHtml(previewUtils, fallbackDetail) {
     return previewMessageHtml(
       previewUtils,
       "error",
@@ -168,22 +139,25 @@
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }
-      if (!previewKey) {
-        setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(previewUtils, previewKey, ""));
-        return;
-      }
       try {
-        const result = await previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false });
+        const result = await previewUtils.resolvePreview(previewKey);
         if (requestToken !== activateRequestToken) return;
         if (!result || !result.ok) {
-          setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(previewUtils, previewKey, ""));
+          const diagnosticHtml = result && typeof result.diagnosticHtml === "string"
+            ? result.diagnosticHtml
+            : "";
+          setRelationBodyHtml(
+            previewUtils,
+            body,
+            diagnosticHtml || previewExceptionHtml(previewUtils, "The preview cache content could not be loaded.")
+          );
           return;
         }
+        previewUtils.renderHtmlInto(body, result.html);
       } catch (_err) {
         if (requestToken !== activateRequestToken) return;
-        setRelationBodyHtml(previewUtils, body, previewUnavailableHtml(
+        setRelationBodyHtml(previewUtils, body, previewExceptionHtml(
           previewUtils,
-          previewKey,
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
         ));
       }
