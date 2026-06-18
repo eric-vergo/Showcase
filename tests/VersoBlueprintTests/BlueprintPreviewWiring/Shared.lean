@@ -24,6 +24,28 @@ def hasRenderReadyCallback (js param : String) : Bool :=
 def hasRenderReadyCallbackNoParam (js : String) : Bool :=
   hasSubstr js "window.VersoBlueprint.onRenderReady(function () {"
 
+def hasRenderReadyWiring (js param : String) : Bool :=
+  hasRenderReadyBootstrap js && hasRenderReadyCallback js param
+
+def hasRenderReadyWiringNoParam (js : String) : Bool :=
+  hasRenderReadyBootstrap js && hasRenderReadyCallbackNoParam js
+
+def hasAllSubstr (s : String) (needles : List String) : Bool :=
+  needles.all fun needle => hasSubstr s needle
+
+def lacksAllSubstr (s : String) (needles : List String) : Bool :=
+  needles.all fun needle => !hasSubstr s needle
+
+def hasTemplatePreviewBinding
+    (js rootBoundAttr panelSelector templateSelector triggerSelector : String) : Bool :=
+  hasAllSubstr js [
+    "previewUtils.bindTemplatePreviewRoots({",
+    "rootBoundAttr: \"" ++ rootBoundAttr ++ "\"",
+    "panelSelector: \"" ++ panelSelector ++ "\"",
+    "templateSelector: \"" ++ templateSelector ++ "\"",
+    "triggerSelector: \"" ++ triggerSelector ++ "\""
+  ]
+
 def manualImpls : ExtensionImpls := extension_impls%
 
 tex_prelude r#"

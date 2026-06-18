@@ -323,6 +323,16 @@ The workflow implies a few constraints for renderers:
   instead of splitting lookup and hydration across feature-owned helpers or
   relying on incidental inline-script order.
 
+- **The browser render API has two tiers.**
+  Custom clients should treat `onRenderReady`, manifest/cache loading and
+  status readers, keyed lookup, `resolvePreview`, `renderPreviewInto`, and
+  `hydrate` as the stable integration surface. Blueprint's bundled feature
+  scripts also share helper methods for panel positioning, close-button
+  behavior, template-root binding, and feature hydrator registration. Those
+  helpers keep bundled graph, summary, relation-panel, inline-preview, and
+  slide scripts on one runtime path, but they are not a public custom-client
+  contract unless promoted into the manual's stable API table.
+
 - **Fallbacks should be diagnostic, not alternative data paths.**
   If a manifest entry or HTML-cache body is missing, the UI should expose a
   clear local diagnostic. Silently falling back to page-local stale templates

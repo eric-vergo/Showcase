@@ -422,7 +422,7 @@ def mkGraphVariants (graphData : GraphBlockData) (resolveHref : Name → Option 
 -- Updated when the runtime asset changes; current runtime leaves block placement to CSS
 -- and relies on graphviz auto-fit plus flow-aware canvas sizing for initial placement
 -- plus user-controlled resize persistence and cheap height resets.
-def loadD3Dot := include_str "graph.js"
+def loadD3Dot := withPreviewClientReadyJs (include_str "graph.js")
 
 -- block_extension Block.dependency_graph (label : String) where
 open Verso Doc Elab Genre Manual in

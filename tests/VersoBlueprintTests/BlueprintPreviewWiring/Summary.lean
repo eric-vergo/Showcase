@@ -39,14 +39,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match summaryJs?, previewRuntimeJs?, inlineJs?, mathJs? with
       | some summaryJs, some previewRuntimeJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasRenderReadyBootstrap summaryJs &&
-        hasRenderReadyCallback summaryJs "previewUtils" &&
-        hasSubstr summaryJs "previewUtils.bindTemplatePreviewRoots({" &&
-        hasSubstr summaryJs "rootBoundAttr: \"data-bp-summary-preview-bound\"" &&
-        hasSubstr summaryJs "panelSelector: \".bp_summary_preview_panel\"" &&
+        hasRenderReadyWiring summaryJs "previewUtils" &&
+        hasTemplatePreviewBinding summaryJs
+          "data-bp-summary-preview-bound"
+          ".bp_summary_preview_panel"
+          "template.bp_summary_preview_tpl[data-bp-preview-label]"
+          ".bp_summary_preview_wrap_active[data-bp-preview-label]" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
-        hasSubstr summaryJs "templateSelector: \"template.bp_summary_preview_tpl[data-bp-preview-label]\"" &&
-        hasSubstr summaryJs "triggerSelector: \".bp_summary_preview_wrap_active[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
         hasSubstr previewRuntimeJs "function bindTemplatePreviewRoots(options)" &&
         hasSubstr previewRuntimeJs "bindTemplatePreviewRoots: bindTemplatePreviewRoots" &&
@@ -71,8 +70,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr previewRuntimeJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
         hasSubstr previewRuntimeJs "data-bp-preview-header-label" &&
         hasSubstr previewRuntimeJs "window.setTimeout(function () {" &&
-        hasRenderReadyBootstrap inlineJs &&
-        hasRenderReadyCallbackNoParam inlineJs &&
+        hasRenderReadyWiringNoParam inlineJs &&
         hasSubstr inlineJs "bp-inline-preview-child-panel" &&
         hasSubstr inlineJs "function cancelChildHide()" &&
         hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
