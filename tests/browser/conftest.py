@@ -17,6 +17,15 @@ from scripts.blueprint_harness_paths import (
 
 
 DEFAULT_TEST_BLUEPRINT = "preview_runtime_showcase"
+DEFAULT_BROWSER_TYPES = {"chromium"}
+
+
+def selected_browser_types(selected) -> set[str]:
+    if isinstance(selected, (list, tuple, set)):
+        return set(selected) or set(DEFAULT_BROWSER_TYPES)
+    if selected in (None, ""):
+        return set(DEFAULT_BROWSER_TYPES)
+    return {selected}
 
 
 def browser_executable(browser_type: str) -> str | None:
@@ -133,13 +142,7 @@ def playwright_instance():
 @pytest.fixture(scope="session", params=["chromium", "firefox"])
 def browser(request, playwright_instance):
     browser_type = request.param
-    selected = request.config.getoption("browser")
-    if isinstance(selected, (list, tuple, set)):
-        selected_browsers = set(selected)
-    elif selected in (None, ""):
-        selected_browsers = {"chromium"}
-    else:
-        selected_browsers = {selected}
+    selected_browsers = selected_browser_types(request.config.getoption("browser"))
     if browser_type not in selected_browsers:
         pytest.skip(f"browser {browser_type} not selected")
     launcher = getattr(playwright_instance, browser_type)
