@@ -192,7 +192,10 @@ The same flow can be read as four contracts:
    cached fragments, hydrate nested preview widgets, render math, and apply
    panel behavior. Feature-owned JavaScript such as graph, summary,
    relation-panel, inline-preview, and slide code binds those generic helpers to
-   a concrete UI.
+   a concrete UI. Inline JavaScript asset order is not used as a readiness
+   guarantee; preview clients register setup work through
+   `window.VersoBlueprint.onRenderReady`, and the shared runtime drains that
+   queue when `window.VersoBlueprint.render` is installed.
    Custom consumers should prefer the manifest/cache pair over scraping page
    HTML or re-solving Blueprint labels.
 
@@ -314,9 +317,11 @@ The workflow implies a few constraints for renderers:
   bind nested preview handlers. It should not decide whether a node is
   formalized, which dependencies exist, or how related panels are structured.
   Browser clients and bundled feature JavaScript should use
+  `window.VersoBlueprint.onRenderReady` for startup and
   `window.VersoBlueprint.render` to resolve manifest/cache entries and hydrate
   inserted fragments. This keeps preview synchronization on one runtime API
-  instead of splitting lookup and hydration across feature-owned helpers.
+  instead of splitting lookup and hydration across feature-owned helpers or
+  relying on incidental inline-script order.
 
 - **Fallbacks should be diagnostic, not alternative data paths.**
   If a manifest entry or HTML-cache body is missing, the UI should expose a

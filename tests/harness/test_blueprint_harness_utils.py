@@ -21,6 +21,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_common_js_assets_are_owned_by_common_module(self) -> None:
         for asset in (
             "src/VersoBlueprint/Commands/open-target-details.js",
+            "src/VersoBlueprint/Commands/preview-ready.js",
             "src/VersoBlueprint/Commands/preview-runtime.js",
             "src/VersoBlueprint/Commands/inline-preview.js",
         ):

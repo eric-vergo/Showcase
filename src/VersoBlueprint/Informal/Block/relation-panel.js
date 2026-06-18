@@ -3,22 +3,6 @@
     return window.VersoBlueprint.render;
   }
 
-  function onBlueprintRenderReady(fn) {
-    const namespace =
-      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-        ? window.VersoBlueprint
-        : {};
-    window.VersoBlueprint = namespace;
-    if (namespace.render) {
-      namespace.onRenderReady(fn);
-      return;
-    }
-    if (!Array.isArray(namespace.renderReadyCallbacks)) {
-      namespace.renderReadyCallbacks = [];
-    }
-    namespace.renderReadyCallbacks.push(fn);
-  }
-
   function escapeHtml(text) {
     return blueprintRender().escapeHtml(text);
   }
@@ -274,7 +258,7 @@
     root.querySelectorAll(".bp_relation_panel").forEach(bindRelationPanel);
   }
 
-  onBlueprintRenderReady(function (previewUtils) {
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
     previewUtils.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", function () {
