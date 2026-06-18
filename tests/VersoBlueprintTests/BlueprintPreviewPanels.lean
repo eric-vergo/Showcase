@@ -5,12 +5,16 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprintTests.Blueprint.Support
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewPanels
 
 open Informal.HoverRender
 open Verso.VersoBlueprintTests.Blueprint.Support
+
+#guard previewKey "alpha.beta" == Informal.HtmlId.key "alpha.beta"
+#guard previewId "bp-preview" "alpha.beta" == Informal.HtmlId.prefixed "bp-preview" "alpha.beta"
 
 private def hasSharedPanelScaffolding (html rootClass headerClass titleClass closeClass bodyClass closeLabel : String) : Bool :=
   hasSubstr html s!"class=\"{rootClass}\"" &&
