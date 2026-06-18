@@ -17,7 +17,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let summaryJs? := findExtraJsContaining? st "function bindSummaryPreview(root)"
+    let summaryJs? := findExtraJsContaining? st "rootSelector: \".bp_summary\""
     let previewRuntimeJs? := findExtraJsContaining? st "const renderApi = {"
     let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
     let mathJs? := findExtraJsContaining? st "window.bpTexPreludeTable"
@@ -39,11 +39,15 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match summaryJs?, previewRuntimeJs?, inlineJs?, mathJs? with
       | some summaryJs, some previewRuntimeJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasSubstr summaryJs "previewUtils.bindTemplatePreview({" &&
+        hasSubstr summaryJs "window.VersoBlueprint.render.bindTemplatePreviewRoots({" &&
+        hasSubstr summaryJs "rootBoundAttr: \"data-bp-summary-preview-bound\"" &&
+        hasSubstr summaryJs "panelSelector: \".bp_summary_preview_panel\"" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
         hasSubstr summaryJs "templateSelector: \"template.bp_summary_preview_tpl[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "triggerSelector: \".bp_summary_preview_wrap_active[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
+        hasSubstr previewRuntimeJs "function bindTemplatePreviewRoots(options)" &&
+        hasSubstr previewRuntimeJs "bindTemplatePreviewRoots: bindTemplatePreviewRoots" &&
         hasSubstr previewRuntimeJs "function positionAnchoredPanel(panel, anchor, margin, offset)" &&
         hasSubstr previewRuntimeJs "function shouldKeepOpen(nextTarget, trigger, panel)" &&
         hasSubstr previewRuntimeJs "function readPanelBehavior(panel, defaults)" &&

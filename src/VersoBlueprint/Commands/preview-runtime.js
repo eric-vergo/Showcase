@@ -987,6 +987,86 @@
     };
   }
 
+  function bindTemplatePreviewRoots(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const rootSelector = typeof opts.rootSelector === "string" ? opts.rootSelector : "";
+    const panelSelector = typeof opts.panelSelector === "string" ? opts.panelSelector : "";
+    const rootBoundAttr =
+      typeof opts.rootBoundAttr === "string" && opts.rootBoundAttr.length > 0
+        ? opts.rootBoundAttr
+        : "data-bp-template-preview-root-bound";
+
+    function copyStringOption(target, name) {
+      if (typeof opts[name] === "string") {
+        target[name] = opts[name];
+      }
+    }
+
+    function bindRoot(root) {
+      if (!(root instanceof Element)) return null;
+      if (root.getAttribute(rootBoundAttr) === "1") return null;
+      root.setAttribute(rootBoundAttr, "1");
+      const panel = panelSelector ? root.querySelector(panelSelector) : null;
+      if (!(panel instanceof Element)) return null;
+
+      const bindOptions = {
+        root: root,
+        previewRoot: root,
+        triggerRoot: root,
+        panel: panel
+      };
+      [
+        "templateSelector",
+        "triggerSelector",
+        "keyAttr",
+        "titleAttr",
+        "titleSelector",
+        "bodySelector",
+        "closeSelector",
+        "triggerBoundAttr"
+      ].forEach(function (name) {
+        copyStringOption(bindOptions, name);
+      });
+      if (opts.allowHtmlCache === true) bindOptions.allowHtmlCache = true;
+      if (opts.defaults && typeof opts.defaults === "object") bindOptions.defaults = opts.defaults;
+      if (Number.isFinite(opts.margin)) bindOptions.margin = opts.margin;
+      if (Number.isFinite(opts.offset)) bindOptions.offset = opts.offset;
+      if (typeof opts.readKey === "function") bindOptions.readKey = opts.readKey;
+      if (typeof opts.readTitle === "function") bindOptions.readTitle = opts.readTitle;
+      if (typeof opts.readLookupKey === "function") bindOptions.readLookupKey = opts.readLookupKey;
+      return bindTemplatePreview(bindOptions);
+    }
+
+    function refresh(root) {
+      const scope = root instanceof Element || root instanceof Document ? root : document;
+      const controllers = [];
+      if (!rootSelector) return controllers;
+      if (scope instanceof Element && scope.matches(rootSelector)) {
+        const controller = bindRoot(scope);
+        if (controller) controllers.push(controller);
+      }
+      scope.querySelectorAll(rootSelector).forEach(function (rootNode) {
+        const controller = bindRoot(rootNode);
+        if (controller) controllers.push(controller);
+      });
+      return controllers;
+    }
+
+    if (opts.autoStart !== false) {
+      const start = function () { refresh(document); };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", start, { once: opts.once === true });
+      } else {
+        start();
+      }
+    }
+
+    return {
+      bindRoot: bindRoot,
+      refresh: refresh
+    };
+  }
+
   const renderApi = {
     collectPreviewTemplates: collectPreviewTemplates,
     escapeHtml: escapeHtml,
@@ -1022,6 +1102,7 @@
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
     bindTemplatePreview: bindTemplatePreview,
+    bindTemplatePreviewRoots: bindTemplatePreviewRoots,
     diagnostics: {
       missingKeyHtml: missingPreviewKeyDiagnosticHtml,
       manifestHtml: blueprintManifestDiagnosticHtml,
