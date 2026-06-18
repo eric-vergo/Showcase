@@ -38,7 +38,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
+    let relationJs? := relationPanelJs? st
     pure (
       hasSubstr out "used by 2" &&
       !hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
@@ -136,7 +136,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
+    let relationJs? := relationPanelJs? st
     pure (
       hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
@@ -185,7 +185,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
+    let relationJs? := relationPanelJs? st
     pure (
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&

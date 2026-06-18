@@ -124,12 +124,16 @@ private def writeSlidesPreviewDataFiles
 #guard_msgs in
 #eval
   let js := Informal.Slides.blueprintSlidesJs
-  hasSubstr js "function bindRelationPanel(panel)" &&
+  hasSubstr js "function bindRelationPanel(previewUtils, panel)" &&
     hasSubstr js "function hydrate(root, previewUtils)" &&
+    hasSubstr js "function hydrateWhenReady(root)" &&
     hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
     hasSubstr js "window.VersoBlueprint.onRenderReady(function (previewUtils) {" &&
+    hasSubstr js "window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady }" &&
     hasSubstr js "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"" &&
     hasSubstr js "data-bp-slide-href" &&
+    !hasSubstr js "function blueprintRender()" &&
+    !hasSubstr js "return window.VersoBlueprint.render;" &&
     !hasSubstr js "if (utils && typeof utils.hydrate === \"function\")" &&
     !hasSubstr js "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")" &&
     !hasSubstr js "function openBlueprintHref(href)" &&

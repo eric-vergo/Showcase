@@ -71,9 +71,7 @@ Base statement for graph preview mode option coverage.
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let graphJs? :=
-      findExtraJsContaining? st
-        "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)"
+    let graphJs? := graphPreviewJs? st
     pure (
       hasSubstr out "bp_graph_preview" &&
       hasSubstr out "class=\"bp_graph_preview bp_preview_panel\"" &&

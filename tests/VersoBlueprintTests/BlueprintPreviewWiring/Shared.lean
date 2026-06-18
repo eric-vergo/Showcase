@@ -46,6 +46,28 @@ def hasTemplatePreviewBinding
     "triggerSelector: \"" ++ triggerSelector ++ "\""
   ]
 
+def summaryPreviewJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "rootSelector: \".bp_summary\""
+
+def previewRuntimeJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "const renderApi = {"
+
+def inlinePreviewJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "function bindInlinePreview(previewUtils)"
+
+def mathPreludeJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "window.bpTexPreludeTable"
+
+def codeSummaryPreviewJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "rootSelector: \".bp_code_summary_preview_root\""
+
+def relationPanelJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
+
+def graphPreviewJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st
+    "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)"
+
 def manualImpls : ExtensionImpls := extension_impls%
 
 tex_prelude r#"

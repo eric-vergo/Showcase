@@ -62,3 +62,13 @@ def blueprint_render_api_script(body: str) -> str:
         {body}
     }}
     """
+
+
+def wait_for_blueprint_render_api(page: Page) -> None:
+    page.wait_for_function(
+        """() => !!(
+          window.VersoBlueprint &&
+          typeof window.VersoBlueprint.onRenderReady === "function"
+        )"""
+    )
+    page.evaluate(blueprint_render_api_script("return true;"))
