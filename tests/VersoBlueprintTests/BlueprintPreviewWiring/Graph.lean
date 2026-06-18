@@ -127,7 +127,7 @@ Base statement for graph preview mode option coverage.
         hasSubstr graphJs "previewUtils.resolvePreview(previewKey)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(null, {" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
-        hasSubstr graphJs "previewUtils.hydrate(body)" &&
+        hasSubstr graphJs "previewUtils.renderHtmlInto(body, html)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)" &&
         hasSubstr graphJs "graphState.previewActiveNode === node && !previewController.panel.hidden" &&

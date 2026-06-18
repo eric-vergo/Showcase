@@ -798,12 +798,16 @@ private def Summary.previewLabels (data : Summary) : Array Name :=
 def summaryCss := include_str "summary.css"
 
 def summaryPreviewJs : String := r##"(function () {
+  function blueprintRender() {
+    return window.VersoBlueprint && window.VersoBlueprint.render;
+  }
+
   function bindSummaryPreview(root) {
     if (!(root instanceof Element)) return;
     if (root.getAttribute("data-bp-summary-preview-bound") === "1") return;
     root.setAttribute("data-bp-summary-preview-bound", "1");
 
-    const previewUtils = window.VersoBlueprint && window.VersoBlueprint.render;
+    const previewUtils = blueprintRender();
     const panel = root.querySelector(".bp_summary_preview_panel");
     if (!panel || !previewUtils || typeof previewUtils.bindTemplatePreview !== "function") return;
     previewUtils.bindTemplatePreview({
