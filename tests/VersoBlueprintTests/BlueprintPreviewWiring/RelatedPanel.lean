@@ -82,7 +82,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
         hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
         hasSubstr relationJs "body.innerHTML = loadingPreviewHtml();" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
         !hasSubstr relationJs "fallbackTemplates" &&
         hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
         hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
@@ -164,7 +164,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
         hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
         hasSubstr relationJs "selectItem(initialItem)"
       | none => false
@@ -196,7 +196,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
         hasSubstr relationJs "selectItem(initialItem)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false

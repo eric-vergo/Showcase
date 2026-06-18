@@ -188,8 +188,8 @@ class TestPreviewRuntimeRegressions:
 
         status = page.evaluate(
             """() => {
-                const utils = window.bpPreviewUtils;
-                return utils.readBlueprintHtmlCacheStatus();
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+                return utils.readHtmlCacheStatus();
             }"""
         )
         assert attempts["count"] == 0
@@ -198,8 +198,8 @@ class TestPreviewRuntimeRegressions:
         used_by_wrap.locator(".bp_relation_chip").first.hover()
         page.wait_for_function(
             """() => {
-                const utils = window.bpPreviewUtils;
-                return utils.readBlueprintHtmlCacheStatus().state === "ready";
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+                return utils.readHtmlCacheStatus().state === "ready";
             }"""
         )
         assert attempts["count"] == 1
@@ -217,9 +217,9 @@ class TestPreviewRuntimeRegressions:
 
         status = page.evaluate(
             """async () => {
-                const utils = window.bpPreviewUtils;
-                await utils.loadBlueprintHtmlCacheEntry("used_source--statement");
-                return utils.readBlueprintHtmlCacheStatus();
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+                await utils.loadHtmlCacheEntry("used_source--statement");
+                return utils.readHtmlCacheStatus();
             }"""
         )
 
@@ -355,7 +355,7 @@ class TestPreviewRuntimeRegressions:
 
         previews = page.evaluate(
             """async () => {
-                const utils = window.bpPreviewUtils;
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
                 const manifestResp = await fetch("-verso-data/blueprint-manifest.json");
                 const manifest = await manifestResp.json();
                 const metaByKey = new Map(
@@ -363,19 +363,19 @@ class TestPreviewRuntimeRegressions:
                     ? manifest.previews.map((entry) => [entry.key, entry])
                     : []
                 );
-                const statement = await utils.loadBlueprintHtmlCacheEntry("preview_facets--statement");
-                const proof = await utils.loadBlueprintHtmlCacheEntry("preview_facets--proof");
+                const statement = await utils.loadHtmlCacheEntry("preview_facets--statement");
+                const proof = await utils.loadHtmlCacheEntry("preview_facets--proof");
                 const statementMeta = metaByKey.get("preview_facets--statement") || null;
                 const proofMeta = metaByKey.get("preview_facets--proof") || null;
                 return {
                     statement: {
-                        html: utils.readPreviewTemplate(statement),
+                        html: utils.readHtml(statement),
                         label: statementMeta ? statementMeta.label : null,
                         facet: statementMeta ? statementMeta.facet : null,
                         href: statementMeta ? statementMeta.href : null
                     },
                     proof: {
-                        html: utils.readPreviewTemplate(proof),
+                        html: utils.readHtml(proof),
                         label: proofMeta ? proofMeta.label : null,
                         facet: proofMeta ? proofMeta.facet : null,
                         href: proofMeta ? proofMeta.href : null
@@ -401,6 +401,98 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_public_render_api_resolves_manifest_cache_and_renders_into_custom_root(
+        self, server: str, page: Page
+    ):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+
+        rendered = page.evaluate(
+            """async () => {
+                const api = window.VersoBlueprint && window.VersoBlueprint.render;
+                if (!api) return { hasApi: false };
+                const host = document.createElement("div");
+                host.id = "custom-preview-render-root";
+                document.body.appendChild(host);
+                const statementKey = api.previewKey("preview_facets", "statement");
+                const proofKey = api.previewKey("preview_facets", "proof");
+                const statement = await api.renderPreviewInto(host, statementKey);
+                const proof = await api.resolvePreview(proofKey);
+                const manifestStatus = api.readManifestStatus();
+                const htmlCacheStatus = api.readHtmlCacheStatus();
+                const mutatedManifestStatus = api.readManifestStatus();
+                const mutatedHtmlCacheStatus = api.readHtmlCacheStatus();
+                mutatedManifestStatus.state = "mutated";
+                mutatedHtmlCacheStatus.state = "mutated";
+                return {
+                    hasApi: true,
+                    publicSurface: {
+                        hasReadPreviewTemplate: typeof api.readPreviewTemplate === "function",
+                        hasHydratePreviewSubtree: typeof api.hydratePreviewSubtree === "function",
+                        hasRenderMath: typeof api.renderMath === "function"
+                    },
+                    legacyGlobals: {
+                        hasPreviewUtils: "bpPreviewUtils" in window,
+                        hasManifestStatus: "bpBlueprintManifestStatus" in window,
+                        hasManifestMap: "bpBlueprintManifest" in window,
+                        hasManifestPromise: "bpBlueprintManifestPromise" in window,
+                        hasManifestFile: "bpBlueprintManifestFile" in window,
+                        hasHtmlCacheStatus: "bpBlueprintHtmlCacheStatus" in window,
+                        hasHtmlCacheMap: "bpBlueprintHtmlCache" in window,
+                        hasHtmlCachePromise: "bpBlueprintHtmlCachePromise" in window
+                    },
+                    statementKey: statementKey,
+                    proofKey: proofKey,
+                    ok: statement.ok,
+                    reason: statement.reason,
+                    label: statement.manifestEntry ? statement.manifestEntry.label : null,
+                    facet: statement.manifestEntry ? statement.manifestEntry.facet : null,
+                    href: statement.manifestEntry ? statement.manifestEntry.href : null,
+                    html: host.innerHTML,
+                    proofOk: proof.ok,
+                    proofHtml: proof.html,
+                    manifestStatus: manifestStatus,
+                    htmlCacheStatus: htmlCacheStatus,
+                    manifestStatusAfterMutation: api.readManifestStatus(),
+                    htmlCacheStatusAfterMutation: api.readHtmlCacheStatus()
+                };
+            }"""
+        )
+
+        assert rendered["hasApi"]
+        assert rendered["publicSurface"] == {
+            "hasReadPreviewTemplate": False,
+            "hasHydratePreviewSubtree": False,
+            "hasRenderMath": False,
+        }
+        assert rendered["legacyGlobals"] == {
+            "hasPreviewUtils": False,
+            "hasManifestStatus": False,
+            "hasManifestMap": False,
+            "hasManifestPromise": False,
+            "hasManifestFile": False,
+            "hasHtmlCacheStatus": False,
+            "hasHtmlCacheMap": False,
+            "hasHtmlCachePromise": False,
+        }
+        assert rendered["statementKey"] == "preview_facets--statement"
+        assert rendered["proofKey"] == "preview_facets--proof"
+        assert rendered["ok"]
+        assert rendered["reason"] == ""
+        assert rendered["label"] == "preview_facets"
+        assert rendered["facet"] == "statement"
+        assert rendered["href"].endswith("preview_facets--statement")
+        assert "Statement facet marker" in rendered["html"]
+        assert "Proof facet marker" not in rendered["html"]
+        assert rendered["proofOk"]
+        assert "Proof facet marker" in rendered["proofHtml"]
+        assert rendered["manifestStatus"]["state"] == "ready"
+        assert rendered["htmlCacheStatus"]["state"] == "ready"
+        assert rendered["manifestStatusAfterMutation"]["state"] == "ready"
+        assert rendered["htmlCacheStatusAfterMutation"]["state"] == "ready"
+
+        assert_no_runtime_errors(errors)
+
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         attempts = {"count": 0}
@@ -421,7 +513,7 @@ class TestPreviewRuntimeRegressions:
 
         cache = page.evaluate(
             """async () => {
-                const utils = window.bpPreviewUtils;
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
                 const trigger = document.querySelector(
                     ".bp_summary_preview_wrap_active[data-bp-preview-key]"
                 );
@@ -429,14 +521,14 @@ class TestPreviewRuntimeRegressions:
                     trigger instanceof Element
                         ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
                         : "";
-                const first = await utils.loadBlueprintHtmlCacheEntry(previewKey);
-                const statusAfterFirst = utils.readBlueprintHtmlCacheStatus();
-                const second = await utils.loadBlueprintHtmlCacheEntry(previewKey);
-                const statusAfterSecond = utils.readBlueprintHtmlCacheStatus();
+                const first = await utils.loadHtmlCacheEntry(previewKey);
+                const statusAfterFirst = utils.readHtmlCacheStatus();
+                const second = await utils.loadHtmlCacheEntry(previewKey);
+                const statusAfterSecond = utils.readHtmlCacheStatus();
                 return {
                     previewKey: previewKey,
-                    firstHtml: utils.readPreviewTemplate(first),
-                    secondHtml: utils.readPreviewTemplate(second),
+                    firstHtml: utils.readHtml(first),
+                    secondHtml: utils.readHtml(second),
                     statusAfterFirst: statusAfterFirst,
                     statusAfterSecond: statusAfterSecond
                 };

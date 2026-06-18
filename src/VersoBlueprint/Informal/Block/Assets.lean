@@ -1494,7 +1494,7 @@ def codeSummaryPreviewJs : String := r##"(function () {
     if (root.getAttribute("data-bp-code-summary-preview-bound") === "1") return;
     root.setAttribute("data-bp-code-summary-preview-bound", "1");
 
-    const previewUtils = window.bpPreviewUtils;
+    const previewUtils = window.VersoBlueprint && window.VersoBlueprint.render;
     const panel = root.querySelector(".bp_code_summary_preview_panel");
     if (!panel || !previewUtils || typeof previewUtils.bindTemplatePreview !== "function") return;
     previewUtils.bindTemplatePreview({
@@ -1527,7 +1527,7 @@ def codeSummaryPreviewJs : String := r##"(function () {
 
 def relationPanelJs : String := r##"(function () {
   function escapeHtml(text) {
-    const previewUtils = window.bpPreviewUtils;
+    const previewUtils = window.VersoBlueprint && window.VersoBlueprint.render;
     if (previewUtils && typeof previewUtils.escapeHtml === "function") {
       return previewUtils.escapeHtml(text);
     }
@@ -1565,8 +1565,8 @@ def relationPanelJs : String := r##"(function () {
   }
 
   function readCacheStatus(previewUtils) {
-    if (previewUtils && typeof previewUtils.readBlueprintHtmlCacheStatus === "function") {
-      return previewUtils.readBlueprintHtmlCacheStatus();
+    if (previewUtils && typeof previewUtils.readHtmlCacheStatus === "function") {
+      return previewUtils.readHtmlCacheStatus();
     }
     return null;
   }
@@ -1582,8 +1582,7 @@ def relationPanelJs : String := r##"(function () {
     }
     if (
       !previewUtils ||
-      typeof previewUtils.loadBlueprintHtmlCacheEntry !== "function" ||
-      typeof previewUtils.readPreviewTemplate !== "function"
+      typeof previewUtils.resolvePreview !== "function"
     ) {
       return previewMessageHtml(
         "error",
@@ -1617,7 +1616,7 @@ def relationPanelJs : String := r##"(function () {
     if (panel.getAttribute("data-bp-bound") === "1") return;
     panel.setAttribute("data-bp-bound", "1");
 
-    const previewUtils = window.bpPreviewUtils;
+    const previewUtils = window.VersoBlueprint && window.VersoBlueprint.render;
     const wrap = panel.closest(".bp_relation_wrap");
     const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
     const title = panel.querySelector(".bp_relation_preview_title");
@@ -1716,26 +1715,22 @@ def relationPanelJs : String := r##"(function () {
       if (
         !previewKey ||
         !previewUtils ||
-        typeof previewUtils.loadBlueprintHtmlCacheEntry !== "function" ||
-        typeof previewUtils.readPreviewTemplate !== "function"
+        typeof previewUtils.resolvePreview !== "function"
       ) {
         body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
         return;
       }
       try {
-        const cacheEntry = await previewUtils.loadBlueprintHtmlCacheEntry(previewKey);
+        const result = await previewUtils.resolvePreview(previewKey);
         if (requestToken !== activateRequestToken) return;
-        const html = previewUtils.readPreviewTemplate(cacheEntry);
+        const html = result && result.ok ? result.html : "";
         if (!html) {
           body.innerHTML = previewUnavailableHtml(previewUtils, previewKey, "");
           return;
         }
         body.innerHTML = html;
-        if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
-          previewUtils.hydratePreviewSubtree(body);
-        }
-        if (previewUtils && typeof previewUtils.renderMath === "function") {
-          previewUtils.renderMath(body);
+        if (previewUtils && typeof previewUtils.hydrate === "function") {
+          previewUtils.hydrate(body);
         }
       } catch (_err) {
         if (requestToken !== activateRequestToken) return;
@@ -1817,8 +1812,12 @@ def relationPanelJs : String := r##"(function () {
     root.querySelectorAll(".bp_relation_panel").forEach(bindRelationPanel);
   }
 
-  if (window.bpPreviewUtils && typeof window.bpPreviewUtils.registerPreviewHydrator === "function") {
-    window.bpPreviewUtils.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
+  if (
+    window.VersoBlueprint &&
+    window.VersoBlueprint.render &&
+    typeof window.VersoBlueprint.render.registerPreviewHydrator === "function"
+  ) {
+    window.VersoBlueprint.render.registerPreviewHydrator("relationPanel", bindAllRelationPanels);
   }
 
   if (document.readyState === "loading") {

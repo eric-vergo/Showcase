@@ -928,6 +928,46 @@ interface, dashboard, or slide generator use the same semantic entry and cached
 HTML while placing the rendered nodes in its own side-by-side, tabbed, or
 comparison wrapper.
 
+Browser-side custom interfaces should use `window.VersoBlueprint.render`, which
+is installed by the standard Blueprint preview/runtime asset. It loads the
+semantic manifest and rendered HTML cache from the page's `-verso-data/`
+directory, keeps load status for diagnostics, and hydrates inserted fragments:
+
+```javascript
+const api = window.VersoBlueprint.render;
+const key = api.previewKey("addition_right_identity", "statement");
+const target = document.querySelector("#audit-preview");
+
+const result = await api.renderPreviewInto(target, key);
+if (result.ok) {
+  console.log(result.manifestEntry.title);
+}
+```
+
+The stable custom-client API calls are:
+
+- `api.loadManifest()` and `api.loadHtmlCache()`, returning `Map` values keyed
+  by preview key
+- `api.readManifestStatus()` and `api.readHtmlCacheStatus()`, for diagnostics
+  such as `idle`, `loading`, `ready`, and `error`
+- `api.loadManifestEntry(key)` and `api.loadHtmlCacheEntry(key)`, for direct
+  keyed lookup
+- `api.resolvePreview(key)`, returning `{ ok, key, reason, manifestEntry,
+  htmlCacheEntry, html, diagnosticHtml }`
+- `api.renderPreviewInto(element, key, options)`, which writes the rendered
+  body or diagnostic HTML into `element`, then hydrates nested previews and math
+- `api.hydrate(element, options)`, for custom wrappers that insert cached HTML
+  themselves and only need Blueprint's nested-preview and math hydration
+
+Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
+JavaScript use the same `window.VersoBlueprint.render` object. Custom clients
+should do the same so preview lookup, diagnostics, and hydration stay on one
+runtime path. The runtime keeps manifest/cache load state private; clients
+should inspect it through `readManifestStatus()` and `readHtmlCacheStatus()`
+rather than reading `window` globals. Additional helper methods on
+`window.VersoBlueprint.render` are for Blueprint's bundled feature scripts and
+should not be treated as stable custom-client API unless they are listed above.
+
 Use the Blueprint slide wrapper in the deck generator:
 
 ```lean

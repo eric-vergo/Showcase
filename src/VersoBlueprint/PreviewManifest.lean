@@ -451,7 +451,7 @@ private def highlightedDocstringTextContentRead : String :=
 
 private def highlightedTacticShowGuardBefore : String :=
   "if (inst.reference.className == 'tactic') {
-            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+            const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
 
 private def highlightedTacticShowGuardAfter : String :=
   "if (inst.reference.className == 'tactic') {
@@ -462,7 +462,7 @@ private def highlightedTacticShowGuardAfter : String :=
 
 private def highlightedTacticContentBefore : String :=
   "if (tgt.className == 'tactic') {
-            const state = tgt.querySelector(\".tactic-state\").cloneNode(true);"
+            const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
 
 private def highlightedTacticContentAfter : String :=
   "if (tgt.className == 'tactic') {
@@ -472,12 +472,35 @@ private def highlightedTacticContentAfter : String :=
             }
             const state = stateSource.cloneNode(true);"
 
+private def isHighlightedStartupJs (source : String) : Bool :=
+  source.contains "let docsJson = \"-verso-docs.json\";" &&
+    source.contains "const defaultTippyProps = {"
+
+private def replaceRequiredHighlightedJs
+    (label before after source : String) : String :=
+  if source.contains before then
+    source.replace before after
+  else
+    panic! s!"Blueprint highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
+
 private def patchHighlightedStartupJs (js : JS) : JS :=
+  if !isHighlightedStartupJs js.js then
+    js
+  else
   let patched :=
     js.js
-      |>.replace highlightedDocstringInnerTextRead highlightedDocstringTextContentRead
-      |>.replace highlightedTacticShowGuardBefore highlightedTacticShowGuardAfter
-      |>.replace highlightedTacticContentBefore highlightedTacticContentAfter
+      |> replaceRequiredHighlightedJs
+          "docstring textContent read"
+          highlightedDocstringInnerTextRead
+          highlightedDocstringTextContentRead
+      |> replaceRequiredHighlightedJs
+          "tactic show guard"
+          highlightedTacticShowGuardBefore
+          highlightedTacticShowGuardAfter
+      |> replaceRequiredHighlightedJs
+          "tactic content guard"
+          highlightedTacticContentBefore
+          highlightedTacticContentAfter
   { js with js := patched }
 
 private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
