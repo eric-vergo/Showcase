@@ -290,7 +290,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
@@ -309,7 +309,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor slideMetadataPanelDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
     let rendered := renderedHtml.asString
@@ -344,7 +344,7 @@ private def writeSlidesPreviewDataFiles
         entry.usedBy.size == 1 &&
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
@@ -372,7 +372,7 @@ private def writeSlidesPreviewDataFiles
       match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString

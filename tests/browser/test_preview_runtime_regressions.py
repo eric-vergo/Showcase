@@ -425,8 +425,38 @@ class TestPreviewRuntimeRegressions:
                 const mutatedHtmlCacheStatus = api.readHtmlCacheStatus();
                 mutatedManifestStatus.state = "mutated";
                 mutatedHtmlCacheStatus.state = "mutated";
+                const stableClientMethods = [
+                    "dataUrl",
+                    "manifestUrl",
+                    "htmlCacheUrl",
+                    "loadManifest",
+                    "readManifestStatus",
+                    "loadManifestEntry",
+                    "loadHtmlCache",
+                    "readHtmlCacheStatus",
+                    "loadHtmlCacheEntry",
+                    "previewKey",
+                    "statementPreviewKey",
+                    "resolvePreview",
+                    "renderPreviewInto",
+                    "hydrate"
+                ];
+                const bundledHelperMethods = [
+                    "renderHtmlInto",
+                    "readHtml",
+                    "bindTemplatePreviewRoots",
+                    "registerPreviewHydrator",
+                    "readPanelBehavior",
+                    "setPreviewHeaderLink"
+                ];
                 return {
                     hasApi: true,
+                    stableClientApiTypes: Object.fromEntries(
+                        stableClientMethods.map((name) => [name, typeof api[name]])
+                    ),
+                    bundledHelperApiTypes: Object.fromEntries(
+                        bundledHelperMethods.map((name) => [name, typeof api[name]])
+                    ),
                     publicSurface: {
                         hasReadPreviewTemplate: typeof api.readPreviewTemplate === "function",
                         hasHydratePreviewSubtree: typeof api.hydratePreviewSubtree === "function",
@@ -462,6 +492,8 @@ class TestPreviewRuntimeRegressions:
         )
 
         assert rendered["hasApi"]
+        assert set(rendered["stableClientApiTypes"].values()) == {"function"}
+        assert set(rendered["bundledHelperApiTypes"].values()) == {"function"}
         assert rendered["publicSurface"] == {
             "hasReadPreviewTemplate": False,
             "hasHydratePreviewSubtree": False,

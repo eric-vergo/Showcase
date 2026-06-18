@@ -16,7 +16,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanStatusChipDoc
-    let codeSummaryJs? := codeSummaryPreviewJs? st
+    let codeSummaryJs? := findCodeSummaryPreviewJs? st
     pure (
       hasSubstr out "bp_code_link_status_proved" &&
       hasSubstr out "bp_code_link_status_warning" &&

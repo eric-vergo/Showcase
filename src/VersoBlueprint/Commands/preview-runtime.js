@@ -1067,26 +1067,29 @@
     };
   }
 
-  const renderApi = {
-    collectPreviewTemplates: collectPreviewTemplates,
-    escapeHtml: escapeHtml,
+  const stableCustomClientApi = {
     dataUrl: blueprintDataUrl,
     manifestUrl: blueprintManifestUrl,
     htmlCacheUrl: blueprintHtmlCacheUrl,
     loadManifest: loadBlueprintManifest,
     readManifestStatus: readBlueprintManifestStatus,
-    readManifestEntry: readBlueprintManifestEntry,
     loadManifestEntry: loadBlueprintManifestEntry,
     loadHtmlCache: loadBlueprintHtmlCache,
     readHtmlCacheStatus: readBlueprintHtmlCacheStatus,
-    readHtmlCacheEntry: readBlueprintHtmlCacheEntry,
     loadHtmlCacheEntry: loadBlueprintHtmlCacheEntry,
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
     renderPreviewInto: renderBlueprintPreviewInto,
+    hydrate: hydrateRenderedPreview
+  };
+
+  const bundledFeatureRenderHelpers = {
+    collectPreviewTemplates: collectPreviewTemplates,
+    escapeHtml: escapeHtml,
+    readManifestEntry: readBlueprintManifestEntry,
+    readHtmlCacheEntry: readBlueprintHtmlCacheEntry,
     renderHtmlInto: renderHtmlInto,
-    hydrate: hydrateRenderedPreview,
     readHtml: readHtml,
     bindCloseOnce: bindCloseOnce,
     positionAnchoredPanel: positionAnchoredPanel,
@@ -1109,6 +1112,12 @@
       htmlCacheHtml: blueprintHtmlCacheDiagnosticHtml
     }
   };
+
+  const renderApi = Object.assign(
+    {},
+    stableCustomClientApi,
+    bundledFeatureRenderHelpers
+  );
 
   function reportRenderReadyError(err) {
     window.setTimeout(function () {

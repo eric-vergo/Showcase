@@ -30,7 +30,7 @@ Blueprint HTML. `BlockExt.ofHtml` is the 4.31 handoff back to the normal Slides
 renderer.
 -/
 @[reducible] private def blueprintSlidesTraverse
-    (renderContext : Informal.Slides.RenderContext) :
+    (renderContext : Informal.Graft.RenderContext) :
     Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
   { defaultSlidesTraverse with
     genreBlock := fun container contents => do
@@ -76,7 +76,7 @@ private def slidesMainWithBlueprintRenderer
     errors := pure #[]
     warnings := pure #[]
   }
-  let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
+  let renderContext := Informal.Graft.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
   let traverseDoc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides) :=
     let _ : Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
