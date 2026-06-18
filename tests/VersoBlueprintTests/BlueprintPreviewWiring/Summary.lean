@@ -17,10 +17,10 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let summaryJs? := summaryPreviewJs? st
-    let previewRuntimeJs? := previewRuntimeJs? st
-    let inlineJs? := inlinePreviewJs? st
-    let mathJs? := mathPreludeJs? st
+    let summaryJs? := findSummaryPreviewJs? st
+    let previewRuntimeJs? := findPreviewRuntimeJs? st
+    let inlineJs? := findInlinePreviewJs? st
+    let mathJs? := findMathPreludeJs? st
     pure (
       !hasSubstr out "class=\"bp_summary_preview_store\"" &&
       !hasSubstr out "class=\"bp_summary_preview_tpl\"" &&
@@ -47,6 +47,15 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
           ".bp_summary_preview_wrap_active[data-bp-preview-label]" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
+        hasSubstr previewRuntimeJs "const stableCustomClientApi = {" &&
+        hasSubstr previewRuntimeJs "const bundledFeatureRenderHelpers = {" &&
+        hasSubstr previewRuntimeJs "const renderApi = Object.assign(" &&
+        appearsBefore previewRuntimeJs
+          "const stableCustomClientApi = {"
+          "const bundledFeatureRenderHelpers = {" &&
+        appearsBefore previewRuntimeJs
+          "const bundledFeatureRenderHelpers = {"
+          "const renderApi = Object.assign(" &&
         hasSubstr previewRuntimeJs "function bindTemplatePreviewRoots(options)" &&
         hasSubstr previewRuntimeJs "bindTemplatePreviewRoots: bindTemplatePreviewRoots" &&
         hasSubstr previewRuntimeJs "function onRenderReady(fn)" &&
@@ -97,7 +106,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let inlineJs? := inlinePreviewJs? st
+    let inlineJs? := findInlinePreviewJs? st
     let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 1 &&

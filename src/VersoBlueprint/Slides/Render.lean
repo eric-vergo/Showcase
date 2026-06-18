@@ -14,18 +14,6 @@ namespace Informal.Slides
 open Verso.Output
 open Verso.Output.Html
 
-public abbrev RenderContext := Informal.Graft.RenderContext
-
-namespace RenderContext
-
-public def ofPreviewData?
-    (manifest? : Option Informal.PreviewManifest.File)
-    (htmlCache? : Option Informal.PreviewManifest.HtmlCache.File := none)
-    (logError : String → IO Unit := fun _ => pure ()) : RenderContext :=
-  Informal.Graft.RenderContext.ofPreviewData? manifest? htmlCache? logError
-
-end RenderContext
-
 private def slideManifestBlockConfig : Informal.PreviewManifest.BlockRender.RenderConfig :=
   {
     wrapperClass := "bp_slide_node_blueprint"
@@ -67,7 +55,7 @@ private def slideManifestRenderConfig : Informal.Graft.ManifestRenderConfig :=
   }
 
 public def renderBlueprintSlideNode
-    (ctx : RenderContext)
+    (ctx : Informal.Graft.RenderContext)
     (node : Informal.Graft.BlueprintNode) : IO Html := do
   Informal.Graft.renderNodeFromManifestCache slideManifestRenderConfig ctx node
 
@@ -76,7 +64,7 @@ Render a Blueprint slide node from the structured attributes carried by the
 `VersoSlides.BlockExt.wrap` emitted by `blueprint_node`.
 -/
 public def renderBlueprintSlideNodeFromAttrs?
-    (ctx : RenderContext)
+    (ctx : Informal.Graft.RenderContext)
     (attrs : Array (String × String)) : Option (IO Html) := do
   let node ← Informal.Graft.BlueprintNode.fromAttrs? attrs
   some (renderBlueprintSlideNode ctx node)

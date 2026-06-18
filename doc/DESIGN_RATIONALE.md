@@ -138,7 +138,7 @@ flowchart TD
   render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
   manifest["PreviewManifest extra step<br/>semantic manifest and rendered HTML cache"]
   artifacts["Generated artifacts<br/>HTML pages, assets, -verso-docs.json,<br/>blueprint-manifest.json, blueprint-html-cache.json"]
-  browser["Browser runtime<br/>window.VersoBlueprint.render,<br/>graph/summary/block/slides JS"]
+  browser["Browser runtime<br/>onRenderReady -> render API,<br/>graph/summary/block/slides JS"]
   consumers["External/custom consumers<br/>Slides, audit views, dashboards, custom wrappers"]
 
   source --> elab
@@ -187,15 +187,15 @@ The same flow can be read as four contracts:
 
 4. **Artifacts to runtime and external consumers.**
    Browser code should treat the generated artifacts as immutable inputs. Page
-   markup carries stable lookup keys and lightweight data attributes. Shared
-   runtime helpers in `window.VersoBlueprint.render` load cache entries, decode
-   cached fragments, hydrate nested preview widgets, render math, and apply
-   panel behavior. Feature-owned JavaScript such as graph, summary,
-   relation-panel, inline-preview, and slide code binds those generic helpers to
-   a concrete UI. Inline JavaScript asset order is not used as a readiness
-   guarantee; preview clients register setup work through
-   `window.VersoBlueprint.onRenderReady`, and the shared runtime drains that
-   queue when `window.VersoBlueprint.render` is installed.
+   markup carries stable lookup keys and lightweight data attributes. Preview
+   clients register setup work through `window.VersoBlueprint.onRenderReady`;
+   once the shared runtime is installed, the callback receives the same API that
+   is also exposed as `window.VersoBlueprint.render`. That API loads cache
+   entries, decodes cached fragments, hydrates nested preview widgets, renders
+   math, and applies panel behavior. Feature-owned JavaScript such as graph,
+   summary, relation-panel, inline-preview, and slide code binds those generic
+   helpers to a concrete UI. Inline JavaScript asset order is not used as a
+   readiness guarantee.
    Custom consumers should prefer the manifest/cache pair over scraping page
    HTML or re-solving Blueprint labels.
 
@@ -249,7 +249,7 @@ flowchart TD
   graftContent["Shared node assembly<br/>Graft.renderNodeWithContent"]
   manifestBlock["Manifest-backed block shell<br/>PreviewManifest.BlockRender.renderWithRenderedContent"]
   blockShell["Canonical block shell<br/>Informal.Block.Render.renderInformalBlockModel"]
-  browserRuntime["Browser hydration<br/>window.VersoBlueprint.render<br/>and feature hydrators"]
+  browserRuntime["Browser hydration<br/>onRenderReady -> render API<br/>and feature hydrators"]
 
   manualMain --> versoEmit
   versoEmit --> informalManual
@@ -285,7 +285,7 @@ The current paths are:
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
 | External/custom generated consumers | direct calls to `Informal.Graft.renderNodeFromManifestCache` | serialized manifest/cache files | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | consumer-owned HTML wrapper |
-| Browser preview/panel hydration | `window.VersoBlueprint.render` and registered feature hydrators | generated page markup, manifest/cache files, `-verso-docs.json` | JavaScript hydration only | interactive previews, panels, math, links |
+| Browser preview/panel hydration | `window.VersoBlueprint.onRenderReady` callback receiving the render API, plus registered feature hydrators | generated page markup, manifest/cache files, `-verso-docs.json` | JavaScript hydration only | interactive previews, panels, math, links |
 
 This inventory is also the answer to "how many render contexts do we have?" for
 grafted Blueprint nodes. `VersoBlueprint.Graft.Render` owns the one concrete
@@ -317,11 +317,13 @@ The workflow implies a few constraints for renderers:
   bind nested preview handlers. It should not decide whether a node is
   formalized, which dependencies exist, or how related panels are structured.
   Browser clients and bundled feature JavaScript should use
-  `window.VersoBlueprint.onRenderReady` for startup and
-  `window.VersoBlueprint.render` to resolve manifest/cache entries and hydrate
-  inserted fragments. This keeps preview synchronization on one runtime API
-  instead of splitting lookup and hydration across feature-owned helpers or
-  relying on incidental inline-script order.
+  `window.VersoBlueprint.onRenderReady` for startup and the callback's render
+  API argument to resolve manifest/cache entries and hydrate inserted fragments.
+  After readiness, that same API is also available as
+  `window.VersoBlueprint.render`, but direct reads should not be used as a
+  startup synchronization mechanism. This keeps preview synchronization on one
+  runtime API instead of splitting lookup and hydration across feature-owned
+  helpers or relying on incidental inline-script order.
 
 - **The browser render API has two tiers.**
   Custom clients should treat `onRenderReady`, manifest/cache loading and
