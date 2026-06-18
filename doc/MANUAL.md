@@ -605,6 +605,11 @@ label in the preview header; the label links to the target statement. Single
 uses or used-by entries use the same inline preview chrome, with relation
 metadata badges shown in the preview footer.
 
+Inline preview triggers prefer manifest-backed rendered fragments. The small
+fallback HTML path is reserved for triggers that explicitly carry
+`data-bp-preview-fallback-*` attributes, so intentionally authored fallback
+metadata still renders when no generated preview key is available.
+
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.
 
@@ -972,11 +977,11 @@ Stable custom-client entrypoints:
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. |
 
 Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
-JavaScript use the same `window.VersoBlueprint.render` object. Custom clients
-should do the same so preview lookup, diagnostics, and hydration stay on one
-runtime path. The runtime keeps manifest/cache load state private; clients
-should inspect it through `readManifestStatus()` and `readHtmlCacheStatus()`
-rather than reading `window` globals.
+JavaScript also start through `onRenderReady` and receive the same render API.
+Custom clients should do the same so preview lookup, diagnostics, and hydration
+stay on one runtime path. The runtime keeps manifest/cache load state private;
+clients should inspect it through `readManifestStatus()` and
+`readHtmlCacheStatus()` rather than reading `window` globals.
 
 For semantic queries, use the manifest entry returned by `resolvePreview` or
 `loadManifestEntry`. Do not parse inserted or cached fragments to rediscover
@@ -988,6 +993,7 @@ Bundled-feature helper APIs are intentionally narrower. They are exported on
 `window.VersoBlueprint.render` so Blueprint's own clients can share panel
 positioning, close-button behavior, template binding, and hydrator registration
 without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
+`createPanelController`, `bindHoverablePanelLifetime`,
 `registerPreviewHydrator`, `readPanelBehavior`, `showPanelContent`, and
 `setPreviewHeaderLink` should not be treated as stable custom-client API unless
 they are promoted into the table above.

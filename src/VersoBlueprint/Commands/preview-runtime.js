@@ -691,6 +691,121 @@
     );
   }
 
+  function readPanelNodes(panel, titleSelector, bodySelector) {
+    if (!(panel instanceof Element)) {
+      return { title: null, body: null };
+    }
+    const title = panel.querySelector(titleSelector);
+    const body = panel.querySelector(bodySelector);
+    return {
+      title: title instanceof Element ? title : null,
+      body: body instanceof Element ? body : null
+    };
+  }
+
+  function createPanelController(panel, behavior, titleSelector, bodySelector, options) {
+    if (!(panel instanceof Element)) return null;
+    const nodes = readPanelNodes(panel, titleSelector, bodySelector);
+    const opts = options && typeof options === "object" ? options : {};
+    const clearBody =
+      typeof opts.clearBody === "function"
+        ? opts.clearBody
+        : function (body) { body.innerHTML = ""; };
+    const renderBody =
+      typeof opts.renderBody === "function" ? opts.renderBody : function () {};
+    const positionPanel =
+      typeof opts.positionPanel === "function" ? opts.positionPanel : function () {};
+    const onHide =
+      typeof opts.onHide === "function" ? opts.onHide : function () {};
+    const controller = {
+      panel: panel,
+      title: nodes.title,
+      body: nodes.body,
+      behavior: behavior || {
+        isPinned: true,
+        isHover: false,
+        isAnchored: false,
+        isDocked: true
+      },
+      hide: function () {
+        panel.hidden = true;
+        if (controller.title) controller.title.textContent = "";
+        if (controller.body) clearBody(controller.body);
+        onHide();
+      },
+      position: function (anchorNode) {
+        positionPanel(panel, anchorNode);
+      },
+      show: function (titleText, payload, anchorNode) {
+        if (!controller.title || !controller.body) return false;
+        controller.title.textContent = titleText || "";
+        renderBody(controller.body, payload);
+        panel.hidden = false;
+        controller.position(anchorNode);
+        return true;
+      }
+    };
+    return controller;
+  }
+
+  function bindHoverablePanelLifetime(controller, getActiveAnchor, boundAttr) {
+    const noop = {
+      cancelHide: function () {},
+      scheduleHide: function () {
+        if (controller) controller.hide();
+      }
+    };
+    if (!controller || !(controller.panel instanceof Element)) return noop;
+    const panel = controller.panel;
+    const attr =
+      typeof boundAttr === "string" && boundAttr.length > 0
+        ? boundAttr
+        : "data-bp-preview-hover-bound";
+    let hideTimer = null;
+
+    function cancelHide() {
+      if (hideTimer !== null) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+
+    function scheduleHide() {
+      if (!controller.behavior || !controller.behavior.isHover) return;
+      cancelHide();
+      hideTimer = window.setTimeout(function () {
+        hideTimer = null;
+        controller.hide();
+      }, 180);
+    }
+
+    function maybeScheduleHide(ev) {
+      if (
+        shouldKeepOpen(
+          ev && ev.relatedTarget,
+          typeof getActiveAnchor === "function" ? getActiveAnchor() : null,
+          panel
+        )
+      ) {
+        return;
+      }
+      scheduleHide();
+    }
+
+    if (panel.getAttribute(attr) !== "1") {
+      panel.setAttribute(attr, "1");
+      panel.addEventListener("mouseenter", cancelHide);
+      panel.addEventListener("focusin", cancelHide);
+      panel.addEventListener("mouseleave", maybeScheduleHide);
+      panel.addEventListener("focusout", maybeScheduleHide);
+    }
+
+    return {
+      cancelHide: cancelHide,
+      scheduleHide: scheduleHide
+    };
+  }
+
   function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
     if (typeof fn !== "function") return;
@@ -1110,6 +1225,8 @@
     resetPanelPosition: resetPanelPosition,
     configureCloseButton: configureCloseButton,
     pointerWithinPanel: pointerWithinPanel,
+    createPanelController: createPanelController,
+    bindHoverablePanelLifetime: bindHoverablePanelLifetime,
     registerPreviewHydrator: registerPreviewHydrator,
     previewDebug: previewDebug,
     previewDebugLabel: previewDebugLabel,

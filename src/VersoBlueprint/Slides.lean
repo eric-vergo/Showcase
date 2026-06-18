@@ -50,11 +50,12 @@ renderer.
 Render Blueprint slide-node carriers to `VersoSlides.BlockExt.ofHtml` during
 the normal Verso Slides traversal.
 
-The 4.30 branch keeps the older compatibility path that overrides
-`GenreHtml.block`, because `verso-slides` 4.30 does not provide
-`BlockExt.ofHtml`. This 4.31 path still mirrors the small `slidesMain` output
-loop so `quiet := true` remains supported and the rendered-fragment cache can
-seed the generated hover table.
+Release-line note: the supported 4.30 branch must keep its older
+`GenreHtml.block` override because `verso-slides` 4.30 does not provide
+`BlockExt.ofHtml`. On the 4.31 line, this implementation should stay on the
+`BlockExt.ofHtml` path while still mirroring the small `slidesMain` output loop
+so `quiet := true` remains supported and the rendered-fragment cache can seed
+the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)

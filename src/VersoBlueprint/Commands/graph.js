@@ -282,67 +282,6 @@
     }
   }
 
-  function parsePreviewEntry(previewUtils, entry) {
-    return previewUtils.readHtml(entry);
-  }
-
-  function readPanelNodes(panel, titleSelector, bodySelector) {
-    if (!(panel instanceof Element)) {
-      return { title: null, body: null };
-    }
-    const title = panel.querySelector(titleSelector);
-    const body = panel.querySelector(bodySelector);
-    return {
-      title: title instanceof Element ? title : null,
-      body: body instanceof Element ? body : null
-    };
-  }
-
-  function createPanelController(panel, behavior, titleSelector, bodySelector, options) {
-    if (!(panel instanceof Element)) return null;
-    const nodes = readPanelNodes(panel, titleSelector, bodySelector);
-    const opts = options && typeof options === "object" ? options : {};
-    const clearBody =
-      typeof opts.clearBody === "function"
-        ? opts.clearBody
-        : function (body) { body.replaceChildren(); };
-    const renderBody =
-      typeof opts.renderBody === "function" ? opts.renderBody : function () {};
-    const positionPanel =
-      typeof opts.positionPanel === "function" ? opts.positionPanel : function () {};
-    const onHide =
-      typeof opts.onHide === "function" ? opts.onHide : function () {};
-    const controller = {
-      panel: panel,
-      title: nodes.title,
-      body: nodes.body,
-      behavior: behavior || {
-        isPinned: true,
-        isHover: false,
-        isAnchored: false,
-        isDocked: true
-      },
-      hide: function () {
-        panel.hidden = true;
-        if (controller.title) controller.title.textContent = "";
-        if (controller.body) clearBody(controller.body);
-        onHide();
-      },
-      position: function (anchorNode) {
-        positionPanel(panel, anchorNode);
-      },
-      show: function (titleText, payload, anchorNode) {
-        if (!controller.title || !controller.body) return false;
-        controller.title.textContent = titleText || "";
-        renderBody(controller.body, payload);
-        panel.hidden = false;
-        controller.position(anchorNode);
-        return true;
-      }
-    };
-    return controller;
-  }
-
   function readBehaviorSource(behaviorSource) {
     if (typeof behaviorSource === "function") {
       const behavior = behaviorSource();
@@ -392,76 +331,12 @@
     };
   }
 
-  function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior) {
-    if (!(closeButton instanceof Element)) return;
-    previewUtils.configureCloseButton(closeButton, hidePanel, behavior);
-  }
-
-  function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr) {
-    const noop = {
-      cancelHide: function () {},
-      scheduleHide: function () {
-        if (controller) controller.hide();
-      }
-    };
-    if (!controller || !(controller.panel instanceof Element)) return noop;
-    const panel = controller.panel;
-    const attr =
-      typeof boundAttr === "string" && boundAttr.length > 0
-        ? boundAttr
-        : "data-bp-preview-hover-bound";
-    let hideTimer = null;
-
-    function cancelHide() {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    }
-
-    function scheduleHide() {
-      if (!controller.behavior || !controller.behavior.isHover) return;
-      cancelHide();
-      hideTimer = window.setTimeout(function () {
-        hideTimer = null;
-        controller.hide();
-      }, 180);
-    }
-
-    function maybeScheduleHide(ev) {
-      if (
-        previewUtils.shouldKeepOpen(
-          ev.relatedTarget,
-          typeof getActiveAnchor === "function" ? getActiveAnchor() : null,
-          panel
-        )
-      ) {
-        return;
-      }
-      scheduleHide();
-    }
-
-    if (panel.getAttribute(attr) !== "1") {
-      panel.setAttribute(attr, "1");
-      panel.addEventListener("mouseenter", cancelHide);
-      panel.addEventListener("focusin", cancelHide);
-      panel.addEventListener("mouseleave", maybeScheduleHide);
-      panel.addEventListener("focusout", maybeScheduleHide);
-    }
-
-    return {
-      cancelHide: cancelHide,
-      scheduleHide: scheduleHide
-    };
-  }
-
   function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
-    const hoverLifetime = bindHoverablePanelLifetime(
-      previewUtils,
+    const hoverLifetime = previewUtils.bindHoverablePanelLifetime(
       previewController,
       function () { return graphState.previewActiveNode; },
       "data-bp-preview-hover-bound"
@@ -479,7 +354,7 @@
       const requestToken = ++graphState.previewRequestToken;
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      let html = parsePreviewEntry(previewUtils, previewMap.get(label));
+      let html = previewUtils.readHtml(previewMap.get(label));
       if (!html && previewKey) {
         const result = await previewUtils.resolvePreview(previewKey);
         html = result && result.ok ? result.html : "";
@@ -765,7 +640,7 @@
         const previewPanelBehavior =
           previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
         let previewController = null;
-        previewController = createPanelController(
+        previewController = previewUtils.createPanelController(
           previewPanelNode,
           previewPanelBehavior,
           ".bp_graph_preview_title",
@@ -808,7 +683,7 @@
           if (previewPlacementSelector) previewPlacementSelector.value = placement;
           if (previewController) {
             previewController.behavior = behavior;
-            configurePanelCloseButton(previewUtils, previewClose, function () {
+            previewUtils.configureCloseButton(previewClose, function () {
               if (previewController) previewController.hide();
             }, behavior);
             if (!opts.keepOpen) previewController.hide();
@@ -899,7 +774,7 @@
         let groupHoverGraphviz = null;
         const groupHoverBehavior =
           previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" });
-        const groupHoverController = createPanelController(
+        const groupHoverController = previewUtils.createPanelController(
           groupHoverPanel,
           groupHoverBehavior,
           ".bp_group_hover_preview_title",
@@ -927,13 +802,12 @@
           }
         );
         graphState.groupHoverController = groupHoverController;
-        const groupHoverLifetime = bindHoverablePanelLifetime(
-          previewUtils,
+        const groupHoverLifetime = previewUtils.bindHoverablePanelLifetime(
           groupHoverController,
           function () { return graphState.groupHoverAnchorNode; },
           "data-bp-group-hover-bound"
         );
-        configurePanelCloseButton(previewUtils, groupHoverClose, function () {
+        previewUtils.configureCloseButton(groupHoverClose, function () {
           if (groupHoverController) groupHoverController.hide();
         }, groupHoverBehavior);
 

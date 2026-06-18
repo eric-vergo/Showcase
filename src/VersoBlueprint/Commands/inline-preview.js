@@ -1,6 +1,9 @@
 (function () {
   const triggerSelector = ".bp_inline_preview_ref[data-bp-preview-id]";
 
+  // Fallback markup is only for explicit fallback attributes on non-cache
+  // inline references. Manifest-backed previews should resolve through
+  // previewUtils.resolvePreview and should not rely on this path.
   function fallbackInlinePreviewHtml(trigger, key, escapeHtml) {
     if (!(trigger instanceof Element)) return "";
     const title = (trigger.getAttribute("data-bp-preview-title") || key || "").trim();
