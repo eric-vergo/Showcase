@@ -89,7 +89,7 @@ private def slidesMainWithBlueprintRenderer
 Generate a slide deck with Blueprint preview-node assets enabled.
 
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
-rendered HTML cache are read during slide generation so `{blueprint_node}`
+rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
 deck's `-verso-data/` directory after the deck is written.
 -/

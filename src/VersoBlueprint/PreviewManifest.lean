@@ -666,7 +666,7 @@ deriving Inhabited, Repr, ToJson, FromJson
 /-
 Rendered-fragment cache paired with the semantic preview manifest.
 
-This namespace owns presentation artifacts only: opaque rendered HTML fragments
+This namespace owns presentation artifacts only: opaque rendered fragments
 and the Verso hover payloads referenced by those fragments. Semantic facts that
 custom consumers may need to query belong in `PreviewManifest.Entry`, not in
 HTML attributes or text that consumers would need to scrape from cached markup.
@@ -692,10 +692,10 @@ structure HoverDoc where
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure Entry where
-  /-- Composite preview lookup key for this rendered HTML fragment. -/
+  /-- Composite preview lookup key for this rendered fragment. -/
   key : String
   /--
-  Opaque rendered HTML fragment for this preview/cache entry.
+  Opaque already-rendered HTML fragment for this preview/cache entry.
 
   Consumers may insert and hydrate this fragment, but should not parse it to
   recover labels, relationships, code metadata, or status facts. Those belong
@@ -705,9 +705,9 @@ structure Entry where
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure File where
-  /-- Opaque rendered HTML fragments keyed by preview/cache entry key. -/
+  /-- Opaque rendered fragments keyed by preview/cache entry key. -/
   entries : Array Entry := #[]
-  /-- Verso hover payloads referenced by the rendered HTML fragments. -/
+  /-- Verso hover payloads referenced by the rendered fragments. -/
   hoverDocs : Array HoverDoc := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -1531,7 +1531,7 @@ def helpText : String := String.intercalate "\n" [
   "Blueprint manifest/cache options:",
   s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
   s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
-  s!"  {dumpHtmlCacheFlag}  Print the generated rendered HTML cache JSON and exit.",
+  s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
   s!"  {helpFlag}              Show this help text and exit.",
   "",
   "Standard manual rendering options:",

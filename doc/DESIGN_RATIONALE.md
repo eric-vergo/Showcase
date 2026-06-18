@@ -181,7 +181,7 @@ The same flow can be read as four contracts:
    preview triggers, and feature-specific assets. The Blueprint preview-data
    extra step emits two structured files under `-verso-data/`:
    `blueprint-manifest.json`, which contains semantic preview entries and
-   metadata, and `blueprint-html-cache.json`, which contains rendered HTML
+   metadata, and `blueprint-html-cache.json`, which contains opaque rendered
    fragments plus the hover side data needed to hydrate those fragments inside
    generated pages.
 
@@ -190,12 +190,12 @@ The same flow can be read as four contracts:
    markup carries stable lookup keys and lightweight data attributes. Preview
    clients register setup work through `window.VersoBlueprint.onRenderReady`;
    once the shared runtime is installed, the callback receives the same API that
-   is also exposed as `window.VersoBlueprint.render`. That API loads cache
-   entries, decodes cached fragments, hydrates nested preview widgets, renders
-   math, and applies panel behavior. Feature-owned JavaScript such as graph,
-   summary, relation-panel, inline-preview, and slide code binds those generic
-   helpers to a concrete UI. Inline JavaScript asset order is not used as a
-   readiness guarantee.
+   is also exposed as `window.VersoBlueprint.render`. That API loads
+   manifest/cache entries, inserts cached fragments as opaque HTML, hydrates
+   nested preview widgets, renders math, and applies panel behavior.
+   Feature-owned JavaScript such as graph, summary, relation-panel,
+   inline-preview, and slide code binds those generic helpers to a concrete UI.
+   Inline JavaScript asset order is not used as a readiness guarantee.
    Custom consumers should prefer the manifest/cache pair over scraping page
    HTML or re-solving Blueprint labels.
 
@@ -334,6 +334,15 @@ The workflow implies a few constraints for renderers:
   helpers keep bundled graph, summary, relation-panel, inline-preview, and
   slide scripts on one runtime path, but they are not a public custom-client
   contract unless promoted into the manual's stable API table.
+
+- **Split JavaScript by responsibility, not feature semantics.**
+  The current preview runtime is still bundled as one asset, but its internal
+  responsibilities are the boundaries for any future split: debug/template
+  utilities, manifest and rendered-fragment cache stores, preview resolution,
+  fragment insertion and hydration, panel behavior helpers, template binding,
+  and API readiness. A split module may load files, join entries by preview key,
+  insert opaque fragments, or call hydrators; it should not infer Blueprint
+  relation topology, ownership, status, or code associations from HTML markup.
 
 - **Fallbacks should be diagnostic, not alternative data paths.**
   If a manifest entry or rendered-fragment body is missing, the UI should

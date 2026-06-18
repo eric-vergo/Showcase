@@ -539,7 +539,7 @@ Current behavior:
   under slot `"default"` unless `(slot := ...)` is provided
 - a labeled standalone external-markup block is exported to the semantic
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
-  it does not create a rendered HTML-cache preview body
+  it does not create a rendered-fragment preview body
 - if the same label also has a rendered statement or proof, the external markup
   is attached to that block's manifest entry instead of creating a separate
   external-markup entry
@@ -761,7 +761,7 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--dump-schema` prints the JSON Schema for the manifest
 - `--dump-manifest` prints the generated manifest JSON instead of writing the
   site and then reading the file
-- `--dump-html-cache` prints the rendered HTML cache JSON
+- `--dump-html-cache` prints the rendered-fragment cache JSON
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
