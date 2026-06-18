@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.blueprint_harness_utils import (
+    EMBEDDED_ASSET_OWNER_PATHS,
     ensure_embedded_asset_owner_outputs,
     rebuild_embedded_asset_owners,
     refresh_embedded_asset_owner_mtimes,
@@ -17,6 +18,16 @@ def _command_arg(command: list[str], option: str) -> str:
 
 
 class TestBlueprintHarnessUtils(unittest.TestCase):
+    def test_preview_runtime_js_is_owned_by_common_module(self) -> None:
+        self.assertIn(
+            (
+                "src/VersoBlueprint/Commands/preview-runtime.js",
+                "src/VersoBlueprint/Commands/Common.lean",
+                "VersoBlueprint.Commands.Common",
+            ),
+            EMBEDDED_ASSET_OWNER_PATHS,
+        )
+
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

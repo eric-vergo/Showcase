@@ -131,8 +131,12 @@
     });
   }
 
+  function blueprintRender() {
+    return window.VersoBlueprint && window.VersoBlueprint.render;
+  }
+
   function collectPreviewTemplates(rootNode) {
-    const utils = window.bpPreviewUtils;
+    const utils = blueprintRender();
     if (!utils || typeof utils.collectPreviewTemplates !== "function") {
       return new Map();
     }
@@ -300,20 +304,14 @@
   }
 
   function parsePreviewEntry(entry) {
-    const utils = window.bpPreviewUtils;
-    if (utils && typeof utils.readPreviewTemplate === "function") {
-      return utils.readPreviewTemplate(entry);
+    const utils = blueprintRender();
+    if (utils && typeof utils.readHtml === "function") {
+      return utils.readHtml(entry);
     }
     if (typeof entry === "string") {
       return entry;
     }
     return "";
-  }
-
-  function renderMath(root) {
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.renderMath !== "function") return;
-    utils.renderMath(root);
   }
 
   function readPanelNodes(panel, titleSelector, bodySelector) {
@@ -384,7 +382,7 @@
   function makeHtmlPanelPositioner(behaviorSource) {
     return function (panel, anchorNode) {
       const behavior = readBehaviorSource(behaviorSource);
-      const previewUtils = window.bpPreviewUtils;
+      const previewUtils = blueprintRender();
       if (
         behavior &&
         behavior.isAnchored &&
@@ -402,7 +400,7 @@
   function makeGroupPanelPositioner(graphBlock, behavior) {
     return function (panel, anchorNode) {
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
-      const previewUtils = window.bpPreviewUtils;
+      const previewUtils = blueprintRender();
       if (!behavior || !behavior.isAnchored) {
         if (previewUtils && typeof previewUtils.resetPanelPosition === "function") {
           previewUtils.resetPanelPosition(panel);
@@ -520,9 +518,9 @@
   function attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
-    const previewUtils = window.bpPreviewUtils;
+    const previewUtils = blueprintRender();
     const canResolveHtmlCache =
-      previewUtils && typeof previewUtils.loadBlueprintHtmlCacheEntry === "function";
+      previewUtils && typeof previewUtils.resolvePreview === "function";
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
     const hoverLifetime = bindHoverablePanelLifetime(
@@ -546,8 +544,8 @@
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
       let html = parsePreviewEntry(previewMap.get(label));
       if (!html && canResolveHtmlCache && previewKey) {
-        const cacheEntry = await previewUtils.loadBlueprintHtmlCacheEntry(previewKey);
-        html = parsePreviewEntry(cacheEntry);
+        const result = await previewUtils.resolvePreview(previewKey);
+        html = result && result.ok ? result.html : "";
       }
       if (requestToken !== graphState.previewRequestToken) return;
       if (!html) return;
@@ -828,7 +826,7 @@
         const previewClose = previewPanelNode
           ? previewPanelNode.querySelector(".bp_graph_preview_close")
           : null;
-        const previewUtils = window.bpPreviewUtils;
+        const previewUtils = blueprintRender();
         const previewPanelBehavior =
           previewUtils && typeof previewUtils.readPanelBehavior === "function"
             ? previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" })
@@ -843,10 +841,9 @@
             clearBody: function (body) { body.innerHTML = ""; },
             renderBody: function (body, html) {
               body.innerHTML = html;
-              if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
-                previewUtils.hydratePreviewSubtree(body);
+              if (previewUtils && typeof previewUtils.hydrate === "function") {
+                previewUtils.hydrate(body);
               }
-              renderMath(body);
             },
             positionPanel: makeHtmlPanelPositioner(function () {
               return previewController ? previewController.behavior : previewPanelBehavior;

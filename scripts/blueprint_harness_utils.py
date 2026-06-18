@@ -9,6 +9,7 @@ import shutil
 
 
 EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
+    ("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     ("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     ("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     ("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),

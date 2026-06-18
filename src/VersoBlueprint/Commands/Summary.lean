@@ -804,7 +804,7 @@ def summaryPreviewJs : String := r##"(function () {
     if (root.getAttribute("data-bp-summary-preview-bound") === "1") return;
     root.setAttribute("data-bp-summary-preview-bound", "1");
 
-    const previewUtils = window.bpPreviewUtils;
+    const previewUtils = window.VersoBlueprint && window.VersoBlueprint.render;
     const panel = root.querySelector(".bp_summary_preview_panel");
     if (!panel || !previewUtils || typeof previewUtils.bindTemplatePreview !== "function") return;
     previewUtils.bindTemplatePreview({

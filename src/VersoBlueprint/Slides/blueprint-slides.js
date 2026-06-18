@@ -78,14 +78,13 @@
       if (!(node instanceof Element)) return;
       const baseUrl = rememberBlueprintBaseUrl(node);
       prepareBlueprintLinks(node, baseUrl);
-      const utils = window.bpPreviewUtils;
-      if (utils && typeof utils.renderMath === "function") utils.renderMath(node);
-      if (utils && typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(node);
+      const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+      if (utils && typeof utils.hydrate === "function") utils.hydrate(node);
     });
   }
 
   function registerPreviewHydrator() {
-    const utils = window.bpPreviewUtils;
+    const utils = window.VersoBlueprint && window.VersoBlueprint.render;
     if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
     utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;

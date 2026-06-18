@@ -308,14 +308,14 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-    def test_preview_utils_read_graph_preview_behavior(self, server: str, page: Page):
+    def test_render_api_read_graph_preview_behavior(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         assert page.evaluate(
             """() => {
-                const utils = window.bpPreviewUtils;
+                const utils = window.VersoBlueprint && window.VersoBlueprint.render;
                 if (
                     !utils ||
                     typeof utils.normalizePreviewMode !== "undefined" ||
