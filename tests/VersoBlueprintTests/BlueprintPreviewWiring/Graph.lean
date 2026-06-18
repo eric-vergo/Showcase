@@ -112,45 +112,32 @@ Base statement for graph preview mode option coverage.
       match graphJs? with
       | some graphJs =>
         hasRenderReadyWiring graphJs "previewUtils" &&
-        hasAllSubstr graphJs [
-          "function collectPreviewTemplates(previewUtils, rootNode)",
-          "function parsePreviewEntry(previewUtils, entry)",
-          "return previewUtils.readHtml(entry);"
-        ] &&
         !hasSubstr graphJs "function blueprintRender()" &&
-        hasSubstr graphJs "function layoutGraphCanvas(graphRoot, graphState)" &&
+        hasSubstr graphJs "previewUtils.collectPreviewTemplates(" &&
+        hasSubstr graphJs "previewUtils.createPanelController(" &&
+        hasSubstr graphJs "previewUtils.bindHoverablePanelLifetime(" &&
+        hasSubstr graphJs "previewUtils.configureCloseButton(" &&
+        !hasSubstr graphJs "function parsePreviewEntry(" &&
+        !hasSubstr graphJs "function createPanelController(" &&
+        !hasSubstr graphJs "function bindHoverablePanelLifetime(" &&
         !hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
         !hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
-        hasSubstr graphJs "function ensureGraphBlockState(graphBlock)" &&
-        hasSubstr graphJs "function createPanelController(panel, behavior, titleSelector, bodySelector, options)" &&
-        hasSubstr graphJs "function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr)" &&
-        hasSubstr graphJs "function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior)" &&
-        hasSubstr graphJs "const previewModeSelector = graphBlock.querySelector(\".bp_graph_preview_mode_select\");" &&
-        hasSubstr graphJs "const previewPlacementSelector = graphBlock.querySelector(\".bp_graph_preview_placement_select\");" &&
         hasSubstr graphJs "const previewKey = nodeId ? (previewKeys.get(nodeId) || \"\") : \"\";" &&
         hasSubstr graphJs "previewUtils.resolvePreview(previewKey)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(null, {" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
         hasSubstr graphJs "previewUtils.renderHtmlInto(body, html)" &&
         hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
-        hasSubstr graphJs "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)" &&
         hasSubstr graphJs "graphState.previewActiveNode === node && !previewController.panel.hidden" &&
         hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isHover) return;" &&
         hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isPinned) return;" &&
         hasSubstr graphJs "setPreviewBehavior(previewModeSelector.value, readPreviewPlacement());" &&
         hasSubstr graphJs "setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);" &&
-        hasSubstr graphJs "configurePanelCloseButton(previewUtils, previewClose" &&
-        hasSubstr graphJs "configurePanelCloseButton(previewUtils, groupHoverClose" &&
         hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
         hasSubstr graphJs "graphviz: null," &&
         hasSubstr graphJs "renderedVariantKey: \"\"," &&
         hasSubstr graphJs "renderedOptionsKey: \"\"," &&
         hasSubstr graphJs "renderToken: 0," &&
-        hasSubstr graphJs "function dotWithGraphOptions(dot, options)" &&
-        hasSubstr graphJs "function dotForVariantOptions(variant, options)" &&
-        hasSubstr graphJs "return dotWithGraphOptions(variant.dot, options);" &&
-        hasSubstr graphJs "function resetGraphvizForVariant(graphRoot, graphState)" &&
-        hasSubstr graphJs "function bindOptionsPopover(graphBlock)" &&
         hasSubstr graphJs "const finalizeRender = function () {" &&
         hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
         hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
@@ -160,8 +147,6 @@ Base statement for graph preview mode option coverage.
         hasSubstr graphJs "switchDirection(directionSelector.value);" &&
         hasSubstr graphJs "switchPack(packInput.checked);" &&
         hasSubstr graphJs ".zoom(true)" &&
-        hasSubstr graphJs "function normalizeGraphDirection(rawDirection)" &&
-        hasSubstr graphJs "function normalizeGraphPack(rawPack)" &&
         hasSubstr graphJs "layoutGraphCanvas(graphRoot, graphState)" &&
         hasSubstr graphJs "if (typeof ResizeObserver === \"function\")" &&
         hasSubstr graphJs ".fit(true)" &&
