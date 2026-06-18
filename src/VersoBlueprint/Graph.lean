@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.ProvedStatus
 
 namespace Informal.Graph
@@ -639,17 +640,8 @@ def escapeDotString (s : String) : String :=
 
 def dotIndent (n : Nat) : String := String.ofList (List.replicate n ' ')
 
-private def graphSvgIdPiece (c : Char) : String :=
-  if c.isAlphanum || c == '-' || c == '_' then
-    String.singleton c
-  else
-    s!"x{c.toNat}x"
-
 def graphNodeSvgId (label : Name) : String :=
-  let escaped :=
-    (toString label).toList.foldl (init := "") fun acc c =>
-      acc ++ graphSvgIdPiece c
-  s!"bp-node-{escaped}"
+  Informal.HtmlId.prefixed "bp-node" (toString label)
 
 partial def emitGroupClusterLines (nodeDefs : NameMap String) (groupMembers : NameMap (Array Name))
     (groupChildren : NameMap (Array Name)) (groupIds : NameMap Nat)

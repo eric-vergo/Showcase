@@ -24,6 +24,65 @@ def load(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def require_contains(haystack: str, needle: str, description: str) -> None:
+    if needle not in haystack:
+        fail(f"Missing {description}: {needle!r}")
+
+
+def find_issue_130_page(out_root: Path) -> tuple[Path, str]:
+    matches: list[tuple[Path, str]] = []
+    for path in out_root.rglob("index.html"):
+        html = load(path)
+        if "Issue #130 heading-outline reproduction" in html:
+            matches.append((path, html))
+
+    if not matches:
+        fail("Could not find issue #130 external declaration heading reproduction page")
+
+    if len(matches) > 1:
+        locations = ", ".join(str(path.relative_to(out_root)) for path, _ in matches)
+        fail(f"Expected one issue #130 reproduction page, found {len(matches)}: {locations}")
+
+    return matches[0]
+
+
+def check_external_decl_section_label(
+    html: str,
+    label: str,
+    description: str,
+) -> None:
+    pattern = (
+        r'<div class="bp_external_decl_section" role="group" aria-labelledby="([^"]+)">\s*'
+        r'<p class="bp_external_decl_section_label" id="\1">\s*'
+        + re.escape(label)
+        + r"\s*</p>"
+    )
+    if not re.search(pattern, html, re.S):
+        fail(f"Missing named external declaration subsection group for {description}: {label}")
+
+
+def check_issue_130_external_decl_headings(out_root: Path) -> tuple[Path, list[str]]:
+    issue_page, issue_html = find_issue_130_page(out_root)
+    expected_labels = ["Fields", "Methods", "Constructors", "Extends"]
+
+    raw_heading_re = r"<h1>\s*(?:Fields|Methods|Constructors|Extends|Constructor|Instance Constructor)\s*</h1>"
+    if re.search(raw_heading_re, issue_html):
+        fail("Issue #130 reproduction still renders external declaration subsection labels as h1")
+
+    for label in expected_labels:
+        check_external_decl_section_label(issue_html, label, f"issue #130 {label}")
+
+    for definition_name in [
+        "h1_repro_structure",
+        "h1_repro_class",
+        "h1_repro_inductive",
+        "h1_repro_extends",
+    ]:
+        require_contains(issue_html, definition_name, f"{definition_name} reproduction node")
+
+    return issue_page, expected_labels
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Static regression checks for generated local code-panel showcase pages."
@@ -134,6 +193,11 @@ def main() -> int:
         re.S,
     ):
         fail("external declaration signature still nests wide-only markup inside <pre>")
+    if re.search(
+        r"<h1>\s*(?:Fields|Methods|Constructors|Extends|Constructor|Instance Constructor)\s*</h1>",
+        code_panels,
+    ):
+        fail("external declaration subsection labels should not render as h1")
 
     panel_re = re.compile(r'<details class="bp_code_block bp_code_panel"[^>]*>.*?</details>', re.S)
     external_panels = [p for p in panel_re.findall(code_panels) if "bp_external_status_badge_summary" in p]
@@ -284,6 +348,7 @@ def main() -> int:
         fail("external inductive panel missing visible inductive kind marker")
     if "Constructors" not in inductive_panel:
         fail("external inductive panel missing constructor section")
+    check_external_decl_section_label(inductive_panel, "Constructors", "external inductive panel")
     if "2 constructors" not in inductive_panel:
         fail("external inductive panel missing constructor-count metadata chip")
     if "PreviewStage.initial" not in inductive_panel or "PreviewStage.step" not in inductive_panel:
@@ -309,6 +374,7 @@ def main() -> int:
         fail("external class panel missing visible class kind marker")
     if "Methods" not in class_panel:
         fail("external class panel missing methods section")
+    check_external_decl_section_label(class_panel, "Methods", "external class panel")
     if "2 methods" not in class_panel:
         fail("external class panel missing method-count metadata chip")
     if "PreviewFold.neutral" not in class_panel or "PreviewFold.combine" not in class_panel:
@@ -334,6 +400,7 @@ def main() -> int:
         fail("external structure panel missing visible structure kind marker")
     if "Fields" not in structure_panel:
         fail("external structure panel missing fields section")
+    check_external_decl_section_label(structure_panel, "Fields", "external structure panel")
     if "6 fields" not in structure_panel:
         fail("external structure panel missing field-count metadata chip")
     if "PreviewFreyPackage.hFLT" not in structure_panel:
@@ -413,10 +480,14 @@ def main() -> int:
     if "Inline mixed fold class docstring." not in code_panels:
         fail("missing mixed inline class docstring")
 
+    issue_page, issue_labels = check_issue_130_external_decl_headings(out_root)
+
     print(
         "[blueprint-panel-regression] OK:",
         f"external_panels={len(external_panels)}",
         f"literate_panels={len(literate_panels)}",
+        f"issue130_page={issue_page.relative_to(out_root)}",
+        f"issue130_section_labels={','.join(issue_labels)}",
     )
     return 0
 

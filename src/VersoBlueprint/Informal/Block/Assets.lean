@@ -1229,8 +1229,12 @@ a.bp_external_decl_source_path:hover {
   margin-bottom: 0;
 }
 
-.bp_external_decl_rendered .bp_external_decl_body h1 {
-  margin: 0.75rem 0 0.4rem;
+.bp_external_decl_rendered .bp_external_decl_section + .bp_external_decl_section {
+  margin-top: 0.75rem;
+}
+
+.bp_external_decl_rendered .bp_external_decl_section_label {
+  margin: 0 0 0.4rem;
   padding-bottom: 0.18rem;
   border-bottom: 1px solid var(--bp-color-border-soft);
   color: var(--bp-color-text-muted);
