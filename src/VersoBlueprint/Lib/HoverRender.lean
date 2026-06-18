@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.HoverRender
@@ -50,35 +51,11 @@ def PreviewPlacement.dataValue : PreviewPlacement → String
   | .anchored => "anchored"
   | .docked => "docked"
 
-private def hexDigits : Array Char := "0123456789ABCDEF".toList.toArray
-
-private def toHex (n : Nat) : String := Id.run do
-  let mut n := n
-  let mut digits := #[]
-  repeat
-    if h : n < 16 then
-      digits := digits.push hexDigits[n]
-      break
-    else
-      digits := digits.push <| hexDigits[n % 16]'(by
-        have : n % 16 < 16 := Nat.mod_lt _ (by decide)
-        simpa using this)
-      n := n >>> 4
-  let padding := (4 - digits.size).fold (init := "") (fun _ _ p => p.push '0')
-  digits.foldr (init := padding) fun c s => s.push c
-
 def previewKey (s : String) : String :=
-  s.foldl (init := "") fun acc c =>
-    if c.isAlphanum then
-      acc.push c
-    else if c == '-' then
-      acc |>.push '-' |>.push '-'
-    else
-      acc ++ s!"-{toHex c.toNat}"
+  Informal.HtmlId.key s
 
 def previewId (idPrefix value : String) : String :=
-  let body := previewKey value
-  if body.isEmpty then idPrefix else s!"{idPrefix}-{body}"
+  Informal.HtmlId.prefixed idPrefix value
 
 def inlinePreviewRenderProperty : Name := Name.mkSimple "Informal.inlinePreview.rendering"
 
