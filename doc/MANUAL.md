@@ -1058,11 +1058,12 @@ public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 
 Blueprint does not keep broad compatibility layers for internal helper names,
-read-through aliases, command aliases, or old rendering paths. Public entry
-points used by real Blueprint projects are different: when such an entry point
-is renamed, keep the old exported name as a deprecated thin forwarder to the
-canonical function until the affected projects migrate. New generators should
-call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
+read-through aliases, command aliases, or old rendering paths. Documented public
+entry points that real Blueprint projects already use are different: if such an
+entry point is renamed, keep the old exported name only as a deprecated thin
+forwarder to the canonical function until those projects migrate. Do not add
+forwarders for undocumented internals or convenience aliases. New generators
+should call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
 
 Recommended CI usage builds the Lean library or formalization targets needed by
 the document, then runs the generator file directly:
