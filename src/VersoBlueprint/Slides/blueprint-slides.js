@@ -72,19 +72,23 @@
       });
   }
 
+  function blueprintRender() {
+    return window.VersoBlueprint && window.VersoBlueprint.render;
+  }
+
   function hydrate(root) {
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
       if (!(node instanceof Element)) return;
       const baseUrl = rememberBlueprintBaseUrl(node);
       prepareBlueprintLinks(node, baseUrl);
-      const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+      const utils = blueprintRender();
       if (utils && typeof utils.hydrate === "function") utils.hydrate(node);
     });
   }
 
   function registerPreviewHydrator() {
-    const utils = window.VersoBlueprint && window.VersoBlueprint.render;
+    const utils = blueprintRender();
     if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
     utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;

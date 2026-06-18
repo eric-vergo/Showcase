@@ -55,6 +55,7 @@ Command modules are split by concern:
 - generic command CSS and shared preview/runtime asset injection in
   `VersoBlueprint/Commands/Common.lean`
 - the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
+- the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
 
 Informal-block support is now split across smaller modules instead of one large
 `Block.lean` bucket:
@@ -82,6 +83,7 @@ Shared preview and rendering helpers live in `VersoBlueprint/Lib/`, notably:
 Shared and feature-specific browser assets stay with their owning commands:
 
 - `Commands/preview-runtime.js`
+- `Commands/inline-preview.js`
 - `Commands/graph.js`
 
 Per-command CSS overlays stay with their commands:

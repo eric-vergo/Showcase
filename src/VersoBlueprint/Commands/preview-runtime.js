@@ -493,6 +493,16 @@
     return true;
   }
 
+  function renderHtmlInto(target, html, options) {
+    if (!(target instanceof Element)) return false;
+    const safeHtml = typeof html === "string" ? html : "";
+    target.innerHTML = safeHtml;
+    if (safeHtml) {
+      hydrateRenderedPreview(target, options);
+    }
+    return true;
+  }
+
   async function renderBlueprintPreviewInto(target, previewKey, options) {
     if (!(target instanceof Element)) {
       throw new Error("renderBlueprintPreviewInto target must be a DOM Element");
@@ -500,10 +510,7 @@
     const opts = options && typeof options === "object" ? options : {};
     const result = await resolveBlueprintPreview(previewKey);
     const html = result.ok ? result.html : (opts.diagnostics === false ? "" : result.diagnosticHtml);
-    target.innerHTML = html || "";
-    if (html) {
-      hydrateRenderedPreview(target, opts);
-    }
+    renderHtmlInto(target, html, opts);
     return result;
   }
 
@@ -740,9 +747,7 @@
     const safeMargin = Number.isFinite(margin) ? margin : 12;
     const safeOffset = Number.isFinite(offset) ? offset : 10;
     titleNode.textContent = typeof heading === "string" ? heading : "";
-    bodyNode.innerHTML = html;
-    runPreviewHydrators(bodyNode);
-    renderBlueprintMath(bodyNode);
+    renderHtmlInto(bodyNode, html);
     panel.hidden = false;
     if (behavior && behavior.isAnchored && readAnchorRect(anchor)) {
       positionAnchoredPanel(panel, anchor, safeMargin, safeOffset);
@@ -1000,6 +1005,7 @@
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
     renderPreviewInto: renderBlueprintPreviewInto,
+    renderHtmlInto: renderHtmlInto,
     hydrate: hydrateRenderedPreview,
     readHtml: readHtml,
     bindCloseOnce: bindCloseOnce,

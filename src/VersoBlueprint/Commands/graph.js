@@ -840,9 +840,10 @@
           {
             clearBody: function (body) { body.innerHTML = ""; },
             renderBody: function (body, html) {
-              body.innerHTML = html;
-              if (previewUtils && typeof previewUtils.hydrate === "function") {
-                previewUtils.hydrate(body);
+              if (previewUtils && typeof previewUtils.renderHtmlInto === "function") {
+                previewUtils.renderHtmlInto(body, html);
+              } else {
+                body.innerHTML = html;
               }
             },
             positionPanel: makeHtmlPanelPositioner(function () {
