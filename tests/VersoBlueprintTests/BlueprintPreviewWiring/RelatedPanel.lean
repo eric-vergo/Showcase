@@ -84,8 +84,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         hasAllSubstr relationJs [
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
           "previewUtils.previewMessageHtml({",
-          "item.addEventListener(\"mouseenter\"",
-          "item.addEventListener(\"focusin\""
+          "previewUtils.bindPreviewTriggers({",
+          "triggerSelector: \".bp_relation_chip\"",
+          "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
         ] &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",

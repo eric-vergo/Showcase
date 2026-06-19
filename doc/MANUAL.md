@@ -1096,13 +1096,16 @@ metadata. The cached fragment is presentation: it may display those facts, but
 the manifest is the data contract.
 
 Bundled-feature helper APIs are intentionally narrower. They are exported on
-`window.VersoBlueprint.render` so Blueprint's own clients can share panel
-positioning, close-button behavior, template binding, and hydrator registration
-without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
-`bindPreviewTriggers`, `createPreviewPanel`, `createPanelController`,
-`registerPreviewHydrator`, `previewMessageHtml`, `readPanelBehavior`,
-`showPanelContent`, and `setPreviewHeaderLink` should not be treated as stable
+`window.VersoBlueprint.render` so Blueprint's own clients can share runtime
+mechanics without duplicating them. They should not be treated as stable
 custom-client API unless they are promoted into the table above.
+
+| Helper family | Helpers | Bundled consumers |
+| --- | --- | --- |
+| Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers` | Summary previews, relation panels, graph node previews, and inline preview cards |
+| Panel shell and content | `createPreviewPanel`, `createPanelController`, `showPanelContent`, `setPreviewHeaderLink`, `previewMessageHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
+| Behavior and positioning | `readPanelBehavior`, `bindAnchoredPopover` | Graph preview controls, graph legend popovers, and graph options popovers |
+| Hydration hooks | `registerPreviewHydrator` | Bundled previews that need feature-specific post-render binding |
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:
