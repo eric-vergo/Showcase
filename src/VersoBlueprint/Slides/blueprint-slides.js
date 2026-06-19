@@ -1,5 +1,14 @@
 (function () {
-  if (window.bpSlideNodeRuntime) return;
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : (window.VersoBlueprint = {});
+  const slideRuntime =
+    namespace.slides && typeof namespace.slides === "object"
+      ? namespace.slides
+      : {};
+  if (slideRuntime.hydrate) return;
+  namespace.slides = slideRuntime;
 
   function trimSlashes(text, side) {
     let value = String(text || "");
@@ -19,9 +28,8 @@
       }
     }
     const runtimeBase =
-      window.bpSlideNodeRuntimeConfig &&
-      typeof window.bpSlideNodeRuntimeConfig.blueprintBaseUrl === "string"
-        ? window.bpSlideNodeRuntimeConfig.blueprintBaseUrl
+      typeof slideRuntime.blueprintBaseUrl === "string"
+        ? slideRuntime.blueprintBaseUrl
         : "";
     return runtimeBase.trim();
   }
@@ -29,8 +37,7 @@
   function rememberBlueprintBaseUrl(node) {
     const baseUrl = readBlueprintBaseUrl(node);
     if (!baseUrl) return "";
-    if (!window.bpSlideNodeRuntimeConfig) window.bpSlideNodeRuntimeConfig = {};
-    window.bpSlideNodeRuntimeConfig.blueprintBaseUrl = baseUrl;
+    slideRuntime.blueprintBaseUrl = baseUrl;
     return baseUrl;
   }
 
@@ -122,5 +129,5 @@
     }
   });
 
-  window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady };
+  slideRuntime.hydrate = hydrateWhenReady;
 })();

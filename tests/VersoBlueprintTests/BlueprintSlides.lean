@@ -126,7 +126,8 @@ private def writeSlidesPreviewDataFiles
   let js := Informal.Slides.blueprintSlidesJs
   hasAllSubstr js [
     "window.VersoBlueprint.onRenderReady(function (previewUtils) {",
-    "window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady }",
+    "namespace.slides = slideRuntime",
+    "slideRuntime.hydrate = hydrateWhenReady",
     "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"",
     "previewUtils.hydrate(node)",
     "data-bp-slide-href",
@@ -144,7 +145,9 @@ private def writeSlidesPreviewDataFiles
       "async function renderEntry(entry, node, key)",
       "function renderGroupChip(entry)",
       "function renderUsesChip(entries)",
-      "function renderCodeStatusChip(entry, count)"
+      "function renderCodeStatusChip(entry, count)",
+      "window.bpSlideNodeRuntime",
+      "window.bpSlideNodeRuntimeConfig"
     ]
 
 /-- info: true -/

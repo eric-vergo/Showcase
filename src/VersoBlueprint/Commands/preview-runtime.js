@@ -28,20 +28,6 @@
   }
 
   function previewDebug(eventName, payload) {
-    const entry = {
-      at: Date.now(),
-      event: eventName,
-      payload: payload || {}
-    };
-    try {
-      if (!Array.isArray(window.bpPreviewTrace)) {
-        window.bpPreviewTrace = [];
-      }
-      window.bpPreviewTrace.push(entry);
-      if (window.bpPreviewTrace.length > 200) {
-        window.bpPreviewTrace.splice(0, window.bpPreviewTrace.length - 200);
-      }
-    } catch (_err) {}
     if (!previewDebugEnabled()) return;
     try {
       console.log("[bp-preview]", eventName, payload || {});

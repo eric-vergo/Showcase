@@ -191,6 +191,8 @@ class TestPreviewRuntimeRegressions:
         used_by_wrap.wait_for()
         page.wait_for_timeout(250)
 
+        # This intentionally uses the low-level status API: the regression is
+        # about lazy cache fetch timing, not custom rendering.
         status = page.evaluate(
             blueprint_render_api_script("return api.readHtmlCacheStatus();")
         )
@@ -216,6 +218,8 @@ class TestPreviewRuntimeRegressions:
         page.route("**/-verso-data/blueprint-html-cache.json", legacy_array_cache)
         page.goto(f"{server}/Preview-Relationships/")
 
+        # Keep one direct cache-entry test so schema failures remain visible to
+        # advanced clients that opt into explicit cache control.
         status = page.evaluate(
             blueprint_render_api_script(
                 """
@@ -470,6 +474,7 @@ class TestPreviewRuntimeRegressions:
                     legacyGlobals: {
                         hasPreviewUtils: "bpPreviewUtils" in window,
                         hasPreviewHydrators: "bpPreviewHydrators" in window,
+                        hasPreviewTrace: "bpPreviewTrace" in window,
                         hasManifestStatus: "bpBlueprintManifestStatus" in window,
                         hasManifestMap: "bpBlueprintManifest" in window,
                         hasManifestPromise: "bpBlueprintManifestPromise" in window,
@@ -514,6 +519,7 @@ class TestPreviewRuntimeRegressions:
         assert rendered["legacyGlobals"] == {
             "hasPreviewUtils": False,
             "hasPreviewHydrators": False,
+            "hasPreviewTrace": False,
             "hasManifestStatus": False,
             "hasManifestMap": False,
             "hasManifestPromise": False,
