@@ -48,6 +48,15 @@ def hasNodeWith {Ref : Type} (g : Graph Ref) (label : Name) (p : GraphNode Ref �
   | some node => p node
   | none => false
 
+def hasGraphDataNodeWith (g : GraphData) (label : Name) (p : NodeData → Bool) : Bool :=
+  match g.nodes.find? (·.label == label) with
+  | some node => p node
+  | none => false
+
+def hasGraphDataEdge (g : GraphData) (source target : Name) (axes : Array EdgeAxis) : Bool :=
+  g.edges.any fun edge =>
+    edge.source == source && edge.target == target && edge.axes == axes
+
 def styleHasToken (style token : String) : Bool :=
   (style.splitOn ",").any (fun part => part.trimAscii.toString == token)
 

@@ -35,6 +35,7 @@ attach markup to preview-backed block entries, or to emit semantic-only
 def externalMarkupDomainName : Name := Name.mkSimple "Informal.Block.externalMarkup"
 def informalPreviewDomainName : Name := Name.mkSimple "Informal.Block.informalPreview"
 def informalGroupDomainName : Name := Name.mkSimple "Informal.Block.group"
+def graphDomainName : Name := Name.mkSimple "Informal.Block.graph"
 /- 
 Domain that stores anchors for rendered external declaration rows.
 
