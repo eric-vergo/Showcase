@@ -124,19 +124,31 @@ private def writeSlidesPreviewDataFiles
 #guard_msgs in
 #eval
   let js := Informal.Slides.blueprintSlidesJs
-  hasSubstr js "function bindRelationPanel(panel)" &&
-    hasSubstr js "function hydrate(root)" &&
-    hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
-    hasSubstr js "data-bp-slide-href" &&
-    !hasSubstr js "function openBlueprintHref(href)" &&
-    !hasSubstr js "function renderDocstrings(root)" &&
-    !hasSubstr js "function ensureLeanHover(target)" &&
-    !hasSubstr js "function scheduleSlidePreviewCleanup()" &&
-    !hasSubstr js "function bindSlideUsedByPanels" &&
-    !hasSubstr js "async function renderEntry(entry, node, key)" &&
-    !hasSubstr js "function renderGroupChip(entry)" &&
-    !hasSubstr js "function renderUsesChip(entries)" &&
-    !hasSubstr js "function renderCodeStatusChip(entry, count)"
+  hasAllSubstr js [
+    "window.VersoBlueprint.onRenderReady(function (previewUtils) {",
+    "namespace.slides = slideRuntime",
+    "slideRuntime.hydrate = hydrateWhenReady",
+    "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"",
+    "previewUtils.hydrate(node)",
+    "data-bp-slide-href",
+    "data-bp-slide-link"
+  ] &&
+    lacksAllSubstr js [
+      "function blueprintRender()",
+      "if (utils && typeof utils.hydrate === \"function\")",
+      "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")",
+      "function openBlueprintHref(href)",
+      "function renderDocstrings(root)",
+      "function ensureLeanHover(target)",
+      "function scheduleSlidePreviewCleanup()",
+      "function bindSlideUsedByPanels",
+      "async function renderEntry(entry, node, key)",
+      "function renderGroupChip(entry)",
+      "function renderUsesChip(entries)",
+      "function renderCodeStatusChip(entry, count)",
+      "window.bpSlideNodeRuntime",
+      "window.bpSlideNodeRuntimeConfig"
+    ]
 
 /-- info: true -/
 #guard_msgs in
@@ -282,7 +294,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
@@ -301,7 +313,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor slideMetadataPanelDoc
     let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
     let rendered := renderedHtml.asString
@@ -336,7 +348,7 @@ private def writeSlidesPreviewDataFiles
         entry.usedBy.size == 1 &&
           related.axes.contains Informal.PreviewManifest.RelationAxis.statement
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
@@ -364,7 +376,7 @@ private def writeSlidesPreviewDataFiles
       match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
-    let ctx := Informal.Slides.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
+    let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString

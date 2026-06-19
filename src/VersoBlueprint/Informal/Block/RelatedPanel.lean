@@ -124,7 +124,7 @@ def usedByPanelConfig (targetLabel? : Option Data.Label := none) : PanelConfig :
   panelTitle := fun n => s!"Used by {n}"
   panelMeta := "Reverse dependency previews"
   previewDefaultTitle := "Reverse dependency preview"
-  previewEmptyText := "Reverse dependency preview content is loaded from the Blueprint HTML cache."
+  previewEmptyText := "Reverse dependency preview content is loaded from the rendered-fragment cache."
 }
 
 /-- Standard forward-dependency panel presentation for one dependency scope. -/
@@ -145,7 +145,7 @@ private def usesPanelConfigForScope (sourceLabel : Data.Label) (scope : UsesScop
   previewDefaultTitle :=
     s!"{scope.titlecase} dependency preview"
   previewEmptyText :=
-    s!"{scope.titlecase} dependency preview content is loaded from the Blueprint HTML cache."
+    s!"{scope.titlecase} dependency preview content is loaded from the rendered-fragment cache."
 }
 
 /-- Standard forward-dependency panel presentation for statement dependencies. -/
@@ -207,7 +207,7 @@ def groupPanelConfig (groupLabel : Data.Label) (groupTitle : String) (declared :
     else
       "bp_relation_panel_meta bp_relation_chip_warn"
   previewDefaultTitle := "Group member preview"
-  previewEmptyText := "Group member preview content is loaded from the Blueprint HTML cache."
+  previewEmptyText := "Group member preview content is loaded from the rendered-fragment cache."
   chipClass := groupChipClass declared
   emptyChipClass := groupEmptyChipClass declared
 }

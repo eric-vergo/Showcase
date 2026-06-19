@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.blueprint_harness_utils import (
+    EMBEDDED_ASSET_OWNER_PATHS,
     ensure_embedded_asset_owner_outputs,
     rebuild_embedded_asset_owners,
     refresh_embedded_asset_owner_mtimes,
@@ -17,6 +18,42 @@ def _command_arg(command: list[str], option: str) -> str:
 
 
 class TestBlueprintHarnessUtils(unittest.TestCase):
+    def test_common_js_assets_are_owned_by_common_module(self) -> None:
+        for asset in (
+            "src/VersoBlueprint/Commands/open-target-details.js",
+            "src/VersoBlueprint/Commands/preview-ready.js",
+            "src/VersoBlueprint/Commands/preview-runtime.js",
+            "src/VersoBlueprint/Commands/inline-preview.js",
+        ):
+            self.assertIn(
+                (
+                    asset,
+                    "src/VersoBlueprint/Commands/Common.lean",
+                    "VersoBlueprint.Commands.Common",
+                ),
+                EMBEDDED_ASSET_OWNER_PATHS,
+            )
+
+    def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
+        for asset, owner, target in (
+            (
+                "src/VersoBlueprint/Commands/summary-preview.js",
+                "src/VersoBlueprint/Commands/Summary.lean",
+                "VersoBlueprint.Commands.Summary",
+            ),
+            (
+                "src/VersoBlueprint/Informal/Block/code-summary-preview.js",
+                "src/VersoBlueprint/Informal/Block/Assets.lean",
+                "VersoBlueprint.Informal.Block.Assets",
+            ),
+            (
+                "src/VersoBlueprint/Informal/Block/relation-panel.js",
+                "src/VersoBlueprint/Informal/Block/Assets.lean",
+                "VersoBlueprint.Informal.Block.Assets",
+            ),
+        ):
+            self.assertIn((asset, owner, target), EMBEDDED_ASSET_OWNER_PATHS)
+
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

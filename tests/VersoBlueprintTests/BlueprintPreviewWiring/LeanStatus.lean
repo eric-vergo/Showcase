@@ -16,7 +16,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanStatusChipDoc
-    let codeSummaryJs? := findExtraJsContaining? st "function bindCodeSummaryPreview(root)"
+    let codeSummaryJs? := findCodeSummaryPreviewJs? st
     pure (
       hasSubstr out "bp_code_link_status_proved" &&
       hasSubstr out "bp_code_link_status_warning" &&
@@ -35,9 +35,12 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasExtraCss st ".bp_code_summary_preview_panel" &&
       match codeSummaryJs? with
       | some codeSummaryJs =>
-        hasSubstr codeSummaryJs "previewUtils.bindTemplatePreview({" &&
-        hasSubstr codeSummaryJs "templateSelector: \"template.bp_code_summary_preview_tpl[data-bp-preview-id]\"" &&
-        hasSubstr codeSummaryJs "triggerSelector: \".bp_code_summary_preview_wrap_active[data-bp-preview-id]\"" &&
+        hasRenderReadyWiring codeSummaryJs "previewUtils" &&
+        hasTemplatePreviewBinding codeSummaryJs
+          "data-bp-code-summary-preview-bound"
+          ".bp_code_summary_preview_panel"
+          "template.bp_code_summary_preview_tpl[data-bp-preview-id]"
+          ".bp_code_summary_preview_wrap_active[data-bp-preview-id]" &&
         hasSubstr codeSummaryJs "titleAttr: \"data-bp-preview-title\"" &&
         hasSubstr codeSummaryJs "defaults: { mode: \"hover\", placement: \"anchored\" }"
       | none => false

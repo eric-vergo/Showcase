@@ -17,10 +17,9 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let summaryJs? := findExtraJsContaining? st "function bindSummaryPreview(root)"
-    let previewUtilsJs? := findExtraJsContaining? st "window.bpPreviewUtils = {"
-    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
-    let mathJs? := findExtraJsContaining? st "window.bpTexPreludeTable"
+    let summaryJs? := findSummaryPreviewJs? st
+    let inlineJs? := findInlinePreviewJs? st
+    let mathJs? := findMathPreludeJs? st
     pure (
       !hasSubstr out "class=\"bp_summary_preview_store\"" &&
       !hasSubstr out "class=\"bp_summary_preview_tpl\"" &&
@@ -36,40 +35,36 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
       !hasSubstr out "verso-tex-prelude" &&
-      match summaryJs?, previewUtilsJs?, inlineJs?, mathJs? with
-      | some summaryJs, some previewUtilsJs, some inlineJs, some mathJs =>
+      match summaryJs?, inlineJs?, mathJs? with
+      | some summaryJs, some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasSubstr summaryJs "previewUtils.bindTemplatePreview({" &&
+        hasRenderReadyWiring summaryJs "previewUtils" &&
+        hasTemplatePreviewBinding summaryJs
+          "data-bp-summary-preview-bound"
+          ".bp_summary_preview_panel"
+          "template.bp_summary_preview_tpl[data-bp-preview-label]"
+          ".bp_summary_preview_wrap_active[data-bp-preview-label]" &&
         hasSubstr summaryJs "allowHtmlCache: true" &&
-        hasSubstr summaryJs "templateSelector: \"template.bp_summary_preview_tpl[data-bp-preview-label]\"" &&
-        hasSubstr summaryJs "triggerSelector: \".bp_summary_preview_wrap_active[data-bp-preview-label]\"" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
-        hasSubstr previewUtilsJs "function positionAnchoredPanel(panel, anchor, margin, offset)" &&
-        hasSubstr previewUtilsJs "function shouldKeepOpen(nextTarget, trigger, panel)" &&
-        hasSubstr previewUtilsJs "function readPanelBehavior(panel, defaults)" &&
-        hasSubstr previewUtilsJs "function configureCloseButton(closeButton, onClose, behavior)" &&
-        !hasSubstr previewUtilsJs "function readBlueprintHtmlCacheEntryByLabel(label)" &&
-        hasSubstr previewUtilsJs "function statementPreviewKey(label)" &&
-        hasSubstr previewUtilsJs "function loadBlueprintHtmlCacheEntry(previewKey)" &&
-        hasSubstr previewUtilsJs "Blueprint HTML cache must be an object with an entries array" &&
-        hasSubstr previewUtilsJs "Blueprint HTML cache contains duplicate key " &&
-        hasSubstr previewUtilsJs "function hydratePreviewSubtree(root)" &&
-        hasSubstr previewUtilsJs "escapeHtml: escapeHtml" &&
-        hasSubstr previewUtilsJs "function setPreviewHeaderLink(labelNode, sourceNode)" &&
-        hasSubstr previewUtilsJs "data-bp-preview-header-label" &&
-        hasSubstr previewUtilsJs "window.setTimeout(function () {" &&
-        hasSubstr inlineJs "bp-inline-preview-child-panel" &&
-        hasSubstr inlineJs "function cancelChildHide()" &&
-        hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
-        hasSubstr inlineJs "previewUtils.setPreviewHeaderLink(headerLabel, trigger)" &&
-        hasSubstr inlineJs "function setPanelFooter(footerNode, trigger)" &&
-        hasSubstr inlineJs "data-bp-preview-footer-html" &&
-        hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
-        hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
-        !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
-        !hasSubstr inlineJs "ensureInlinePreviewStore" &&
-        !hasSubstr inlineJs "template.bp_inline_preview_tpl"
-      | _, _, _, _ => false
+        hasRenderReadyWiring inlineJs "previewUtils" &&
+        hasAllSubstr inlineJs [
+          "bp-inline-preview-child-panel",
+          "previewUtils.setPreviewHeaderLink(headerLabel, trigger)",
+          "data-bp-preview-footer-html",
+          "previewUtils.readPanelBehavior(null, { mode: mode, placement: placement })",
+          "previewUtils.resolvePreview(previewLookupKey)",
+          "previewUtils.renderHtmlInto(body, html)",
+          "previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10)"
+        ] &&
+        lacksAllSubstr inlineJs [
+          "typeof previewUtils.readPanelBehavior",
+          "typeof previewUtils.previewDebug",
+          "function onBlueprintRenderReady(fn)",
+          ".replaceAll(\"&\", \"&amp;\")",
+          "ensureInlinePreviewStore",
+          "template.bp_inline_preview_tpl"
+        ]
+      | _, _, _ => false
     )
 
 /-- info: true -/
@@ -77,7 +72,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls leanCodeLinkPreviewDoc
-    let inlineJs? := findExtraJsContaining? st "function bindInlinePreview()"
+    let inlineJs? := findInlinePreviewJs? st
     let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 1 &&
@@ -90,7 +85,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match inlineJs? with
       | some inlineJs =>
         hasSubstr inlineJs "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\"" &&
-        hasSubstr inlineJs "function fallbackInlinePreviewHtml(trigger, key, escapeHtml)"
+        hasSubstr inlineJs "data-bp-preview-fallback-label"
       | none => false
     )
 

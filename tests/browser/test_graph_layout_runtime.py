@@ -1,5 +1,7 @@
 from playwright.sync_api import Page, expect
 
+from support import blueprint_render_api_script
+
 
 def wait_for_graph(page: Page):
     page.wait_for_function(
@@ -308,34 +310,33 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-    def test_preview_utils_read_graph_preview_behavior(self, server: str, page: Page):
+    def test_render_api_read_graph_preview_behavior(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         assert page.evaluate(
-            """() => {
-                const utils = window.bpPreviewUtils;
+            blueprint_render_api_script(
+                """
                 if (
-                    !utils ||
-                    typeof utils.normalizePreviewMode !== "undefined" ||
-                    typeof utils.normalizePreviewPlacement !== "undefined" ||
-                    typeof utils.readPanelBehavior !== "function"
+                    typeof api.normalizePreviewMode !== "undefined" ||
+                    typeof api.normalizePreviewPlacement !== "undefined" ||
+                    typeof api.readPanelBehavior !== "function"
                 ) {
                     return false;
                 }
-                const defaultBehavior = utils.readPanelBehavior(null, {
+                const defaultBehavior = api.readPanelBehavior(null, {
                     mode: "pinned",
                     placement: "anchored",
                 });
-                const fallbackBehavior = utils.readPanelBehavior(null, {
+                const fallbackBehavior = api.readPanelBehavior(null, {
                     mode: "invalid",
                     placement: "invalid",
                 });
                 const panel = document.createElement("div");
                 panel.setAttribute("data-bp-preview-mode", "hover");
                 panel.setAttribute("data-bp-preview-placement", "docked");
-                const panelBehavior = utils.readPanelBehavior(panel, {
+                const panelBehavior = api.readPanelBehavior(panel, {
                     mode: "pinned",
                     placement: "anchored",
                 });
@@ -351,7 +352,8 @@ class TestGraphLayoutRuntime:
                     panelBehavior.isHover &&
                     panelBehavior.isDocked
                 );
-            }"""
+                """
+            )
         )
 
     def test_graph_preview_can_switch_to_hover_autohide(self, server: str, page: Page):

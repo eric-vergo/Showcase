@@ -20,7 +20,7 @@ open Verso Doc Elab
   inferInstance
 
 @[reducible] private def blueprintSlidesGenreHtml
-    (renderContext : Informal.Slides.RenderContext) :
+    (renderContext : Informal.Graft.RenderContext) :
     Verso.Doc.Html.GenreHtml VersoSlides.Slides IO :=
   { defaultSlidesGenreHtml with
     block := fun inlineHtml blockHtml container contents => do
@@ -49,7 +49,7 @@ private def slidesMainWithBlueprintRenderer
   let logError (msg : String) : IO Unit := do
     hasError.set true
     IO.eprintln msg
-  let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
+  let renderContext := Informal.Graft.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
   let (doc, traverseState) ←
     (VersoSlides.Slides.traverse doc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides)) () {}
@@ -89,7 +89,7 @@ private def slidesMainWithBlueprintRenderer
 Generate a slide deck with Blueprint preview-node assets enabled.
 
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
-rendered HTML cache are read during slide generation so `{blueprint_node}`
+rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
 deck's `-verso-data/` directory after the deck is written.
 -/

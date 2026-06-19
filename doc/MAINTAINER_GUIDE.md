@@ -134,6 +134,36 @@ interaction behavior:
 uv run --project tests/browser --extra test python -m pytest tests/browser -q --browser chromium
 ```
 
+Browser tests that need the public Blueprint render API should use
+`blueprint_render_api_script` or `wait_for_blueprint_render_api` from
+`tests/browser/support.py`. Those helpers synchronize through
+`window.VersoBlueprint.onRenderReady`, which keeps browser fixtures aligned with
+the runtime readiness contract instead of reading `window.VersoBlueprint.render`
+directly.
+
+### Embedded Browser Assets
+
+Several browser assets are embedded into Lean modules with `include_str`, for
+example the preview runtime, graph, summary, bibliography, block, slide, and
+math assets. A JS/CSS-only edit can leave a focused Lean check looking at a
+stale owner module if you run that check directly.
+
+The artifact-generation and validation scripts already refresh the embedded
+asset owner modules before generating reference or test Blueprint output. After
+editing embedded browser assets, prefer one of these paths before relying on
+generated HTML or browser tests:
+
+```bash
+./scripts/generate-test-blueprints.sh <slug>
+./scripts/generate-reference-blueprints.sh
+./scripts/validate-branch.sh
+```
+
+The tracked owner inventory lives in `EMBEDDED_ASSET_OWNER_PATHS` in
+`scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
+asset, add it to that inventory and cover the mapping in the harness tests so
+artifact generation rebuilds the right Lean owner.
+
 ### Generate Review Artifacts
 
 For patch review artifacts without the full validation stack, run:
@@ -767,8 +797,8 @@ validation.
 
 ## Preview Data Artifacts
 
-Each generated Blueprint site includes semantic preview data and rendered HTML
-cache files at:
+Each generated Blueprint site includes semantic preview data and the
+rendered-fragment cache at:
 
 - `html-multi/-verso-data/blueprint-manifest.json`
 - `html-multi/-verso-data/blueprint-html-cache.json`
