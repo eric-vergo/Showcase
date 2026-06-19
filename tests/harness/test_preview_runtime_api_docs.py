@@ -112,6 +112,12 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertEqual(EXPECTED_BUNDLED_HELPERS, helper_methods)
 
+    def test_hydrator_registry_stays_runtime_local(self) -> None:
+        runtime = _blueprint_js_source()
+
+        self.assertIn("const previewHydrators = new Map();", runtime)
+        self.assertNotIn("window.bpPreviewHydrators", runtime)
+
     def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
         direct_runtime_reads: list[str] = []
         missing_ready_callbacks: list[str] = []

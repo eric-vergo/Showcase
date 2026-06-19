@@ -770,25 +770,33 @@ lake env lean --run <GeneratorMain>.lean --help
 - `--help` includes these manifest-related flags alongside the usual rendering
   options
 
-## Blueprint Grafts in Manual and Slides
+## Reusing Blueprint Nodes and Previews
 
-`VersoBlueprint` adds a `{blueprint_node ...}` block command that grafts an
-existing Blueprint node into another place in the document. The same command is
-also available in Verso Slides decks through `VersoBlueprint.Slides`.
+Blueprint has one reusable preview data model:
 
-In Manual documents, grafts use the current traversal state and render through
-the same manifest-backed Blueprint block shell used by generated preview data.
-In Slides decks, grafts render from the semantic manifest plus
-rendered-fragment cache emitted by a Blueprint site. The slide deck generator
-reads those files and writes the Blueprint node shell into the generated slide
-HTML; it does not re-traverse the Blueprint source document itself.
+- `blueprint-manifest.json` describes each preview target: label, facet, title,
+  dependencies, group data, ownership metadata, links, and associated Lean-code
+  preview keys.
+- `blueprint-html-cache.json` stores the rendered HTML bodies for those preview
+  keys. Treat these bodies as opaque HTML fragments; read semantic facts from
+  the manifest.
 
-Use Manual grafts for same-document reuse while writing an overview,
-introduction, or roadmap page. Use Slides grafts when the deck is generated
-next to an already-rendered Blueprint site and should feature exact entries from
-that site.
+Three common workflows consume that same model:
 
-Manual source:
+1. A Manual page can graft a node from the same document while traversal state
+   is still available.
+2. A Slides deck or generated audit page can graft nodes from a manifest/cache
+   pair emitted by a Blueprint site.
+3. Browser-side UI can use `window.VersoBlueprint.onRenderReady` to resolve and
+   insert previews after the page loads.
+
+### Grafting a Node
+
+Use `{blueprint_node "label"}` when an overview, introduction, roadmap, or slide
+needs to feature an existing Blueprint entry without rewriting it.
+
+In Manual documents, the command resolves the target from the current traversal
+state:
 
 ```lean
 import VersoBlueprint
@@ -807,7 +815,9 @@ The statement to feature.
 :::::::
 ```
 
-Slide source:
+In Slides decks, the same source command is available after importing
+`VersoBlueprint.Slides`, but the rendered node comes from the manifest/cache
+files passed to the deck generator:
 
 ```lean
 import VersoBlueprint.Slides
@@ -833,6 +843,11 @@ are:
 - `(siteBase := "...")`, for Slides decks whose manifest links should open
   against a Blueprint site hosted next to, or below, the deck
 
+Presentation options such as `-header` and `+compact` do not create new nodes,
+dependencies, groups, or manifest entries.
+
+### Side-by-side Grafts
+
 Use `blueprint_side_by_side` to place grafts next to each other. Add `+boxed`
 when each side should be visually framed:
 
@@ -848,10 +863,39 @@ The side-by-side directive is presentation-only. Each child remains an ordinary
 `{blueprint_node ...}` command with its own label and options; the directive does
 not create dependencies, groups, or new manifest entries.
 
-### API for Custom Graft Consumers
+### Slides Generator Setup
 
-The graft commands are built on the same small data boundary that other
-interfaces can reuse:
+A Slides deck that contains `{blueprint_node}` must use the Blueprint slide
+wrapper. The wrapper adds the Blueprint slide CSS/JS assets, reads the manifest
+and rendered-fragment cache, renders node grafts into static slide HTML, and
+copies preview data into the deck output when requested.
+
+```lean
+import VersoBlueprint.Slides
+import MyTalk.Deck
+
+def main : IO UInt32 :=
+  Informal.Slides.slidesMainWithBlueprintPreviews
+    { outputDir := "_out/slides" }
+    (previewManifest? := some "_out/site/html-multi/-verso-data/blueprint-manifest.json")
+    (%doc MyTalk.Deck.deck)
+```
+
+When `previewHtmlCache?` is omitted, the wrapper looks for
+`blueprint-html-cache.json` next to the provided manifest. Pass
+`previewHtmlCache?` explicitly if the cache lives elsewhere.
+
+The slide generator also seeds the deck's Verso hover table from the cache, so
+cached Lean fragments keep the usual `data-verso-hover` markup instead of
+embedding duplicate hover payloads into each code token.
+
+### Generator-side Consumers
+
+Custom generators should follow the same manifest/cache path as Slides. This is
+the right layer for audit reports, dashboards, comparison pages, and other
+interfaces that create their own wrappers around Blueprint nodes.
+
+The useful data boundary is small:
 
 - `Informal.Graft.BlueprintNodeConfig` is the command-level selection shape. It
   records the label plus options such as `facet`, `displayLabel`, `compact`,
@@ -873,15 +917,6 @@ interfaces can reuse:
   custom consumers can ignore both helpers and arrange nodes in their own UI.
 - Slide generators and other generated consumers should import and use the
   `Informal.Graft` node/config names directly.
-
-For server-side or generator-side renderers, prefer the manifest plus
-rendered-fragment cache path over ad hoc browser scans. Read or build the
-semantic `Informal.PreviewManifest.File` and rendered-fragment
-`Informal.PreviewManifest.HtmlCache.File`, then look up the same normalized node
-key with `PreviewManifest.File.findEntry?` and
-`PreviewManifest.HtmlCache.File.findHtml?`. Treat the manifest entry as the
-source of semantic facts and the cached fragment as an opaque rendered body.
-Code panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `VersoBlueprint.Graft.Render` packages that lookup-and-render path for custom
 interfaces. A consumer such as an audit view can provide its own wrapper
@@ -911,6 +946,10 @@ def renderAuditNode
     node
 ```
 
+Use `PreviewManifest.File.findEntry?` and
+`PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. Code
+panels can reuse `HtmlCache.File.codeHtmlBodies`.
+
 `renderNodeFromManifestCache` has three diagnostic branches that custom
 interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:
 missing manifest, missing manifest entry for the normalized node key, and
@@ -934,11 +973,16 @@ interface, dashboard, or slide generator use the same semantic entry and opaque
 rendered fragment while placing the rendered nodes in its own side-by-side,
 tabbed, or comparison wrapper.
 
+### Browser-side Consumers
+
 Browser-side custom interfaces should start through
 `window.VersoBlueprint.onRenderReady`. The callback receives the shared render
 API installed by the standard Blueprint preview/runtime asset. It loads the
-semantic manifest and rendered-fragment cache from the page's `-verso-data/`
-directory, keeps load status for diagnostics, and hydrates inserted fragments:
+manifest and rendered-fragment cache from the page's `-verso-data/` directory,
+keeps load status for diagnostics, and hydrates inserted fragments.
+
+Use `renderPreviewInto` when the client just needs to place a preview body into
+the page:
 
 ```javascript
 window.VersoBlueprint.onRenderReady(async function (api) {
@@ -950,6 +994,28 @@ window.VersoBlueprint.onRenderReady(async function (api) {
   if (result.ok) {
     console.log(result.manifestEntry.title);
   }
+});
+```
+
+Use `resolvePreview` when the client needs semantic data before deciding how to
+display the preview:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const key = api.previewKey("addition_right_identity", "statement");
+  const result = await api.resolvePreview(key);
+  if (!result.ok) return;
+
+  const row = document.createElement("section");
+  row.className = "audit-preview-row";
+  row.dataset.previewKey = result.key;
+  row.innerHTML =
+    "<h3></h3><div class=\"audit-preview-body\"></div>";
+  row.querySelector("h3").textContent = result.manifestEntry.title;
+  const body = row.querySelector(".audit-preview-body");
+  body.innerHTML = result.html;
+  api.hydrate(body);
+  document.querySelector("#audit-previews").appendChild(row);
 });
 ```
 
@@ -1016,31 +1082,6 @@ adapters, or comparison views. Bundled helpers can still exist for Blueprint's
 own JavaScript, but they should stay outside the public table until their
 argument shape and compatibility expectations are ready to support those
 clients.
-
-Use the Blueprint slide wrapper in the deck generator:
-
-```lean
-import VersoBlueprint.Slides
-import MyTalk.Deck
-
-def main : IO UInt32 :=
-  Informal.Slides.slidesMainWithBlueprintPreviews
-    { outputDir := "_out/slides" }
-    (previewManifest? := some "_out/site/html-multi/-verso-data/blueprint-manifest.json")
-    (%doc MyTalk.Deck.deck)
-```
-
-When `previewHtmlCache?` is omitted, the wrapper looks for
-`blueprint-html-cache.json` next to the provided manifest. Pass
-`previewHtmlCache?` explicitly if the cache lives elsewhere.
-
-This wrapper adds the Blueprint slide CSS/JS assets, renders `{blueprint_node}`
-blocks into static slide HTML from the provided manifest/cache pair, writes the
-slide interaction JavaScript file, and optionally copies both files to the deck
-output under `-verso-data/` so related-entry and Lean-code hover previews can
-load their bodies. The slide generator also seeds the deck's Verso hover table
-from the cache, so cached Lean fragments keep the usual `data-verso-hover`
-markup instead of embedding duplicate hover payloads into each code token.
 
 ### Troubleshooting Grafts
 

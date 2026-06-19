@@ -469,6 +469,7 @@ class TestPreviewRuntimeRegressions:
                     },
                     legacyGlobals: {
                         hasPreviewUtils: "bpPreviewUtils" in window,
+                        hasPreviewHydrators: "bpPreviewHydrators" in window,
                         hasManifestStatus: "bpBlueprintManifestStatus" in window,
                         hasManifestMap: "bpBlueprintManifest" in window,
                         hasManifestPromise: "bpBlueprintManifestPromise" in window,
@@ -512,6 +513,7 @@ class TestPreviewRuntimeRegressions:
         }
         assert rendered["legacyGlobals"] == {
             "hasPreviewUtils": False,
+            "hasPreviewHydrators": False,
             "hasManifestStatus": False,
             "hasManifestMap": False,
             "hasManifestPromise": False,

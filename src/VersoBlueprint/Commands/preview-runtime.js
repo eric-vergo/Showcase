@@ -1,6 +1,8 @@
 (function () {
   if (window.VersoBlueprint && window.VersoBlueprint.render) return;
 
+  const previewHydrators = new Map();
+
   // Debug and local-template utilities.
 
   function previewDebugEnabled() {
@@ -801,19 +803,12 @@
   function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
     if (typeof fn !== "function") return;
-    let registry = window.bpPreviewHydrators;
-    if (!(registry instanceof Map)) {
-      registry = new Map();
-      window.bpPreviewHydrators = registry;
-    }
-    registry.set(name, fn);
+    previewHydrators.set(name, fn);
   }
 
   function runPreviewHydrators(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
-    const registry = window.bpPreviewHydrators;
-    if (!(registry instanceof Map)) return;
-    registry.forEach(function (fn) {
+    previewHydrators.forEach(function (fn) {
       if (typeof fn !== "function") return;
       try {
         fn(root);

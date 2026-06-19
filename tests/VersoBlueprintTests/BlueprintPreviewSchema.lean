@@ -84,7 +84,7 @@ open Informal.PreviewManifest
         labelDesc? == some "Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label." &&
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
-        leanCodePreviewKeysDesc? == some "HTML-cache keys for Lean declaration previews associated with this entry." &&
+        leanCodePreviewKeysDesc? == some "Rendered-fragment cache keys for Lean declaration previews associated with this entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         entryKindText.contains "externalMarkup" &&
