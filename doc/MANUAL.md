@@ -1102,10 +1102,10 @@ custom-client API unless they are promoted into the table above.
 
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
-| Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers` | Summary previews, relation panels, graph node previews, and inline preview cards |
-| Panel shell and content | `createPreviewPanel`, `createPanelController`, `showPanelContent`, `setPreviewHeaderLink`, `previewMessageHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
-| Behavior and positioning | `readPanelBehavior`, `bindAnchoredPopover`, `bindPanelRepositioner` | Graph preview controls, graph legend/options popovers, inline preview panels, and shared resize/scroll repositioning |
-| Hydration hooks | `registerPreviewHydrator` | Bundled previews that need feature-specific post-render binding |
+| Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `collectPreviewTemplates` | Summary previews, relation panels, graph node previews, and inline preview cards |
+| Panel shell and content | `createPreviewPanel`, `createPanelController`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
+| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `configureCloseButton`, `pointerWithinPanel` | Graph preview controls, graph legend/options popovers, relation panels, inline preview panels, Escape close, outside-click close, and shared resize/scroll repositioning |
+| Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:

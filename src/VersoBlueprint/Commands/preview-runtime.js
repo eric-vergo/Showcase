@@ -762,6 +762,96 @@
     });
   }
 
+  function bindDismissHandlers(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const root = readElementOption(opts, "root", null);
+    const trigger = readElementOption(opts, "trigger", null);
+    const panel = readElementOption(opts, "panel", null);
+    const closeButton = readElementOption(opts, "closeButton", null);
+    const owner =
+      opts.owner instanceof Element
+        ? opts.owner
+        : (trigger instanceof Element ? trigger : root);
+    const boundAttr = readStringOption(opts, "boundAttr", "data-bp-dismiss-bound");
+    const outsideEvent = readStringOption(opts, "outsideEvent", "click");
+    const open = readFunctionOption(opts, "open", function () {});
+    const close = readFunctionOption(opts, "close", function () {});
+    const isOpen = readFunctionOption(opts, "isOpen", function () {
+      return panel instanceof Element ? !panel.hidden : true;
+    });
+    const toggle = readFunctionOption(opts, "toggle", function () {
+      if (isOpen()) {
+        close();
+      } else {
+        open();
+      }
+    });
+    const bindTrigger = opts.bindTrigger !== false && trigger instanceof Element;
+    const bindOutside = opts.bindOutside !== false && root instanceof Element;
+    const bindEscape = opts.bindEscape === true;
+    const stopPanelClick = opts.stopPanelClick === true;
+    const preventTriggerDefault = opts.preventTriggerDefault !== false;
+    const stopTriggerClick = opts.stopTriggerClick !== false;
+    const preventCloseDefault = opts.preventCloseDefault !== false;
+    const stopCloseClick = opts.stopCloseClick !== false;
+
+    const controller = {
+      root: root,
+      trigger: trigger,
+      panel: panel,
+      closeButton: closeButton,
+      isOpen: isOpen,
+      open: open,
+      close: close,
+      toggle: toggle
+    };
+
+    if (!(owner instanceof Element)) return controller;
+    if (owner.getAttribute(boundAttr) === "1") return controller;
+    owner.setAttribute(boundAttr, "1");
+
+    if (bindTrigger) {
+      trigger.addEventListener("click", function (ev) {
+        if (preventTriggerDefault) ev.preventDefault();
+        if (stopTriggerClick) ev.stopPropagation();
+        toggle(ev);
+      });
+    }
+    if (closeButton instanceof Element) {
+      closeButton.addEventListener("click", function (ev) {
+        if (preventCloseDefault) ev.preventDefault();
+        if (stopCloseClick) ev.stopPropagation();
+        close(ev);
+      });
+    }
+    if (stopPanelClick && panel instanceof Element) {
+      panel.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+      });
+    }
+    if (bindOutside) {
+      document.addEventListener(outsideEvent, function (ev) {
+        if (!isOpen()) return;
+        const target = ev.target;
+        if (!(target instanceof Node)) {
+          close(ev);
+          return;
+        }
+        if (root.contains(target)) return;
+        close(ev);
+      });
+    }
+    if (bindEscape) {
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Escape") return;
+        if (!isOpen()) return;
+        close(ev);
+      });
+    }
+
+    return controller;
+  }
+
   function bindAnchoredPopover(options) {
     const opts = options && typeof options === "object" ? options : {};
     const root = readElementOption(opts, "root", null);
@@ -784,6 +874,11 @@
     }
 
     const controller = {
+      root: root,
+      trigger: trigger,
+      panel: panel,
+      closeButton: closeButton,
+      isOpen: function () { return !panel.hidden; },
       open: function () { setOpen(true); },
       close: function () { setOpen(false); },
       toggle: function () { setOpen(panel.hidden); },
@@ -803,25 +898,17 @@
     }
 
     setOpen(false);
-    if (trigger.getAttribute(boundAttr) === "1") {
-      return controller;
-    }
-    trigger.setAttribute(boundAttr, "1");
-
-    trigger.addEventListener("click", function () {
-      controller.toggle();
-    });
-    if (closeButton) {
-      closeButton.addEventListener("click", function () {
-        controller.close();
-      });
-    }
-    document.addEventListener("pointerdown", function (ev) {
-      if (panel.hidden) return;
-      const target = ev.target;
-      if (!(target instanceof Node)) return;
-      if (root.contains(target)) return;
-      controller.close();
+    bindDismissHandlers({
+      owner: trigger,
+      root: root,
+      trigger: trigger,
+      panel: panel,
+      close: controller.close,
+      closeButton: closeButton,
+      isOpen: controller.isOpen,
+      toggle: controller.toggle,
+      boundAttr: boundAttr,
+      outsideEvent: "pointerdown"
     });
 
     return controller;
@@ -1724,6 +1811,7 @@
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
     bindAnchoredPopover: bindAnchoredPopover,
+    bindDismissHandlers: bindDismissHandlers,
     bindPanelRepositioner: bindPanelRepositioner,
     bindPreviewTriggers: bindPreviewTriggers,
     bindTemplatePreviewRoots: bindTemplatePreviewRoots

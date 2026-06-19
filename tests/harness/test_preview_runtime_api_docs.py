@@ -9,6 +9,7 @@ from tests.preview_runtime_api import (
     blueprint_js_files,
     blueprint_js_source,
     js_object_methods,
+    manual_bundled_helper_methods,
     manual_stable_api_methods,
 )
 
@@ -43,6 +44,15 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(documented_methods & helper_methods)
+
+    def test_manual_bundled_helper_table_matches_runtime_source(self) -> None:
+        runtime = blueprint_js_source()
+        manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
+
+        helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
+        documented_methods = manual_bundled_helper_methods(manual)
+
+        self.assertEqual(documented_methods, helper_methods)
 
     def test_runtime_api_tiers_remain_disjoint(self) -> None:
         runtime = blueprint_js_source()

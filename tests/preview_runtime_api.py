@@ -57,3 +57,12 @@ def manual_stable_api_methods(source: str) -> set[str]:
     end = source.index(end_marker, start)
     section = source[start:end]
     return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", section))
+
+
+def manual_bundled_helper_methods(source: str) -> set[str]:
+    start_marker = "| Helper family | Helpers | Bundled consumers |"
+    end_marker = "For new custom interfaces"
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    section = source[start:end]
+    return set(re.findall(r"`([A-Za-z][A-Za-z0-9_]*)`", section))
