@@ -165,7 +165,7 @@
         hide: closeWrap,
         getActiveTrigger: function () { return chip; },
         shouldKeepOpen: function (_trigger, ev) {
-          return previewUtils.shouldKeepOpen(ev && ev.relatedTarget, wrap, surface.panel);
+          return surface.shouldKeepOpen(ev && ev.relatedTarget, wrap);
         },
         onPanelEnter: function () { openWrap(); },
         bindWindow: false

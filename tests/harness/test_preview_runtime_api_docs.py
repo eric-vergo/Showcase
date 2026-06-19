@@ -20,9 +20,14 @@ INTERNAL_ONLY_HELPERS = {
     "bindHoverablePanelLifetime",
     "bindPanelRepositioner",
     "bindTemplatePreview",
+    "pointerWithinPanel",
+    "positionAnchoredPanel",
     "readHtml",
     "readBlueprintManifestEntry",
     "readBlueprintHtmlCacheEntry",
+    "renderHtmlInto",
+    "resetPanelPosition",
+    "shouldKeepOpen",
 }
 
 

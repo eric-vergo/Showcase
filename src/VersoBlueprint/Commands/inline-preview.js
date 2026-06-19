@@ -351,7 +351,7 @@
         return true;
       }
       if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return true;
-      if (previewUtils.pointerWithinPanel(panel, ev)) return true;
+      if (mainSurface.pointerWithin(ev)) return true;
       if (panel.matches(":hover") || panel.matches(":focus-within")) return true;
       previewDebug("inline.panel.leave", {
         activePreviewKey: activePreviewKey,
@@ -369,17 +369,17 @@
     }
 
     function childPanelLeaveHandled(_panel, ev) {
-      return previewUtils.pointerWithinPanel(childPanel, ev);
+      return childSurface.pointerWithin(ev);
     }
 
     function repositionPanels() {
       if (behavior.isAnchored && activeTrigger && !panel.hidden) {
-        previewUtils.positionAnchoredPanel(panel, activeTrigger, 12, 10);
+        mainSurface.position(activeTrigger, behavior);
       } else if (behavior.isDocked && activeHost && !panel.hidden) {
         positionDockedPanel(activeHost);
       }
       if (childActiveTrigger && !childPanel.hidden) {
-        previewUtils.positionAnchoredPanel(childPanel, childActiveTrigger, 12, 10);
+        childSurface.position(childActiveTrigger, childBehavior);
       }
     }
 

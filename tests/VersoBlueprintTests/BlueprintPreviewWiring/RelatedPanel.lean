@@ -94,6 +94,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
           "previewUtils.readHtmlCacheStatus()",
           "previewUtils.bindDismissHandlers({",
+          "previewUtils.shouldKeepOpen(",
           "function previewMessageHtml(previewUtils",
           "fallbackTemplates"
         ]

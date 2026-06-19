@@ -121,6 +121,9 @@ Base statement for graph preview mode option coverage.
         !hasSubstr graphJs "previewUtils.bindPreviewTriggers({" &&
         !hasSubstr graphJs "previewUtils.bindDismissHandlers({" &&
         !hasSubstr graphJs "previewUtils.bindPanelRepositioner({" &&
+        !hasSubstr graphJs "previewUtils.renderHtmlInto(" &&
+        !hasSubstr graphJs "previewUtils.positionAnchoredPanel(" &&
+        !hasSubstr graphJs "previewUtils.resetPanelPosition(" &&
         hasAllSubstr graphJs [
           ".bp_graph_preview_mode_select",
           ".bp_graph_preview_placement_select",

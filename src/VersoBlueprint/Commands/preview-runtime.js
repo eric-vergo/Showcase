@@ -1255,6 +1255,12 @@
       hide: function () {
         surface.hideContent();
       },
+      pointerWithin: function (ev) {
+        return pointerWithinPanel(panel, ev);
+      },
+      shouldKeepOpen: function (nextTarget, trigger) {
+        return shouldKeepOpen(nextTarget, trigger, panel);
+      },
       show: function (heading, payload, anchor) {
         const content = {
           heading: typeof heading === "string" ? heading : "",
@@ -1966,7 +1972,6 @@
 
   const previewContentHelpers = {
     escapeHtml: escapeHtml,
-    renderHtmlInto: renderHtmlInto,
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
     createPreviewSurface: createPreviewSurface
@@ -1976,10 +1981,6 @@
     readPanelBehavior: readPanelBehavior,
     bindAnchoredPopover: bindAnchoredPopover,
     hidePreviewSurfaces: hidePreviewSurfaces,
-    positionAnchoredPanel: positionAnchoredPanel,
-    shouldKeepOpen: shouldKeepOpen,
-    resetPanelPosition: resetPanelPosition,
-    pointerWithinPanel: pointerWithinPanel
   };
 
   const previewHydrationHelpers = {
@@ -2010,12 +2011,7 @@
   const bundledFeatureRenderHelpers = {
     collectPreviewTemplates: previewTemplateHelpers.collectPreviewTemplates,
     escapeHtml: previewContentHelpers.escapeHtml,
-    renderHtmlInto: previewContentHelpers.renderHtmlInto,
-    positionAnchoredPanel: previewLifecycleHelpers.positionAnchoredPanel,
-    shouldKeepOpen: previewLifecycleHelpers.shouldKeepOpen,
     readPanelBehavior: previewLifecycleHelpers.readPanelBehavior,
-    resetPanelPosition: previewLifecycleHelpers.resetPanelPosition,
-    pointerWithinPanel: previewLifecycleHelpers.pointerWithinPanel,
     createPreviewSurface: previewContentHelpers.createPreviewSurface,
     registerPreviewHydrator: previewHydrationHelpers.registerPreviewHydrator,
     previewDebug: previewHydrationHelpers.previewDebug,
