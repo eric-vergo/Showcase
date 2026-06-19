@@ -16,7 +16,9 @@ from tests.preview_runtime_api import (
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
+    "bindDismissHandlers",
     "bindHoverablePanelLifetime",
+    "bindPanelRepositioner",
     "bindTemplatePreview",
     "readHtml",
     "readBlueprintManifestEntry",
