@@ -10,6 +10,9 @@
       },
       "targets": [
         {
+          "release": "v4.30.0"
+        },
+        {
           "release": "v4.31.0",
           "publish_reference": true
         }
@@ -48,7 +51,8 @@
       "targets": [
         {
           "release": "v4.30.0",
-          "ref": "516bab06c7f65aa60e265e56edc42acf75b51cf9"
+          "ref": "516bab06c7f65aa60e265e56edc42acf75b51cf9",
+          "publish_reference": true
         }
       ],
       "build_command": ["bash", "scripts/ci-reference-build.sh"],
@@ -66,7 +70,8 @@
       "targets": [
         {
           "release": "v4.31.0",
-          "ref": "68c0c0bc1a3a668e6c5d72e53085821ee5bc474e"
+          "ref": "68c0c0bc1a3a668e6c5d72e53085821ee5bc474e",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "FLTBlueprint"],
