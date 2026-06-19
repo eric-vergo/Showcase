@@ -58,7 +58,7 @@
     const previewDebugLabel = previewUtils.previewDebugLabel;
 
     function makeBehavior(mode, placement) {
-      return previewUtils.readPanelBehavior(null, { mode: mode, placement: placement });
+      return { mode: mode, placement: placement };
     }
 
     const mainSurface = previewUtils.createPreviewSurface({
@@ -91,7 +91,7 @@
     const panel = mainSurface.panel;
     const childPanel = childSurface.panel;
 
-    let behavior = makeBehavior("hover", "anchored");
+    let behavior = mainSurface.setBehavior(makeBehavior("hover", "anchored"));
     let activeTrigger = null;
     let activeHost = null;
     let activePreviewKey = "";
@@ -102,7 +102,7 @@
     let childShowRequestToken = 0;
     let mainLifecycle = null;
     let childLifecycle = null;
-    const childBehavior = makeBehavior("hover", "anchored");
+    const childBehavior = childSurface.setBehavior(makeBehavior("hover", "anchored"));
 
     function clearPanelSizeLock() {
       panel.style.width = "";
@@ -167,14 +167,13 @@
     }
 
     function applyBehavior(nextBehavior, hostInfo) {
-      behavior = nextBehavior || makeBehavior("hover", "anchored");
+      behavior = mainSurface.setBehavior(nextBehavior || makeBehavior("hover", "anchored"));
       activeHost = hostInfo || null;
       if (activeHost && activeHost.kind) {
         panel.setAttribute("data-bp-inline-host", activeHost.kind);
       } else {
         panel.removeAttribute("data-bp-inline-host");
       }
-      mainSurface.setBehavior(behavior);
     }
 
     function triggerInsideInlinePanel(trigger) {
@@ -384,7 +383,6 @@
     }
 
     applyBehavior(behavior, null);
-    childSurface.setBehavior(childBehavior);
     mainLifecycle = mainSurface.bindTriggers({
       triggerRoot: document,
       triggerSelector: triggerSelector,

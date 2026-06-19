@@ -25,6 +25,7 @@ INTERNAL_ONLY_HELPERS = {
     "pointerWithinPanel",
     "positionAnchoredPanel",
     "readHtml",
+    "readPanelBehavior",
     "readBlueprintManifestEntry",
     "readBlueprintHtmlCacheEntry",
     "renderHtmlInto",

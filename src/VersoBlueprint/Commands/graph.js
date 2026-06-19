@@ -38,13 +38,6 @@
     return true;
   }
 
-  function previewBehaviorForMode(previewUtils, mode, placement) {
-    return previewUtils.readPanelBehavior(null, {
-      mode: mode,
-      placement: placement
-    });
-  }
-
   function normalizeGraphOptions(rawOptions) {
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
@@ -60,6 +53,19 @@
   function graphOptionsKey(options) {
     const normalized = normalizeGraphOptions(options);
     return normalized.direction + "|" + graphPackAttr(normalized.pack);
+  }
+
+  function readPreviewBehaviorDefaults(panel, fallbackMode, fallbackPlacement) {
+    if (!(panel instanceof Element)) {
+      return {
+        mode: fallbackMode,
+        placement: fallbackPlacement
+      };
+    }
+    return {
+      mode: panel.getAttribute("data-bp-preview-mode") || fallbackMode,
+      placement: panel.getAttribute("data-bp-preview-placement") || fallbackPlacement
+    };
   }
 
   function readGraphCanvasFlowBottom(graphRoot) {
@@ -561,8 +567,7 @@
         const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
         const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
-        const previewPanelBehavior =
-          previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
+        const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
         let previewController = null;
         previewController = previewUtils.createPreviewSurface({
           panel: previewPanelNode,
@@ -591,17 +596,21 @@
         };
         const setPreviewBehavior = function (nextMode, nextPlacement, options) {
           const opts = options && typeof options === "object" ? options : {};
-          const behavior = previewBehaviorForMode(previewUtils, nextMode, nextPlacement);
+          const behavior = previewController
+            ? previewController.setBehavior({ mode: nextMode, placement: nextPlacement })
+            : {
+              mode: nextMode || previewPanelBehavior.mode || "pinned",
+              placement: nextPlacement || previewPanelBehavior.placement || "docked"
+            };
           const mode = behavior.mode;
           const placement = behavior.placement;
-          if (previewPanelNode) {
+          if (previewPanelNode && !previewController) {
             previewPanelNode.setAttribute("data-bp-preview-mode", mode);
             previewPanelNode.setAttribute("data-bp-preview-placement", placement);
           }
           if (previewModeSelector) previewModeSelector.value = mode;
           if (previewPlacementSelector) previewPlacementSelector.value = placement;
           if (previewController) {
-            previewController.setBehavior(behavior);
             if (!opts.keepOpen) previewController.hide();
           }
           return behavior;
@@ -685,8 +694,7 @@
 
         const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
         let groupHoverGraphviz = null;
-        const groupHoverBehavior =
-          previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" });
+        const groupHoverBehavior = readPreviewBehaviorDefaults(groupHoverPanel, "pinned", "docked");
         let groupHoverController = null;
         groupHoverController = previewUtils.createPreviewSurface({
           panel: groupHoverPanel,

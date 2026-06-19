@@ -310,7 +310,7 @@ class TestGraphLayoutRuntime:
             }"""
         )
 
-    def test_render_api_read_graph_preview_behavior(self, server: str, page: Page):
+    def test_render_api_surface_normalizes_graph_preview_behavior(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")
         wait_for_graph(page)
@@ -321,36 +321,42 @@ class TestGraphLayoutRuntime:
                 if (
                     typeof api.normalizePreviewMode !== "undefined" ||
                     typeof api.normalizePreviewPlacement !== "undefined" ||
-                    typeof api.readPanelBehavior !== "function"
+                    typeof api.readPanelBehavior !== "undefined"
                 ) {
                     return false;
                 }
-                const defaultBehavior = api.readPanelBehavior(null, {
-                    mode: "pinned",
-                    placement: "anchored",
+                const panel = document.createElement("aside");
+                panel.innerHTML = [
+                    '<div class="bp_test_title"></div>',
+                    '<button class="bp_test_close" type="button">Close</button>',
+                    '<div class="bp_test_body"></div>'
+                ].join("");
+                document.body.appendChild(panel);
+                const surface = api.createPreviewSurface({
+                    panel: panel,
+                    titleSelector: ".bp_test_title",
+                    bodySelector: ".bp_test_body",
+                    closeSelector: ".bp_test_close",
+                    defaults: { mode: "pinned", placement: "anchored" }
                 });
-                const fallbackBehavior = api.readPanelBehavior(null, {
-                    mode: "invalid",
-                    placement: "invalid",
-                });
-                const panel = document.createElement("div");
-                panel.setAttribute("data-bp-preview-mode", "hover");
-                panel.setAttribute("data-bp-preview-placement", "docked");
-                const panelBehavior = api.readPanelBehavior(panel, {
-                    mode: "pinned",
-                    placement: "anchored",
-                });
+                if (!surface) return false;
+                const defaultBehavior = surface.behavior;
+                const panelBehavior = surface.setBehavior({ mode: "hover", placement: "docked" });
+                const fallbackBehavior = surface.setBehavior({ mode: "invalid", placement: "invalid" });
+                panel.remove();
                 return (
                     defaultBehavior.mode === "pinned" &&
                     defaultBehavior.placement === "anchored" &&
                     defaultBehavior.isPinned &&
                     defaultBehavior.isAnchored &&
-                    fallbackBehavior.mode === "hover" &&
-                    fallbackBehavior.placement === "anchored" &&
                     panelBehavior.mode === "hover" &&
                     panelBehavior.placement === "docked" &&
                     panelBehavior.isHover &&
-                    panelBehavior.isDocked
+                    panelBehavior.isDocked &&
+                    fallbackBehavior.mode === "hover" &&
+                    fallbackBehavior.placement === "docked" &&
+                    fallbackBehavior.isHover &&
+                    fallbackBehavior.isDocked
                 );
                 """
             )
