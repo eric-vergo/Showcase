@@ -1095,24 +1095,27 @@ labels, dependencies, group membership, Lean-code associations, or status
 metadata. The cached fragment is presentation: it may display those facts, but
 the manifest is the data contract.
 
-Bundled-feature helper APIs are intentionally narrower. They are exported on
-`window.VersoBlueprint.render` so Blueprint's own clients can share runtime
-mechanics without duplicating them. They should not be treated as stable
-custom-client API unless they are promoted into the table above.
+Bundled-feature helper APIs are intentionally narrower than the stable API.
+They are exported on `window.VersoBlueprint.render` so Blueprint's own feature
+scripts can share runtime mechanics without duplicating them. They are not a
+custom-client contract unless they are promoted into the stable table above.
+The intended path for Blueprint-owned panels is `createPreviewSurface`; lower
+level helpers remain exported only where bundled graph, popover, or generated
+preview code still needs them directly.
 
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
-| Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `collectPreviewTemplates` | Summary previews, relation panels, graph node previews, and inline preview cards |
-| Panel shell and content | `createPreviewPanel`, `createPreviewSurface`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
-| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `hidePreviewSurfaces`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `configureCloseButton`, `pointerWithinPanel` | Graph preview controls, graph legend/options popovers, relation panels, inline preview panels, slide-change cleanup, Escape close, outside-click close, and shared resize/scroll repositioning |
+| Template lifecycle | `bindTemplatePreviewRoots`, `collectPreviewTemplates` | Summary previews, code-summary previews, and graph-local preview stores |
+| Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
+| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `hidePreviewSurfaces`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `pointerWithinPanel` | Graph controls, graph popovers, inline preview panels, slide-change cleanup, Escape close, outside-click close, and shared resize/scroll repositioning |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
 `createPreviewSurface` is the higher-level bundled helper for Blueprint-owned
 preview panels. It groups a panel's slots, current behavior, content/header
-updates, close-button wiring, trigger binding, and reposition binding into one
-controller object. It is meant for bundled feature scripts that own Blueprint
-DOM chrome, not for external clients that should stay on the stable
-custom-client API above.
+updates, close-button wiring, trigger binding, dismissal binding, and
+reposition binding into one controller object. It is meant for bundled feature
+scripts that own Blueprint DOM chrome, not for external clients that should
+stay on the stable custom-client API above.
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:

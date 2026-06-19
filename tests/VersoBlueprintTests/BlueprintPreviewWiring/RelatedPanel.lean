@@ -86,13 +86,14 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
           "previewUtils.previewMessageHtml({",
           "previewUtils.createPreviewSurface({",
           "surface.bindTriggers({",
-          "previewUtils.bindDismissHandlers({",
+          "surface.bindDismissal({",
           "triggerSelector: \".bp_relation_chip\"",
           "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
         ] &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
           "previewUtils.readHtmlCacheStatus()",
+          "previewUtils.bindDismissHandlers({",
           "function previewMessageHtml(previewUtils",
           "fallbackTemplates"
         ]

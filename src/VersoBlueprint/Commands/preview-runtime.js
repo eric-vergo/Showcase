@@ -1114,6 +1114,7 @@
     const onHide = readFunctionOption(opts, "onHide", null);
     let triggerLifecycle = null;
     let repositionLifecycle = null;
+    let dismissLifecycle = null;
 
     function renderSurfaceBody(content) {
       const payload = content && typeof content === "object" ? content : {};
@@ -1140,6 +1141,7 @@
       behavior: readPanelBehavior(panel, defaults),
       triggerLifecycle: null,
       repositionLifecycle: null,
+      dismissLifecycle: null,
       isOpen: function () {
         return !panel.hidden;
       },
@@ -1291,6 +1293,17 @@
         repositionLifecycle = bindPanelRepositioner(repositionOpts);
         surface.repositionLifecycle = repositionLifecycle;
         return repositionLifecycle;
+      },
+      bindDismissal: function (dismissOptions) {
+        const dismissOpts =
+          dismissOptions && typeof dismissOptions === "object" ? Object.assign({}, dismissOptions) : {};
+        if (!(dismissOpts.panel instanceof Element)) dismissOpts.panel = panel;
+        if (!(dismissOpts.closeButton instanceof Element) && slots.closeButton instanceof Element) {
+          dismissOpts.closeButton = slots.closeButton;
+        }
+        dismissLifecycle = bindDismissHandlers(dismissOpts);
+        surface.dismissLifecycle = dismissLifecycle;
+        return dismissLifecycle;
       }
     };
 
@@ -1695,13 +1708,6 @@
     return html;
   }
 
-  function hidePanelContent(panel, titleNode, bodyNode) {
-    if (!(panel instanceof Element)) return;
-    panel.hidden = true;
-    if (titleNode instanceof Element) titleNode.textContent = "";
-    if (bodyNode instanceof Element) bodyNode.replaceChildren();
-  }
-
   function setPreviewHeaderLink(labelNode, sourceNode) {
     if (!(labelNode instanceof Element)) return;
     const label =
@@ -1727,27 +1733,6 @@
     }
   }
 
-  function showPanelContent(panel, titleNode, bodyNode, heading, html, behavior, anchor, margin, offset) {
-    if (!(panel instanceof Element) || !(titleNode instanceof Element) || !(bodyNode instanceof Element)) {
-      return false;
-    }
-    if (typeof html !== "string" || html.length === 0) {
-      hidePanelContent(panel, titleNode, bodyNode);
-      return false;
-    }
-    const safeMargin = Number.isFinite(margin) ? margin : 12;
-    const safeOffset = Number.isFinite(offset) ? offset : 10;
-    titleNode.textContent = typeof heading === "string" ? heading : "";
-    renderHtmlInto(bodyNode, html);
-    panel.hidden = false;
-    if (behavior && behavior.isAnchored && readAnchorRect(anchor)) {
-      positionAnchoredPanel(panel, anchor, safeMargin, safeOffset);
-    } else {
-      resetPanelPosition(panel);
-    }
-    return true;
-  }
-
   // Template preview binding adapts the shared helpers to concrete surfaces.
 
   function bindTemplatePreview(options) {
@@ -1762,7 +1747,6 @@
     const titleAttr = readStringOption(opts, "titleAttr", keyAttr);
     const titleSelector = readStringOption(opts, "titleSelector", "");
     const bodySelector = readStringOption(opts, "bodySelector", "");
-    const closeSelector = readStringOption(opts, "closeSelector", "");
     const triggerBoundAttr = readStringOption(opts, "triggerBoundAttr", "data-bp-bound");
     const defaults = readObjectOption(opts, "defaults", {});
     const margin = readNumberOption(opts, "margin", 12);
@@ -1787,18 +1771,24 @@
     if (panel && panel.ownerDocument && panel.ownerDocument.body && panel.parentElement !== panel.ownerDocument.body) {
       panel.ownerDocument.body.appendChild(panel);
     }
-    const title = panel ? panel.querySelector(titleSelector) : null;
-    const body = panel ? panel.querySelector(bodySelector) : null;
-    const close = panel ? panel.querySelector(closeSelector) : null;
-    if (!panel || !(title instanceof Element) || !(body instanceof Element) || (!allowHtmlCache && previewMap.size === 0)) {
-      if (panel) hidePanelContent(panel, title, body);
+    const surface = createPreviewSurface({
+      panel: panel,
+      titleSelector: titleSelector,
+      bodySelector: bodySelector,
+      closeSelector: readStringOption(opts, "closeSelector", ""),
+      defaults: defaults,
+      margin: margin,
+      offset: offset,
+      onClose: function () { hidePanel(); }
+    });
+    if (!surface || (!allowHtmlCache && previewMap.size === 0)) {
+      if (panel instanceof Element) panel.hidden = true;
       return null;
     }
     if (triggers.length === 0) {
-      hidePanelContent(panel, title, body);
+      surface.hide();
       return null;
     }
-    const behavior = readPanelBehavior(panel, defaults);
     let activeTrigger = null;
     let showRequestToken = 0;
     let triggerLifecycle = null;
@@ -1806,17 +1796,8 @@
     function hidePanel() {
       if (triggerLifecycle) triggerLifecycle.cancelHide();
       showRequestToken += 1;
-      hidePanelContent(panel, title, body);
+      surface.hide();
       activeTrigger = null;
-    }
-
-    function positionPanel(anchor) {
-      if (!behavior.isAnchored) {
-        resetPanelPosition(panel);
-        return;
-      }
-      if (!(anchor instanceof Element)) return;
-      positionAnchoredPanel(panel, anchor, margin, offset);
     }
 
     async function resolveTriggerHtml(trigger, key) {
@@ -1844,26 +1825,26 @@
       }
       activeTrigger = trigger;
       const heading = readTitle(trigger, key);
-      showPanelContent(panel, title, body, heading, html, behavior, trigger, margin, offset);
+      surface.showContent({
+        heading: heading,
+        html: html,
+        anchor: trigger
+      });
     }
 
-    configureCloseButton(close, hidePanel, behavior);
-
-    triggerLifecycle = bindPreviewTriggers({
+    triggerLifecycle = surface.bindTriggers({
       triggerRoot: triggerRoot,
       triggerSelector: triggerSelector,
       triggerBoundAttr: triggerBoundAttr,
-      panel: panel,
-      behavior: behavior,
       show: showFromTrigger,
       hide: hidePanel,
-      position: positionPanel,
       getActiveTrigger: function () { return activeTrigger; }
     });
 
     return {
       previewMap: previewMap,
-      behavior: behavior,
+      surface: surface,
+      behavior: surface.behavior,
       hidePanel: hidePanel,
       showFromTrigger: showFromTrigger
     };
@@ -1985,10 +1966,7 @@
     renderHtmlInto: renderHtmlInto,
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
-    createPreviewSurface: createPreviewSurface,
-    hidePanelContent: hidePanelContent,
-    setPreviewHeaderLink: setPreviewHeaderLink,
-    showPanelContent: showPanelContent
+    createPreviewSurface: createPreviewSurface
   };
 
   const previewLifecycleHelpers = {
@@ -1996,12 +1974,10 @@
     bindAnchoredPopover: bindAnchoredPopover,
     bindDismissHandlers: bindDismissHandlers,
     bindPanelRepositioner: bindPanelRepositioner,
-    bindPreviewTriggers: bindPreviewTriggers,
     hidePreviewSurfaces: hidePreviewSurfaces,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
     resetPanelPosition: resetPanelPosition,
-    configureCloseButton: configureCloseButton,
     pointerWithinPanel: pointerWithinPanel
   };
 
@@ -2038,7 +2014,6 @@
     shouldKeepOpen: previewLifecycleHelpers.shouldKeepOpen,
     readPanelBehavior: previewLifecycleHelpers.readPanelBehavior,
     resetPanelPosition: previewLifecycleHelpers.resetPanelPosition,
-    configureCloseButton: previewLifecycleHelpers.configureCloseButton,
     pointerWithinPanel: previewLifecycleHelpers.pointerWithinPanel,
     createPreviewSurface: previewContentHelpers.createPreviewSurface,
     registerPreviewHydrator: previewHydrationHelpers.registerPreviewHydrator,
@@ -2046,13 +2021,9 @@
     previewDebugLabel: previewHydrationHelpers.previewDebugLabel,
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
-    hidePanelContent: previewContentHelpers.hidePanelContent,
-    setPreviewHeaderLink: previewContentHelpers.setPreviewHeaderLink,
-    showPanelContent: previewContentHelpers.showPanelContent,
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
     bindDismissHandlers: previewLifecycleHelpers.bindDismissHandlers,
     bindPanelRepositioner: previewLifecycleHelpers.bindPanelRepositioner,
-    bindPreviewTriggers: previewLifecycleHelpers.bindPreviewTriggers,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces,
     bindTemplatePreviewRoots: previewTemplateHelpers.bindTemplatePreviewRoots
   };

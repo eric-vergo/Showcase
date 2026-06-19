@@ -170,11 +170,10 @@
         onPanelEnter: function () { openWrap(); },
         bindWindow: false
       });
-      previewUtils.bindDismissHandlers({
+      surface.bindDismissal({
         owner: wrap,
         root: wrap,
         trigger: chip,
-        panel: surface.panel,
         boundAttr: "data-bp-relation-dismiss-bound",
         isOpen: wrapIsOpen,
         close: closeWrap,
