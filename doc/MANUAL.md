@@ -1103,9 +1103,16 @@ custom-client API unless they are promoted into the table above.
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
 | Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `collectPreviewTemplates` | Summary previews, relation panels, graph node previews, and inline preview cards |
-| Panel shell and content | `createPreviewPanel`, `createPanelController`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
+| Panel shell and content | `createPreviewPanel`, `createPanelController`, `createPreviewSurface`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
 | Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `configureCloseButton`, `pointerWithinPanel` | Graph preview controls, graph legend/options popovers, relation panels, inline preview panels, Escape close, outside-click close, and shared resize/scroll repositioning |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
+
+`createPreviewSurface` is the higher-level bundled helper for Blueprint-owned
+preview panels. It groups a panel's slots, current behavior, content/header
+updates, close-button wiring, trigger binding, and reposition binding into one
+controller object. It is meant for bundled feature scripts that own Blueprint
+DOM chrome, not for external clients that should stay on the stable
+custom-client API above.
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:

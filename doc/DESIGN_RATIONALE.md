@@ -319,9 +319,9 @@ hydration.
 | Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
 | Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime.js` `resolvePreview` and `renderPreviewInto` | graph, summary, relation panels, inline previews, custom browser clients | single JS data/cache owner |
 | Browser canonical generated-node insertion | `Commands/preview-runtime.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
-| Browser preview panel behavior | `Commands/preview-runtime.js` `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `bindDismissHandlers`, `bindPanelRepositioner`, and panel helpers | summary, code-summary, inline-preview, relation-panel, and graph feature scripts | single JS behavior helper; feature scripts only pass selectors/defaults and feature-specific positioning callbacks |
-| Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel` and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message construction helper; feature scripts pass classes/slots/text |
-| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `bindPreviewTriggers`, `bindPanelRepositioner`, and panel helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned header-label/footer/child-panel state; trigger lifetime, panel mechanics, and resize/scroll binding use shared runtime helpers |
+| Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `bindDismissHandlers`, `bindPanelRepositioner`, and panel helpers | summary, code-summary, inline-preview, relation-panel, and graph feature scripts | single JS behavior helper; feature scripts only pass selectors/defaults and feature-specific positioning callbacks |
+| Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
+| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` and shared lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, and resize/scroll binding use shared runtime helpers |
 | Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph.js` configured with runtime trigger, popover, dismiss, reposition, and panel helpers | graph command output | feature-owned graph state; preview trigger lifetime, popover binding, Escape close, and resize/scroll binding use shared runtime helpers |
 | Browser summary and code-summary preview binders | `Commands/summary-preview.js` and `Informal/Block/code-summary-preview.js` | summary page labels and code-summary triggers | thin selector-only binders over `bindTemplatePreviewRoots` |
 
@@ -380,7 +380,10 @@ The workflow implies a few constraints for renderers:
   positioning, close-button behavior, template-root binding, and feature
   hydrator registration. Those
   helpers keep bundled graph, summary, relation-panel, inline-preview, and
-  slide scripts on one runtime path, but they are not a public custom-client
+  slide scripts on one runtime path. `createPreviewSurface` is the
+  component-shaped helper in this tier: it groups panel slots, behavior state,
+  content updates, trigger binding, and reposition binding without exposing a
+  stable external contract. These helpers are not a public custom-client
   contract unless promoted into the manual's stable API table. New public
   browser APIs should start as stable custom-client entries only when an
   external interface can describe its responsibility without depending on
@@ -389,11 +392,12 @@ The workflow implies a few constraints for renderers:
 
 - **Split JavaScript by responsibility, not feature semantics.**
   The current preview runtime is still bundled as one asset, but its internal
-  responsibilities are the boundaries for any future split: debug/template
-  utilities, manifest and rendered-fragment cache stores, preview resolution,
-  fragment insertion and hydration, panel creation/behavior helpers, template
-  binding, and API readiness. A split module may load files, join entries by
-  preview key, insert opaque fragments, or call hydrators; it should not infer Blueprint
+  responsibilities are the boundaries for any future split: preview-data access,
+  fragment rendering and hydration, template binding, panel/surface content,
+  panel lifecycle, debug/hydration hooks, and API readiness. These groups are
+  deliberately close to future component boundaries. A split module may load
+  files, join entries by preview key, insert opaque fragments, own a preview
+  surface's local UI state, or call hydrators; it should not infer Blueprint
   relation topology, ownership, status, or code associations from HTML markup.
 
 - **Keep readiness and API guards source-level.**
