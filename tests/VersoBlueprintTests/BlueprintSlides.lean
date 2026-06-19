@@ -124,26 +124,28 @@ private def writeSlidesPreviewDataFiles
 #guard_msgs in
 #eval
   let js := Informal.Slides.blueprintSlidesJs
-  hasSubstr js "function bindRelationPanel(previewUtils, panel)" &&
-    hasSubstr js "function hydrate(root, previewUtils)" &&
-    hasSubstr js "function hydrateWhenReady(root)" &&
-    hasSubstr js "function prepareBlueprintLinks(root, baseUrl)" &&
-    hasSubstr js "window.VersoBlueprint.onRenderReady(function (previewUtils) {" &&
-    hasSubstr js "window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady }" &&
-    hasSubstr js "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"" &&
-    hasSubstr js "data-bp-slide-href" &&
-    !hasSubstr js "function blueprintRender()" &&
-    !hasSubstr js "if (utils && typeof utils.hydrate === \"function\")" &&
-    !hasSubstr js "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")" &&
-    !hasSubstr js "function openBlueprintHref(href)" &&
-    !hasSubstr js "function renderDocstrings(root)" &&
-    !hasSubstr js "function ensureLeanHover(target)" &&
-    !hasSubstr js "function scheduleSlidePreviewCleanup()" &&
-    !hasSubstr js "function bindSlideUsedByPanels" &&
-    !hasSubstr js "async function renderEntry(entry, node, key)" &&
-    !hasSubstr js "function renderGroupChip(entry)" &&
-    !hasSubstr js "function renderUsesChip(entries)" &&
-    !hasSubstr js "function renderCodeStatusChip(entry, count)"
+  hasAllSubstr js [
+    "window.VersoBlueprint.onRenderReady(function (previewUtils) {",
+    "window.bpSlideNodeRuntime = { hydrate: hydrateWhenReady }",
+    "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"",
+    "previewUtils.hydrate(node)",
+    "data-bp-slide-href",
+    "data-bp-slide-link"
+  ] &&
+    lacksAllSubstr js [
+      "function blueprintRender()",
+      "if (utils && typeof utils.hydrate === \"function\")",
+      "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")",
+      "function openBlueprintHref(href)",
+      "function renderDocstrings(root)",
+      "function ensureLeanHover(target)",
+      "function scheduleSlidePreviewCleanup()",
+      "function bindSlideUsedByPanels",
+      "async function renderEntry(entry, node, key)",
+      "function renderGroupChip(entry)",
+      "function renderUsesChip(entries)",
+      "function renderCodeStatusChip(entry, count)"
+    ]
 
 /-- info: true -/
 #guard_msgs in

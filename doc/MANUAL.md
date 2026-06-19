@@ -998,6 +998,25 @@ without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
 `setPreviewHeaderLink` should not be treated as stable custom-client API unless
 they are promoted into the table above.
 
+For new custom interfaces, prefer the highest-level entry point that fits the
+job:
+
+1. Use `renderPreviewInto` when the client only needs to place one Blueprint
+   preview body into a target element and wants standard diagnostics and
+   hydration.
+2. Use `resolvePreview` when the client needs both semantic manifest data and
+   the rendered fragment before deciding where or how to display it.
+3. Use `loadManifest`, `loadHtmlCache`, `loadManifestEntry`, or
+   `loadHtmlCacheEntry` only for advanced clients that need explicit cache
+   control, diagnostics, or custom joining behavior.
+
+Future public browser APIs should be added to the stable custom-client table
+when they are intended for external clients such as audits, dashboards, slide
+adapters, or comparison views. Bundled helpers can still exist for Blueprint's
+own JavaScript, but they should stay outside the public table until their
+argument shape and compatibility expectations are ready to support those
+clients.
+
 Use the Blueprint slide wrapper in the deck generator:
 
 ```lean

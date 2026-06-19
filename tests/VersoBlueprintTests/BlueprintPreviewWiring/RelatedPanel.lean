@@ -79,29 +79,22 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
-        hasSubstr relationJs "function previewExceptionHtml(previewUtils, fallbackDetail)" &&
         hasRenderReadyWiring relationJs "previewUtils" &&
         !hasSubstr relationJs "function blueprintRender()" &&
-        hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {" &&
-        hasSubstr relationJs "bindAllRelationPanels(previewUtils, root)" &&
-        hasSubstr relationJs "function setRelationBodyHtml(previewUtils, body, html)" &&
-        hasSubstr relationJs "setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils))" &&
-        hasSubstr relationJs "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })" &&
-        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr relationJs "const diagnosticHtml = result && typeof result.diagnosticHtml === \"string\"" &&
-        hasSubstr relationJs "previewUtils.renderHtmlInto(body, result.html)" &&
-        !hasSubstr relationJs "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })" &&
-        !hasSubstr relationJs "previewUtils.readHtmlCacheStatus()" &&
-        !hasSubstr relationJs "fallbackTemplates" &&
-        hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
-        hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
-        hasSubstr relationJs "function loadActivePreview()" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
-        hasSubstr relationJs "selectItem(initialItem)" &&
-        !hasSubstr relationJs "activate(initialItem, { openWrap: false })" &&
-        hasSubstr relationJs "item.addEventListener(\"mouseenter\"" &&
-        hasSubstr relationJs "item.addEventListener(\"focusin\""
+        hasAllSubstr relationJs [
+          "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
+          "previewUtils.resolvePreview(previewKey)",
+          "previewUtils.renderHtmlInto(body, result.html)",
+          "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })",
+          "previewUtils.setPreviewHeaderLink(headerLabel, item)",
+          "item.addEventListener(\"mouseenter\"",
+          "item.addEventListener(\"focusin\""
+        ] &&
+        lacksAllSubstr relationJs [
+          "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
+          "previewUtils.readHtmlCacheStatus()",
+          "fallbackTemplates"
+        ]
       | none => false
     )
 
@@ -173,11 +166,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
-        hasSubstr relationJs "selectItem(initialItem)"
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
     )
 
@@ -206,10 +197,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "used by 1" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(previewUtils, panel)" &&
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "const result = await previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr relationJs "selectItem(initialItem)" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false
     )

@@ -47,20 +47,23 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasSubstr summaryJs "allowHtmlCache: true" &&
         hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
         hasRenderReadyWiring inlineJs "previewUtils" &&
-        hasSubstr inlineJs "bp-inline-preview-child-panel" &&
-        hasSubstr inlineJs "function cancelChildHide()" &&
-        hasSubstr inlineJs "function showChildFromTrigger(trigger)" &&
-        hasSubstr inlineJs "previewUtils.setPreviewHeaderLink(headerLabel, trigger)" &&
-        hasSubstr inlineJs "function setPanelFooter(footerNode, trigger)" &&
-        hasSubstr inlineJs "data-bp-preview-footer-html" &&
-        hasSubstr inlineJs "triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger)" &&
-        hasSubstr inlineJs "behavior: makeBehavior(\"hover\", \"anchored\")" &&
-        !hasSubstr inlineJs "typeof previewUtils.readPanelBehavior" &&
-        !hasSubstr inlineJs "typeof previewUtils.previewDebug" &&
-        !hasSubstr inlineJs "function onBlueprintRenderReady(fn)" &&
-        !hasSubstr inlineJs ".replaceAll(\"&\", \"&amp;\")" &&
-        !hasSubstr inlineJs "ensureInlinePreviewStore" &&
-        !hasSubstr inlineJs "template.bp_inline_preview_tpl"
+        hasAllSubstr inlineJs [
+          "bp-inline-preview-child-panel",
+          "previewUtils.setPreviewHeaderLink(headerLabel, trigger)",
+          "data-bp-preview-footer-html",
+          "previewUtils.readPanelBehavior(null, { mode: mode, placement: placement })",
+          "previewUtils.resolvePreview(previewLookupKey)",
+          "previewUtils.renderHtmlInto(body, html)",
+          "previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10)"
+        ] &&
+        lacksAllSubstr inlineJs [
+          "typeof previewUtils.readPanelBehavior",
+          "typeof previewUtils.previewDebug",
+          "function onBlueprintRenderReady(fn)",
+          ".replaceAll(\"&\", \"&amp;\")",
+          "ensureInlinePreviewStore",
+          "template.bp_inline_preview_tpl"
+        ]
       | _, _, _ => false
     )
 
@@ -82,7 +85,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       match inlineJs? with
       | some inlineJs =>
         hasSubstr inlineJs "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\"" &&
-        hasSubstr inlineJs "function fallbackInlinePreviewHtml(trigger, key, escapeHtml)"
+        hasSubstr inlineJs "data-bp-preview-fallback-label"
       | none => false
     )
 

@@ -357,35 +357,34 @@ class TestPreviewRuntimeRegressions:
         previews = page.evaluate(
             blueprint_render_api_script(
                 """
-                const manifestResp = await fetch("-verso-data/blueprint-manifest.json");
-                const manifest = await manifestResp.json();
-                const metaByKey = new Map(
-                  Array.isArray(manifest.previews)
-                    ? manifest.previews.map((entry) => [entry.key, entry])
-                    : []
-                );
-                const statement = await api.loadHtmlCacheEntry("preview_facets--statement");
-                const proof = await api.loadHtmlCacheEntry("preview_facets--proof");
-                const statementMeta = metaByKey.get("preview_facets--statement") || null;
-                const proofMeta = metaByKey.get("preview_facets--proof") || null;
+                const statement = await api.resolvePreview("preview_facets--statement");
+                const proof = await api.resolvePreview("preview_facets--proof");
                 return {
                     statement: {
-                        html: api.readHtml(statement),
-                        label: statementMeta ? statementMeta.label : null,
-                        facet: statementMeta ? statementMeta.facet : null,
-                        href: statementMeta ? statementMeta.href : null
+                        ok: statement.ok,
+                        reason: statement.reason,
+                        html: statement.html,
+                        label: statement.manifestEntry ? statement.manifestEntry.label : null,
+                        facet: statement.manifestEntry ? statement.manifestEntry.facet : null,
+                        href: statement.manifestEntry ? statement.manifestEntry.href : null
                     },
                     proof: {
-                        html: api.readHtml(proof),
-                        label: proofMeta ? proofMeta.label : null,
-                        facet: proofMeta ? proofMeta.facet : null,
-                        href: proofMeta ? proofMeta.href : null
+                        ok: proof.ok,
+                        reason: proof.reason,
+                        html: proof.html,
+                        label: proof.manifestEntry ? proof.manifestEntry.label : null,
+                        facet: proof.manifestEntry ? proof.manifestEntry.facet : null,
+                        href: proof.manifestEntry ? proof.manifestEntry.href : null
                     }
                 };
                 """
             )
         )
 
+        assert previews["statement"]["ok"]
+        assert previews["statement"]["reason"] == ""
+        assert previews["proof"]["ok"]
+        assert previews["proof"]["reason"] == ""
         assert "Proof facet marker" in previews["proof"]["html"]
         assert "Proof facet marker" not in previews["statement"]["html"]
         assert "Statement facet marker" in previews["statement"]["html"]
@@ -460,7 +459,12 @@ class TestPreviewRuntimeRegressions:
                     publicSurface: {
                         hasReadPreviewTemplate: typeof api.readPreviewTemplate === "function",
                         hasHydratePreviewSubtree: typeof api.hydratePreviewSubtree === "function",
-                        hasRenderMath: typeof api.renderMath === "function"
+                        hasRenderMath: typeof api.renderMath === "function",
+                        hasReadManifestEntry: typeof api.readManifestEntry === "function",
+                        hasReadHtmlCacheEntry: typeof api.readHtmlCacheEntry === "function",
+                        hasBindCloseOnce: typeof api.bindCloseOnce === "function",
+                        hasBindTemplatePreview: typeof api.bindTemplatePreview === "function",
+                        hasDiagnostics: typeof api.diagnostics !== "undefined"
                     },
                     legacyGlobals: {
                         hasPreviewUtils: "bpPreviewUtils" in window,
@@ -498,6 +502,11 @@ class TestPreviewRuntimeRegressions:
             "hasReadPreviewTemplate": False,
             "hasHydratePreviewSubtree": False,
             "hasRenderMath": False,
+            "hasReadManifestEntry": False,
+            "hasReadHtmlCacheEntry": False,
+            "hasBindCloseOnce": False,
+            "hasBindTemplatePreview": False,
+            "hasDiagnostics": False,
         }
         assert rendered["legacyGlobals"] == {
             "hasPreviewUtils": False,
@@ -548,6 +557,8 @@ class TestPreviewRuntimeRegressions:
         cache = page.evaluate(
             blueprint_render_api_script(
                 """
+                const host = document.createElement("div");
+                document.body.appendChild(host);
                 const trigger = document.querySelector(
                     ".bp_summary_preview_wrap_active[data-bp-preview-key]"
                 );
@@ -555,14 +566,19 @@ class TestPreviewRuntimeRegressions:
                     trigger instanceof Element
                         ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
                         : "";
-                const first = await api.loadHtmlCacheEntry(previewKey);
+                const first = await api.renderPreviewInto(host, previewKey);
                 const statusAfterFirst = api.readHtmlCacheStatus();
-                const second = await api.loadHtmlCacheEntry(previewKey);
+                const firstHtml = host.innerHTML;
+                const second = await api.renderPreviewInto(host, previewKey);
                 const statusAfterSecond = api.readHtmlCacheStatus();
                 return {
                     previewKey: previewKey,
-                    firstHtml: api.readHtml(first),
-                    secondHtml: api.readHtml(second),
+                    firstOk: first.ok,
+                    firstReason: first.reason,
+                    firstHtml: firstHtml,
+                    secondOk: second.ok,
+                    secondReason: second.reason,
+                    secondHtml: host.innerHTML,
                     statusAfterFirst: statusAfterFirst,
                     statusAfterSecond: statusAfterSecond
                 };
@@ -571,9 +587,13 @@ class TestPreviewRuntimeRegressions:
         )
 
         assert cache["previewKey"]
-        assert cache["firstHtml"] == ""
+        assert not cache["firstOk"]
+        assert cache["firstReason"] == "html-cache-entry-missing"
+        assert "Preview HTML cache unavailable" in cache["firstHtml"]
         assert cache["statusAfterFirst"]["state"] == "error"
         assert "503" in cache["statusAfterFirst"]["lastError"]
+        assert cache["secondOk"]
+        assert cache["secondReason"] == ""
         assert "<p" in cache["secondHtml"]
         assert cache["statusAfterSecond"]["state"] == "ready"
         assert cache["statusAfterSecond"]["attempts"] >= 2

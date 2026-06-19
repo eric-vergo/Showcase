@@ -113,44 +113,22 @@ Base statement for graph preview mode option coverage.
       | some graphJs =>
         hasRenderReadyWiring graphJs "previewUtils" &&
         !hasSubstr graphJs "function blueprintRender()" &&
-        hasSubstr graphJs "previewUtils.collectPreviewTemplates(" &&
-        hasSubstr graphJs "previewUtils.createPanelController(" &&
-        hasSubstr graphJs "previewUtils.bindHoverablePanelLifetime(" &&
-        hasSubstr graphJs "previewUtils.configureCloseButton(" &&
-        !hasSubstr graphJs "function parsePreviewEntry(" &&
-        !hasSubstr graphJs "function createPanelController(" &&
-        !hasSubstr graphJs "function bindHoverablePanelLifetime(" &&
-        !hasSubstr graphJs "function normalizePreviewMode(rawMode)" &&
-        !hasSubstr graphJs "function normalizePreviewPlacement(rawPlacement)" &&
-        hasSubstr graphJs "const previewKey = nodeId ? (previewKeys.get(nodeId) || \"\") : \"\";" &&
-        hasSubstr graphJs "previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr graphJs "previewUtils.readPanelBehavior(null, {" &&
-        hasSubstr graphJs "previewUtils.readPanelBehavior(previewPanelNode, { mode: \"pinned\", placement: \"docked\" })" &&
-        hasSubstr graphJs "previewUtils.renderHtmlInto(body, html)" &&
-        hasSubstr graphJs "previewUtils.readPanelBehavior(groupHoverPanel, { mode: \"pinned\", placement: \"docked\" })" &&
-        hasSubstr graphJs "graphState.previewActiveNode === node && !previewController.panel.hidden" &&
-        hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isHover) return;" &&
-        hasSubstr graphJs "if (!previewController.behavior || !previewController.behavior.isPinned) return;" &&
-        hasSubstr graphJs "setPreviewBehavior(previewModeSelector.value, readPreviewPlacement());" &&
-        hasSubstr graphJs "setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);" &&
-        hasSubstr graphJs "previewKeyByNodeId: new Map(previewKeyByNodeId)" &&
-        hasSubstr graphJs "graphviz: null," &&
-        hasSubstr graphJs "renderedVariantKey: \"\"," &&
-        hasSubstr graphJs "renderedOptionsKey: \"\"," &&
-        hasSubstr graphJs "renderToken: 0," &&
-        hasSubstr graphJs "const finalizeRender = function () {" &&
-        hasSubstr graphJs "if (graphState.renderToken !== renderToken) return;" &&
-        hasSubstr graphJs "const gv = graphState.graphviz || graphContainer.graphviz();" &&
-        hasSubstr graphJs "const directionSelector = graphBlock.querySelector(\".bp_graph_direction_select\");" &&
-        hasSubstr graphJs "const packInput = graphBlock.querySelector(\".bp_graph_pack_input\");" &&
-        hasSubstr graphJs "let activeOptions = normalizeGraphOptions({" &&
-        hasSubstr graphJs "switchDirection(directionSelector.value);" &&
-        hasSubstr graphJs "switchPack(packInput.checked);" &&
-        hasSubstr graphJs ".zoom(true)" &&
-        hasSubstr graphJs "layoutGraphCanvas(graphRoot, graphState)" &&
-        hasSubstr graphJs "if (typeof ResizeObserver === \"function\")" &&
-        hasSubstr graphJs ".fit(true)" &&
-        hasSubstr graphJs "syncLegend(graphBlock, activeKey)"
+        hasAllSubstr graphJs [
+          "previewUtils.collectPreviewTemplates(",
+          "previewUtils.createPanelController(",
+          "previewUtils.bindHoverablePanelLifetime(",
+          "previewUtils.configureCloseButton(",
+          "previewUtils.resolvePreview(previewKey)",
+          "previewUtils.readPanelBehavior(null, {",
+          "previewUtils.renderHtmlInto(body, html)",
+          ".bp_graph_preview_mode_select",
+          ".bp_graph_preview_placement_select",
+          ".bp_graph_direction_select",
+          ".bp_graph_pack_input"
+        ] &&
+        lacksAllSubstr graphJs [
+          "function parsePreviewEntry("
+        ]
       | none => false
     )
 

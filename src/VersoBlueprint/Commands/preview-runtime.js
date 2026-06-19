@@ -1214,11 +1214,8 @@
   const bundledFeatureRenderHelpers = {
     collectPreviewTemplates: collectPreviewTemplates,
     escapeHtml: escapeHtml,
-    readManifestEntry: readBlueprintManifestEntry,
-    readHtmlCacheEntry: readBlueprintHtmlCacheEntry,
     renderHtmlInto: renderHtmlInto,
     readHtml: readHtml,
-    bindCloseOnce: bindCloseOnce,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
     readPanelBehavior: readPanelBehavior,
@@ -1233,13 +1230,7 @@
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
-    bindTemplatePreview: bindTemplatePreview,
-    bindTemplatePreviewRoots: bindTemplatePreviewRoots,
-    diagnostics: {
-      missingKeyHtml: missingPreviewKeyDiagnosticHtml,
-      manifestHtml: blueprintManifestDiagnosticHtml,
-      htmlCacheHtml: blueprintHtmlCacheDiagnosticHtml
-    }
+    bindTemplatePreviewRoots: bindTemplatePreviewRoots
   };
 
   const renderApi = Object.assign(
