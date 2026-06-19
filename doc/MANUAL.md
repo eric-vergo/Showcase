@@ -1049,6 +1049,11 @@ stay on one runtime path. The runtime keeps manifest/cache load state private;
 clients should inspect it through `readManifestStatus()` and
 `readHtmlCacheStatus()` rather than reading `window` globals.
 
+Slide decks keep their slide-specific rehydration bridge under the same
+namespace as `window.VersoBlueprint.slides`. That bridge is for the generated
+slide asset; custom preview clients should use the stable render API table
+above unless a slide-specific hook is explicitly documented there.
+
 For semantic queries, use the manifest entry returned by `resolvePreview` or
 `loadManifestEntry`. Do not parse inserted or cached fragments to rediscover
 labels, dependencies, group membership, Lean-code associations, or status

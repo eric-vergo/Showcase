@@ -11,25 +11,12 @@ RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime.js"),
     Path("Commands/preview-ready.js"),
 }
-EXPECTED_BUNDLED_HELPERS = {
-    "bindHoverablePanelLifetime",
-    "bindTemplatePreviewRoots",
-    "collectPreviewTemplates",
-    "configureCloseButton",
-    "createPanelController",
-    "escapeHtml",
-    "hidePanelContent",
-    "pointerWithinPanel",
-    "positionAnchoredPanel",
-    "previewDebug",
-    "previewDebugLabel",
-    "readPanelBehavior",
-    "registerPreviewHydrator",
-    "renderHtmlInto",
-    "resetPanelPosition",
-    "setPreviewHeaderLink",
-    "shouldKeepOpen",
-    "showPanelContent",
+INTERNAL_ONLY_HELPERS = {
+    "bindCloseOnce",
+    "bindTemplatePreview",
+    "readHtml",
+    "readBlueprintManifestEntry",
+    "readBlueprintHtmlCacheEntry",
 }
 
 
@@ -105,18 +92,31 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertFalse(source_methods & helper_methods)
 
-    def test_bundled_feature_helper_surface_is_intentional(self) -> None:
+    def test_internal_runtime_helpers_are_not_exported(self) -> None:
         runtime = _blueprint_js_source()
 
+        source_methods = _js_object_methods(runtime, "stableCustomClientApi")
         helper_methods = _js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
-        self.assertEqual(EXPECTED_BUNDLED_HELPERS, helper_methods)
+        self.assertFalse(INTERNAL_ONLY_HELPERS & source_methods)
+        self.assertFalse(INTERNAL_ONLY_HELPERS & helper_methods)
 
-    def test_hydrator_registry_stays_runtime_local(self) -> None:
+    def test_preview_runtime_state_stays_runtime_local(self) -> None:
         runtime = _blueprint_js_source()
 
         self.assertIn("const previewHydrators = new Map();", runtime)
         self.assertNotIn("window.bpPreviewHydrators", runtime)
+        self.assertNotIn("window.bpPreviewTrace", runtime)
+
+    def test_slide_runtime_uses_verso_blueprint_namespace(self) -> None:
+        runtime = (BLUEPRINT_SRC / "Slides" / "blueprint-slides.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("namespace.slides = slideRuntime", runtime)
+        self.assertIn("slideRuntime.hydrate = hydrateWhenReady", runtime)
+        self.assertNotIn("window.bpSlideNodeRuntime", runtime)
+        self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 
     def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
         direct_runtime_reads: list[str] = []

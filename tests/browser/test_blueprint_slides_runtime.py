@@ -214,7 +214,7 @@ class TestBlueprintSlidesRuntime:
         page.goto(f"{slides_server}/")
         wait_for_blueprint_render_api(page)
         page.wait_for_function(
-            """() => !!(window.bpSlideNodeRuntime && window.bpSlideNodeRuntime.hydrate)"""
+            """() => !!(window.VersoBlueprint && window.VersoBlueprint.slides && window.VersoBlueprint.slides.hydrate)"""
         )
 
         node = page.locator(".bp_slide_node").first
@@ -441,7 +441,7 @@ class TestBlueprintSlidesRuntime:
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
 
-        page.evaluate("window.bpSlideNodeRuntime.hydrate(document)")
+        page.evaluate("window.VersoBlueprint.slides.hydrate(document)")
         expect_slide_link(
             page,
             ".bp_slide_node_heading_link",
