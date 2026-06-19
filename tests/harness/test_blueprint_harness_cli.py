@@ -42,13 +42,75 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parser.parse_args(argv)
 
-    def test_create_worktree_sync_policy_respects_lightweight_mode(self) -> None:
-        args = argparse.Namespace(skip_sync=False, skip_reference_sync=False, lightweight=True)
-        self.assertEqual(create_worktree_sync_policy(args), (True, True))
+    def create_worktree_args(self, **overrides: object) -> argparse.Namespace:
+        values = {
+            "name": "demo",
+            "branch": None,
+            "base": None,
+            "skip_sync": False,
+            "skip_reference_sync": False,
+            "lightweight": False,
+            "owner": None,
+            "priority": None,
+            "summary": None,
+            "status": None,
+            "scope": None,
+            "lock": False,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
 
-    def test_create_worktree_sync_policy_preserves_explicit_flags(self) -> None:
-        args = argparse.Namespace(skip_sync=True, skip_reference_sync=False, lightweight=False)
-        self.assertEqual(create_worktree_sync_policy(args), (True, False))
+    def demo_worktree_layouts(self) -> tuple[SimpleNamespace, SimpleNamespace]:
+        root_layout = SimpleNamespace(repo_root=Path("/tmp/repo"), package_root=Path("/tmp/repo"))
+        new_layout = SimpleNamespace(
+            repo_root=Path("/tmp/repo"),
+            package_root=Path("/tmp/repo/.worktrees/demo"),
+            artifact_root=Path("/tmp/repo/_out/demo"),
+            in_linked_worktree=True,
+        )
+        return root_layout, new_layout
+
+    def published_git_project(self) -> HarnessProject:
+        return HarnessProject(
+            project_id="published",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/published.git",
+            ref="published-ref",
+            build_command=("lake", "build"),
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+            selected_release="v4.30.0",
+        )
+
+    def test_create_worktree_sync_policy_matrix(self) -> None:
+        cases = (
+            (False, False, False, (False, False)),
+            (True, False, False, (True, False)),
+            (False, True, False, (False, True)),
+            (True, True, False, (True, True)),
+            (False, False, True, (True, True)),
+            (True, False, True, (True, True)),
+            (False, True, True, (True, True)),
+            (True, True, True, (True, True)),
+        )
+        for skip_sync, skip_reference_sync, lightweight, expected in cases:
+            with self.subTest(
+                skip_sync=skip_sync,
+                skip_reference_sync=skip_reference_sync,
+                lightweight=lightweight,
+            ):
+                args = argparse.Namespace(
+                    skip_sync=skip_sync,
+                    skip_reference_sync=skip_reference_sync,
+                    lightweight=lightweight,
+                )
+                self.assertEqual(create_worktree_sync_policy(args), expected)
 
     def test_reference_generate_parses_allow_unsafe_root_release(self) -> None:
         parser = reference_harness_mod.build_parser()
@@ -338,73 +400,56 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "refusing to use local `v4.29.0` as the worktree base"):
                 harness_mod.resolve_create_worktree_base(layout, "v4.29.0")
 
-    def test_create_worktree_syncs_resolved_release_projects(self) -> None:
-        args = argparse.Namespace(
-            name="demo",
-            branch=None,
-            base=None,
-            skip_sync=True,
-            skip_reference_sync=False,
-            lightweight=False,
-            owner=None,
-            priority=None,
-            summary=None,
-            status=None,
-            scope=None,
-            lock=False,
+    def test_create_worktree_preparation_matrix(self) -> None:
+        cases = (
+            ("default", {}, True, True),
+            ("skip-sync", {"skip_sync": True}, False, True),
+            ("skip-reference-sync", {"skip_reference_sync": True}, True, False),
+            ("skip-both", {"skip_sync": True, "skip_reference_sync": True}, False, False),
+            ("lightweight", {"lightweight": True}, False, False),
         )
-        root_layout = SimpleNamespace(repo_root=Path("/tmp/repo"), package_root=Path("/tmp/repo"))
-        new_layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/repo/.worktrees/demo"),
-            artifact_root=Path("/tmp/repo/_out/demo"),
-            in_linked_worktree=True,
-        )
-        project = HarnessProject(
-            project_id="published",
-            source_kind="git_checkout",
-            project_root=".",
-            build_target=None,
-            generator=None,
-            repository="https://github.com/example/published.git",
-            ref="published-ref",
-            build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
-            site_subdir="html-multi",
-            panel_regression_script=None,
-            browser_tests_path=None,
-            description=None,
-            selected_release="v4.30.0",
-        )
-        catalog = SimpleNamespace(projects=())
-        seen: dict[str, object] = {}
+        for label, overrides, expected_lake_sync, expected_reference_sync in cases:
+            with self.subTest(label=label):
+                args = self.create_worktree_args(**overrides)
+                root_layout, new_layout = self.demo_worktree_layouts()
+                project = self.published_git_project()
+                catalog = SimpleNamespace(projects=())
+                seen: dict[str, object] = {}
 
-        def fake_resolve(_catalog, release, package_root, selected_ids):
-            seen["resolve_args"] = (_catalog, release, package_root, selected_ids)
-            return SimpleNamespace(release_id="v4.30.0"), [project]
+                def fake_resolve(_catalog, release, package_root, selected_ids):
+                    seen["resolve_args"] = (_catalog, release, package_root, selected_ids)
+                    return SimpleNamespace(release_id="v4.30.0"), [project]
 
-        def fake_sync(_layout, projects, *, warm_build, prepare_local_checkout):
-            seen["sync_args"] = (_layout, projects, warm_build, prepare_local_checkout)
+                def fake_sync(_layout, projects, *, warm_build, prepare_local_checkout):
+                    seen["sync_args"] = (_layout, projects, warm_build, prepare_local_checkout)
 
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda start=None: new_layout if start == Path("/tmp/repo/.worktrees/demo") else root_layout,
-            resolve_create_worktree_base=lambda _layout, _base: "origin/v4.30.0",
-            branch_exists=lambda _repo_root, _branch: False,
-            run=lambda command, *, cwd: seen.setdefault("commands", []).append(command),
-            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
-            load_project_catalog_manifest=lambda _manifest_path: catalog,
-            resolve_release_projects=fake_resolve,
-            sync_reference_blueprints=fake_sync,
-        ):
-            self.assertEqual(harness_mod.command_create_worktree(args), 0)
+                with patched_attrs(
+                    harness_mod,
+                    detect_harness_layout=lambda start=None: (
+                        new_layout if start == Path("/tmp/repo/.worktrees/demo") else root_layout
+                    ),
+                    resolve_create_worktree_base=lambda _layout, _base: "origin/v4.30.0",
+                    branch_exists=lambda _repo_root, _branch: False,
+                    run=lambda command, *, cwd: seen.setdefault("commands", []).append(command),
+                    sync_root_worktree_lake=lambda _layout: seen.setdefault("lake_syncs", []).append(_layout),
+                    resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
+                    load_project_catalog_manifest=lambda _manifest_path: catalog,
+                    resolve_release_projects=fake_resolve,
+                    sync_reference_blueprints=fake_sync,
+                ):
+                    self.assertEqual(harness_mod.command_create_worktree(args), 0)
 
-        self.assertEqual(
-            seen["commands"],
-            [["git", "worktree", "add", "-b", "feat/demo", "/tmp/repo/.worktrees/demo", "origin/v4.30.0"]],
-        )
-        self.assertEqual(seen["resolve_args"], (catalog, None, new_layout.package_root, None))
-        self.assertEqual(seen["sync_args"], (new_layout, [project], True, True))
+                self.assertEqual(
+                    seen["commands"],
+                    [["git", "worktree", "add", "-b", "feat/demo", "/tmp/repo/.worktrees/demo", "origin/v4.30.0"]],
+                )
+                self.assertEqual(seen.get("lake_syncs", []), [new_layout] if expected_lake_sync else [])
+                if expected_reference_sync:
+                    self.assertEqual(seen["resolve_args"], (catalog, None, new_layout.package_root, None))
+                    self.assertEqual(seen["sync_args"], (new_layout, [project], False, True))
+                else:
+                    self.assertNotIn("resolve_args", seen)
+                    self.assertNotIn("sync_args", seen)
 
     def test_release_status_require_sync_returns_nonzero_when_unsynced(self) -> None:
         args = argparse.Namespace(require_sync=True)

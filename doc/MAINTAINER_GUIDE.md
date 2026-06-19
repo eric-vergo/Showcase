@@ -389,9 +389,9 @@ the root checkout as the stable base:
 python3 -m scripts.blueprint_harness create-worktree <name>
 ```
 
-That command is intentionally heavyweight by default: after `git worktree add`
-it syncs the root checkout's `.lake/` and warms the shared and per-worktree
-reference blueprint clones. New worktrees now base off the branch policy's
+After `git worktree add`, that command syncs the root checkout's `.lake/` and
+prepares the shared and per-worktree reference blueprint clones without running
+external reference project builds. New worktrees now base off the branch policy's
 preferred default-development ref, typically something like `origin/v4.31.0`.
 Pass `--base <release-ref>` explicitly for backport-only work.
 

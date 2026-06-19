@@ -44,7 +44,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             self.assertEqual(result, lakefile)
             text = lakefile.read_text(encoding="utf-8")
             self.assertNotIn(OFFICIAL_BLUEPRINT_REQUIRE, text)
-            self.assertIn('require VersoBlueprint from "', text)
+            self.assertIn(f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"', text)
 
     def test_rewrite_local_blueprint_dependency_accepts_official_repo_with_non_main_ref(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

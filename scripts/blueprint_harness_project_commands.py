@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -63,8 +62,8 @@ def rewrite_local_blueprint_dependency(project_dir: Path, package_root: Path) ->
         project_dir,
         action="inject the local path override automatically",
     )
-    relative_path = os.path.relpath(package_root, start=project_dir)
-    replacement = f'{match.group("indent")}require VersoBlueprint from "{relative_path}"'
+    local_path = str(package_root.resolve())
+    replacement = f'{match.group("indent")}require VersoBlueprint from "{local_path}"'
     rewritten = text[: match.start()] + replacement + text[match.end() :]
     rewritten = disable_header_linter_for_mathlib_blueprint_lakefile(rewritten)
     lakefile.write_text(rewritten, encoding="utf-8")
