@@ -440,7 +440,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
         match fromJson? (α := GraphBlockData) data with
         | .ok gd => pure gd
         | .error err =>
-          HtmlT.logError s!"Malformed data in Block.graph.toHtml ({err})"
+          Verso.reportError s!"Malformed data in Block.graph.toHtml ({err})"
           pure { graph := #[], options := {}, groupTitles := #[] }
       let s ← HtmlT.state
       let resolveHref : Name → Option String := fun ref =>

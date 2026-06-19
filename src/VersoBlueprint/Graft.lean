@@ -79,12 +79,12 @@ private def renderLeanCodePreviewBody?
     Doc.Html.HtmlT Verso.Genre.Manual m (Option Html) := do
   match Informal.TraversalIndex.LeanCodePreviews.object? state key with
   | none =>
-      Doc.Html.HtmlT.logError s!"Blueprint graft: missing Lean-code preview {key}"
+      Verso.reportError s!"Blueprint graft: missing Lean-code preview {key}"
       pure none
   | some obj =>
       match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
       | .error err =>
-          Doc.Html.HtmlT.logError s!"Blueprint graft: malformed Lean-code preview {key}: {err}"
+          Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err}"
           pure none
       | .ok entry =>
           match entry.source with
@@ -157,7 +157,7 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConf
     some <| fun _goI goB _id data _blocks => do
       match fromJson? (α := Informal.Graft.BlueprintNodeConfig) data with
       | .error err =>
-          HtmlT.logError s!"Malformed Blueprint graft node data ({err}): {data}"
+          Verso.reportError s!"Malformed Blueprint graft node data ({err}): {data}"
           pure .empty
       | .ok cfg => renderManualGraftNode goB cfg
 
@@ -175,7 +175,7 @@ block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideC
       let cfg ←
         match fromJson? (α := Informal.Graft.SideBySideConfig) data with
         | .error err =>
-            HtmlT.logError s!"Malformed Blueprint graft side-by-side data ({err}): {data}"
+            Verso.reportError s!"Malformed Blueprint graft side-by-side data ({err}): {data}"
             pure {}
         | .ok cfg => pure cfg
       let content ← blocks.mapM goB
