@@ -50,7 +50,7 @@ def findSummaryPreviewJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "rootSelector: \".bp_summary\""
 
 def findInlinePreviewJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st "function bindInlinePreview(previewUtils)"
+  findExtraJsContaining? st "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\""
 
 def findMathPreludeJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "window.bpTexPreludeTable"
@@ -59,11 +59,10 @@ def findCodeSummaryPreviewJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "rootSelector: \".bp_code_summary_preview_root\""
 
 def findRelationPanelJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st "function bindRelationPanel(previewUtils, panel)"
+  findExtraJsContaining? st "previewUtils.registerPreviewHydrator(\"relationPanel\""
 
 def findGraphPreviewJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st
-    "function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId)"
+  findExtraJsContaining? st "document.querySelectorAll(\".bp_graph_fullwidth\")"
 
 def manualImpls : ExtensionImpls := extension_impls%
 

@@ -333,7 +333,11 @@ The workflow implies a few constraints for renderers:
   behavior, template-root binding, and feature hydrator registration. Those
   helpers keep bundled graph, summary, relation-panel, inline-preview, and
   slide scripts on one runtime path, but they are not a public custom-client
-  contract unless promoted into the manual's stable API table.
+  contract unless promoted into the manual's stable API table. New public
+  browser APIs should start as stable custom-client entries only when an
+  external interface can describe its responsibility without depending on
+  Blueprint-owned DOM structure; otherwise they should remain bundled helpers
+  until the argument shape is clearer.
 
 - **Split JavaScript by responsibility, not feature semantics.**
   The current preview runtime is still bundled as one asset, but its internal
@@ -349,7 +353,9 @@ The workflow implies a few constraints for renderers:
   direct reads from `window.VersoBlueprint.render` are limited to the runtime
   bootstrap path. Stable render API additions must be reflected in the Manual's
   custom-client table, while bundled helper additions stay out of that table
-  unless intentionally promoted. The harness test
+  unless intentionally promoted. Lean rendering tests should assert emitted
+  markup, stable API wiring, and removed legacy paths; source-level guards and
+  browser tests own private JavaScript helper shape. The harness test
   `tests/harness/test_preview_runtime_api_docs.py` owns these source-level
   guardrails so Lean rendering tests can focus on emitted markup, assets, and
   behavior instead of brittle JavaScript object-shape assertions.
