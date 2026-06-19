@@ -867,6 +867,30 @@
     panel.style.top = top + "px";
   }
 
+  function bindPanelRepositioner(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const owner = readElementOption(opts, "owner", null);
+    const boundAttr = readStringOption(opts, "boundAttr", "data-bp-panel-reposition-bound");
+    const reposition = readFunctionOption(opts, "reposition", null);
+    const bindResize = opts.bindResize !== false;
+    const bindScroll = opts.bindScroll !== false;
+    if (!reposition) return null;
+
+    const controller = {
+      reposition: function () {
+        reposition(controller);
+      }
+    };
+
+    if (owner instanceof Element) {
+      if (owner.getAttribute(boundAttr) === "1") return controller;
+      owner.setAttribute(boundAttr, "1");
+    }
+    if (bindResize) window.addEventListener("resize", controller.reposition);
+    if (bindScroll) window.addEventListener("scroll", controller.reposition, true);
+    return controller;
+  }
+
   function shouldKeepOpen(nextTarget, trigger, panel) {
     if (!(nextTarget instanceof Element)) return false;
     if (trigger instanceof Element && trigger.contains(nextTarget)) return true;
@@ -1241,15 +1265,15 @@
       });
     }
     if (bindWindow) {
-      const reposition = function () {
-        const current = behavior();
-        const activeAnchor = getActiveAnchor();
-        if (current.isAnchored && activeAnchor && panel instanceof Element && !panel.hidden) {
-          position(activeAnchor);
+      bindPanelRepositioner({
+        reposition: function () {
+          const current = behavior();
+          const activeAnchor = getActiveAnchor();
+          if (current.isAnchored && activeAnchor && panel instanceof Element && !panel.hidden) {
+            position(activeAnchor);
+          }
         }
-      };
-      window.addEventListener("resize", reposition);
-      window.addEventListener("scroll", reposition, true);
+      });
     }
 
     return Object.assign(controls, {
@@ -1700,6 +1724,7 @@
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
     bindAnchoredPopover: bindAnchoredPopover,
+    bindPanelRepositioner: bindPanelRepositioner,
     bindPreviewTriggers: bindPreviewTriggers,
     bindTemplatePreviewRoots: bindTemplatePreviewRoots
   };

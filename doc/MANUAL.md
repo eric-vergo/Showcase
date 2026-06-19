@@ -1104,7 +1104,7 @@ custom-client API unless they are promoted into the table above.
 | --- | --- | --- |
 | Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers` | Summary previews, relation panels, graph node previews, and inline preview cards |
 | Panel shell and content | `createPreviewPanel`, `createPanelController`, `showPanelContent`, `setPreviewHeaderLink`, `previewMessageHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
-| Behavior and positioning | `readPanelBehavior`, `bindAnchoredPopover` | Graph preview controls, graph legend popovers, and graph options popovers |
+| Behavior and positioning | `readPanelBehavior`, `bindAnchoredPopover`, `bindPanelRepositioner` | Graph preview controls, graph legend/options popovers, inline preview panels, and shared resize/scroll repositioning |
 | Hydration hooks | `registerPreviewHydrator` | Bundled previews that need feature-specific post-render binding |
 
 For new custom interfaces, prefer the highest-level entry point that fits the
