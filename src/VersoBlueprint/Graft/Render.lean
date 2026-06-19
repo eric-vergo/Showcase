@@ -72,7 +72,7 @@ public structure ManifestRenderConfig where
   nodeAttrs : BlueprintNode → Array (String × String) := (·.renderedAttrs)
   renderMissingNode : BlueprintNode → String → String → Html := defaultRenderMissingNode
   manifestUnavailableDetail : String :=
-    "Provide a Blueprint preview manifest and rendered HTML cache before rendering graft nodes."
+    "Provide a Blueprint preview manifest and rendered-fragment cache before rendering graft nodes."
 
 /--
 Render a graft node when the semantic manifest entry and already-rendered body

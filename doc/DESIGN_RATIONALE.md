@@ -52,8 +52,12 @@ Command modules are split by concern:
 - `VersoBlueprint/Commands/Graph.lean`
 - `VersoBlueprint/Commands/Summary.lean`
 - `VersoBlueprint/Commands/Bibliography.lean`
-- generic command CSS and shared preview/runtime primitives in
+- generic command CSS and shared preview/runtime asset injection in
   `VersoBlueprint/Commands/Common.lean`
+- the target-details opener in `VersoBlueprint/Commands/open-target-details.js`
+- the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
+- the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
+- summary preview binding in `VersoBlueprint/Commands/summary-preview.js`
 
 Informal-block support is now split across smaller modules instead of one large
 `Block.lean` bucket:
@@ -61,8 +65,12 @@ Informal-block support is now split across smaller modules instead of one large
 - `Informal/Block.lean`:
   statement/proof block elaboration plus the top-level HTML block renderer
 - `Informal/Block/Assets.lean`:
-  block-specific CSS and browser JS bundles, including the block-owned preview
-  handlers (`used by` and code-summary preview wiring)
+  block-specific CSS and browser JS bundle wiring; the block-owned preview
+  handlers live in adjacent JS assets
+- `Informal/Block/code-summary-preview.js`:
+  code-summary preview binding
+- `Informal/Block/relation-panel.js`:
+  relation-panel preview binding (`uses`, `used by`, and group panels)
 - `Informal/Block/Store.lean`:
   stored-block lookup, merge, and numbering-resolution helpers used during
   traversal/rendering
@@ -78,10 +86,15 @@ Shared preview and rendering helpers live in `VersoBlueprint/Lib/`, notably:
 - `HoverRender.lean`
 - `PreviewSource.lean`
 
-Graph-specific browser assets stay with the graph command:
+Shared and feature-specific browser assets stay with their owning commands:
 
+- `Commands/preview-runtime.js`
+- `Commands/inline-preview.js`
+- `Commands/open-target-details.js`
+- `Commands/summary-preview.js`
 - `Commands/graph.js`
-- `Commands/graph-toc-toggle.js`
+- `Informal/Block/code-summary-preview.js`
+- `Informal/Block/relation-panel.js`
 
 Per-command CSS overlays stay with their commands:
 
@@ -123,9 +136,9 @@ flowchart TD
   traverse["Verso traversal<br/>numbering, hrefs, anchors, local preview blocks"]
   indexes["TraversalIndex domains<br/>Nodes, InlineCode, TraversalPreviews,<br/>LeanCodePreviews, citations, external-decl anchors"]
   render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
-  manifest["PreviewManifest extra step<br/>semantic manifest and rendered HTML cache"]
+  manifest["PreviewManifest extra step<br/>semantic manifest and rendered-fragment cache"]
   artifacts["Generated artifacts<br/>HTML pages, assets, -verso-docs.json,<br/>blueprint-manifest.json, blueprint-html-cache.json"]
-  browser["Browser runtime<br/>bpPreviewUtils, graph/summary/block/slides JS"]
+  browser["Browser runtime<br/>onRenderReady -> render API,<br/>graph/summary/block/slides JS"]
   consumers["External/custom consumers<br/>Slides, audit views, dashboards, custom wrappers"]
 
   source --> elab
@@ -168,17 +181,21 @@ The same flow can be read as four contracts:
    preview triggers, and feature-specific assets. The Blueprint preview-data
    extra step emits two structured files under `-verso-data/`:
    `blueprint-manifest.json`, which contains semantic preview entries and
-   metadata, and `blueprint-html-cache.json`, which contains rendered HTML
+   metadata, and `blueprint-html-cache.json`, which contains opaque rendered
    fragments plus the hover side data needed to hydrate those fragments inside
    generated pages.
 
 4. **Artifacts to runtime and external consumers.**
    Browser code should treat the generated artifacts as immutable inputs. Page
-   markup carries stable lookup keys and lightweight data attributes. Shared
-   runtime helpers in `bpPreviewUtils` load cache entries, decode cached
-   fragments, hydrate nested preview widgets, render math, and apply panel
-   behavior. Feature-owned JavaScript such as graph, summary, relation-panel,
+   markup carries stable lookup keys and lightweight data attributes. Preview
+   clients register setup work through `window.VersoBlueprint.onRenderReady`;
+   once the shared runtime is installed, the callback receives the same API that
+   is also exposed as `window.VersoBlueprint.render`. That API loads
+   manifest/cache entries, inserts cached fragments as opaque HTML, hydrates
+   nested preview widgets, renders math, and applies panel behavior.
+   Feature-owned JavaScript such as graph, summary, relation-panel,
    inline-preview, and slide code binds those generic helpers to a concrete UI.
+   Inline JavaScript asset order is not used as a readiness guarantee.
    Custom consumers should prefer the manifest/cache pair over scraping page
    HTML or re-solving Blueprint labels.
 
@@ -232,7 +249,7 @@ flowchart TD
   graftContent["Shared node assembly<br/>Graft.renderNodeWithContent"]
   manifestBlock["Manifest-backed block shell<br/>PreviewManifest.BlockRender.renderWithRenderedContent"]
   blockShell["Canonical block shell<br/>Informal.Block.Render.renderInformalBlockModel"]
-  browserRuntime["Browser hydration<br/>bpPreviewUtils and feature hydrators"]
+  browserRuntime["Browser hydration<br/>onRenderReady -> render API<br/>and feature hydrators"]
 
   manualMain --> versoEmit
   versoEmit --> informalManual
@@ -268,7 +285,7 @@ The current paths are:
 | Slides graft node | `Informal.Slides.slidesMainWithBlueprintPreviews` plus `Informal.Slides.renderBlueprintSlideNode` | serialized manifest/cache files copied from the Blueprint site | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | static slide-node HTML plus slide assets |
 | Slides side-by-side wrapper | `VersoSlides.BlockExt.wrap` emitted by `blueprint_side_by_side` in Slides | already rendered child slide blocks | upstream Slides wrapper; child nodes follow the Slides graft-node path | side-by-side slide HTML wrapper |
 | External/custom generated consumers | direct calls to `Informal.Graft.renderNodeFromManifestCache` | serialized manifest/cache files | `Informal.Graft.renderNodeFromManifestCache` then `renderNodeWithContent` | consumer-owned HTML wrapper |
-| Browser preview/panel hydration | `bpPreviewUtils` and registered feature hydrators | generated page markup, manifest/cache files, `-verso-docs.json` | JavaScript hydration only | interactive previews, panels, math, links |
+| Browser preview/panel hydration | `window.VersoBlueprint.onRenderReady` callback receiving the render API, plus registered feature hydrators | generated page markup, manifest/cache files, `-verso-docs.json` | JavaScript hydration only | interactive previews, panels, math, links |
 
 This inventory is also the answer to "how many render contexts do we have?" for
 grafted Blueprint nodes. `VersoBlueprint.Graft.Render` owns the one concrete
@@ -299,11 +316,79 @@ The workflow implies a few constraints for renderers:
   Runtime code may load cached HTML, insert it into panels, render math, and
   bind nested preview handlers. It should not decide whether a node is
   formalized, which dependencies exist, or how related panels are structured.
+  Browser clients and bundled feature JavaScript should use
+  `window.VersoBlueprint.onRenderReady` for startup and the callback's render
+  API argument to resolve manifest/cache entries and hydrate inserted fragments.
+  After readiness, that same API is also available as
+  `window.VersoBlueprint.render`, but direct reads should not be used as a
+  startup synchronization mechanism. This keeps preview synchronization on one
+  runtime API instead of splitting lookup and hydration across feature-owned
+  helpers or relying on incidental inline-script order.
+
+- **The browser render API has two tiers.**
+  Custom clients should treat `onRenderReady`, manifest/cache loading and
+  status readers, keyed lookup, `resolvePreview`, `renderPreviewInto`, and
+  `hydrate` as the stable integration surface. Blueprint's bundled feature
+  scripts also share helper methods for panel positioning, close-button
+  behavior, template-root binding, and feature hydrator registration. Those
+  helpers keep bundled graph, summary, relation-panel, inline-preview, and
+  slide scripts on one runtime path, but they are not a public custom-client
+  contract unless promoted into the manual's stable API table. New public
+  browser APIs should start as stable custom-client entries only when an
+  external interface can describe its responsibility without depending on
+  Blueprint-owned DOM structure; otherwise they should remain bundled helpers
+  until the argument shape is clearer.
+
+- **Split JavaScript by responsibility, not feature semantics.**
+  The current preview runtime is still bundled as one asset, but its internal
+  responsibilities are the boundaries for any future split: debug/template
+  utilities, manifest and rendered-fragment cache stores, preview resolution,
+  fragment insertion and hydration, panel behavior helpers, template binding,
+  and API readiness. A split module may load files, join entries by preview key,
+  insert opaque fragments, or call hydrators; it should not infer Blueprint
+  relation topology, ownership, status, or code associations from HTML markup.
+
+- **Keep readiness and API guards source-level.**
+  Feature JavaScript must start through `window.VersoBlueprint.onRenderReady`;
+  direct reads from `window.VersoBlueprint.render` are limited to the runtime
+  bootstrap path. Stable render API additions must be reflected in the Manual's
+  custom-client table, while bundled helper additions stay out of that table
+  unless intentionally promoted. Lean rendering tests should assert emitted
+  markup, stable API wiring, and removed legacy paths; source-level guards and
+  browser tests own private JavaScript helper shape. The harness test
+  `tests/harness/test_preview_runtime_api_docs.py` owns these source-level
+  guardrails so Lean rendering tests can focus on emitted markup, assets, and
+  behavior instead of brittle JavaScript object-shape assertions.
 
 - **Fallbacks should be diagnostic, not alternative data paths.**
-  If a manifest entry or HTML-cache body is missing, the UI should expose a
-  clear local diagnostic. Silently falling back to page-local stale templates
-  or ad hoc label scans creates a second source of truth.
+  If a manifest entry or rendered-fragment body is missing, the UI should
+  expose a clear local diagnostic. Silently falling back to page-local stale
+  templates or ad hoc label scans creates a second source of truth.
+
+### Manifest And Rendered-Fragment Cache Contract
+
+The preview manifest and rendered-fragment cache have separate responsibilities:
+the manifest owns semantics, and the cache owns presentation. The manifest is
+the authoritative source for labels, facets, titles, hrefs, group membership,
+relation topology, Lean-code associations, ownership metadata, tags, priority,
+effort, and external markup metadata. The rendered-fragment cache stores opaque
+HTML bodies keyed by the same preview keys, plus the Verso hover payloads needed
+by those bodies.
+
+Consumers should join the two files by preview key at the last responsible
+moment. A renderer may use the manifest entry to decide what the object means
+and how to wrap it, then use the cached fragment as the already-rendered body.
+Browser clients may insert that fragment and hydrate it. They should not scrape
+cached fragments to rediscover labels, dependencies, code status, group
+membership, or other semantic facts. If a new generated consumer needs another
+semantic fact, add that fact to `PreviewManifest.Entry` or a typed structure
+referenced from it; do not encode it only in rendered HTML.
+
+This rule keeps custom consumers independent of presentation markup. It also
+lets Blueprint change CSS, heading layout, relation-panel markup, or rendered
+code-panel structure without changing the semantic data contract. Cached HTML
+may visibly contain relation panels, code panels, and headings, but those are a
+rendering of manifest semantics, not a second data source.
 
 ### Phase Boundary Checklist
 
@@ -313,11 +398,14 @@ When adding a new Blueprint surface, choose its data boundary explicitly:
    `Environment.State` or a typed semantic model referenced from it.
 2. If the fact depends on document placement, rendered numbering, hrefs, or
    anchors, put it in a `TraversalIndex` domain.
-3. If the fact must be consumed outside the current generator process, emit it
-   through `PreviewManifest` and the HTML cache.
-4. If the fact is only UI interaction state, keep it in browser-owned DOM or JS
+3. If a semantic fact must be consumed outside the current generator process,
+   emit it through `PreviewManifest`.
+4. If a rendered body must be reused outside the current page render, put the
+   already-rendered fragment in the rendered-fragment cache and keep it opaque
+   to consumers.
+5. If the fact is only UI interaction state, keep it in browser-owned DOM or JS
    state.
-5. If two phases need the same shape, share a projection or renderer, not the
+6. If two phases need the same shape, share a projection or renderer, not the
    mutable phase-local store itself.
 
 ## External Declaration Model
@@ -399,14 +487,14 @@ rather than page-local template bodies:
    preview payloads under their own preview-data keys.
 2. `PreviewManifest.lean` owns the Blueprint generator entry point and emits
    two files consumed by generated sites: the semantic Blueprint manifest and
-   the rendered HTML cache. The cache stores rendered fragments plus their
+   the rendered-fragment cache. The cache stores rendered fragments plus their
    Verso hover side table, while generated pages merge those hover payloads into
    `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
    is still available.
 3. `Commands/Common.lean` owns the browser-side preview runtime:
-   HTML-cache loading, missing-cache diagnostics, hydration, math rendering,
-   and anchored panel behavior.
+   rendered-fragment loading, missing-fragment diagnostics, hydration, math
+   rendering, and anchored panel behavior.
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
@@ -424,11 +512,11 @@ rather than page-local template bodies:
 
 Inline Blueprint references, citation references, and the `used by`/group
 relationship panels are now preview-data callers: the rendered page carries the
-stable lookup key, while the preview body comes from the HTML cache. Those
-surfaces deliberately avoid page-local fallback templates so preview content has
-one generated source of truth. If the cache is unavailable or missing an entry,
-the browser renders a local diagnostic message instead of silently using stale
-local preview HTML.
+stable lookup key, while the preview body comes from the rendered-fragment
+cache. Those surfaces deliberately avoid page-local fallback templates so
+preview content has one generated source of truth. If the cache is unavailable
+or missing an entry, the browser renders a local diagnostic message instead of
+silently using stale local preview HTML.
 
 ### Blueprint render entry point
 

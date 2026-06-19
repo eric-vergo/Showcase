@@ -51,3 +51,24 @@ def assert_no_runtime_errors(errors: list[str]) -> None:
         if "cancelChildHide" in err or "ReferenceError" in err or "Uncaught" in err
     ]
     assert not relevant, "\n".join(relevant)
+
+
+def blueprint_render_api_script(body: str) -> str:
+    return f"""
+    async () => {{
+        const api = await new Promise((resolve) => {{
+            window.VersoBlueprint.onRenderReady(resolve);
+        }});
+        {body}
+    }}
+    """
+
+
+def wait_for_blueprint_render_api(page: Page) -> None:
+    page.wait_for_function(
+        """() => !!(
+          window.VersoBlueprint &&
+          typeof window.VersoBlueprint.onRenderReady === "function"
+        )"""
+    )
+    page.evaluate(blueprint_render_api_script("return true;"))

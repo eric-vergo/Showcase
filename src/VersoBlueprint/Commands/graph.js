@@ -39,23 +39,10 @@
   }
 
   function previewBehaviorForMode(previewUtils, mode, placement) {
-    if (previewUtils && typeof previewUtils.readPanelBehavior === "function") {
-      return previewUtils.readPanelBehavior(null, {
-        mode: mode,
-        placement: placement
-      });
-    }
-    const normalized = mode === "hover" || mode === "pinned" ? mode : "pinned";
-    const normalizedPlacement =
-      placement === "anchored" || placement === "docked" ? placement : "docked";
-    return {
-      mode: normalized,
-      placement: normalizedPlacement,
-      isPinned: normalized === "pinned",
-      isHover: normalized === "hover",
-      isAnchored: normalizedPlacement === "anchored",
-      isDocked: normalizedPlacement === "docked"
-    };
+    return previewUtils.readPanelBehavior(null, {
+      mode: mode,
+      placement: placement
+    });
   }
 
   function normalizeGraphOptions(rawOptions) {
@@ -131,12 +118,8 @@
     });
   }
 
-  function collectPreviewTemplates(rootNode) {
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.collectPreviewTemplates !== "function") {
-      return new Map();
-    }
-    return utils.collectPreviewTemplates(
+  function collectPreviewTemplates(previewUtils, rootNode) {
+    return previewUtils.collectPreviewTemplates(
       rootNode || document,
       "template.bp_graph_preview_tpl[data-bp-preview-label]"
     );
@@ -299,80 +282,6 @@
     }
   }
 
-  function parsePreviewEntry(entry) {
-    const utils = window.bpPreviewUtils;
-    if (utils && typeof utils.readPreviewTemplate === "function") {
-      return utils.readPreviewTemplate(entry);
-    }
-    if (typeof entry === "string") {
-      return entry;
-    }
-    return "";
-  }
-
-  function renderMath(root) {
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.renderMath !== "function") return;
-    utils.renderMath(root);
-  }
-
-  function readPanelNodes(panel, titleSelector, bodySelector) {
-    if (!(panel instanceof Element)) {
-      return { title: null, body: null };
-    }
-    const title = panel.querySelector(titleSelector);
-    const body = panel.querySelector(bodySelector);
-    return {
-      title: title instanceof Element ? title : null,
-      body: body instanceof Element ? body : null
-    };
-  }
-
-  function createPanelController(panel, behavior, titleSelector, bodySelector, options) {
-    if (!(panel instanceof Element)) return null;
-    const nodes = readPanelNodes(panel, titleSelector, bodySelector);
-    const opts = options && typeof options === "object" ? options : {};
-    const clearBody =
-      typeof opts.clearBody === "function"
-        ? opts.clearBody
-        : function (body) { body.innerHTML = ""; };
-    const renderBody =
-      typeof opts.renderBody === "function" ? opts.renderBody : function () {};
-    const positionPanel =
-      typeof opts.positionPanel === "function" ? opts.positionPanel : function () {};
-    const onHide =
-      typeof opts.onHide === "function" ? opts.onHide : function () {};
-    const controller = {
-      panel: panel,
-      title: nodes.title,
-      body: nodes.body,
-      behavior: behavior || {
-        isPinned: true,
-        isHover: false,
-        isAnchored: false,
-        isDocked: true
-      },
-      hide: function () {
-        panel.hidden = true;
-        if (controller.title) controller.title.textContent = "";
-        if (controller.body) clearBody(controller.body);
-        onHide();
-      },
-      position: function (anchorNode) {
-        positionPanel(panel, anchorNode);
-      },
-      show: function (titleText, payload, anchorNode) {
-        if (!controller.title || !controller.body) return false;
-        controller.title.textContent = titleText || "";
-        renderBody(controller.body, payload);
-        panel.hidden = false;
-        controller.position(anchorNode);
-        return true;
-      }
-    };
-    return controller;
-  }
-
   function readBehaviorSource(behaviorSource) {
     if (typeof behaviorSource === "function") {
       const behavior = behaviorSource();
@@ -381,32 +290,26 @@
     return behaviorSource && typeof behaviorSource === "object" ? behaviorSource : null;
   }
 
-  function makeHtmlPanelPositioner(behaviorSource) {
+  function makeHtmlPanelPositioner(previewUtils, behaviorSource) {
     return function (panel, anchorNode) {
       const behavior = readBehaviorSource(behaviorSource);
-      const previewUtils = window.bpPreviewUtils;
       if (
         behavior &&
         behavior.isAnchored &&
-        previewUtils &&
-        typeof previewUtils.positionAnchoredPanel === "function" &&
         anchorNode instanceof Element
       ) {
         previewUtils.positionAnchoredPanel(panel, anchorNode, 12, 10);
-      } else if (previewUtils && typeof previewUtils.resetPanelPosition === "function") {
+      } else {
         previewUtils.resetPanelPosition(panel);
       }
     };
   }
 
-  function makeGroupPanelPositioner(graphBlock, behavior) {
+  function makeGroupPanelPositioner(previewUtils, graphBlock, behavior) {
     return function (panel, anchorNode) {
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
-      const previewUtils = window.bpPreviewUtils;
       if (!behavior || !behavior.isAnchored) {
-        if (previewUtils && typeof previewUtils.resetPanelPosition === "function") {
-          previewUtils.resetPanelPosition(panel);
-        }
+        previewUtils.resetPanelPosition(panel);
         return;
       }
       if (!(anchorNode instanceof Element)) return;
@@ -428,105 +331,12 @@
     };
   }
 
-  function configurePanelCloseButton(previewUtils, closeButton, hidePanel, behavior) {
-    if (!(closeButton instanceof Element)) return;
-    if (previewUtils && typeof previewUtils.configureCloseButton === "function") {
-      previewUtils.configureCloseButton(closeButton, hidePanel, behavior);
-      return;
-    }
-    if (behavior && behavior.isPinned) {
-      closeButton.hidden = false;
-      closeButton.style.display = "";
-      closeButton.setAttribute("aria-hidden", "false");
-      closeButton.tabIndex = 0;
-      if (previewUtils && typeof previewUtils.bindCloseOnce === "function") {
-        previewUtils.bindCloseOnce(closeButton, hidePanel);
-      } else if (closeButton.getAttribute("data-bp-bound") !== "1") {
-        closeButton.setAttribute("data-bp-bound", "1");
-        closeButton.addEventListener("click", function (ev) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          hidePanel();
-        });
-      }
-    } else {
-      closeButton.hidden = true;
-      closeButton.style.display = "none";
-      closeButton.setAttribute("aria-hidden", "true");
-      closeButton.tabIndex = -1;
-    }
-  }
-
-  function bindHoverablePanelLifetime(previewUtils, controller, getActiveAnchor, boundAttr) {
-    const noop = {
-      cancelHide: function () {},
-      scheduleHide: function () {
-        if (controller) controller.hide();
-      }
-    };
-    if (!controller || !(controller.panel instanceof Element)) return noop;
-    const panel = controller.panel;
-    const attr =
-      typeof boundAttr === "string" && boundAttr.length > 0
-        ? boundAttr
-        : "data-bp-preview-hover-bound";
-    let hideTimer = null;
-
-    function cancelHide() {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    }
-
-    function scheduleHide() {
-      if (!controller.behavior || !controller.behavior.isHover) return;
-      cancelHide();
-      hideTimer = window.setTimeout(function () {
-        hideTimer = null;
-        controller.hide();
-      }, 180);
-    }
-
-    function maybeScheduleHide(ev) {
-      if (
-        previewUtils &&
-        typeof previewUtils.shouldKeepOpen === "function" &&
-        previewUtils.shouldKeepOpen(
-          ev.relatedTarget,
-          typeof getActiveAnchor === "function" ? getActiveAnchor() : null,
-          panel
-        )
-      ) {
-        return;
-      }
-      scheduleHide();
-    }
-
-    if (panel.getAttribute(attr) !== "1") {
-      panel.setAttribute(attr, "1");
-      panel.addEventListener("mouseenter", cancelHide);
-      panel.addEventListener("focusin", cancelHide);
-      panel.addEventListener("mouseleave", maybeScheduleHide);
-      panel.addEventListener("focusout", maybeScheduleHide);
-    }
-
-    return {
-      cancelHide: cancelHide,
-      scheduleHide: scheduleHide
-    };
-  }
-
-  function attachPreviewHandlers(graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
+  function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
     if (!previewController) return;
     const graphState = ensureGraphBlockState(graphBlock);
-    const previewUtils = window.bpPreviewUtils;
-    const canResolveHtmlCache =
-      previewUtils && typeof previewUtils.loadBlueprintHtmlCacheEntry === "function";
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
-    const hoverLifetime = bindHoverablePanelLifetime(
-      previewUtils,
+    const hoverLifetime = previewUtils.bindHoverablePanelLifetime(
       previewController,
       function () { return graphState.previewActiveNode; },
       "data-bp-preview-hover-bound"
@@ -536,7 +346,7 @@
       previewController.hide();
       return;
     }
-    if (!previewController.title || !previewController.body || (previewMap.size === 0 && !canResolveHtmlCache)) {
+    if (!previewController.title || !previewController.body || (previewMap.size === 0 && previewKeys.size === 0)) {
       previewController.hide();
       return;
     }
@@ -544,10 +354,10 @@
       const requestToken = ++graphState.previewRequestToken;
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      let html = parsePreviewEntry(previewMap.get(label));
-      if (!html && canResolveHtmlCache && previewKey) {
-        const cacheEntry = await previewUtils.loadBlueprintHtmlCacheEntry(previewKey);
-        html = parsePreviewEntry(cacheEntry);
+      let html = previewMap.get(label) || "";
+      if (!html && previewKey) {
+        const result = await previewUtils.resolvePreview(previewKey);
+        html = result && result.ok ? result.html : "";
       }
       if (requestToken !== graphState.previewRequestToken) return;
       if (!html) return;
@@ -560,7 +370,7 @@
       const label = graphNodeLabel(node);
       const nodeId = graphNodeId(node);
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      return !!label && (previewMap.has(label) || !!(canResolveHtmlCache && previewKey));
+      return !!label && (previewMap.has(label) || !!previewKey);
     };
     svg.querySelectorAll("g.node").forEach(function (node) {
       if (!canPreviewNode(node)) return;
@@ -614,8 +424,6 @@
     const hideIfLeaving = function (ev) {
       if (!previewController.behavior || !previewController.behavior.isHover) return;
       if (
-        previewUtils &&
-        typeof previewUtils.shouldKeepOpen === "function" &&
         previewUtils.shouldKeepOpen(ev.relatedTarget, graphState.previewActiveNode, previewController.panel)
       ) {
         return;
@@ -804,10 +612,11 @@
     );
   }
 
-  Promise.resolve()
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
-    .then(function () {
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
+    Promise.resolve()
+      .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
+      .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
+      .then(function () {
       const graphBlocks = Array.from(document.querySelectorAll(".bp_graph_fullwidth"));
       if (graphBlocks.length === 0) return;
 
@@ -823,32 +632,25 @@
         const packInput = graphBlock.querySelector(".bp_graph_pack_input");
         const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
         const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
-        const previewMap = collectPreviewTemplates(graphBlock);
+        const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
         const previewClose = previewPanelNode
           ? previewPanelNode.querySelector(".bp_graph_preview_close")
           : null;
-        const previewUtils = window.bpPreviewUtils;
         const previewPanelBehavior =
-          previewUtils && typeof previewUtils.readPanelBehavior === "function"
-            ? previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" })
-            : { mode: "pinned", placement: "docked", isPinned: true, isHover: false, isAnchored: false, isDocked: true };
+          previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
         let previewController = null;
-        previewController = createPanelController(
+        previewController = previewUtils.createPanelController(
           previewPanelNode,
           previewPanelBehavior,
           ".bp_graph_preview_title",
           ".bp_graph_preview_body",
           {
-            clearBody: function (body) { body.innerHTML = ""; },
+            clearBody: function (body) { body.replaceChildren(); },
             renderBody: function (body, html) {
-              body.innerHTML = html;
-              if (previewUtils && typeof previewUtils.hydratePreviewSubtree === "function") {
-                previewUtils.hydratePreviewSubtree(body);
-              }
-              renderMath(body);
+              previewUtils.renderHtmlInto(body, html);
             },
-            positionPanel: makeHtmlPanelPositioner(function () {
+            positionPanel: makeHtmlPanelPositioner(previewUtils, function () {
               return previewController ? previewController.behavior : previewPanelBehavior;
             }),
             onHide: function () {
@@ -881,7 +683,7 @@
           if (previewPlacementSelector) previewPlacementSelector.value = placement;
           if (previewController) {
             previewController.behavior = behavior;
-            configurePanelCloseButton(previewUtils, previewClose, function () {
+            previewUtils.configureCloseButton(previewClose, function () {
               if (previewController) previewController.hide();
             }, behavior);
             if (!opts.keepOpen) previewController.hide();
@@ -971,16 +773,14 @@
           : null;
         let groupHoverGraphviz = null;
         const groupHoverBehavior =
-          previewUtils && typeof previewUtils.readPanelBehavior === "function"
-            ? previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" })
-            : { mode: "pinned", placement: "docked", isPinned: true, isHover: false, isAnchored: false, isDocked: true };
-        const groupHoverController = createPanelController(
+          previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" });
+        const groupHoverController = previewUtils.createPanelController(
           groupHoverPanel,
           groupHoverBehavior,
           ".bp_group_hover_preview_title",
           ".bp_group_hover_preview_graph",
           {
-            clearBody: function (body) { body.innerHTML = ""; },
+            clearBody: function (body) { body.replaceChildren(); },
             renderBody: function (body, variant) {
               const width = Math.max(320, body.clientWidth || 0);
               const height = Math.max(220, body.clientHeight || 0);
@@ -993,7 +793,7 @@
                 .height(height)
                 .renderDot(dotForVariantOptions(variant, getActiveOptions()));
             },
-            positionPanel: makeGroupPanelPositioner(graphBlock, groupHoverBehavior),
+            positionPanel: makeGroupPanelPositioner(previewUtils, graphBlock, groupHoverBehavior),
             onHide: function () {
               graphState.groupHoverAnchorNode = null;
               graphState.groupHoverShownKey = "";
@@ -1002,13 +802,12 @@
           }
         );
         graphState.groupHoverController = groupHoverController;
-        const groupHoverLifetime = bindHoverablePanelLifetime(
-          previewUtils,
+        const groupHoverLifetime = previewUtils.bindHoverablePanelLifetime(
           groupHoverController,
           function () { return graphState.groupHoverAnchorNode; },
           "data-bp-group-hover-bound"
         );
-        configurePanelCloseButton(previewUtils, groupHoverClose, function () {
+        previewUtils.configureCloseButton(groupHoverClose, function () {
           if (groupHoverController) groupHoverController.hide();
         }, groupHoverBehavior);
 
@@ -1134,6 +933,7 @@
             if (graphState.renderFinalizedToken === renderToken) return;
             graphState.renderFinalizedToken = renderToken;
             attachPreviewHandlers(
+              previewUtils,
               graphBlock,
               graphContainer,
               previewMap,
@@ -1253,5 +1053,6 @@
       }
 
       graphBlocks.forEach(initGraphBlock);
-    });
+      });
+  });
 })();

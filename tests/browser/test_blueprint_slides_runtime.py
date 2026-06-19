@@ -12,6 +12,7 @@ from support import (
     assert_no_runtime_errors,
     find_free_port,
     record_runtime_errors,
+    wait_for_blueprint_render_api,
     wait_for_server,
 )
 from scripts.blueprint_harness_project_commands import (
@@ -20,6 +21,17 @@ from scripts.blueprint_harness_project_commands import (
     snapshot_tracked_project_manifest,
 )
 from scripts.blueprint_harness_utils import lean_low_priority_command, rebuild_embedded_asset_owners
+
+COLLATZ_STEP_HREF = "Collatz/Source-Entries/#--informal-preview-collatz_step--statement"
+COLLATZ_STEP_REWRITTEN = (
+    "/blueprint/Collatz/Source-Entries/#--informal-preview-collatz_step--statement"
+)
+COLLATZ_CONJECTURE_HREF = (
+    "Collatz/Source-Entries/#--informal-preview-collatz_conjecture--statement"
+)
+COLLATZ_CONJECTURE_REWRITTEN = (
+    "/blueprint/Collatz/Source-Entries/#--informal-preview-collatz_conjecture--statement"
+)
 
 
 def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path]:
@@ -200,8 +212,9 @@ class TestBlueprintSlidesRuntime:
         assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
+        wait_for_blueprint_render_api(page)
         page.wait_for_function(
-            """() => !!(window.bpSlideNodeRuntime && window.bpSlideNodeRuntime.hydrate)"""
+            """() => !!(window.VersoBlueprint && window.VersoBlueprint.slides && window.VersoBlueprint.slides.hydrate)"""
         )
 
         node = page.locator(".bp_slide_node").first
@@ -301,8 +314,8 @@ class TestBlueprintSlidesRuntime:
         expect_slide_link(
             page,
             ".bp_slide_node_heading_link",
-            "Collatz/#--informal-preview-collatz_step--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_step--statement",
+            COLLATZ_STEP_HREF,
+            COLLATZ_STEP_REWRITTEN,
         )
         expect_slide_link(
             page,
@@ -313,14 +326,14 @@ class TestBlueprintSlidesRuntime:
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
-            "Collatz/#--informal-preview-collatz_conjecture--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
+            COLLATZ_CONJECTURE_HREF,
+            COLLATZ_CONJECTURE_REWRITTEN,
         )
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",
-            "Collatz/#--informal-preview-collatz_conjecture--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_conjecture--statement",
+            COLLATZ_CONJECTURE_HREF,
+            COLLATZ_CONJECTURE_REWRITTEN,
         )
 
         page.evaluate("window.Reveal.slide(1)")
@@ -511,12 +524,12 @@ class TestBlueprintSlidesRuntime:
         assert four_up_metrics["maxBottom"] <= four_up_metrics["viewportHeight"] - 24
         assert four_up_metrics["contentFontSize"] >= 12
 
-        page.evaluate("window.bpSlideNodeRuntime.hydrate(document)")
+        page.evaluate("window.VersoBlueprint.slides.hydrate(document)")
         expect_slide_link(
             page,
             ".bp_slide_node_heading_link",
-            "Collatz/#--informal-preview-collatz_step--statement",
-            "/blueprint/Collatz/#--informal-preview-collatz_step--statement",
+            COLLATZ_STEP_HREF,
+            COLLATZ_STEP_REWRITTEN,
         )
 
         assert_no_runtime_errors(errors)

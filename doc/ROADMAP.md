@@ -169,6 +169,9 @@ Work:
    checkout or an external Blueprint project without hand-editing manifests
 8. retire local workaround branches promptly once their content is either
    landed, deliberately ported, or recorded in this roadmap
+9. improve `prepare-pr` scaffolds for multi-commit work so generated PR titles
+   and bodies describe the branch-level change instead of inheriting misleading
+   last-commit metadata
 
 ## Design Candidates
 

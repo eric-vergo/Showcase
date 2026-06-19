@@ -38,7 +38,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findRelationPanelJs? st
     pure (
       hasSubstr out "used by 2" &&
       !hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
@@ -79,19 +79,22 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "function previewUnavailableHtml(previewUtils, previewKey, fallbackDetail)" &&
-        hasSubstr relationJs "body.innerHTML = loadingPreviewHtml();" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
-        !hasSubstr relationJs "fallbackTemplates" &&
-        hasSubstr relationJs "const initialItem = items.find(function (item) {" &&
-        hasSubstr relationJs "item.classList.contains(\"bp_relation_item_active\")" &&
-        hasSubstr relationJs "function loadActivePreview()" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
-        hasSubstr relationJs "selectItem(initialItem)" &&
-        !hasSubstr relationJs "activate(initialItem, { openWrap: false })" &&
-        hasSubstr relationJs "item.addEventListener(\"mouseenter\"" &&
-        hasSubstr relationJs "item.addEventListener(\"focusin\""
+        hasRenderReadyWiring relationJs "previewUtils" &&
+        !hasSubstr relationJs "function blueprintRender()" &&
+        hasAllSubstr relationJs [
+          "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
+          "previewUtils.resolvePreview(previewKey)",
+          "previewUtils.renderHtmlInto(body, result.html)",
+          "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })",
+          "previewUtils.setPreviewHeaderLink(headerLabel, item)",
+          "item.addEventListener(\"mouseenter\"",
+          "item.addEventListener(\"focusin\""
+        ] &&
+        lacksAllSubstr relationJs [
+          "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
+          "previewUtils.readHtmlCacheStatus()",
+          "fallbackTemplates"
+        ]
       | none => false
     )
 
@@ -127,7 +130,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findRelationPanelJs? st
     pure (
       hasSubstr out "uses 2" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
@@ -163,10 +166,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)" &&
-        hasSubstr relationJs "selectItem(initialItem)"
+        hasRenderReadyCallback relationJs "previewUtils" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
+        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
     )
 
@@ -175,7 +177,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
-    let relationJs? := findExtraJsContaining? st "function bindRelationPanel(panel)"
+    let relationJs? := findRelationPanelJs? st
     pure (
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
       hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
@@ -195,9 +197,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "used by 1" &&
       match relationJs? with
       | some relationJs =>
-        hasSubstr relationJs "function bindRelationPanel(panel)" &&
-        hasSubstr relationJs "previewUtils.loadBlueprintHtmlCacheEntry(previewKey)" &&
-        hasSubstr relationJs "selectItem(initialItem)" &&
+        hasRenderReadyCallback relationJs "previewUtils" &&
+        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false
     )

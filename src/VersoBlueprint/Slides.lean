@@ -30,7 +30,7 @@ Blueprint HTML. `BlockExt.ofHtml` is the 4.31 handoff back to the normal Slides
 renderer.
 -/
 @[reducible] private def blueprintSlidesTraverse
-    (renderContext : Informal.Slides.RenderContext) :
+    (renderContext : Informal.Graft.RenderContext) :
     Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
   { defaultSlidesTraverse with
     genreBlock := fun container contents => do
@@ -50,10 +50,11 @@ renderer.
 Render Blueprint slide-node carriers to `VersoSlides.BlockExt.ofHtml` during
 the normal Verso Slides traversal.
 
-The 4.30 branch keeps the older compatibility path that overrides
-`GenreHtml.block`, because `verso-slides` 4.30 does not provide
-`BlockExt.ofHtml`. This 4.31 path still mirrors the small `slidesMain` output
-loop so `quiet := true` remains supported and the rendered HTML cache can seed
+Release-line note: the supported 4.30 branch must keep its older
+`GenreHtml.block` override because `verso-slides` 4.30 does not provide
+`BlockExt.ofHtml`. On the 4.31 line, this implementation should stay on the
+`BlockExt.ofHtml` path while still mirroring the small `slidesMain` output loop
+so `quiet := true` remains supported and the rendered-fragment cache can seed
 the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
@@ -76,7 +77,7 @@ private def slidesMainWithBlueprintRenderer
     errors := pure #[]
     warnings := pure #[]
   }
-  let renderContext := Informal.Slides.RenderContext.ofPreviewData? manifest? htmlCache?
+  let renderContext := Informal.Graft.RenderContext.ofPreviewData? manifest? htmlCache?
     (logError := logError)
   let traverseDoc : VersoSlides.TraverseM (Verso.Doc.Part VersoSlides.Slides) :=
     let _ : Verso.Doc.Traverse VersoSlides.Slides VersoSlides.TraverseM :=
@@ -119,7 +120,7 @@ private def slidesMainWithBlueprintRenderer
 Generate a slide deck with Blueprint preview-node assets enabled.
 
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
-rendered HTML cache are read during slide generation so `{blueprint_node}`
+rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
 deck's `-verso-data/` directory after the deck is written.
 -/

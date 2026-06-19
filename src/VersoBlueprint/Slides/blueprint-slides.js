@@ -1,5 +1,14 @@
 (function () {
-  if (window.bpSlideNodeRuntime) return;
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : (window.VersoBlueprint = {});
+  const slideRuntime =
+    namespace.slides && typeof namespace.slides === "object"
+      ? namespace.slides
+      : {};
+  if (slideRuntime.hydrate) return;
+  namespace.slides = slideRuntime;
 
   function trimSlashes(text, side) {
     let value = String(text || "");
@@ -19,9 +28,8 @@
       }
     }
     const runtimeBase =
-      window.bpSlideNodeRuntimeConfig &&
-      typeof window.bpSlideNodeRuntimeConfig.blueprintBaseUrl === "string"
-        ? window.bpSlideNodeRuntimeConfig.blueprintBaseUrl
+      typeof slideRuntime.blueprintBaseUrl === "string"
+        ? slideRuntime.blueprintBaseUrl
         : "";
     return runtimeBase.trim();
   }
@@ -29,8 +37,7 @@
   function rememberBlueprintBaseUrl(node) {
     const baseUrl = readBlueprintBaseUrl(node);
     if (!baseUrl) return "";
-    if (!window.bpSlideNodeRuntimeConfig) window.bpSlideNodeRuntimeConfig = {};
-    window.bpSlideNodeRuntimeConfig.blueprintBaseUrl = baseUrl;
+    slideRuntime.blueprintBaseUrl = baseUrl;
     return baseUrl;
   }
 
@@ -72,46 +79,55 @@
       });
   }
 
-  function hydrate(root) {
+  function hydrate(root, previewUtils) {
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
       if (!(node instanceof Element)) return;
       const baseUrl = rememberBlueprintBaseUrl(node);
       prepareBlueprintLinks(node, baseUrl);
-      const utils = window.bpPreviewUtils;
-      if (utils && typeof utils.renderMath === "function") utils.renderMath(node);
-      if (utils && typeof utils.hydratePreviewSubtree === "function") utils.hydratePreviewSubtree(node);
+      previewUtils.hydrate(node);
     });
   }
 
-  function registerPreviewHydrator() {
-    const utils = window.bpPreviewUtils;
-    if (!utils || typeof utils.registerPreviewHydrator !== "function") return;
-    utils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
+  function hydrateWhenReady(root) {
+    return new Promise(function (resolve) {
+      window.VersoBlueprint.onRenderReady(function (previewUtils) {
+        hydrate(root, previewUtils);
+        resolve();
+      });
+    });
+  }
+
+  function registerPreviewHydrator(previewUtils) {
+    previewUtils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;
       prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
     });
   }
 
-  function start() {
-    registerPreviewHydrator();
-    hydrate(document);
+  function start(previewUtils) {
+    registerPreviewHydrator(previewUtils);
+    hydrate(document, previewUtils);
     if (window.Reveal && typeof window.Reveal.on === "function") {
       window.Reveal.on("slidechanged", function (event) {
         hideSlidePreviewPanels();
-        hydrate(event.currentSlide || document);
+        hydrate(event.currentSlide || document, previewUtils);
       });
       window.Reveal.on("ready", function (event) {
-        hydrate(event.currentSlide || document);
+        hydrate(event.currentSlide || document, previewUtils);
       });
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start);
-  } else {
-    start();
-  }
+  window.VersoBlueprint.onRenderReady(function (previewUtils) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        start(previewUtils);
+      });
+    } else {
+      start(previewUtils);
+    }
+  });
 
-  window.bpSlideNodeRuntime = { hydrate: hydrate };
+  slideRuntime.hydrate = hydrateWhenReady;
 })();
