@@ -618,6 +618,7 @@ class TestPreviewRuntimeRegressions:
                 const bundledHelperMethods = [
                     "renderHtmlInto",
                     "bindTemplatePreviewRoots",
+                    "bindPreviewTriggers",
                     "registerPreviewHydrator",
                     "previewMessageHtml",
                     "createPreviewPanel",

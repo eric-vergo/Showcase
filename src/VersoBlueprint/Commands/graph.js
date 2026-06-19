@@ -336,11 +336,6 @@
     const graphState = ensureGraphBlockState(graphBlock);
     const previewKeys =
       previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
-    const hoverLifetime = previewUtils.bindHoverablePanelLifetime(
-      previewController,
-      function () { return graphState.previewActiveNode; },
-      "data-bp-preview-hover-bound"
-    );
     const svg = graphContainer.select("svg").node();
     if (!svg || !(svg instanceof SVGElement)) {
       previewController.hide();
@@ -361,7 +356,6 @@
       }
       if (requestToken !== graphState.previewRequestToken) return;
       if (!html) return;
-      hoverLifetime.cancelHide();
       graphState.previewActiveNode = anchorNode instanceof Element ? anchorNode : null;
       previewController.show(label, html, graphState.previewActiveNode);
     };
@@ -387,12 +381,9 @@
         }
       });
     });
-    const showFromTarget = function (target) {
-      if (!(target instanceof Element)) return false;
-      const node = target.closest("g.node");
-      if (!node || !canPreviewNode(node)) return false;
+    const showFromNode = function (node) {
+      if (!(node instanceof Element) || !canPreviewNode(node)) return false;
       if (graphState.previewActiveNode === node && !previewController.panel.hidden) {
-        hoverLifetime.cancelHide();
         previewController.position(node);
         return true;
       }
@@ -400,38 +391,23 @@
       if (label) show(label, node);
       return !!label;
     };
-    if (svg.getAttribute("data-bp-preview-bound") === "1") return;
-    svg.setAttribute("data-bp-preview-bound", "1");
-    svg.addEventListener("mouseover", function (ev) {
-      if (!previewController.behavior || !previewController.behavior.isHover) return;
-      showFromTarget(ev.target);
+    previewUtils.bindPreviewTriggers({
+      eventRoot: svg,
+      eventRootBoundAttr: "data-bp-preview-bound",
+      triggerSelector: "g.node",
+      panel: previewController.panel,
+      getBehavior: function () { return previewController.behavior; },
+      filterTrigger: canPreviewNode,
+      show: showFromNode,
+      hide: function () { previewController.hide(); },
+      position: function (node) { previewController.position(node); },
+      getActiveTrigger: function () { return graphState.previewActiveNode; },
+      activateOnClick: true,
+      activateOnKeydown: true,
+      enterRequiresHover: true,
+      bindEscape: false,
+      bindWindow: false
     });
-    svg.addEventListener("focusin", function (ev) {
-      if (!previewController.behavior || !previewController.behavior.isHover) return;
-      showFromTarget(ev.target);
-    });
-    svg.addEventListener("click", function (ev) {
-      if (!previewController.behavior || !previewController.behavior.isPinned) return;
-      if (!showFromTarget(ev.target)) return;
-      ev.preventDefault();
-    });
-    svg.addEventListener("keydown", function (ev) {
-      if (ev.key !== "Enter" && ev.key !== " ") return;
-      if (!previewController.behavior || !previewController.behavior.isPinned) return;
-      if (!showFromTarget(ev.target)) return;
-      ev.preventDefault();
-    });
-    const hideIfLeaving = function (ev) {
-      if (!previewController.behavior || !previewController.behavior.isHover) return;
-      if (
-        previewUtils.shouldKeepOpen(ev.relatedTarget, graphState.previewActiveNode, previewController.panel)
-      ) {
-        return;
-      }
-      hoverLifetime.scheduleHide();
-    };
-    svg.addEventListener("mouseout", hideIfLeaving);
-    svg.addEventListener("focusout", hideIfLeaving);
   }
 
   function attachVariantSelectors(graphContainer, variantsByKey, activeVariant, onSelect, onHover, onHoverLeave) {

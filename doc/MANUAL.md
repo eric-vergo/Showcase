@@ -1040,12 +1040,14 @@ window.VersoBlueprint.onRenderReady(async function (api) {
   const row = document.createElement("section");
   row.className = "audit-preview-row";
   row.dataset.previewKey = result.key;
-  row.innerHTML =
-    "<h3></h3><div class=\"audit-preview-body\"></div>";
-  row.querySelector("h3").textContent = result.manifestEntry.title;
-  const body = row.querySelector(".audit-preview-body");
-  body.innerHTML = result.html;
-  api.hydrate(body);
+  const heading = document.createElement("h3");
+  heading.textContent = result.manifestEntry.title;
+  const body = document.createElement("div");
+  body.className = "audit-preview-body";
+  row.appendChild(heading);
+  row.appendChild(body);
+  const inserted = await api.renderPreviewInto(body, result.key);
+  if (!inserted.ok) return;
   document.querySelector("#audit-previews").appendChild(row);
 });
 ```
@@ -1097,7 +1099,8 @@ Bundled-feature helper APIs are intentionally narrower. They are exported on
 `window.VersoBlueprint.render` so Blueprint's own clients can share panel
 positioning, close-button behavior, template binding, and hydrator registration
 without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
-`createPreviewPanel`, `createPanelController`, `bindHoverablePanelLifetime`,
+`bindPreviewTriggers`, `createPreviewPanel`, `createPanelController`,
+`bindHoverablePanelLifetime`,
 `registerPreviewHydrator`, `previewMessageHtml`, `readPanelBehavior`,
 `showPanelContent`, and `setPreviewHeaderLink` should not be treated as stable
 custom-client API unless they are promoted into the table above.
