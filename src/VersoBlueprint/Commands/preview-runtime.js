@@ -476,6 +476,7 @@
     const opts = options && typeof options === "object" ? options : {};
     if (!(root instanceof Element || root instanceof Document)) return false;
     if (opts.hydrate !== false) {
+      bindTemplatePreviewDescriptors(root);
       runPreviewHydrators(root);
     }
     if (opts.renderMath !== false) {
@@ -1859,86 +1860,66 @@
     };
   }
 
-  function bindTemplatePreviewRoots(options) {
-    const opts = options && typeof options === "object" ? options : {};
-    const rootSelector = readStringOption(opts, "rootSelector", "");
-    const panelSelector = readStringOption(opts, "panelSelector", "");
-    const rootBoundAttr = readStringOption(
-      opts,
-      "rootBoundAttr",
-      "data-bp-template-preview-root-bound"
-    );
+  function readTemplateDescriptorString(root, name, fallback) {
+    if (!(root instanceof Element)) return fallback;
+    const value = (root.getAttribute("data-bp-template-preview-" + name) || "").trim();
+    return value.length > 0 ? value : fallback;
+  }
 
-    function copyStringOption(target, name) {
-      const value = readStringOption(opts, name, "");
-      if (value.length > 0) {
-        target[name] = value;
-      }
-    }
+  function bindTemplatePreviewDescriptor(root) {
+    if (!(root instanceof Element)) return null;
+    if (root.getAttribute("data-bp-template-preview-bound") === "1") return null;
 
-    function bindRoot(root) {
-      if (!(root instanceof Element)) return null;
-      if (root.getAttribute(rootBoundAttr) === "1") return null;
-      root.setAttribute(rootBoundAttr, "1");
-      const panel = panelSelector ? root.querySelector(panelSelector) : null;
-      if (!(panel instanceof Element)) return null;
+    const panelSelector = readTemplateDescriptorString(root, "panel-selector", "");
+    const panel = panelSelector ? root.querySelector(panelSelector) : null;
+    if (!(panel instanceof Element)) return null;
 
-      const bindOptions = {
-        root: root,
-        previewRoot: root,
-        triggerRoot: root,
-        panel: panel
-      };
-      [
-        "templateSelector",
-        "triggerSelector",
-        "keyAttr",
-        "titleAttr",
-        "titleSelector",
-        "bodySelector",
-        "closeSelector",
-        "triggerBoundAttr"
-      ].forEach(function (name) {
-        copyStringOption(bindOptions, name);
-      });
-      if (opts.allowHtmlCache === true) bindOptions.allowHtmlCache = true;
-      if (opts.defaults && typeof opts.defaults === "object") bindOptions.defaults = opts.defaults;
-      if (Number.isFinite(opts.margin)) bindOptions.margin = readNumberOption(opts, "margin", 12);
-      if (Number.isFinite(opts.offset)) bindOptions.offset = readNumberOption(opts, "offset", 10);
-      if (typeof opts.readKey === "function") bindOptions.readKey = opts.readKey;
-      if (typeof opts.readTitle === "function") bindOptions.readTitle = opts.readTitle;
-      if (typeof opts.readLookupKey === "function") bindOptions.readLookupKey = opts.readLookupKey;
-      return bindTemplatePreview(bindOptions);
-    }
-
-    function refresh(root) {
-      const scope = root instanceof Element || root instanceof Document ? root : document;
-      const controllers = [];
-      if (!rootSelector) return controllers;
-      if (scope instanceof Element && scope.matches(rootSelector)) {
-        const controller = bindRoot(scope);
-        if (controller) controllers.push(controller);
-      }
-      scope.querySelectorAll(rootSelector).forEach(function (rootNode) {
-        const controller = bindRoot(rootNode);
-        if (controller) controllers.push(controller);
-      });
-      return controllers;
-    }
-
-    if (opts.autoStart !== false) {
-      const start = function () { refresh(document); };
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", start, { once: opts.once === true });
-      } else {
-        start();
-      }
-    }
-
-    return {
-      bindRoot: bindRoot,
-      refresh: refresh
+    const mode = readTemplateDescriptorString(root, "mode", "");
+    const placement = readTemplateDescriptorString(root, "placement", "");
+    const bindOptions = {
+      root: root,
+      previewRoot: root,
+      triggerRoot: root,
+      panel: panel,
+      templateSelector: readTemplateDescriptorString(root, "template-selector", ""),
+      triggerSelector: readTemplateDescriptorString(root, "trigger-selector", ""),
+      keyAttr: readTemplateDescriptorString(root, "key-attr", "data-bp-preview-label"),
+      titleAttr: readTemplateDescriptorString(root, "title-attr", ""),
+      titleSelector: readTemplateDescriptorString(root, "title-selector", ""),
+      bodySelector: readTemplateDescriptorString(root, "body-selector", ""),
+      closeSelector: readTemplateDescriptorString(root, "close-selector", ""),
+      triggerBoundAttr: readTemplateDescriptorString(root, "trigger-bound-attr", "data-bp-bound")
     };
+    if (mode.length > 0 || placement.length > 0) {
+      bindOptions.defaults = {
+        mode: mode.length > 0 ? mode : "hover",
+        placement: placement.length > 0 ? placement : "anchored"
+      };
+    }
+    if (root.getAttribute("data-bp-template-preview-allow-html-cache") === "true") {
+      bindOptions.allowHtmlCache = true;
+    }
+
+    const controller = bindTemplatePreview(bindOptions);
+    if (controller) {
+      root.setAttribute("data-bp-template-preview-bound", "1");
+    }
+    return controller;
+  }
+
+  function bindTemplatePreviewDescriptors(root) {
+    const scope = root instanceof Element || root instanceof Document ? root : document;
+    const selector = "[data-bp-template-preview-root]";
+    const controllers = [];
+    if (scope instanceof Element && scope.matches(selector)) {
+      const controller = bindTemplatePreviewDescriptor(scope);
+      if (controller) controllers.push(controller);
+    }
+    scope.querySelectorAll(selector).forEach(function (rootNode) {
+      const controller = bindTemplatePreviewDescriptor(rootNode);
+      if (controller) controllers.push(controller);
+    });
+    return controllers;
   }
 
   // API assembly and readiness synchronization.
@@ -1966,8 +1947,7 @@
   };
 
   const previewTemplateHelpers = {
-    collectPreviewTemplates: collectPreviewTemplates,
-    bindTemplatePreviewRoots: bindTemplatePreviewRoots
+    collectPreviewTemplates: collectPreviewTemplates
   };
 
   const previewContentHelpers = {
@@ -2019,8 +1999,7 @@
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
-    hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces,
-    bindTemplatePreviewRoots: previewTemplateHelpers.bindTemplatePreviewRoots
+    hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces
   };
 
   const renderApi = Object.assign(
@@ -2051,6 +2030,13 @@
   namespace.onRenderReady = onRenderReady;
   namespace.renderReadyCallbacks = [];
   window.VersoBlueprint = namespace;
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      bindTemplatePreviewDescriptors(document);
+    }, { once: true });
+  } else {
+    bindTemplatePreviewDescriptors(document);
+  }
   queuedRenderReadyCallbacks.forEach(function (fn) {
     try {
       onRenderReady(fn);

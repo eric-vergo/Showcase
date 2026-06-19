@@ -20,6 +20,8 @@ INTERNAL_ONLY_HELPERS = {
     "bindHoverablePanelLifetime",
     "bindPanelRepositioner",
     "bindTemplatePreview",
+    "bindTemplatePreviewDescriptor",
+    "bindTemplatePreviewDescriptors",
     "pointerWithinPanel",
     "positionAnchoredPanel",
     "readHtml",
@@ -77,6 +79,15 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertFalse(INTERNAL_ONLY_HELPERS & source_methods)
         self.assertFalse(INTERNAL_ONLY_HELPERS & helper_methods)
+
+    def test_template_preview_descriptors_are_runtime_bound(self) -> None:
+        runtime = blueprint_js_source()
+
+        self.assertIn("function bindTemplatePreviewDescriptor(root)", runtime)
+        self.assertIn("function bindTemplatePreviewDescriptors(root)", runtime)
+        self.assertIn('const selector = "[data-bp-template-preview-root]";', runtime)
+        self.assertIn("bindTemplatePreviewDescriptors(document);", runtime)
+        self.assertNotIn("bindTemplatePreviewRoots", runtime)
 
     def test_preview_runtime_state_stays_runtime_local(self) -> None:
         runtime = blueprint_js_source()

@@ -355,6 +355,11 @@ private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.H
     "data-bp-preview-id"
     codeSummaryPreviewId
     previewTitle
+    ".bp_code_summary_preview_panel"
+    ".bp_code_summary_preview_title"
+    ".bp_code_summary_preview_body"
+    ".bp_code_summary_preview_close"
+    (titleAttr? := some "data-bp-preview-title")
     trigger
     body
     Informal.HoverRender.codeSummaryPreviewPanel

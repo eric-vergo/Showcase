@@ -13,17 +13,19 @@ namespace Informal.Slides
 open Lean
 open Verso Doc Elab
 
+private def blueprintNodeClassName (node : Informal.Graft.BlueprintNode) : String :=
+  if node.compact then
+    "bp_slide_node bp_slide_node_compact"
+  else
+    "bp_slide_node"
+
 public def blueprintNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
-  Informal.Graft.appendClassAttr node.toAttrs <|
-    if node.compact then
-      "bp_slide_node bp_slide_node_compact"
-    else
-      "bp_slide_node"
+  Informal.Graft.appendClassAttr node.toAttrs (blueprintNodeClassName node)
 
 public def renderedBlueprintNodeAttrs (node : Informal.Graft.BlueprintNode) :
     Array (String × String) :=
-  blueprintNodeAttrs node ++ #[("data-bp-rendered", "static")]
+  node.renderedAttrsWithClass (blueprintNodeClassName node)
 
 public def sideBySideAttrs (cfg : Informal.Graft.SideBySideConfig) :
     Array (String × String) :=

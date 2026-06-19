@@ -36,18 +36,22 @@ def hasAllSubstr (s : String) (needles : List String) : Bool :=
 def lacksAllSubstr (s : String) (needles : List String) : Bool :=
   needles.all fun needle => !hasSubstr s needle
 
-def hasTemplatePreviewBinding
-    (js rootBoundAttr panelSelector templateSelector triggerSelector : String) : Bool :=
-  hasAllSubstr js [
-    "previewUtils.bindTemplatePreviewRoots({",
-    "rootBoundAttr: \"" ++ rootBoundAttr ++ "\"",
-    "panelSelector: \"" ++ panelSelector ++ "\"",
-    "templateSelector: \"" ++ templateSelector ++ "\"",
-    "triggerSelector: \"" ++ triggerSelector ++ "\""
-  ]
-
-def findSummaryPreviewJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st "rootSelector: \".bp_summary\""
+def hasTemplatePreviewDescriptor
+    (html panelSelector templateSelector triggerSelector titleSelector bodySelector closeSelector : String)
+    (allowHtmlCache : Bool := false) : Bool :=
+  hasAllSubstr html ([
+    "data-bp-template-preview-root=\"true\"",
+    "data-bp-template-preview-panel-selector=\"" ++ panelSelector ++ "\"",
+    "data-bp-template-preview-template-selector=\"" ++ templateSelector ++ "\"",
+    "data-bp-template-preview-trigger-selector=\"" ++ triggerSelector ++ "\"",
+    "data-bp-template-preview-title-selector=\"" ++ titleSelector ++ "\"",
+    "data-bp-template-preview-body-selector=\"" ++ bodySelector ++ "\"",
+    "data-bp-template-preview-close-selector=\"" ++ closeSelector ++ "\"",
+    "data-bp-template-preview-mode=\"hover\"",
+    "data-bp-template-preview-placement=\"anchored\""
+  ] ++ if allowHtmlCache then [
+    "data-bp-template-preview-allow-html-cache=\"true\""
+  ] else [])
 
 def findInlinePreviewJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\""
@@ -55,8 +59,8 @@ def findInlinePreviewJs? (st : TraverseState) : Option String :=
 def findMathPreludeJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "window.bpTexPreludeTable"
 
-def findCodeSummaryPreviewJs? (st : TraverseState) : Option String :=
-  findExtraJsContaining? st "rootSelector: \".bp_code_summary_preview_root\""
+def findLegacyTemplatePreviewBinderJs? (st : TraverseState) : Option String :=
+  findExtraJsContaining? st "previewUtils.bindTemplatePreviewRoots({"
 
 def findRelationPanelJs? (st : TraverseState) : Option String :=
   findExtraJsContaining? st "previewUtils.registerPreviewHydrator(\"relationPanel\""

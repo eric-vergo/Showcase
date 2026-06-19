@@ -1106,10 +1106,15 @@ callbacks, or generated preview code still need them directly.
 
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
-| Template lifecycle | `bindTemplatePreviewRoots`, `collectPreviewTemplates` | Summary previews, code-summary previews, and graph-local preview stores |
+| Template lifecycle | `collectPreviewTemplates` | Graph-local preview stores; summary and code-summary previews use Lean-emitted DOM descriptors that the runtime auto-binds |
 | Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
 | Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph controls, graph popovers, inline preview panels, slide-change cleanup, and feature-specific positioning callbacks |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
+
+Template-preview roots emitted by Lean carry `data-bp-template-preview-*`
+descriptor attributes. The shared runtime binds those descriptors on page load
+and after preview-fragment hydration, so summary and code-summary previews do
+not need feature-specific startup scripts.
 
 `createPreviewSurface` is the higher-level bundled helper for Blueprint-owned
 preview panels. It groups a panel's slots, current behavior, content/header

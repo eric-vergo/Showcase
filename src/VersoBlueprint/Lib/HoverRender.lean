@@ -104,12 +104,52 @@ private def mkPreviewPanel
     closeLabel
     mode placement
 
+def templatePreviewDescriptorAttrs
+    (panelSelector templateSelector triggerSelector titleSelector bodySelector closeSelector : String)
+    (keyAttr : String := "data-bp-preview-label")
+    (titleAttr? : Option String := none)
+    (triggerBoundAttr : String := "data-bp-bound")
+    (allowHtmlCache : Bool := false)
+    (mode : PreviewMode := .hover)
+    (placement : PreviewPlacement := .anchored) : Array (String × String) :=
+  let attrs := #[
+    ("data-bp-template-preview-root", "true"),
+    ("data-bp-template-preview-panel-selector", panelSelector),
+    ("data-bp-template-preview-template-selector", templateSelector),
+    ("data-bp-template-preview-trigger-selector", triggerSelector),
+    ("data-bp-template-preview-key-attr", keyAttr),
+    ("data-bp-template-preview-title-attr", titleAttr?.getD keyAttr),
+    ("data-bp-template-preview-title-selector", titleSelector),
+    ("data-bp-template-preview-body-selector", bodySelector),
+    ("data-bp-template-preview-close-selector", closeSelector),
+    ("data-bp-template-preview-trigger-bound-attr", triggerBoundAttr),
+    ("data-bp-template-preview-mode", mode.dataValue),
+    ("data-bp-template-preview-placement", placement.dataValue)
+  ]
+  if allowHtmlCache then
+    attrs.push ("data-bp-template-preview-allow-html-cache", "true")
+  else
+    attrs
+
 def templatePreviewRoot
     (rootClass triggerClass activeTriggerClass templateClass keyAttr key previewTitle : String)
+    (panelSelector titleSelector bodySelector closeSelector : String)
+    (titleAttr? : Option String := none)
     (trigger body panel : Verso.Output.Html)
     (focusable : Bool := false)
     (ariaLabel? : Option String := none) :
     Verso.Output.Html :=
+  let rootAttrs :=
+    #[("class", rootClass)] ++
+      templatePreviewDescriptorAttrs
+        panelSelector
+        s!"template.{templateClass}[{keyAttr}]"
+        s!".{activeTriggerClass}[{keyAttr}]"
+        titleSelector
+        bodySelector
+        closeSelector
+        keyAttr
+        titleAttr?
   let triggerAttrs := Id.run do
     let mut attrs := #[
       ("class", s!"{triggerClass} {activeTriggerClass}"),
@@ -124,7 +164,7 @@ def templatePreviewRoot
     pure attrs
   let templateAttrs := #[("class", templateClass), (keyAttr, key)]
   {{
-    <span class={{rootClass}}>
+    <span {{rootAttrs}}>
       <span {{triggerAttrs}}>
         {{trigger}}
       </span>

@@ -17,7 +17,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 #eval
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let summaryJs? := findSummaryPreviewJs? st
+    let legacyTemplateBinderJs? := findLegacyTemplatePreviewBinderJs? st
     let inlineJs? := findInlinePreviewJs? st
     let mathJs? := findMathPreludeJs? st
     pure (
@@ -35,17 +35,18 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
       !hasSubstr out "verso-tex-prelude" &&
-      match summaryJs?, inlineJs?, mathJs? with
-      | some summaryJs, some inlineJs, some mathJs =>
+      hasTemplatePreviewDescriptor out
+        ".bp_summary_preview_panel"
+        "template.bp_summary_preview_tpl[data-bp-preview-label]"
+        ".bp_summary_preview_wrap_active[data-bp-preview-label]"
+        ".bp_summary_preview_panel_title"
+        ".bp_summary_preview_panel_body"
+        ".bp_summary_preview_panel_close"
+        (allowHtmlCache := true) &&
+      legacyTemplateBinderJs?.isNone &&
+      match inlineJs?, mathJs? with
+      | some inlineJs, some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasRenderReadyWiring summaryJs "previewUtils" &&
-        hasTemplatePreviewBinding summaryJs
-          "data-bp-summary-preview-bound"
-          ".bp_summary_preview_panel"
-          "template.bp_summary_preview_tpl[data-bp-preview-label]"
-          ".bp_summary_preview_wrap_active[data-bp-preview-label]" &&
-        hasSubstr summaryJs "allowHtmlCache: true" &&
-        hasSubstr summaryJs "readTitle: function (_wrap, label) { return label; }" &&
         hasRenderReadyWiring inlineJs "previewUtils" &&
         hasAllSubstr inlineJs [
           "bp-inline-preview-child-panel",
@@ -60,7 +61,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
           "ensureInlinePreviewStore",
           "template.bp_inline_preview_tpl"
         ]
-      | _, _, _ => false
+      | _, _ => false
     )
 
 /-- info: true -/

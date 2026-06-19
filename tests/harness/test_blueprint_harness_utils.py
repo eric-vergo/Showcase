@@ -37,16 +37,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
         for asset, owner, target in (
             (
-                "src/VersoBlueprint/Commands/summary-preview.js",
-                "src/VersoBlueprint/Commands/Summary.lean",
-                "VersoBlueprint.Commands.Summary",
-            ),
-            (
-                "src/VersoBlueprint/Informal/Block/code-summary-preview.js",
-                "src/VersoBlueprint/Informal/Block/Assets.lean",
-                "VersoBlueprint.Informal.Block.Assets",
-            ),
-            (
                 "src/VersoBlueprint/Informal/Block/relation-panel.js",
                 "src/VersoBlueprint/Informal/Block/Assets.lean",
                 "VersoBlueprint.Informal.Block.Assets",

@@ -57,7 +57,8 @@ Command modules are split by concern:
 - the target-details opener in `VersoBlueprint/Commands/open-target-details.js`
 - the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
 - the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
-- summary preview binding in `VersoBlueprint/Commands/summary-preview.js`
+- descriptor-driven summary and code-summary preview binding in the shared
+  preview runtime
 
 Informal-block support is now split across smaller modules instead of one large
 `Block.lean` bucket:
@@ -67,8 +68,6 @@ Informal-block support is now split across smaller modules instead of one large
 - `Informal/Block/Assets.lean`:
   block-specific CSS and browser JS bundle wiring; the block-owned preview
   handlers live in adjacent JS assets
-- `Informal/Block/code-summary-preview.js`:
-  code-summary preview binding
 - `Informal/Block/relation-panel.js`:
   relation-panel preview binding (`uses`, `used by`, and group panels)
 - `Informal/Block/Store.lean`:
@@ -91,9 +90,7 @@ Shared and feature-specific browser assets stay with their owning commands:
 - `Commands/preview-runtime.js`
 - `Commands/inline-preview.js`
 - `Commands/open-target-details.js`
-- `Commands/summary-preview.js`
 - `Commands/graph.js`
-- `Informal/Block/code-summary-preview.js`
 - `Informal/Block/relation-panel.js`
 
 Per-command CSS overlays stay with their commands:
@@ -319,11 +316,11 @@ hydration.
 | Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
 | Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime.js` `resolvePreview` and `renderPreviewInto` | graph, summary, relation panels, inline previews, custom browser clients | single JS data/cache owner |
 | Browser canonical generated-node insertion | `Commands/preview-runtime.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
-| Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, `bindTemplatePreviewRoots`, `hidePreviewSurfaces`, and panel helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults and feature-specific positioning callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
+| Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, descriptor-driven template binding, `hidePreviewSurfaces`, and panel helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
 | Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
 | Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
 | Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; preview panel slots, trigger lifetimes, Escape close, and resize/scroll binding use surfaces; popover binding uses the shared runtime popover helper |
-| Browser summary and code-summary preview binders | `Commands/summary-preview.js` and `Informal/Block/code-summary-preview.js` | summary page labels and code-summary triggers | thin selector-only binders over `bindTemplatePreviewRoots` |
+| Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime.js` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
 
 When adding node UI, use this checklist before introducing a renderer or
 browser helper:

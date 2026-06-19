@@ -37,8 +37,7 @@ private def slideNodeHydrationJs : String := include_str "blueprint-slides.js"
 def blueprintSlidesJs : String :=
   String.intercalate "\n\n" <|
     Informal.Commands.inlinePreviewJsAssets ++
-      [ Informal.Block.Assets.codeSummaryPreviewJs
-      , Informal.Block.Assets.relationPanelJs
+      [ Informal.Block.Assets.relationPanelJs
       , slideNodeHydrationJs
       ]
 
