@@ -512,64 +512,25 @@
     if (groupLegend) groupLegend.hidden = !showGroupLegend;
   }
 
-  function bindAnchoredPopover(graphBlock, buttonSelector, panelSelector, closeSelector, boundAttr) {
+  function bindGraphPopover(previewUtils, graphBlock, buttonSelector, panelSelector, closeSelector, boundAttr) {
     const triggerButton = graphBlock.querySelector(buttonSelector);
     const popoverPanel = graphBlock.querySelector(panelSelector);
     const popoverClose = popoverPanel
       ? popoverPanel.querySelector(closeSelector)
       : null;
-    if (!triggerButton || !popoverPanel) return null;
-
-    const position = function () {
-      const blockRect = graphBlock.getBoundingClientRect();
-      const buttonRect = triggerButton.getBoundingClientRect();
-      const top = Math.max(0, Math.round(buttonRect.bottom - blockRect.top + 8));
-      const right = Math.max(0, Math.round(blockRect.right - buttonRect.right));
-      popoverPanel.style.top = top + "px";
-      popoverPanel.style.right = right + "px";
-    };
-
-    const setOpen = function (isOpen) {
-      if (isOpen) position();
-      popoverPanel.hidden = !isOpen;
-      triggerButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    };
-
-    setOpen(false);
-    if (triggerButton.getAttribute(boundAttr) === "1") {
-      return {
-        open: function () { setOpen(true); },
-        close: function () { setOpen(false); },
-        position: position
-      };
-    }
-    triggerButton.setAttribute(boundAttr, "1");
-
-    triggerButton.addEventListener("click", function () {
-      setOpen(popoverPanel.hidden);
+    return previewUtils.bindAnchoredPopover({
+      root: graphBlock,
+      trigger: triggerButton,
+      panel: popoverPanel,
+      close: popoverClose,
+      boundAttr: boundAttr,
+      offset: 8
     });
-    if (popoverClose) {
-      popoverClose.addEventListener("click", function () {
-        setOpen(false);
-      });
-    }
-    document.addEventListener("pointerdown", function (ev) {
-      if (popoverPanel.hidden) return;
-      const target = ev.target;
-      if (!(target instanceof Node)) return;
-      if (graphBlock.contains(target)) return;
-      setOpen(false);
-    });
-
-    return {
-      open: function () { setOpen(true); },
-      close: function () { setOpen(false); },
-      position: position
-    };
   }
 
-  function bindLegendPopover(graphBlock) {
-    return bindAnchoredPopover(
+  function bindLegendPopover(previewUtils, graphBlock) {
+    return bindGraphPopover(
+      previewUtils,
       graphBlock,
       ".bp_graph_legend_button",
       ".bp_graph_legend_popover",
@@ -578,8 +539,9 @@
     );
   }
 
-  function bindOptionsPopover(graphBlock) {
-    return bindAnchoredPopover(
+  function bindOptionsPopover(previewUtils, graphBlock) {
+    return bindGraphPopover(
+      previewUtils,
       graphBlock,
       ".bp_graph_options_button",
       ".bp_graph_options_popover",
@@ -731,8 +693,8 @@
         if (directionSelector) directionSelector.value = activeOptions.direction;
         if (packInput) packInput.checked = activeOptions.pack;
         syncLegend(graphBlock, activeKey);
-        const legendPopover = bindLegendPopover(graphBlock);
-        const optionsPopover = bindOptionsPopover(graphBlock);
+        const legendPopover = bindLegendPopover(previewUtils, graphBlock);
+        const optionsPopover = bindOptionsPopover(previewUtils, graphBlock);
 
         const getActiveVariant = function () {
           const fallback = variantsByKey.get("full") || variants[0];

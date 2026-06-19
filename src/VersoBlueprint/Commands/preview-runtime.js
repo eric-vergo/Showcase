@@ -762,6 +762,71 @@
     });
   }
 
+  function bindAnchoredPopover(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const root = readElementOption(opts, "root", null);
+    const trigger = readElementOption(opts, "trigger", null);
+    const panel = readElementOption(opts, "panel", null);
+    const closeButton = readElementOption(opts, "close", null);
+    const boundAttr = readStringOption(opts, "boundAttr", "data-bp-popover-bound");
+    const offset = readNumberOption(opts, "offset", 8);
+    const positionPopover = readFunctionOption(opts, "position", function () {
+      const rootRect = root.getBoundingClientRect();
+      const triggerRect = trigger.getBoundingClientRect();
+      const top = Math.max(0, Math.round(triggerRect.bottom - rootRect.top + offset));
+      const right = Math.max(0, Math.round(rootRect.right - triggerRect.right));
+      panel.style.top = top + "px";
+      panel.style.right = right + "px";
+    });
+
+    if (!(root instanceof Element) || !(trigger instanceof Element) || !(panel instanceof Element)) {
+      return null;
+    }
+
+    const controller = {
+      open: function () { setOpen(true); },
+      close: function () { setOpen(false); },
+      toggle: function () { setOpen(panel.hidden); },
+      position: position,
+      setOpen: setOpen
+    };
+
+    function position() {
+      positionPopover(controller, root, trigger, panel);
+    }
+
+    function setOpen(isOpen) {
+      const open = !!isOpen;
+      if (open) position();
+      panel.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    setOpen(false);
+    if (trigger.getAttribute(boundAttr) === "1") {
+      return controller;
+    }
+    trigger.setAttribute(boundAttr, "1");
+
+    trigger.addEventListener("click", function () {
+      controller.toggle();
+    });
+    if (closeButton) {
+      closeButton.addEventListener("click", function () {
+        controller.close();
+      });
+    }
+    document.addEventListener("pointerdown", function (ev) {
+      if (panel.hidden) return;
+      const target = ev.target;
+      if (!(target instanceof Node)) return;
+      if (root.contains(target)) return;
+      controller.close();
+    });
+
+    return controller;
+  }
+
   function readAnchorRect(anchor) {
     if (anchor instanceof Element) {
       return anchor.getBoundingClientRect();
@@ -1634,6 +1699,7 @@
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
+    bindAnchoredPopover: bindAnchoredPopover,
     bindPreviewTriggers: bindPreviewTriggers,
     bindTemplatePreviewRoots: bindTemplatePreviewRoots
   };
