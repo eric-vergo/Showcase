@@ -148,8 +148,8 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(current_release.deploy_pages)
         expected_external_releases = {
             "noperthedron": "v4.31.0",
-            "spherepackingblueprint": "v4.31.0",
-            "verso-flt": "v4.30.0",
+            "spherepackingblueprint": "v4.30.0",
+            "verso-flt": "v4.31.0",
             "verso-carleson": "v4.30.0",
         }
         self.assertTrue(projects[1].git_checkout)
