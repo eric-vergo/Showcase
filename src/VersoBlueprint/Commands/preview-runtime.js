@@ -171,6 +171,81 @@
     return blueprintDataUrl("blueprint-manifest.json");
   }
 
+  function graphCanvasFor(root) {
+    const node = root || document;
+    if (node instanceof Element) {
+      if (node.matches(".bp_graph_canvas")) return node;
+      const ownCanvas = node.querySelector(".bp_graph_canvas");
+      if (ownCanvas instanceof Element) return ownCanvas;
+      const block = node.closest(".bp_graph_fullwidth");
+      if (block instanceof Element) {
+        const blockCanvas = block.querySelector(".bp_graph_canvas");
+        if (blockCanvas instanceof Element) return blockCanvas;
+      }
+      return null;
+    }
+    if (node instanceof Document || node instanceof DocumentFragment) {
+      const canvas = node.querySelector(".bp_graph_canvas");
+      return canvas instanceof Element ? canvas : null;
+    }
+    return null;
+  }
+
+  function readGraphJsonScript(root, selector) {
+    const container = graphCanvasFor(root);
+    if (!(container instanceof Element)) return null;
+    const payloadNode = container.querySelector(selector);
+    if (!(payloadNode instanceof HTMLScriptElement)) return null;
+    try {
+      return JSON.parse((payloadNode.textContent || "").trim());
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function normalizeGraphDataPayload(rawData) {
+    if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
+    return {
+      schemaVersion: Number.isFinite(rawData.schemaVersion) ? rawData.schemaVersion : 1,
+      key: typeof rawData.key === "string" ? rawData.key : "graph",
+      nodes: Array.isArray(rawData.nodes) ? rawData.nodes : [],
+      edges: Array.isArray(rawData.edges) ? rawData.edges : [],
+      groups: Array.isArray(rawData.groups) ? rawData.groups : []
+    };
+  }
+
+  function graphDataFromManifest(manifest) {
+    if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.graphs)) {
+      return [];
+    }
+    return manifest.graphs
+      .map(normalizeGraphDataPayload)
+      .filter(function (graphData) { return !!graphData; });
+  }
+
+  function collectGraphData(root) {
+    return normalizeGraphDataPayload(readGraphJsonScript(root, "script.bp-graph-data"));
+  }
+
+  function collectGraphVariants(root) {
+    const parsed = readGraphJsonScript(root, "script.bp-graph-variants");
+    return Array.isArray(parsed) ? parsed : [];
+  }
+
+  function loadManifestGraphs(url, options) {
+    const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrl();
+    return fetch(manifestUrl, options).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Could not load Blueprint graph manifest: " + response.status);
+      }
+      return response.json();
+    }).then(graphDataFromManifest);
+  }
+
+  function loadBlueprintGraphs() {
+    return loadManifestGraphs(blueprintManifestUrl());
+  }
+
   function missingPreviewKeyDiagnosticHtml() {
     return (
       "<div class=\"bp_html_cache_preview_notice\">" +
@@ -1942,6 +2017,11 @@
     loadHtmlCache: loadBlueprintHtmlCache,
     readHtmlCacheStatus: readBlueprintHtmlCacheStatus,
     loadHtmlCacheEntry: loadBlueprintHtmlCacheEntry,
+    getGraphData: collectGraphData,
+    getGraphVariants: collectGraphVariants,
+    graphsFromManifest: graphDataFromManifest,
+    loadManifestGraphs: loadManifestGraphs,
+    loadGraphs: loadBlueprintGraphs,
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
@@ -1986,6 +2066,11 @@
     loadHtmlCache: previewDataApi.loadHtmlCache,
     readHtmlCacheStatus: previewDataApi.readHtmlCacheStatus,
     loadHtmlCacheEntry: previewDataApi.loadHtmlCacheEntry,
+    getGraphData: previewDataApi.getGraphData,
+    getGraphVariants: previewDataApi.getGraphVariants,
+    graphsFromManifest: previewDataApi.graphsFromManifest,
+    loadManifestGraphs: previewDataApi.loadManifestGraphs,
+    loadGraphs: previewDataApi.loadGraphs,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
     resolvePreview: previewDataApi.resolvePreview,
@@ -2013,6 +2098,16 @@
     stableCustomClientApi,
     bundledFeatureRenderHelpers
   );
+
+  const graphApi =
+    window.bpGraphApi && typeof window.bpGraphApi === "object" ? window.bpGraphApi : {};
+  graphApi.version = 1;
+  graphApi.getGraphData = previewDataApi.getGraphData;
+  graphApi.getGraphVariants = previewDataApi.getGraphVariants;
+  graphApi.graphsFromManifest = previewDataApi.graphsFromManifest;
+  graphApi.loadManifestGraphs = previewDataApi.loadManifestGraphs;
+  graphApi.loadGraphs = previewDataApi.loadGraphs;
+  window.bpGraphApi = graphApi;
 
   function reportRenderReadyError(err) {
     window.setTimeout(function () {

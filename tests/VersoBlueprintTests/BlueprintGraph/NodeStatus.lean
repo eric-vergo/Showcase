@@ -59,6 +59,16 @@ def stateStatus : Environment.State := mkState [
 def graphStatus : Graph Unit :=
   build stateStatus #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
 
+def graphDataStatus : GraphData :=
+  buildData stateStatus
+    #[`def_formal, `def_ready, `def_blocked, `thm_ready, `lean_only, `local_sorry, `thm_type_sorry]
+    (resolveHref? := fun
+      | `def_formal => some "#def-formal"
+      | _ => none)
+    (resolveTitle? := fun
+      | `def_formal => some "Definition 1"
+      | _ => none)
+
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -103,6 +113,23 @@ def graphStatus : Graph Unit :=
     n.color == unresolvedBorderColor &&
     n.fillcolor == unresolvedFillColor &&
     n.fontcolor == unresolvedFontColor)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  hasGraphDataNodeWith graphDataStatus `def_formal (fun n =>
+    n.title == "Definition 1" &&
+    n.href == some "#def-formal" &&
+    n.previewKey == "def_formal--statement" &&
+    n.kind == some Data.NodeKind.definition &&
+    n.statementStatus == .formalized &&
+    n.proofStatus == .formalizedWithAncestors &&
+    n.visual.fillcolor == proofBackgroundFormalizedAncColor) &&
+  hasGraphDataNodeWith graphDataStatus `missing_dep (fun n =>
+    n.warnings.unknownRef &&
+    n.kind.isNone &&
+    n.statementStatus == .blocked) &&
+  hasGraphDataEdge graphDataStatus `missing_dep `def_blocked #[.statement]
 
 def stateAncestorsOk : Environment.State := mkState [
   (`def_ok,

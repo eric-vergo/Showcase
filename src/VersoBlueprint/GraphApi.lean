@@ -1,0 +1,112 @@
+/-
+Copyright (c) 2026 Lean FRO LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Author: Emilio J. Gallego Arias
+-/
+
+import VersoBlueprint.Graph
+import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.TraversalIndex
+
+/-!
+Public graph-data helpers.
+
+`Informal.Graph` owns the stable graph data structures and the semantic
+environment builder. This module adds the traversal-state bridge: graph blocks
+store semantic `GraphData` during traversal, and renderers/manifests finalize
+that cached object against the completed traversal state to add hrefs and
+display titles.
+-/
+
+namespace Informal.GraphApi
+
+open Lean
+open Verso
+open Verso.Genre Manual
+
+/-- Stable traversal-cache key for a rendered graph block. -/
+def cacheKey (id : Verso.Multi.InternalId) : String :=
+  s!"graph:{id}"
+
+/-- Attach the rendered block key to graph data. -/
+def keyedData (id : Verso.Multi.InternalId) (data : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
+  { data with key := cacheKey id }
+
+private def nodeTitle? (state : TraverseState) (label : Name) : Option String :=
+  (Informal.TraversalIndex.Nodes.data? state label).map fun data =>
+    data.displayTitle state
+
+private def nodeHref? (state : TraverseState) (label : Name) : Option String :=
+  Informal.TraversalIndex.Nodes.href? state label
+
+private def groupTitle? (state : TraverseState) (label : Name) : Option String :=
+  (Informal.TraversalIndex.Groups.data? state label).bind fun groupData =>
+    let title := groupData.header.trimAscii.toString
+    if title.isEmpty then none else some title
+
+private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) :
+    Informal.Graph.NodeData :=
+  let title := (nodeTitle? state node.label).getD node.title
+  let href := nodeHref? state node.label <|> node.href
+  { node with title, href }
+
+private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
+    Informal.Graph.GroupData :=
+  match groupTitle? state group.label with
+  | some title => { group with title, declared := true }
+  | none => group
+
+/--
+Finalize graph data against a completed traversal state.
+
+This is the single projection from semantic graph data to public graph data:
+rendered page JSON and manifest/cache output both use it so href, title, and
+group metadata stay consistent.
+-/
+def finalData (state : TraverseState) (data : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
+  {
+    data with
+      nodes := data.nodes.map (enrichNode state)
+      groups := data.groups.map (enrichGroup state)
+  }
+
+/--
+Finalize a graph block's semantic graph data for public page JSON.
+
+Use this when rendering one graph block from its block payload and rendered
+block id.
+-/
+def finalDataForBlock
+    (state : TraverseState)
+    (id : Verso.Multi.InternalId)
+    (data : Informal.Graph.GraphData) : Informal.Graph.GraphData :=
+  finalData state (keyedData id data)
+
+/--
+Store graph block data during traversal.
+
+The cached payload deliberately remains semantic data plus the stable block key;
+call `cachedData` after traversal finishes to read the public, finalized form.
+-/
+def saveData
+    (state : TraverseState)
+    (id : Verso.Multi.InternalId)
+    (data : Informal.Graph.GraphData) : TraverseState :=
+  let key := cacheKey id
+  let data := keyedData id data
+  state
+    |> (fun state => Informal.TraversalIndex.Graphs.saveId state key id)
+    |> (fun state => Informal.TraversalIndex.Graphs.saveData state key data)
+
+/--
+Read every traversal-cached graph and finalize it for public manifest/API use.
+
+Call this only with the completed traversal state for the document/site being
+emitted.
+-/
+def cachedData (state : TraverseState) : Array Informal.Graph.GraphData :=
+  Informal.TraversalIndex.Graphs.allData state |>.map (finalData state)
+
+end Informal.GraphApi

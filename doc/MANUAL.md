@@ -669,6 +669,81 @@ The command-side options and the runtime graph controls are compatible:
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
 
+Graph data is available through stable Lean, manifest, and browser APIs:
+
+- Lean callers can build the semantic graph object from elaboration state with
+  `Informal.Graph.buildData`. Once traversal has completed,
+  `Informal.GraphApi.finalDataForBlock` finalizes one rendered block from its
+  block id and semantic graph data, while `Informal.GraphApi.cachedData` reads
+  every traversal-cached graph in the same finalized public shape.
+- Generated `blueprint-manifest.json` includes a `graphs` array. Each entry
+  contains `schemaVersion`, `nodes`, `edges`, and `groups`, with status enums,
+  dependency axes, preview keys, hrefs when traversal resolved them, and visual
+  metadata for renderers that want Blueprint's default styling.
+- The bundled graph renderer uses that finalized graph data as its block-level
+  source of truth and derives DOT render variants with
+  `Informal.Graph.GraphData.renderVariants`, so page rendering and custom
+  clients exercise the same graph record shape.
+- Browser callers can use `api.getGraphData(element)` from
+  `window.VersoBlueprint.onRenderReady` for a rendered graph block, or
+  `api.loadGraphs()` for standalone clients that want the manifest `graphs`
+  array without requiring a graph block on the current page. The same helpers
+  are also exposed on `window.bpGraphApi` for graph-specific clients.
+
+Lean-side consumers should choose the API that matches their phase. Before
+Verso traversal finishes, graph data is semantic and may not yet include
+rendered hrefs or display titles:
+
+```lean
+import VersoBlueprint.Graph
+
+def semanticGraph (state : Informal.Environment.State) :
+    Informal.Graph.GraphData :=
+  let roots := state.data.toArray.map (·.1)
+  Informal.Graph.buildData state roots
+```
+
+After traversal has completed, use `Informal.GraphApi` to finalize either one
+rendered graph block or every graph cached during traversal:
+
+```lean
+import VersoBlueprint.GraphApi
+
+def graphForRenderedBlock
+    (state : Verso.Genre.Manual.TraverseState)
+    (blockId : Verso.Multi.InternalId)
+    (semantic : Informal.Graph.GraphData) : Informal.Graph.GraphData :=
+  Informal.GraphApi.finalDataForBlock state blockId semantic
+
+def allRenderedGraphs
+    (state : Verso.Genre.Manual.TraverseState) :
+    Array Informal.Graph.GraphData :=
+  Informal.GraphApi.cachedData state
+```
+
+Browser consumers should wait for the shared runtime and read graph data from
+the render API. A page-local graph block exposes its finalized embedded record:
+
+```javascript
+window.VersoBlueprint.onRenderReady((api) => {
+  const block = document.querySelector(".bp_graph_fullwidth");
+  const graph = api.getGraphData(block);
+  console.log(graph?.nodes.length ?? 0);
+});
+```
+
+Standalone clients that do not render a graph block on the current page can
+load the manifest graph records instead:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async (api) => {
+  const graphs = await api.loadGraphs();
+  for (const graph of graphs) {
+    console.log(graph.key, graph.nodes.length, graph.edges.length);
+  }
+});
+```
+
 The graph uses two orthogonal status tracks:
 
 - statement border:
@@ -1016,7 +1091,9 @@ window.VersoBlueprint.onRenderReady(async function (api) {
 ```
 
 The in-repo `preview_runtime_showcase` test blueprint includes the same pattern
-as a standalone browser client on its `Custom Render Client` page. The client
+as a standalone browser client on its `Custom Render Client` page. It also
+includes a graph-data card that calls `api.loadGraphs()` to read
+`blueprint-manifest.json.graphs` without embedding a rendered graph. The client
 asset lives in
 `tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/custom-render-client.js`,
 with the page shell in
@@ -1070,6 +1147,8 @@ Stable custom-client entrypoints:
 | `api.loadManifest()` / `api.loadHtmlCache()` | Load the generated `Map` values keyed by preview key. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
+| `api.getGraphData(element)` / `api.getGraphVariants(element)` | Read page-embedded graph data and render variants from a rendered graph block. |
+| `api.graphsFromManifest(manifestJson)` / `api.loadManifestGraphs(url, options)` / `api.loadGraphs()` | Decode or fetch finalized graph records from `blueprint-manifest.json.graphs`; `loadGraphs` uses the current page's generated manifest URL. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
 | `api.resolvePreview(key)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |

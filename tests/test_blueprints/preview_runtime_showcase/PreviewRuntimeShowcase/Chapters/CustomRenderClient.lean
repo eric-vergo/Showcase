@@ -115,6 +115,38 @@ def customRenderClientCss : String := r##"
   color: var(--bp-color-text-strong);
 }
 
+.bp_custom_render_client_graph {
+  background: var(--bp-color-surface);
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-sm);
+  padding: 0.9rem;
+}
+
+.bp_custom_render_client_graph h3 {
+  font-size: 0.9rem;
+  margin: 0 0 0.5rem;
+}
+
+.bp_custom_render_client_graph_nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.bp_custom_render_client_graph_node {
+  background: var(--bp-color-background);
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-sm);
+  color: var(--bp-color-text);
+  padding: 0.18rem 0.4rem;
+  text-decoration: none;
+}
+
+.bp_custom_render_client_graph_node:hover {
+  border-color: var(--bp-color-accent, var(--bp-color-border));
+}
+
 .bp_custom_render_client_body {
   min-height: 8rem;
 }
@@ -186,6 +218,26 @@ private def clientExample
     (Verso.Output.Html.seq
       (#[titleNode, noteNode, summaryNode] ++ extras ++ #[previewHeaderNode, bodyNode]))
 
+private def graphDataExample : Verso.Output.Html :=
+  let titleNode :=
+    clientTag "h3" #[("data-bp-custom-client-title", "true")] (clientText "Graph manifest data")
+  let noteNode :=
+    clientTag "p" #[("class", "bp_custom_render_client_note")]
+      (clientText "Standalone manifest access with api.loadGraphs; no rendered graph block is required on this page.")
+  let summaryNode :=
+    clientTag "div"
+      #[("class", "bp_custom_render_client_summary"), ("data-bp-custom-client-graph-summary", "true")]
+      (clientText "Waiting for graph data.")
+  let nodeList :=
+    clientTag "div"
+      #[("class", "bp_custom_render_client_graph_nodes"), ("data-bp-custom-client-graph-nodes", "true")]
+      .empty
+  clientTag "article"
+    #[ ("class", "bp_custom_render_client_graph"),
+       ("data-bp-custom-client-graph", "true"),
+       ("data-bp-graph-ok", "false") ]
+    (Verso.Output.Html.seq #[titleNode, noteNode, summaryNode, nodeList])
+
 def customRenderClientHtml : Verso.Output.Html :=
   let heading := clientTag "h2" #[] (clientText "Standalone Render Client")
   let status :=
@@ -224,7 +276,8 @@ def customRenderClientHtml : Verso.Output.Html :=
         clientExample "render-canonical-preview-into" "missing_custom_client_target" "statement" "Missing preview diagnostic"
           "missing"
           "An expected miss that demonstrates the runtime diagnostic branch for custom clients."
-          false
+          false,
+        graphDataExample
       ])
   clientTag "section"
     #[ ("class", "bp_custom_render_client"),

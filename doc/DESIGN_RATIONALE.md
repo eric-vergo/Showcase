@@ -1,6 +1,6 @@
 # Blueprint Design Rationale
 
-Last updated: 2026-06-16
+Last updated: 2026-06-20
 
 This document records the current architecture boundaries and the reasons the
 Blueprint implementation is shaped the way it is.
@@ -49,6 +49,12 @@ rather than invent parallel sources of truth.
 
 Command modules are split by concern:
 
+- `VersoBlueprint/Graph.lean` owns the shared graph data model, finalized
+  `GraphData` projection helpers, DOT rendering helpers, and graph-view
+  variant construction used by page graphs and compact widgets
+- `VersoBlueprint/GraphApi.lean` owns the traversal/cache-facing API for
+  storing semantic graph data and finalizing it against completed traversal
+  state
 - `VersoBlueprint/Commands/Graph.lean`
 - `VersoBlueprint/Commands/Summary.lean`
 - `VersoBlueprint/Commands/Bibliography.lean`
@@ -167,20 +173,20 @@ The same flow can be read as four contracts:
    render-time indexes into `TraverseState` through `TraversalIndex`. This is
    where site-local facts are created: rendered anchors, numbering caches,
    code-panel destinations, group and reverse-use panels, citation use sites,
-   statement/proof preview entries, Lean declaration preview entries, and
-   external declaration row anchors. These facts are intentionally not pushed
-   back into `Environment.State`, because their values depend on the current
-   rendered document and output mode.
+   statement/proof preview entries, Lean declaration preview entries,
+   public graph data records, and external declaration row anchors. These
+   facts are intentionally not pushed back into `Environment.State`, because
+   their values depend on the current rendered document and output mode.
 
 3. **Traversal to generated artifacts.**
    Page rendering and preview-data emission both consume the traversal state.
    HTML pages get the visible document, graph, summary, bibliography, inline
    preview triggers, and feature-specific assets. The Blueprint preview-data
    extra step emits two structured files under `-verso-data/`:
-   `blueprint-manifest.json`, which contains semantic preview entries and
-   metadata, and `blueprint-html-cache.json`, which contains opaque rendered
-   fragments plus the hover side data needed to hydrate those fragments inside
-   generated pages.
+   `blueprint-manifest.json`, which contains semantic preview entries, public
+   graph data, and metadata, and `blueprint-html-cache.json`, which contains
+   opaque rendered fragments plus the hover side data needed to hydrate those
+   fragments inside generated pages.
 
 4. **Artifacts to runtime and external consumers.**
    Browser code should treat the generated artifacts as immutable inputs. Page
@@ -209,6 +215,7 @@ that owner.
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
 | Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
+| Public graph data | Elaboration plus completed traversal | semantic `Informal.Graph.GraphData` cached in `TraversalIndex.Graphs`, then finalized through `Informal.GraphApi.finalData` for `blueprint-manifest.json.graphs`, page JSON, and bundled graph rendering | graph command rendering, browser runtime, custom graph consumers |
 | Lean declaration preview fragments | Traversal | `TraversalIndex.LeanCodePreviews` | Lean links, manifest/cache emission |
 | Rendered preview bodies | Preview-data emission | `blueprint-html-cache.json` | browser runtime, Slides, custom generated consumers |
 | Semantic preview/catalog entries | Preview-data emission | `blueprint-manifest.json` | browser runtime, Slides, audit/custom UIs |
