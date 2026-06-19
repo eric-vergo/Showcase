@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.MathLint
 import VersoBlueprint.Macros
 
@@ -70,7 +71,7 @@ inline_extension Inline.bpMath (data : BpMathData) where
   data := toJson data
   traverse _id data _contents := do
     let .ok { texPrelude, .. } := fromJson? (α := BpMathData) data
-      | logError s!"Malformed blueprint math payload during traversal: {data}"
+      | Verso.reportError s!"Malformed blueprint math payload during traversal: {data}"
         pure none
     modify fun st =>
       st.modifyHtmlAssets fun assets =>
@@ -85,7 +86,7 @@ inline_extension Inline.bpMath (data : BpMathData) where
     open Verso.Output.TeX in
     some <| fun _go _id data _contents => do
       let .ok { mode, source, .. } := fromJson? (α := BpMathData) data
-        | TeX.logError s!"Malformed blueprint math payload: {data}"
+        | Verso.reportError s!"Malformed blueprint math payload: {data}"
           pure .empty
       pure <| match mode with
         | .inline => .raw s!"${source}$"
@@ -94,7 +95,7 @@ inline_extension Inline.bpMath (data : BpMathData) where
     open Verso.Doc.Html in
     some <| fun _goI _id data _contents => do
       let .ok { mode, source, texPrelude } := fromJson? (α := BpMathData) data
-        | HtmlT.logError s!"Malformed blueprint math payload: {data}"
+        | Verso.reportError s!"Malformed blueprint math payload: {data}"
           pure .empty
       let attrs :=
         if texPrelude.isEmpty then

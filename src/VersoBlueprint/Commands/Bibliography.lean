@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.PreviewCache
@@ -34,7 +35,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
   data := toJson biblio
   traverse id data _contents := do
     let .ok biblio := fromJson? (α := BibliographyData) data
-      | logError "Malformed data in Block.bibliography.traverse"
+      | Verso.reportError "Malformed data in Block.bibliography.traverse"
         return none
     let path ← (·.path) <$> read
     let _ ← Verso.Genre.Manual.externalTag id path s!"--bp-bibliography"
@@ -48,7 +49,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
     open Verso.Output.Html in
     some <| fun goI _goB _id data _blocks => do
       let .ok data := fromJson? (α := BibliographyData) data
-        | HtmlT.logError "Malformed data in Block.bibliography.toHtml"
+        | Verso.reportError "Malformed data in Block.bibliography.toHtml"
           pure .empty
       let st ← HtmlT.state
       let entries := data.entries.toArray.qsort (fun a b => a.citation.sortKey < b.citation.sortKey)

@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual.Bibliography
+import VersoBlueprint.Compat
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Informal.Block.Model
@@ -477,7 +478,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
   data := toJson ({ citations, style, kind, index } : CiteInlineData)
   traverse id data _contents := do
     let .ok cfg := fromJson? (α := CiteInlineData) data
-      | logError "Malformed data in Inline.bpCite.traverse"
+      | Verso.reportError "Malformed data in Inline.bpCite.traverse"
         return none
     let ctxt ← read
     let path := ctxt.path
@@ -519,7 +520,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     open Verso.Output.TeX in
     some <| fun go _id data content => do
       let .ok cfg := fromJson? (α := CiteInlineData) data
-        | TeX.logError "Malformed data in Inline.bpCite.toTeX"
+        | Verso.reportError "Malformed data in Inline.bpCite.toTeX"
           pure .empty
       let pieces := cfg.citations.map (fun item => pieceText cfg.style item.citation)
       let body := String.intercalate "; " pieces
@@ -551,7 +552,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     open Verso.Output.Html in
     some <| fun goI id data content => do
       let .ok cfg := fromJson? (α := CiteInlineData) data
-        | HtmlT.logError "Malformed data in Inline.bpCite.toHtml"
+        | Verso.reportError "Malformed data in Inline.bpCite.toHtml"
           pure .empty
       let st ← HtmlT.state
       let inPreviewRender ← Informal.HoverRender.inInlinePreviewRender

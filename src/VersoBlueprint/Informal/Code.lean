@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Environment
 import VersoBlueprint.Html
@@ -56,7 +57,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
     let .ok cdata := fromJson? (α := InlineCodeData) data
-      | logError s!"Malformed data: {data}"
+      | Verso.reportError s!"Malformed data: {data}"
         pure none
     let label := cdata.label
     if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
@@ -95,7 +96,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
       let .ok { label, definedDefs, definedTheorems, statementUses := _, proofUses := _, foldCodeBlock, foldProofs } := fromJson? (α := InlineCodeData) data
-        | HtmlT.logError s!"Malformed data: {data}"
+        | Verso.reportError s!"Malformed data: {data}"
           pure .empty
       let s ← HtmlT.state
       let ctxt ← HtmlT.context
@@ -272,7 +273,7 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
   traverse id data _contents := do
     let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
-      | logError s!"Malformed external markup data: {data}"
+      | Verso.reportError s!"Malformed external markup data: {data}"
         pure none
     let existingData := (Informal.TraversalIndex.ExternalMarkup.data? (← get) cdata.label).getD {
       label := cdata.label
@@ -281,7 +282,7 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
     match existing.find? cdata.markup.language cdata.markup.slot with
     | some value =>
         unless value == cdata.markup.value do
-          logError s!"Label {cdata.label} already has associated {cdata.markup.language} external markup in slot '{cdata.markup.slot}'"
+          Verso.reportError s!"Label {cdata.label} already has associated {cdata.markup.language} external markup in slot '{cdata.markup.slot}'"
     | none =>
       let updated : Data.ExternalMarkupData := {
         existingData with
@@ -298,7 +299,7 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
     open Verso.Doc.Html in
     some <| fun _goI _goB _id data _blocks => do
       let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
-        | HtmlT.logError s!"Malformed external markup data: {data}"
+        | Verso.reportError s!"Malformed external markup data: {data}"
           pure .empty
       let summary := externalMarkupSummary cdata.markup.language cdata.markup.slot cdata.markup.location
       pure <|
