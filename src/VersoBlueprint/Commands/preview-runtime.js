@@ -1037,6 +1037,20 @@
     panel.style.top = "";
   }
 
+  function hidePreviewSurfaces(root) {
+    const scope = root instanceof Element || root instanceof Document ? root : document;
+    const selector = "#bp-inline-preview-panel, #bp-inline-preview-child-panel, .bp_preview_panel";
+    const hidePanel = function (panel) {
+      if (!(panel instanceof HTMLElement)) return;
+      panel.hidden = true;
+      resetPanelPosition(panel);
+    };
+    if (scope instanceof Element && scope.matches(selector)) {
+      hidePanel(scope);
+    }
+    scope.querySelectorAll(selector).forEach(hidePanel);
+  }
+
   function configureCloseButton(closeButton, onClose, behavior) {
     if (!(closeButton instanceof Element)) return;
     const pinned = !!(behavior && behavior.isPinned);
@@ -1060,18 +1074,6 @@
     );
   }
 
-  function readPanelNodes(panel, titleSelector, bodySelector) {
-    if (!(panel instanceof Element)) {
-      return { title: null, body: null };
-    }
-    const title = panel.querySelector(titleSelector);
-    const body = panel.querySelector(bodySelector);
-    return {
-      title: title instanceof Element ? title : null,
-      body: body instanceof Element ? body : null
-    };
-  }
-
   function readPanelSlot(panel, selector) {
     if (!(panel instanceof Element)) return null;
     if (typeof selector !== "string" || selector.length === 0) return null;
@@ -1091,51 +1093,6 @@
     };
   }
 
-  function createPanelController(panel, behavior, titleSelector, bodySelector, options) {
-    if (!(panel instanceof Element)) return null;
-    const nodes = readPanelNodes(panel, titleSelector, bodySelector);
-    const opts = options && typeof options === "object" ? options : {};
-    const clearBody =
-      typeof opts.clearBody === "function"
-        ? opts.clearBody
-        : function (body) { body.replaceChildren(); };
-    const renderBody =
-      typeof opts.renderBody === "function" ? opts.renderBody : function () {};
-    const positionPanel =
-      typeof opts.positionPanel === "function" ? opts.positionPanel : function () {};
-    const onHide =
-      typeof opts.onHide === "function" ? opts.onHide : function () {};
-    const controller = {
-      panel: panel,
-      title: nodes.title,
-      body: nodes.body,
-      behavior: behavior || {
-        isPinned: true,
-        isHover: false,
-        isAnchored: false,
-        isDocked: true
-      },
-      hide: function () {
-        panel.hidden = true;
-        if (controller.title) controller.title.textContent = "";
-        if (controller.body) clearBody(controller.body);
-        onHide();
-      },
-      position: function (anchorNode) {
-        positionPanel(panel, anchorNode);
-      },
-      show: function (titleText, payload, anchorNode) {
-        if (!controller.title || !controller.body) return false;
-        controller.title.textContent = titleText || "";
-        renderBody(controller.body, payload);
-        panel.hidden = false;
-        controller.position(anchorNode);
-        return true;
-      }
-    };
-    return controller;
-  }
-
   function createPreviewSurface(options) {
     const opts = options && typeof options === "object" ? options : {};
     const panel = readElementOption(opts, "panel", null);
@@ -1149,8 +1106,29 @@
     const footerHtmlAttr = readStringOption(opts, "footerHtmlAttr", "");
     const renderFooter = readFunctionOption(opts, "renderFooter", null);
     const onClose = readFunctionOption(opts, "onClose", null);
+    const clearBody = readFunctionOption(opts, "clearBody", function (body) {
+      body.replaceChildren();
+    });
+    const renderBody = readFunctionOption(opts, "renderBody", null);
+    const positionPanel = readFunctionOption(opts, "positionPanel", null);
+    const onHide = readFunctionOption(opts, "onHide", null);
     let triggerLifecycle = null;
     let repositionLifecycle = null;
+
+    function renderSurfaceBody(content) {
+      const payload = content && typeof content === "object" ? content : {};
+      if (renderBody) {
+        const bodyPayload = Object.prototype.hasOwnProperty.call(payload, "payload")
+          ? payload.payload
+          : payload.html;
+        renderBody(slots.body, bodyPayload, surface, payload);
+        return true;
+      }
+      const html = typeof payload.html === "string" ? payload.html : "";
+      if (html.length === 0 && payload.allowEmpty !== true) return false;
+      renderHtmlInto(slots.body, html, readObjectOption(payload, "renderOptions", undefined));
+      return true;
+    }
 
     const surface = {
       panel: panel,
@@ -1210,8 +1188,11 @@
         surface.setFooterSource(null);
       },
       hideContent: function () {
-        hidePanelContent(panel, slots.title, slots.body);
+        panel.hidden = true;
+        slots.title.textContent = "";
+        clearBody(slots.body);
         surface.clearChrome();
+        if (onHide) onHide(surface);
       },
       showContent: function (content) {
         const payload = content && typeof content === "object" ? content : {};
@@ -1220,18 +1201,23 @@
             ? surface.setBehavior(payload.behavior)
             : surface.behavior;
         const source = payload.source instanceof Element ? payload.source : payload.anchor;
+        if (!renderBody && typeof payload.html !== "string") {
+          surface.hideContent();
+          return false;
+        }
+        if (!renderBody && payload.html.length === 0 && payload.allowEmpty !== true) {
+          surface.hideContent();
+          return false;
+        }
+        slots.title.textContent = typeof payload.heading === "string" ? payload.heading : "";
         surface.setSource(source);
-        return showPanelContent(
-          panel,
-          slots.title,
-          slots.body,
-          typeof payload.heading === "string" ? payload.heading : "",
-          typeof payload.html === "string" ? payload.html : "",
-          behavior,
-          payload.anchor,
-          Number.isFinite(payload.margin) ? payload.margin : margin,
-          Number.isFinite(payload.offset) ? payload.offset : offset
-        );
+        if (!renderSurfaceBody(payload)) {
+          surface.hideContent();
+          return false;
+        }
+        panel.hidden = false;
+        surface.position(payload.anchor, behavior);
+        return true;
       },
       replaceBody: function (content) {
         const payload = content && typeof content === "object" ? content : {};
@@ -1239,16 +1225,45 @@
           surface.setBehavior(payload.behavior);
         }
         slots.title.textContent = typeof payload.heading === "string" ? payload.heading : "";
-        surface.setSource(payload.source instanceof Element ? payload.source : payload.anchor);
-        renderHtmlInto(slots.body, typeof payload.html === "string" ? payload.html : "");
+        if (
+          Object.prototype.hasOwnProperty.call(payload, "source") ||
+          Object.prototype.hasOwnProperty.call(payload, "anchor")
+        ) {
+          surface.setSource(payload.source instanceof Element ? payload.source : payload.anchor);
+        }
+        renderSurfaceBody(Object.assign({ allowEmpty: true }, payload));
         panel.hidden = false;
       },
-      position: function (anchor) {
-        if (surface.behavior && surface.behavior.isAnchored && readAnchorRect(anchor)) {
-          positionAnchoredPanel(panel, anchor, margin, offset);
+      position: function (anchor, nextBehavior) {
+        const behavior =
+          nextBehavior && typeof nextBehavior === "object" ? nextBehavior : surface.behavior;
+        if (positionPanel) {
+          positionPanel(panel, anchor, surface);
+        } else if (behavior && behavior.isAnchored && readAnchorRect(anchor)) {
+          positionAnchoredPanel(
+            panel,
+            anchor,
+            Number.isFinite(opts.margin) ? opts.margin : margin,
+            Number.isFinite(opts.offset) ? opts.offset : offset
+          );
         } else {
           resetPanelPosition(panel);
         }
+      },
+      hide: function () {
+        surface.hideContent();
+      },
+      show: function (heading, payload, anchor) {
+        const content = {
+          heading: typeof heading === "string" ? heading : "",
+          anchor: anchor
+        };
+        if (typeof payload === "string") {
+          content.html = payload;
+        } else {
+          content.payload = payload;
+        }
+        return surface.showContent(content);
       },
       bindTriggers: function (triggerOptions) {
         const triggerOpts =
@@ -1970,7 +1985,6 @@
     renderHtmlInto: renderHtmlInto,
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
-    createPanelController: createPanelController,
     createPreviewSurface: createPreviewSurface,
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
@@ -1983,6 +1997,7 @@
     bindDismissHandlers: bindDismissHandlers,
     bindPanelRepositioner: bindPanelRepositioner,
     bindPreviewTriggers: bindPreviewTriggers,
+    hidePreviewSurfaces: hidePreviewSurfaces,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
     resetPanelPosition: resetPanelPosition,
@@ -2025,7 +2040,6 @@
     resetPanelPosition: previewLifecycleHelpers.resetPanelPosition,
     configureCloseButton: previewLifecycleHelpers.configureCloseButton,
     pointerWithinPanel: previewLifecycleHelpers.pointerWithinPanel,
-    createPanelController: previewContentHelpers.createPanelController,
     createPreviewSurface: previewContentHelpers.createPreviewSurface,
     registerPreviewHydrator: previewHydrationHelpers.registerPreviewHydrator,
     previewDebug: previewHydrationHelpers.previewDebug,
@@ -2039,6 +2053,7 @@
     bindDismissHandlers: previewLifecycleHelpers.bindDismissHandlers,
     bindPanelRepositioner: previewLifecycleHelpers.bindPanelRepositioner,
     bindPreviewTriggers: previewLifecycleHelpers.bindPreviewTriggers,
+    hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces,
     bindTemplatePreviewRoots: previewTemplateHelpers.bindTemplatePreviewRoots
   };
 

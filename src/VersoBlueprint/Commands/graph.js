@@ -305,8 +305,9 @@
     };
   }
 
-  function makeGroupPanelPositioner(previewUtils, graphBlock, behavior) {
+  function makeGroupPanelPositioner(previewUtils, graphBlock, behaviorSource) {
     return function (panel, anchorNode) {
+      const behavior = readBehaviorSource(behaviorSource);
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
       if (!behavior || !behavior.isAnchored) {
         previewUtils.resetPanelPosition(panel);
@@ -572,31 +573,29 @@
         const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
         const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
         const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
-        const previewClose = previewPanelNode
-          ? previewPanelNode.querySelector(".bp_graph_preview_close")
-          : null;
         const previewPanelBehavior =
           previewUtils.readPanelBehavior(previewPanelNode, { mode: "pinned", placement: "docked" });
         let previewController = null;
-        previewController = previewUtils.createPanelController(
-          previewPanelNode,
-          previewPanelBehavior,
-          ".bp_graph_preview_title",
-          ".bp_graph_preview_body",
-          {
-            clearBody: function (body) { body.replaceChildren(); },
-            renderBody: function (body, html) {
-              previewUtils.renderHtmlInto(body, html);
-            },
-            positionPanel: makeHtmlPanelPositioner(previewUtils, function () {
-              return previewController ? previewController.behavior : previewPanelBehavior;
-            }),
-            onHide: function () {
-              graphState.previewRequestToken += 1;
-              graphState.previewActiveNode = null;
-            }
+        previewController = previewUtils.createPreviewSurface({
+          panel: previewPanelNode,
+          titleSelector: ".bp_graph_preview_title",
+          bodySelector: ".bp_graph_preview_body",
+          closeSelector: ".bp_graph_preview_close",
+          defaults: {
+            mode: previewPanelBehavior.mode,
+            placement: previewPanelBehavior.placement
+          },
+          renderBody: function (body, html) {
+            previewUtils.renderHtmlInto(body, typeof html === "string" ? html : "");
+          },
+          positionPanel: makeHtmlPanelPositioner(previewUtils, function () {
+            return previewController ? previewController.behavior : previewPanelBehavior;
+          }),
+          onHide: function () {
+            graphState.previewRequestToken += 1;
+            graphState.previewActiveNode = null;
           }
-        );
+        });
         graphState.previewController = previewController;
         const readPreviewMode = function () {
           if (previewModeSelector) return previewModeSelector.value;
@@ -620,10 +619,7 @@
           if (previewModeSelector) previewModeSelector.value = mode;
           if (previewPlacementSelector) previewPlacementSelector.value = placement;
           if (previewController) {
-            previewController.behavior = behavior;
-            previewUtils.configureCloseButton(previewClose, function () {
-              if (previewController) previewController.hide();
-            }, behavior);
+            previewController.setBehavior(behavior);
             if (!opts.keepOpen) previewController.hide();
           }
           return behavior;
@@ -706,54 +702,55 @@
         };
 
         const groupHoverPanel = graphBlock.querySelector(".bp_group_hover_preview");
-        const groupHoverClose = groupHoverPanel
-          ? groupHoverPanel.querySelector(".bp_group_hover_preview_close")
-          : null;
         let groupHoverGraphviz = null;
         const groupHoverBehavior =
           previewUtils.readPanelBehavior(groupHoverPanel, { mode: "pinned", placement: "docked" });
-        const groupHoverController = previewUtils.createPanelController(
-          groupHoverPanel,
-          groupHoverBehavior,
-          ".bp_group_hover_preview_title",
-          ".bp_group_hover_preview_graph",
-          {
-            clearBody: function (body) { body.replaceChildren(); },
-            renderBody: function (body, variant) {
-              const width = Math.max(320, body.clientWidth || 0);
-              const height = Math.max(220, body.clientHeight || 0);
-              const container = d3.select(body);
-              if (!groupHoverGraphviz) {
-                groupHoverGraphviz = container.graphviz().fit(true);
-              }
-              groupHoverGraphviz
-                .width(width)
-                .height(height)
-                .renderDot(dotForVariantOptions(variant, getActiveOptions()));
-            },
-            positionPanel: makeGroupPanelPositioner(previewUtils, graphBlock, groupHoverBehavior),
-            onHide: function () {
-              graphState.groupHoverAnchorNode = null;
-              graphState.groupHoverShownKey = "";
-              graphState.groupHoverShownNodeId = "";
-            }
-          }
-        );
-        graphState.groupHoverController = groupHoverController;
-        const groupHoverLifetime = previewUtils.bindPreviewTriggers({
-          panel: groupHoverController ? groupHoverController.panel : null,
-          panelBoundAttr: "data-bp-group-hover-bound",
-          behavior: groupHoverBehavior,
-          hide: function () {
-            if (groupHoverController) groupHoverController.hide();
+        let groupHoverController = null;
+        groupHoverController = previewUtils.createPreviewSurface({
+          panel: groupHoverPanel,
+          titleSelector: ".bp_group_hover_preview_title",
+          bodySelector: ".bp_group_hover_preview_graph",
+          closeSelector: ".bp_group_hover_preview_close",
+          defaults: {
+            mode: groupHoverBehavior.mode,
+            placement: groupHoverBehavior.placement
           },
-          getActiveTrigger: function () { return graphState.groupHoverAnchorNode; },
-          bindEscape: false,
-          bindWindow: false
+          renderBody: function (body, variant) {
+            const width = Math.max(320, body.clientWidth || 0);
+            const height = Math.max(220, body.clientHeight || 0);
+            const container = d3.select(body);
+            if (!groupHoverGraphviz) {
+              groupHoverGraphviz = container.graphviz().fit(true);
+            }
+            groupHoverGraphviz
+              .width(width)
+              .height(height)
+              .renderDot(dotForVariantOptions(variant, getActiveOptions()));
+          },
+          positionPanel: makeGroupPanelPositioner(previewUtils, graphBlock, function () {
+            return groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
+          }),
+          onHide: function () {
+            graphState.groupHoverAnchorNode = null;
+            graphState.groupHoverShownKey = "";
+            graphState.groupHoverShownNodeId = "";
+          }
         });
-        previewUtils.configureCloseButton(groupHoverClose, function () {
-          if (groupHoverController) groupHoverController.hide();
-        }, groupHoverBehavior);
+        graphState.groupHoverController = groupHoverController;
+        const groupHoverLifetime = groupHoverController
+          ? groupHoverController.bindTriggers({
+            panelBoundAttr: "data-bp-group-hover-bound",
+            hide: function () {
+              if (groupHoverController) groupHoverController.hide();
+            },
+            getActiveTrigger: function () { return graphState.groupHoverAnchorNode; },
+            bindEscape: false,
+            bindWindow: false
+          })
+          : {
+            cancelHide: function () {},
+            scheduleHide: function () {}
+          };
 
         if (!graphState.windowHandlersBound) {
           graphState.windowHandlersBound = true;
