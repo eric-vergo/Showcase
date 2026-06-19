@@ -407,22 +407,190 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_public_render_api_resolves_manifest_cache_and_renders_into_custom_root(
+    def test_standalone_render_client_uses_public_render_api(
         self, server: str, page: Page
     ):
         errors = record_runtime_errors(page)
-        page.goto(f"{server}/Preview-Relationships/")
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        client = page.locator("#custom-render-client-example").first
+        expect(client).to_have_attribute("data-bp-custom-client-status", "ready")
+        expect(client.locator("[data-bp-custom-client-example]")).to_have_count(8)
+        expect(page.locator("body")).not_to_contain_text(
+            "end PreviewRuntimeShowcase.Chapters.CustomRenderClient"
+        )
+
+        fragment_card = client.locator('[data-bp-custom-client-body="statement"]').locator(
+            "xpath=ancestor::article[1]"
+        ).first
+        expect(fragment_card.locator("[data-bp-custom-client-title]").first).to_have_text(
+            "Body fragment"
+        )
+        expect(fragment_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(fragment_card).to_have_attribute("data-bp-canonical-preview", "false")
+        expect(fragment_card).to_have_attribute(
+            "data-bp-preview-key", "preview_facets--statement"
+        )
+        expect(fragment_card).to_have_attribute("data-bp-manifest-label", "preview_facets")
+        expect(fragment_card).to_have_attribute("data-bp-manifest-facet", "statement")
+        statement_header = fragment_card.locator(
+            "[data-bp-custom-client-preview-header]"
+        ).first
+        expect(statement_header).to_contain_text("Theorem")
+        expect(statement_header).to_contain_text("facet statement")
+        expect(statement_header).to_contain_text("preview_facets--statement")
+        expect(statement_header.locator(".bp_custom_render_client_preview_title").first).to_have_attribute(
+            "href", re.compile(r"Preview-Relationships/#--informal-preview-preview_facets--statement")
+        )
+        fragment_body = fragment_card.locator('[data-bp-custom-client-body="statement"]').first
+        expect(fragment_body).to_contain_text("Statement facet marker")
+        expect(fragment_body).not_to_contain_text("Proof facet marker")
+        expect(fragment_body.locator(".bp_wrapper")).to_have_count(0)
+
+        canonical_statement_card = client.locator(
+            '[data-bp-custom-client-body="canonical-statement"]'
+        ).locator("xpath=ancestor::article[1]").first
+        expect(
+            canonical_statement_card.locator("[data-bp-custom-client-title]").first
+        ).to_have_text("Canonical statement")
+        expect(canonical_statement_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(canonical_statement_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(
+            canonical_statement_card.locator("[data-bp-custom-client-summary]").first
+        ).to_be_hidden()
+        canonical_statement_body = canonical_statement_card.locator(
+            '[data-bp-custom-client-body="canonical-statement"]'
+        ).first
+        expect(canonical_statement_body.locator(".bp_wrapper").first).to_have_attribute(
+            "title", "preview_facets"
+        )
+        expect(canonical_statement_body.locator(".bp_heading").first).to_contain_text("Theorem")
+        expect(canonical_statement_body).to_contain_text("Statement facet marker")
+        expect(canonical_statement_body).not_to_contain_text("Proof facet marker")
+
+        proof_card = client.locator('[data-bp-preview-label="preview_facets"][data-bp-preview-facet="proof"]').first
+        expect(proof_card.locator("[data-bp-custom-client-title]").first).to_have_text(
+            "Canonical proof"
+        )
+        expect(proof_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(proof_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(proof_card.locator("[data-bp-custom-client-summary]").first).to_be_hidden()
+        expect(proof_card).to_have_attribute("data-bp-preview-key", "preview_facets--proof")
+        expect(proof_card).to_have_attribute("data-bp-manifest-label", "preview_facets")
+        expect(proof_card).to_have_attribute("data-bp-manifest-facet", "proof")
+        proof_body = proof_card.locator('[data-bp-custom-client-body="proof"]').first
+        expect(proof_body.locator(".bp_wrapper").first).to_have_attribute(
+            "title", "preview_facets"
+        )
+        expect(proof_body.locator(".bp_heading").first).to_contain_text("Proof for Theorem")
+        expect(proof_body).to_contain_text("Proof facet marker")
+        expect(proof_body).not_to_contain_text("Statement facet marker")
+
+        used_by_card = client.locator('[data-bp-preview-label="used_target"]').first
+        expect(used_by_card.locator("[data-bp-custom-client-title]").first).to_have_text(
+            "Used-by and code"
+        )
+        expect(used_by_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(used_by_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(used_by_card).to_have_attribute("data-bp-manifest-title", re.compile(r"Definition"))
+        expect(used_by_card.locator("[data-bp-custom-client-preview-header]")).to_be_hidden()
+        expect(used_by_card.locator("[data-bp-custom-client-summary]").first).to_be_hidden()
+        used_by_body = used_by_card.locator('[data-bp-custom-client-body="used-target"]').first
+        expect(used_by_body.locator(".bp_wrapper").first).to_have_attribute("title", "used_target")
+        expect(used_by_body.locator(".bp_extra_slot_used_by")).to_have_count(1)
+        expect(used_by_body.locator(".bp_extra_slot_code")).to_have_count(1)
+        expect(used_by_body).to_contain_text(
+            "Target statement with associated Lean code"
+        )
+
+        group_card = client.locator('[data-bp-preview-label="group_target"]').first
+        expect(group_card.locator("[data-bp-custom-client-title]").first).to_have_text(
+            "Group header data"
+        )
+        expect(group_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(group_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(group_card.locator("[data-bp-custom-client-summary]").first).to_be_hidden()
+        group_body = group_card.locator('[data-bp-custom-client-body="group-target"]').first
+        expect(group_body.locator(".bp_extra_slot_group")).to_have_count(1)
+        expect(group_body.locator(".bp_extra_slot_used_by")).to_have_count(1)
+
+        grouped_statement_card = client.locator(
+            '[data-bp-preview-label="used_grouped_proof_panel"][data-bp-preview-facet="statement"]'
+        ).first
+        expect(
+            grouped_statement_card.locator("[data-bp-custom-client-title]").first
+        ).to_have_text("Grouped theorem")
+        expect(grouped_statement_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(grouped_statement_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(
+            grouped_statement_card.locator("[data-bp-custom-client-summary]").first
+        ).to_be_hidden()
+        grouped_statement_body = grouped_statement_card.locator(
+            '[data-bp-custom-client-body="grouped-statement"]'
+        ).first
+        expect(grouped_statement_body.locator(".bp_extra_slot_group")).to_have_count(1)
+        expect(grouped_statement_body.locator(".bp_extra_slot_uses")).to_have_count(1)
+        expect(grouped_statement_body.locator(".bp_extra_slot_used_by")).to_have_count(1)
+        expect(grouped_statement_body.locator(".bp_extra_slot_code")).to_have_count(1)
+
+        broken_custom_links = page.evaluate(
+            """
+            async () => {
+                const links = Array.from(
+                    document.querySelectorAll("#custom-render-client-example a[href]")
+                );
+                const broken = [];
+                for (const link of links) {
+                    const href = link.href;
+                    const url = new URL(href);
+                    if (url.origin !== location.origin) continue;
+                    const response = await fetch(url.pathname + url.search);
+                    if (!response.ok) {
+                        broken.push({ href, reason: `HTTP ${response.status}` });
+                        continue;
+                    }
+                    if (url.hash) {
+                        let doc = document;
+                        if (url.pathname !== location.pathname) {
+                            const html = await response.text();
+                            doc = new DOMParser().parseFromString(html, "text/html");
+                        }
+                        const id = decodeURIComponent(url.hash.slice(1));
+                        if (!doc.getElementById(id)) {
+                            broken.push({ href, reason: "missing anchor" });
+                        }
+                    }
+                }
+                return broken;
+            }
+            """
+        )
+        assert broken_custom_links == []
+
+        missing_card = client.locator('[data-bp-preview-label="missing_custom_client_target"]').first
+        expect(missing_card.locator("[data-bp-custom-client-title]").first).to_have_text(
+            "Missing preview diagnostic"
+        )
+        expect(missing_card).to_have_attribute("data-bp-render-ok", "false")
+        expect(missing_card).to_have_attribute("data-bp-expected-ok", "false")
+        expect(missing_card).to_have_attribute("data-bp-canonical-preview", "false")
+        expect(missing_card).to_have_attribute("data-bp-render-reason", "manifest-entry-missing")
+        expect(missing_card.locator("[data-bp-custom-client-summary]").first).to_contain_text(
+            "manifest-entry-missing"
+        )
+        missing_body = missing_card.locator('[data-bp-custom-client-body="missing"]').first
+        expect(missing_body).to_contain_text("Preview entry missing from manifest")
+        expect(missing_body).to_contain_text("missing_custom_client_target--statement")
+
+        assert_no_runtime_errors(errors)
+
+    def test_public_render_api_surface_keeps_state_private(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
 
         rendered = page.evaluate(
             blueprint_render_api_script(
                 """
-                const host = document.createElement("div");
-                host.id = "custom-preview-render-root";
-                document.body.appendChild(host);
-                const statementKey = api.previewKey("preview_facets", "statement");
-                const proofKey = api.previewKey("preview_facets", "proof");
-                const statement = await api.renderPreviewInto(host, statementKey);
-                const proof = await api.resolvePreview(proofKey);
                 const manifestStatus = api.readManifestStatus();
                 const htmlCacheStatus = api.readHtmlCacheStatus();
                 const mutatedManifestStatus = api.readManifestStatus();
@@ -443,12 +611,16 @@ class TestPreviewRuntimeRegressions:
                     "statementPreviewKey",
                     "resolvePreview",
                     "renderPreviewInto",
+                    "resolveCanonicalPreview",
+                    "renderCanonicalPreviewInto",
                     "hydrate"
                 ];
                 const bundledHelperMethods = [
                     "renderHtmlInto",
                     "bindTemplatePreviewRoots",
                     "registerPreviewHydrator",
+                    "previewMessageHtml",
+                    "createPreviewPanel",
                     "readPanelBehavior",
                     "setPreviewHeaderLink"
                 ];
@@ -483,16 +655,6 @@ class TestPreviewRuntimeRegressions:
                         hasHtmlCacheMap: "bpBlueprintHtmlCache" in window,
                         hasHtmlCachePromise: "bpBlueprintHtmlCachePromise" in window
                     },
-                    statementKey: statementKey,
-                    proofKey: proofKey,
-                    ok: statement.ok,
-                    reason: statement.reason,
-                    label: statement.manifestEntry ? statement.manifestEntry.label : null,
-                    facet: statement.manifestEntry ? statement.manifestEntry.facet : null,
-                    href: statement.manifestEntry ? statement.manifestEntry.href : null,
-                    html: host.innerHTML,
-                    proofOk: proof.ok,
-                    proofHtml: proof.html,
                     manifestStatus: manifestStatus,
                     htmlCacheStatus: htmlCacheStatus,
                     manifestStatusAfterMutation: api.readManifestStatus(),
@@ -528,17 +690,6 @@ class TestPreviewRuntimeRegressions:
             "hasHtmlCacheMap": False,
             "hasHtmlCachePromise": False,
         }
-        assert rendered["statementKey"] == "preview_facets--statement"
-        assert rendered["proofKey"] == "preview_facets--proof"
-        assert rendered["ok"]
-        assert rendered["reason"] == ""
-        assert rendered["label"] == "preview_facets"
-        assert rendered["facet"] == "statement"
-        assert rendered["href"].endswith("preview_facets--statement")
-        assert "Statement facet marker" in rendered["html"]
-        assert "Proof facet marker" not in rendered["html"]
-        assert rendered["proofOk"]
-        assert "Proof facet marker" in rendered["proofHtml"]
         assert rendered["manifestStatus"]["state"] == "ready"
         assert rendered["htmlCacheStatus"]["state"] == "ready"
         assert rendered["manifestStatusAfterMutation"]["state"] == "ready"

@@ -28,32 +28,24 @@
     return html;
   }
 
-  function makePanel(id, extraClass) {
-    const panel = document.createElement("aside");
-    panel.id = id;
-    panel.className =
-      "bp_inline_preview_panel" + (typeof extraClass === "string" && extraClass.length > 0 ? " " + extraClass : "");
-    panel.setAttribute("data-bp-preview-mode", "hover");
-    panel.setAttribute("data-bp-preview-placement", "anchored");
-    panel.hidden = true;
-    panel.innerHTML =
-      '<div class="bp_inline_preview_panel_header">' +
-      '<div class="bp_inline_preview_panel_heading bp_preview_header_heading">' +
-      '<div class="bp_inline_preview_panel_title"></div>' +
-      '<a class="bp_inline_preview_panel_label bp_preview_header_label" hidden></a>' +
-      "</div>" +
-      '<button type="button" class="bp_inline_preview_panel_close" aria-label="Close inline preview">Close</button>' +
-      "</div>" +
-      '<div class="bp_inline_preview_panel_body"></div>' +
-      '<div class="bp_inline_preview_panel_footer" hidden></div>';
-    document.body.appendChild(panel);
-    return panel;
-  }
-
-  function getPanel(id, extraClass) {
+  function getPanel(previewUtils, id, extraClass) {
     const existing = document.getElementById(id);
     if (existing instanceof Element) return existing;
-    return makePanel(id, extraClass);
+    return previewUtils.createPreviewPanel({
+      id: id,
+      rootClass: "bp_inline_preview_panel",
+      extraClass: extraClass,
+      mode: "hover",
+      placement: "anchored",
+      headerClass: "bp_inline_preview_panel_header",
+      headingClass: "bp_inline_preview_panel_heading bp_preview_header_heading",
+      titleClass: "bp_inline_preview_panel_title",
+      headerLabelClass: "bp_inline_preview_panel_label bp_preview_header_label",
+      closeClass: "bp_inline_preview_panel_close",
+      closeLabel: "Close inline preview",
+      bodyClass: "bp_inline_preview_panel_body",
+      footerClass: "bp_inline_preview_panel_footer"
+    });
   }
 
   function bindInlinePreview(previewUtils) {
@@ -65,13 +57,13 @@
     const previewDebug = previewUtils.previewDebug;
     const previewDebugLabel = previewUtils.previewDebugLabel;
 
-    const panel = getPanel("bp-inline-preview-panel", "");
+    const panel = getPanel(previewUtils, "bp-inline-preview-panel", "");
     const title = panel.querySelector(".bp_inline_preview_panel_title");
     const headerLabel = panel.querySelector(".bp_inline_preview_panel_label");
     const body = panel.querySelector(".bp_inline_preview_panel_body");
     const footer = panel.querySelector(".bp_inline_preview_panel_footer");
     const close = panel.querySelector(".bp_inline_preview_panel_close");
-    const childPanel = getPanel("bp-inline-preview-child-panel", "bp_inline_preview_panel_child");
+    const childPanel = getPanel(previewUtils, "bp-inline-preview-child-panel", "bp_inline_preview_panel_child");
     const childTitle = childPanel.querySelector(".bp_inline_preview_panel_title");
     const childHeaderLabel = childPanel.querySelector(".bp_inline_preview_panel_label");
     const childBody = childPanel.querySelector(".bp_inline_preview_panel_body");

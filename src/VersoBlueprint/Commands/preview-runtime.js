@@ -185,6 +185,9 @@
     return blueprintDataUrl("blueprint-html-cache.json");
   }
 
+  const canonicalPreviewDocuments = new Map();
+  const canonicalPreviewHtmlByKey = new Map();
+
   const blueprintManifestStore = {
     status: null,
     map: null,
@@ -502,6 +505,214 @@
     return result;
   }
 
+  function urlWithoutHash(url) {
+    const clone = new URL(url.href);
+    clone.hash = "";
+    return clone.href;
+  }
+
+  function currentDocumentUrlWithoutHash() {
+    return urlWithoutHash(new URL(window.location.href));
+  }
+
+  function canonicalPreviewUrl(entry) {
+    if (!entry || typeof entry !== "object" || typeof entry.href !== "string") return null;
+    const href = entry.href.trim();
+    if (!href) return null;
+    try {
+      return new URL(href, document.baseURI || window.location.href);
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function canonicalPreviewId(url, result) {
+    if (url && typeof url.hash === "string" && url.hash.length > 1) {
+      const raw = url.hash.slice(1);
+      try {
+        return decodeURIComponent(raw);
+      } catch (_err) {
+        return raw;
+      }
+    }
+    if (result && typeof result.key === "string" && result.key) {
+      return "--informal-preview-" + result.key;
+    }
+    return "";
+  }
+
+  function canonicalPreviewDiagnosticHtml(title, detail, previewKey) {
+    const keyHtml = previewKey ? "<p>Requested preview: <code>" + escapeHtml(previewKey) + "</code></p>" : "";
+    return (
+      "<div class=\"bp_html_cache_preview_notice\">" +
+      "<p><strong>" + escapeHtml(title) + "</strong></p>" +
+      "<p>" + escapeHtml(detail) + "</p>" +
+      keyHtml +
+      "</div>"
+    );
+  }
+
+  function canonicalPreviewResult(result, fields) {
+    return Object.assign(
+      {},
+      result || {},
+      {
+        canonicalHtml: "",
+        canonicalSourceHref: ""
+      },
+      fields || {}
+    );
+  }
+
+  async function loadCanonicalPreviewDocument(url) {
+    const pageUrl = urlWithoutHash(url);
+    if (pageUrl === currentDocumentUrlWithoutHash()) {
+      return document;
+    }
+    const existing = canonicalPreviewDocuments.get(pageUrl);
+    if (existing) return existing;
+    const promise = fetch(pageUrl)
+      .then(function (resp) {
+        if (!resp.ok) {
+          throw new Error("HTTP " + resp.status + " while loading " + pageUrl);
+        }
+        return resp.text();
+      })
+      .then(function (html) {
+        return new DOMParser().parseFromString(html, "text/html");
+      });
+    canonicalPreviewDocuments.set(pageUrl, promise);
+    return promise;
+  }
+
+  function rebaseUrlAttribute(node, attrName, baseUrl) {
+    const value = node.getAttribute(attrName);
+    if (typeof value !== "string" || !value.trim()) return;
+    const trimmed = value.trim();
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith("javascript:") ||
+      lower.startsWith("mailto:") ||
+      lower.startsWith("tel:") ||
+      lower.startsWith("data:")
+    ) return;
+    try {
+      node.setAttribute(attrName, new URL(trimmed, baseUrl).href);
+    } catch (_err) {}
+  }
+
+  function forEachMatchingElement(root, selector, callback) {
+    if (!(root instanceof Element)) return;
+    if (root.matches(selector)) callback(root);
+    root.querySelectorAll(selector).forEach(function (node) {
+      callback(node);
+    });
+  }
+
+  function canonicalPreviewDocumentBaseUrl(doc, sourceUrl) {
+    const pageUrl = urlWithoutHash(sourceUrl);
+    const base = doc instanceof Document ? doc.querySelector("base[href]") : null;
+    const href = base instanceof Element ? (base.getAttribute("href") || "").trim() : "";
+    if (href.length > 0) {
+      try {
+        return new URL(href, pageUrl).href;
+      } catch (_err) {}
+    }
+    return pageUrl;
+  }
+
+  function rebaseCanonicalPreviewLinks(root, baseUrl) {
+    forEachMatchingElement(root, "[href]", function (node) {
+      rebaseUrlAttribute(node, "href", baseUrl);
+    });
+    forEachMatchingElement(root, "[src]", function (node) {
+      rebaseUrlAttribute(node, "src", baseUrl);
+    });
+    forEachMatchingElement(root, "[data-bp-preview-header-href]", function (node) {
+      rebaseUrlAttribute(node, "data-bp-preview-header-href", baseUrl);
+    });
+  }
+
+  async function resolveCanonicalBlueprintPreview(previewKey) {
+    const result = await resolveBlueprintPreview(previewKey);
+    if (!result.ok) {
+      return canonicalPreviewResult(result);
+    }
+    const cached = canonicalPreviewHtmlByKey.get(result.key);
+    if (cached) {
+      return canonicalPreviewResult(result, {
+        canonicalHtml: cached.html,
+        canonicalSourceHref: cached.href
+      });
+    }
+    const url = canonicalPreviewUrl(result.manifestEntry);
+    if (!url) {
+      return canonicalPreviewResult(result, {
+        ok: false,
+        reason: "canonical-href-missing",
+        diagnosticHtml: canonicalPreviewDiagnosticHtml(
+          "Canonical preview link missing.",
+          "The manifest entry did not include a generated-page link for this preview.",
+          result.key
+        )
+      });
+    }
+
+    try {
+      const doc = await loadCanonicalPreviewDocument(url);
+      const id = canonicalPreviewId(url, result);
+      const node = id ? doc.getElementById(id) : null;
+      if (!(node instanceof Element)) {
+        return canonicalPreviewResult(result, {
+          ok: false,
+          reason: "canonical-preview-node-missing",
+          canonicalSourceHref: url.href,
+          diagnosticHtml: canonicalPreviewDiagnosticHtml(
+            "Canonical preview node missing.",
+            "The generated page loaded, but the linked Blueprint node was not present.",
+            result.key
+          )
+        });
+      }
+      const clone = node.cloneNode(true);
+      rebaseCanonicalPreviewLinks(clone, canonicalPreviewDocumentBaseUrl(doc, url));
+      const canonical = {
+        html: clone.outerHTML,
+        href: url.href
+      };
+      canonicalPreviewHtmlByKey.set(result.key, canonical);
+      return canonicalPreviewResult(result, {
+        canonicalHtml: canonical.html,
+        canonicalSourceHref: canonical.href
+      });
+    } catch (err) {
+      const message = err && err.message ? err.message : String(err);
+      return canonicalPreviewResult(result, {
+        ok: false,
+        reason: "canonical-preview-load-failed",
+        canonicalSourceHref: url.href,
+        diagnosticHtml: canonicalPreviewDiagnosticHtml(
+          "Canonical preview page unavailable.",
+          message,
+          result.key
+        )
+      });
+    }
+  }
+
+  async function renderCanonicalBlueprintPreviewInto(target, previewKey, options) {
+    if (!(target instanceof Element)) {
+      throw new Error("renderCanonicalBlueprintPreviewInto target must be a DOM Element");
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    const result = await resolveCanonicalBlueprintPreview(previewKey);
+    const html = result.ok
+      ? result.canonicalHtml
+      : (opts.diagnostics === false ? "" : result.diagnosticHtml);
+    renderHtmlInto(target, html, opts);
+    return result;
+  }
+
   function renderBlueprintMath(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
     if (typeof katex !== "object" || typeof katex.render !== "function") return;
@@ -802,6 +1013,135 @@
     });
   }
 
+  function readStringOption(options, name, fallback) {
+    return options && typeof options[name] === "string" && options[name].length > 0
+      ? options[name]
+      : fallback;
+  }
+
+  function readObjectOption(options, name, fallback) {
+    return options && options[name] && typeof options[name] === "object"
+      ? options[name]
+      : fallback;
+  }
+
+  function readNumberOption(options, name, fallback) {
+    return options && Number.isFinite(options[name])
+      ? options[name]
+      : fallback;
+  }
+
+  function readFunctionOption(options, name, fallback) {
+    return options && typeof options[name] === "function"
+      ? options[name]
+      : fallback;
+  }
+
+  function readElementOption(options, name, fallback) {
+    return options && options[name] instanceof Element
+      ? options[name]
+      : fallback;
+  }
+
+  function readRootOption(options, name, fallback) {
+    return options && (options[name] instanceof Element || options[name] instanceof Document)
+      ? options[name]
+      : fallback;
+  }
+
+  function createPreviewPanel(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const panel = document.createElement("aside");
+    const id = readStringOption(opts, "id", "");
+    const rootClass = readStringOption(opts, "rootClass", "bp_preview_panel");
+    const extraClass = readStringOption(opts, "extraClass", "");
+    const mode = normalizePreviewMode(opts.mode, "hover");
+    const placement = normalizePreviewPlacement(opts.placement, "anchored");
+    const headerClass = readStringOption(opts, "headerClass", "bp_preview_panel_header");
+    const headingClass = readStringOption(opts, "headingClass", "");
+    const titleClass = readStringOption(opts, "titleClass", "bp_preview_panel_title");
+    const headerLabelClass = readStringOption(opts, "headerLabelClass", "");
+    const closeClass = readStringOption(opts, "closeClass", "bp_preview_panel_close");
+    const closeLabel = readStringOption(opts, "closeLabel", "Close preview");
+    const bodyClass = readStringOption(opts, "bodyClass", "bp_preview_panel_body");
+    const footerClass = readStringOption(opts, "footerClass", "");
+    const parent = opts.parent instanceof Element ? opts.parent : document.body;
+
+    if (id.length > 0) panel.id = id;
+    panel.className = rootClass + (extraClass.length > 0 ? " " + extraClass : "");
+    panel.setAttribute("data-bp-preview-mode", mode);
+    panel.setAttribute("data-bp-preview-placement", placement);
+    panel.hidden = true;
+
+    const header = document.createElement("div");
+    header.className = headerClass;
+
+    const heading = document.createElement("div");
+    if (headingClass.length > 0) heading.className = headingClass;
+
+    const title = document.createElement("div");
+    title.className = titleClass;
+    heading.appendChild(title);
+
+    if (headerLabelClass.length > 0) {
+      const label = document.createElement("a");
+      label.className = headerLabelClass;
+      label.hidden = true;
+      heading.appendChild(label);
+    }
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = closeClass;
+    close.setAttribute("aria-label", closeLabel);
+    close.textContent = "Close";
+
+    header.appendChild(heading);
+    header.appendChild(close);
+    panel.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = bodyClass;
+    panel.appendChild(body);
+
+    if (footerClass.length > 0) {
+      const footer = document.createElement("div");
+      footer.className = footerClass;
+      footer.hidden = true;
+      panel.appendChild(footer);
+    }
+
+    if (opts.append !== false && parent instanceof Element) {
+      parent.appendChild(panel);
+    }
+    return panel;
+  }
+
+  function previewMessageHtml(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const rootClass = readStringOption(opts, "rootClass", "bp_preview_message");
+    const titleClass = readStringOption(opts, "titleClass", "bp_preview_message_title");
+    const detailClass = readStringOption(opts, "detailClass", "bp_preview_message_detail");
+    const kindAttr = readStringOption(opts, "kindAttr", "data-bp-preview-message");
+    const kind = readStringOption(opts, "kind", "info");
+    const title = readStringOption(opts, "title", "Preview unavailable");
+    const detail = typeof opts.detail === "string" ? opts.detail : "";
+    let html =
+      '<div class="' +
+      escapeHtml(rootClass) +
+      '" ' +
+      escapeHtml(kindAttr) +
+      '="' +
+      escapeHtml(kind) +
+      '">';
+    html += '<div class="' + escapeHtml(titleClass) + '">' + escapeHtml(title) + "</div>";
+    if (detail.length > 0) {
+      html += '<div class="' + escapeHtml(detailClass) + '">' + escapeHtml(detail) + "</div>";
+    }
+    html += "</div>";
+    return html;
+  }
+
   function hidePanelContent(panel, titleNode, bodyNode) {
     if (!(panel instanceof Element)) return;
     panel.hidden = true;
@@ -858,69 +1198,36 @@
   // Template preview binding adapts the shared helpers to concrete surfaces.
 
   function bindTemplatePreview(options) {
-    const root =
-      options && (options.root instanceof Element || options.root instanceof Document)
-        ? options.root
-        : document;
-    const previewRoot =
-      options && (options.previewRoot instanceof Element || options.previewRoot instanceof Document)
-        ? options.previewRoot
-        : root;
-    const triggerRoot =
-      options && (options.triggerRoot instanceof Element || options.triggerRoot instanceof Document)
-        ? options.triggerRoot
-        : root;
-    const panel = options && options.panel instanceof Element ? options.panel : null;
-    const templateSelector =
-      options && typeof options.templateSelector === "string" ? options.templateSelector : "";
-    const triggerSelector =
-      options && typeof options.triggerSelector === "string" ? options.triggerSelector : "";
-    const keyAttr =
-      options && typeof options.keyAttr === "string" && options.keyAttr.length > 0
-        ? options.keyAttr
-        : "data-bp-preview-label";
-    const titleAttr =
-      options && typeof options.titleAttr === "string" && options.titleAttr.length > 0
-        ? options.titleAttr
-        : keyAttr;
-    const titleSelector =
-      options && typeof options.titleSelector === "string" ? options.titleSelector : "";
-    const bodySelector =
-      options && typeof options.bodySelector === "string" ? options.bodySelector : "";
-    const closeSelector =
-      options && typeof options.closeSelector === "string" ? options.closeSelector : "";
-    const triggerBoundAttr =
-      options && typeof options.triggerBoundAttr === "string" && options.triggerBoundAttr.length > 0
-        ? options.triggerBoundAttr
-        : "data-bp-bound";
-    const defaults = options && typeof options.defaults === "object" ? options.defaults : {};
-    const margin =
-      options && Number.isFinite(options.margin) ? options.margin : 12;
-    const offset =
-      options && Number.isFinite(options.offset) ? options.offset : 10;
-    const readKey =
-      options && typeof options.readKey === "function"
-        ? options.readKey
-        : function (trigger) {
-            if (!(trigger instanceof Element)) return "";
-            return (trigger.getAttribute(keyAttr) || "").trim();
-          };
-    const readTitle =
-      options && typeof options.readTitle === "function"
-        ? options.readTitle
-        : function (trigger, key) {
-            if (!(trigger instanceof Element)) return key;
-            const heading = (trigger.getAttribute(titleAttr) || "").trim();
-            return heading || key;
-          };
-    const readLookupKey =
-      options && typeof options.readLookupKey === "function"
-        ? options.readLookupKey
-        : function (trigger) {
-            if (!(trigger instanceof Element)) return "";
-            return (trigger.getAttribute("data-bp-preview-key") || "").trim();
-          };
-    const allowHtmlCache = !!(options && options.allowHtmlCache);
+    const opts = options && typeof options === "object" ? options : {};
+    const root = readRootOption(opts, "root", document);
+    const previewRoot = readRootOption(opts, "previewRoot", root);
+    const triggerRoot = readRootOption(opts, "triggerRoot", root);
+    const panel = readElementOption(opts, "panel", null);
+    const templateSelector = readStringOption(opts, "templateSelector", "");
+    const triggerSelector = readStringOption(opts, "triggerSelector", "");
+    const keyAttr = readStringOption(opts, "keyAttr", "data-bp-preview-label");
+    const titleAttr = readStringOption(opts, "titleAttr", keyAttr);
+    const titleSelector = readStringOption(opts, "titleSelector", "");
+    const bodySelector = readStringOption(opts, "bodySelector", "");
+    const closeSelector = readStringOption(opts, "closeSelector", "");
+    const triggerBoundAttr = readStringOption(opts, "triggerBoundAttr", "data-bp-bound");
+    const defaults = readObjectOption(opts, "defaults", {});
+    const margin = readNumberOption(opts, "margin", 12);
+    const offset = readNumberOption(opts, "offset", 10);
+    const readKey = readFunctionOption(opts, "readKey", function (trigger) {
+      if (!(trigger instanceof Element)) return "";
+      return (trigger.getAttribute(keyAttr) || "").trim();
+    });
+    const readTitle = readFunctionOption(opts, "readTitle", function (trigger, key) {
+      if (!(trigger instanceof Element)) return key;
+      const heading = (trigger.getAttribute(titleAttr) || "").trim();
+      return heading || key;
+    });
+    const readLookupKey = readFunctionOption(opts, "readLookupKey", function (trigger) {
+      if (!(trigger instanceof Element)) return "";
+      return (trigger.getAttribute("data-bp-preview-key") || "").trim();
+    });
+    const allowHtmlCache = !!opts.allowHtmlCache;
 
     const previewMap = collectPreviewTemplates(previewRoot, templateSelector, keyAttr);
     const triggers = triggerRoot.querySelectorAll(triggerSelector);
@@ -1075,16 +1382,18 @@
 
   function bindTemplatePreviewRoots(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const rootSelector = typeof opts.rootSelector === "string" ? opts.rootSelector : "";
-    const panelSelector = typeof opts.panelSelector === "string" ? opts.panelSelector : "";
-    const rootBoundAttr =
-      typeof opts.rootBoundAttr === "string" && opts.rootBoundAttr.length > 0
-        ? opts.rootBoundAttr
-        : "data-bp-template-preview-root-bound";
+    const rootSelector = readStringOption(opts, "rootSelector", "");
+    const panelSelector = readStringOption(opts, "panelSelector", "");
+    const rootBoundAttr = readStringOption(
+      opts,
+      "rootBoundAttr",
+      "data-bp-template-preview-root-bound"
+    );
 
     function copyStringOption(target, name) {
-      if (typeof opts[name] === "string") {
-        target[name] = opts[name];
+      const value = readStringOption(opts, name, "");
+      if (value.length > 0) {
+        target[name] = value;
       }
     }
 
@@ -1115,8 +1424,8 @@
       });
       if (opts.allowHtmlCache === true) bindOptions.allowHtmlCache = true;
       if (opts.defaults && typeof opts.defaults === "object") bindOptions.defaults = opts.defaults;
-      if (Number.isFinite(opts.margin)) bindOptions.margin = opts.margin;
-      if (Number.isFinite(opts.offset)) bindOptions.offset = opts.offset;
+      if (Number.isFinite(opts.margin)) bindOptions.margin = readNumberOption(opts, "margin", 12);
+      if (Number.isFinite(opts.offset)) bindOptions.offset = readNumberOption(opts, "offset", 10);
       if (typeof opts.readKey === "function") bindOptions.readKey = opts.readKey;
       if (typeof opts.readTitle === "function") bindOptions.readTitle = opts.readTitle;
       if (typeof opts.readLookupKey === "function") bindOptions.readLookupKey = opts.readLookupKey;
@@ -1169,6 +1478,8 @@
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
     renderPreviewInto: renderBlueprintPreviewInto,
+    resolveCanonicalPreview: resolveCanonicalBlueprintPreview,
+    renderCanonicalPreviewInto: renderCanonicalBlueprintPreviewInto,
     hydrate: hydrateRenderedPreview
   };
 
@@ -1187,6 +1498,8 @@
     registerPreviewHydrator: registerPreviewHydrator,
     previewDebug: previewDebug,
     previewDebugLabel: previewDebugLabel,
+    previewMessageHtml: previewMessageHtml,
+    createPreviewPanel: createPreviewPanel,
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,

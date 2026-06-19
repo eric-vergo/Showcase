@@ -347,30 +347,19 @@ private def codeSummaryPreviewId : String := "bp-code-summary"
 
 private def renderCodeSummaryPreview (previewTitle : String) (trigger : Output.Html)
     (body : Output.Html) (focusable : Bool := false) (ariaLabel? : Option String := none) : Output.Html :=
-  open Verso.Output.Html in
-  let attrs := Id.run do
-    let mut attrs := #[
-      ("class", "bp_code_summary_preview_wrap bp_code_summary_preview_wrap_active"),
-      ("data-bp-preview-id", codeSummaryPreviewId),
-      ("data-bp-preview-title", previewTitle)
-    ]
-    if focusable then
-      attrs := attrs.push ("tabindex", "0")
-      attrs := attrs.push ("role", "button")
-    if let some ariaLabel := ariaLabel? then
-      attrs := attrs.push ("aria-label", ariaLabel)
-    pure attrs
-  {{
-    <span class="bp_code_summary_preview_root">
-      <span {{attrs}}>
-        {{trigger}}
-      </span>
-      <template class="bp_code_summary_preview_tpl" "data-bp-preview-id"={{codeSummaryPreviewId}}>
-        {{body}}
-      </template>
-      {{Informal.HoverRender.codeSummaryPreviewUi.panel}}
-    </span>
-  }}
+  Informal.HoverRender.templatePreviewRoot
+    "bp_code_summary_preview_root"
+    "bp_code_summary_preview_wrap"
+    "bp_code_summary_preview_wrap_active"
+    "bp_code_summary_preview_tpl"
+    "data-bp-preview-id"
+    codeSummaryPreviewId
+    previewTitle
+    trigger
+    body
+    Informal.HoverRender.codeSummaryPreviewPanel
+    (focusable := focusable)
+    (ariaLabel? := ariaLabel?)
 
 private def renderCodeEntryWrap (href : Option String) (title previewTitle : String)
     (previewBody : Output.Html) (visual : CodeEntryVisual)

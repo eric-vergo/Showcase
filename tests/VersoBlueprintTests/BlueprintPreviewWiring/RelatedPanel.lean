@@ -83,16 +83,14 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         !hasSubstr relationJs "function blueprintRender()" &&
         hasAllSubstr relationJs [
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
-          "previewUtils.resolvePreview(previewKey)",
-          "previewUtils.renderHtmlInto(body, result.html)",
-          "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })",
-          "previewUtils.setPreviewHeaderLink(headerLabel, item)",
+          "previewUtils.previewMessageHtml({",
           "item.addEventListener(\"mouseenter\"",
           "item.addEventListener(\"focusin\""
         ] &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
           "previewUtils.readHtmlCacheStatus()",
+          "function previewMessageHtml(previewUtils",
           "fallbackTemplates"
         ]
       | none => false

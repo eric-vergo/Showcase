@@ -48,16 +48,17 @@ public def blueprintSlidesExtraJs : Array String :=
 private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value
 
-private def writeTextFileWithDirs (path : System.FilePath) (content : String) : IO Unit := do
+private def ensureParentDir (path : System.FilePath) : IO Unit := do
   let dir := path.parent.getD "."
   if !(← dir.pathExists) then
     IO.FS.createDirAll dir
+
+private def writeTextFileWithDirs (path : System.FilePath) (content : String) : IO Unit := do
+  ensureParentDir path
   IO.FS.writeFile path content
 
 private def writeBinFileWithDirs (path : System.FilePath) (content : ByteArray) : IO Unit := do
-  let dir := path.parent.getD "."
-  if !(← dir.pathExists) then
-    IO.FS.createDirAll dir
+  ensureParentDir path
   IO.FS.writeBinFile path content
 
 inductive SlideAssetPayload where
@@ -130,13 +131,17 @@ public def withBlueprintSlidesAssets (config : VersoSlides.Config := {}) : Verso
 public def writeBlueprintSlidesJs (outputDir : System.FilePath) : IO Unit :=
   writeTextFileWithDirs (outputDir / blueprintSlidesJsFilename) blueprintSlidesJs
 
+private def blueprintSlidesDataPath (outputDir : System.FilePath) (filename : String) :
+    System.FilePath :=
+  outputDir / "-verso-data" / filename
+
 /-- Output path where slide decks expect the semantic Blueprint manifest. -/
 public def blueprintSlidesManifestPath (outputDir : System.FilePath) : System.FilePath :=
-  outputDir / "-verso-data" / Informal.PreviewManifest.manifestFilename
+  blueprintSlidesDataPath outputDir Informal.PreviewManifest.manifestFilename
 
 /-- Output path where slide decks expect the rendered-fragment cache. -/
 public def blueprintSlidesHtmlCachePath (outputDir : System.FilePath) : System.FilePath :=
-  outputDir / "-verso-data" / Informal.PreviewManifest.htmlCacheFilename
+  blueprintSlidesDataPath outputDir Informal.PreviewManifest.htmlCacheFilename
 
 /-- Copy a generated semantic Blueprint manifest into a slide deck output directory. -/
 public def copyBlueprintManifest
