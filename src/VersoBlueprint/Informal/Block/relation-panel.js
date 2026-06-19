@@ -29,8 +29,8 @@
     const defaultTitle = (title.textContent || "").trim() || "Relation preview";
     const initialLoadingHtml = (body.innerHTML || "").trim();
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
-    let closeTimer = null;
     let activateRequestToken = 0;
+    let relationLifecycle = null;
 
     function setExpanded(expanded) {
       if (chip instanceof Element) {
@@ -39,10 +39,7 @@
     }
 
     function cancelClose() {
-      if (closeTimer !== null) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
+      if (relationLifecycle) relationLifecycle.cancelHide();
     }
 
     function activeItem() {
@@ -89,17 +86,6 @@
         wrap.classList.remove("bp_relation_wrap_open");
       }
       setExpanded(false);
-    }
-
-    function scheduleClose() {
-      cancelClose();
-      closeTimer = window.setTimeout(function () {
-        closeTimer = null;
-        if (wrap instanceof Element) {
-          wrap.classList.remove("bp_relation_wrap_open");
-        }
-        setExpanded(false);
-      }, 180);
     }
 
     async function activate(item, options) {
@@ -154,18 +140,22 @@
 
     if (wrap instanceof Element && chip instanceof Element) {
       setExpanded(wrap.classList.contains("bp_relation_wrap_open"));
-      const previewAwareClose = function (ev) {
-        if (previewUtils.shouldKeepOpen(ev.relatedTarget, wrap, panel)) return;
-        scheduleClose();
-      };
-      chip.addEventListener("mouseenter", openWrap);
-      chip.addEventListener("focusin", openWrap);
-      chip.addEventListener("mouseleave", previewAwareClose);
-      chip.addEventListener("focusout", previewAwareClose);
-      panel.addEventListener("mouseenter", openWrap);
-      panel.addEventListener("focusin", openWrap);
-      panel.addEventListener("mouseleave", previewAwareClose);
-      panel.addEventListener("focusout", previewAwareClose);
+      relationLifecycle = previewUtils.bindPreviewTriggers({
+        triggerRoot: wrap,
+        triggerSelector: ".bp_relation_chip",
+        triggerBoundAttr: "data-bp-relation-chip-bound",
+        panel: panel,
+        panelBoundAttr: "data-bp-relation-panel-lifetime-bound",
+        behavior: previewUtils.readPanelBehavior(null, { mode: "hover", placement: "anchored" }),
+        show: function () { openWrap(); },
+        hide: closeWrap,
+        getActiveTrigger: function () { return chip; },
+        shouldKeepOpen: function (_trigger, ev) {
+          return previewUtils.shouldKeepOpen(ev && ev.relatedTarget, wrap, panel);
+        },
+        onPanelEnter: function () { openWrap(); },
+        bindWindow: false
+      });
       chip.addEventListener("click", function (ev) {
         ev.preventDefault();
         ev.stopPropagation();
@@ -186,11 +176,6 @@
           return;
         }
         if (!wrap.contains(ev.target)) {
-          closeWrap();
-        }
-      });
-      document.addEventListener("keydown", function (ev) {
-        if (ev.key === "Escape") {
           closeWrap();
         }
       });

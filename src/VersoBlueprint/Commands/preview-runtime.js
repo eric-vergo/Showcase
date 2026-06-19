@@ -487,10 +487,12 @@
   function renderHtmlInto(target, html, options) {
     if (!(target instanceof Element)) return false;
     const safeHtml = typeof html === "string" ? html : "";
-    target.innerHTML = safeHtml;
-    if (safeHtml) {
-      hydrateRenderedPreview(target, options);
+    if (safeHtml.length === 0) {
+      target.replaceChildren();
+      return true;
     }
+    target.innerHTML = safeHtml;
+    hydrateRenderedPreview(target, options);
     return true;
   }
 
@@ -901,7 +903,7 @@
     const clearBody =
       typeof opts.clearBody === "function"
         ? opts.clearBody
-        : function (body) { body.innerHTML = ""; };
+        : function (body) { body.replaceChildren(); };
     const renderBody =
       typeof opts.renderBody === "function" ? opts.renderBody : function () {};
     const positionPanel =
@@ -937,64 +939,6 @@
       }
     };
     return controller;
-  }
-
-  function bindHoverablePanelLifetime(controller, getActiveAnchor, boundAttr) {
-    const noop = {
-      cancelHide: function () {},
-      scheduleHide: function () {
-        if (controller) controller.hide();
-      }
-    };
-    if (!controller || !(controller.panel instanceof Element)) return noop;
-    const panel = controller.panel;
-    const attr =
-      typeof boundAttr === "string" && boundAttr.length > 0
-        ? boundAttr
-        : "data-bp-preview-hover-bound";
-    let hideTimer = null;
-
-    function cancelHide() {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    }
-
-    function scheduleHide() {
-      if (!controller.behavior || !controller.behavior.isHover) return;
-      cancelHide();
-      hideTimer = window.setTimeout(function () {
-        hideTimer = null;
-        controller.hide();
-      }, 180);
-    }
-
-    function maybeScheduleHide(ev) {
-      if (
-        shouldKeepOpen(
-          ev && ev.relatedTarget,
-          typeof getActiveAnchor === "function" ? getActiveAnchor() : null,
-          panel
-        )
-      ) {
-        return;
-      }
-      scheduleHide();
-    }
-
-    if (panel.getAttribute(attr) !== "1") {
-      panel.setAttribute(attr, "1");
-      panel.addEventListener("mouseenter", cancelHide);
-      panel.addEventListener("focusin", cancelHide);
-      panel.addEventListener("mouseleave", maybeScheduleHide);
-      panel.addEventListener("focusout", maybeScheduleHide);
-    }
-
-    return {
-      cancelHide: cancelHide,
-      scheduleHide: scheduleHide
-    };
   }
 
   function bindPreviewTriggers(options) {
@@ -1034,6 +978,7 @@
     const resolveTriggerOption = readFunctionOption(opts, "resolveTrigger", null);
     const shouldKeepPreviewOpen = readFunctionOption(opts, "shouldKeepOpen", null);
     const onLeave = readFunctionOption(opts, "onLeave", null);
+    const onPanelEnter = readFunctionOption(opts, "onPanelEnter", null);
     const onPanelLeave = readFunctionOption(opts, "onPanelLeave", null);
     const hideDelay = readNumberOption(opts, "hideDelay", 180);
     const bindPanel = opts.bindPanel !== false;
@@ -1192,8 +1137,10 @@
       if (!bindPanel || !(panel instanceof Element)) return;
       if (panel.getAttribute(panelBoundAttr) === "1") return;
       panel.setAttribute(panelBoundAttr, "1");
-      panel.addEventListener("mouseenter", cancelHide);
-      panel.addEventListener("focusin", cancelHide);
+      const enterPanel = function (ev) {
+        cancelHide();
+        if (onPanelEnter) onPanelEnter(panel, ev, controls);
+      };
       const leavePanel = function (ev) {
         const current = behavior();
         if (!current.isHover) return;
@@ -1201,6 +1148,8 @@
         if (shouldKeepOpen(ev && ev.relatedTarget, getActiveAnchor(), panel)) return;
         scheduleHide();
       };
+      panel.addEventListener("mouseenter", enterPanel);
+      panel.addEventListener("focusin", enterPanel);
       panel.addEventListener("mouseleave", leavePanel);
       panel.addEventListener("focusout", leavePanel);
     }
@@ -1393,7 +1342,7 @@
     if (!(panel instanceof Element)) return;
     panel.hidden = true;
     if (titleNode instanceof Element) titleNode.textContent = "";
-    if (bodyNode instanceof Element) bodyNode.innerHTML = "";
+    if (bodyNode instanceof Element) bodyNode.replaceChildren();
   }
 
   function setPreviewHeaderLink(labelNode, sourceNode) {
@@ -1677,7 +1626,6 @@
     configureCloseButton: configureCloseButton,
     pointerWithinPanel: pointerWithinPanel,
     createPanelController: createPanelController,
-    bindHoverablePanelLifetime: bindHoverablePanelLifetime,
     registerPreviewHydrator: registerPreviewHydrator,
     previewDebug: previewDebug,
     previewDebugLabel: previewDebugLabel,
