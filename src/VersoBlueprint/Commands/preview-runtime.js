@@ -1072,6 +1072,25 @@
     };
   }
 
+  function readPanelSlot(panel, selector) {
+    if (!(panel instanceof Element)) return null;
+    if (typeof selector !== "string" || selector.length === 0) return null;
+    const node = panel.querySelector(selector);
+    return node instanceof Element ? node : null;
+  }
+
+  function readPreviewSurfaceSlots(panel, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    return {
+      panel: panel instanceof Element ? panel : null,
+      title: readPanelSlot(panel, readStringOption(opts, "titleSelector", "")),
+      headerLabel: readPanelSlot(panel, readStringOption(opts, "headerLabelSelector", "")),
+      body: readPanelSlot(panel, readStringOption(opts, "bodySelector", "")),
+      footer: readPanelSlot(panel, readStringOption(opts, "footerSelector", "")),
+      closeButton: readPanelSlot(panel, readStringOption(opts, "closeSelector", ""))
+    };
+  }
+
   function createPanelController(panel, behavior, titleSelector, bodySelector, options) {
     if (!(panel instanceof Element)) return null;
     const nodes = readPanelNodes(panel, titleSelector, bodySelector);
@@ -1115,6 +1134,153 @@
       }
     };
     return controller;
+  }
+
+  function createPreviewSurface(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const panel = readElementOption(opts, "panel", null);
+    if (!(panel instanceof Element)) return null;
+    const slots = readPreviewSurfaceSlots(panel, opts);
+    if (!(slots.title instanceof Element) || !(slots.body instanceof Element)) return null;
+
+    const defaults = readObjectOption(opts, "defaults", {});
+    const margin = readNumberOption(opts, "margin", 12);
+    const offset = readNumberOption(opts, "offset", 10);
+    const footerHtmlAttr = readStringOption(opts, "footerHtmlAttr", "");
+    const renderFooter = readFunctionOption(opts, "renderFooter", null);
+    const onClose = readFunctionOption(opts, "onClose", null);
+    let triggerLifecycle = null;
+    let repositionLifecycle = null;
+
+    const surface = {
+      panel: panel,
+      title: slots.title,
+      headerLabel: slots.headerLabel,
+      body: slots.body,
+      footer: slots.footer,
+      closeButton: slots.closeButton,
+      behavior: readPanelBehavior(panel, defaults),
+      triggerLifecycle: null,
+      repositionLifecycle: null,
+      isOpen: function () {
+        return !panel.hidden;
+      },
+      setBehavior: function (nextBehavior) {
+        const behavior =
+          nextBehavior && typeof nextBehavior === "object"
+            ? nextBehavior
+            : readPanelBehavior(panel, defaults);
+        surface.behavior = behavior;
+        panel.setAttribute("data-bp-preview-mode", behavior.mode);
+        panel.setAttribute("data-bp-preview-placement", behavior.placement);
+        configureCloseButton(slots.closeButton, function (ev) {
+          if (onClose) {
+            onClose(surface, ev);
+          } else {
+            surface.hideContent();
+          }
+        }, behavior);
+        return behavior;
+      },
+      setSource: function (sourceNode) {
+        setPreviewHeaderLink(slots.headerLabel, sourceNode);
+        surface.setFooterSource(sourceNode);
+      },
+      setFooterSource: function (sourceNode) {
+        if (!(slots.footer instanceof Element)) return;
+        if (renderFooter) {
+          renderFooter(slots.footer, sourceNode, surface);
+          return;
+        }
+        if (!footerHtmlAttr) return;
+        const footerHtml =
+          sourceNode instanceof Element
+            ? (sourceNode.getAttribute(footerHtmlAttr) || "").trim()
+            : "";
+        if (footerHtml.length > 0) {
+          renderHtmlInto(slots.footer, footerHtml);
+          slots.footer.hidden = false;
+        } else {
+          slots.footer.replaceChildren();
+          slots.footer.hidden = true;
+        }
+      },
+      clearChrome: function () {
+        setPreviewHeaderLink(slots.headerLabel, null);
+        surface.setFooterSource(null);
+      },
+      hideContent: function () {
+        hidePanelContent(panel, slots.title, slots.body);
+        surface.clearChrome();
+      },
+      showContent: function (content) {
+        const payload = content && typeof content === "object" ? content : {};
+        const behavior =
+          payload.behavior && typeof payload.behavior === "object"
+            ? surface.setBehavior(payload.behavior)
+            : surface.behavior;
+        const source = payload.source instanceof Element ? payload.source : payload.anchor;
+        surface.setSource(source);
+        return showPanelContent(
+          panel,
+          slots.title,
+          slots.body,
+          typeof payload.heading === "string" ? payload.heading : "",
+          typeof payload.html === "string" ? payload.html : "",
+          behavior,
+          payload.anchor,
+          Number.isFinite(payload.margin) ? payload.margin : margin,
+          Number.isFinite(payload.offset) ? payload.offset : offset
+        );
+      },
+      replaceBody: function (content) {
+        const payload = content && typeof content === "object" ? content : {};
+        if (payload.behavior && typeof payload.behavior === "object") {
+          surface.setBehavior(payload.behavior);
+        }
+        slots.title.textContent = typeof payload.heading === "string" ? payload.heading : "";
+        surface.setSource(payload.source instanceof Element ? payload.source : payload.anchor);
+        renderHtmlInto(slots.body, typeof payload.html === "string" ? payload.html : "");
+        panel.hidden = false;
+      },
+      position: function (anchor) {
+        if (surface.behavior && surface.behavior.isAnchored && readAnchorRect(anchor)) {
+          positionAnchoredPanel(panel, anchor, margin, offset);
+        } else {
+          resetPanelPosition(panel);
+        }
+      },
+      bindTriggers: function (triggerOptions) {
+        const triggerOpts =
+          triggerOptions && typeof triggerOptions === "object" ? Object.assign({}, triggerOptions) : {};
+        if (!(triggerOpts.panel instanceof Element)) triggerOpts.panel = panel;
+        if (
+          typeof triggerOpts.getBehavior !== "function" &&
+          !(triggerOpts.behavior && typeof triggerOpts.behavior === "object")
+        ) {
+          triggerOpts.getBehavior = function () { return surface.behavior; };
+        }
+        if (typeof triggerOpts.position !== "function") {
+          triggerOpts.position = function (anchor) { surface.position(anchor); };
+        }
+        triggerLifecycle = bindPreviewTriggers(triggerOpts);
+        surface.triggerLifecycle = triggerLifecycle;
+        return triggerLifecycle;
+      },
+      bindRepositioner: function (repositionOptions) {
+        const repositionOpts =
+          repositionOptions && typeof repositionOptions === "object"
+            ? Object.assign({}, repositionOptions)
+            : {};
+        if (!(repositionOpts.owner instanceof Element)) repositionOpts.owner = panel;
+        repositionLifecycle = bindPanelRepositioner(repositionOpts);
+        surface.repositionLifecycle = repositionLifecycle;
+        return repositionLifecycle;
+      }
+    };
+
+    surface.setBehavior(surface.behavior);
+    return surface;
   }
 
   function bindPreviewTriggers(options) {
@@ -1772,7 +1938,7 @@
 
   // API assembly and readiness synchronization.
 
-  const stableCustomClientApi = {
+  const previewDataApi = {
     dataUrl: blueprintDataUrl,
     manifestUrl: blueprintManifestUrl,
     htmlCacheUrl: blueprintHtmlCacheUrl,
@@ -1785,36 +1951,95 @@
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
+    resolveCanonicalPreview: resolveCanonicalBlueprintPreview
+  };
+
+  const previewRenderApi = {
     renderPreviewInto: renderBlueprintPreviewInto,
-    resolveCanonicalPreview: resolveCanonicalBlueprintPreview,
     renderCanonicalPreviewInto: renderCanonicalBlueprintPreviewInto,
     hydrate: hydrateRenderedPreview
   };
 
-  const bundledFeatureRenderHelpers = {
+  const previewTemplateHelpers = {
     collectPreviewTemplates: collectPreviewTemplates,
+    bindTemplatePreviewRoots: bindTemplatePreviewRoots
+  };
+
+  const previewContentHelpers = {
     escapeHtml: escapeHtml,
     renderHtmlInto: renderHtmlInto,
-    positionAnchoredPanel: positionAnchoredPanel,
-    shouldKeepOpen: shouldKeepOpen,
-    readPanelBehavior: readPanelBehavior,
-    resetPanelPosition: resetPanelPosition,
-    configureCloseButton: configureCloseButton,
-    pointerWithinPanel: pointerWithinPanel,
-    createPanelController: createPanelController,
-    registerPreviewHydrator: registerPreviewHydrator,
-    previewDebug: previewDebug,
-    previewDebugLabel: previewDebugLabel,
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
+    createPanelController: createPanelController,
+    createPreviewSurface: createPreviewSurface,
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
-    showPanelContent: showPanelContent,
+    showPanelContent: showPanelContent
+  };
+
+  const previewLifecycleHelpers = {
+    readPanelBehavior: readPanelBehavior,
     bindAnchoredPopover: bindAnchoredPopover,
     bindDismissHandlers: bindDismissHandlers,
     bindPanelRepositioner: bindPanelRepositioner,
     bindPreviewTriggers: bindPreviewTriggers,
-    bindTemplatePreviewRoots: bindTemplatePreviewRoots
+    positionAnchoredPanel: positionAnchoredPanel,
+    shouldKeepOpen: shouldKeepOpen,
+    resetPanelPosition: resetPanelPosition,
+    configureCloseButton: configureCloseButton,
+    pointerWithinPanel: pointerWithinPanel
+  };
+
+  const previewHydrationHelpers = {
+    registerPreviewHydrator: registerPreviewHydrator,
+    previewDebug: previewDebug,
+    previewDebugLabel: previewDebugLabel
+  };
+
+  const stableCustomClientApi = {
+    dataUrl: previewDataApi.dataUrl,
+    manifestUrl: previewDataApi.manifestUrl,
+    htmlCacheUrl: previewDataApi.htmlCacheUrl,
+    loadManifest: previewDataApi.loadManifest,
+    readManifestStatus: previewDataApi.readManifestStatus,
+    loadManifestEntry: previewDataApi.loadManifestEntry,
+    loadHtmlCache: previewDataApi.loadHtmlCache,
+    readHtmlCacheStatus: previewDataApi.readHtmlCacheStatus,
+    loadHtmlCacheEntry: previewDataApi.loadHtmlCacheEntry,
+    previewKey: previewDataApi.previewKey,
+    statementPreviewKey: previewDataApi.statementPreviewKey,
+    resolvePreview: previewDataApi.resolvePreview,
+    renderPreviewInto: previewRenderApi.renderPreviewInto,
+    resolveCanonicalPreview: previewDataApi.resolveCanonicalPreview,
+    renderCanonicalPreviewInto: previewRenderApi.renderCanonicalPreviewInto,
+    hydrate: previewRenderApi.hydrate
+  };
+
+  const bundledFeatureRenderHelpers = {
+    collectPreviewTemplates: previewTemplateHelpers.collectPreviewTemplates,
+    escapeHtml: previewContentHelpers.escapeHtml,
+    renderHtmlInto: previewContentHelpers.renderHtmlInto,
+    positionAnchoredPanel: previewLifecycleHelpers.positionAnchoredPanel,
+    shouldKeepOpen: previewLifecycleHelpers.shouldKeepOpen,
+    readPanelBehavior: previewLifecycleHelpers.readPanelBehavior,
+    resetPanelPosition: previewLifecycleHelpers.resetPanelPosition,
+    configureCloseButton: previewLifecycleHelpers.configureCloseButton,
+    pointerWithinPanel: previewLifecycleHelpers.pointerWithinPanel,
+    createPanelController: previewContentHelpers.createPanelController,
+    createPreviewSurface: previewContentHelpers.createPreviewSurface,
+    registerPreviewHydrator: previewHydrationHelpers.registerPreviewHydrator,
+    previewDebug: previewHydrationHelpers.previewDebug,
+    previewDebugLabel: previewHydrationHelpers.previewDebugLabel,
+    previewMessageHtml: previewContentHelpers.previewMessageHtml,
+    createPreviewPanel: previewContentHelpers.createPreviewPanel,
+    hidePanelContent: previewContentHelpers.hidePanelContent,
+    setPreviewHeaderLink: previewContentHelpers.setPreviewHeaderLink,
+    showPanelContent: previewContentHelpers.showPanelContent,
+    bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
+    bindDismissHandlers: previewLifecycleHelpers.bindDismissHandlers,
+    bindPanelRepositioner: previewLifecycleHelpers.bindPanelRepositioner,
+    bindPreviewTriggers: previewLifecycleHelpers.bindPreviewTriggers,
+    bindTemplatePreviewRoots: previewTemplateHelpers.bindTemplatePreviewRoots
   };
 
   const renderApi = Object.assign(

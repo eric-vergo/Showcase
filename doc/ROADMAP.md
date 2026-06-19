@@ -48,13 +48,16 @@ Work:
    labels, resolved titles, and local fallbacks across renderers
 4. keep future graph, summary, relation-panel, and inline-reference behavior on
    shared browser helpers where the interaction model is genuinely shared; the
-   current trigger, dismiss, popover, and resize/scroll lifecycles already use
-   bundled runtime helpers
+   current inline-preview surfaces and trigger, dismiss, popover, and
+   resize/scroll lifecycles already use bundled runtime helpers
 5. evaluate a lighter preview delivery path so a page does not always fetch and
    decode the full shared manifest for a small number of previews
 6. remove remaining browser timing workarounds only after targeted browser tests
    prove the replacement path; panel lifecycle workarounds should stay behind
    runtime helpers rather than feature-local listeners
+7. keep shaping bundled JavaScript helpers around component-like surfaces
+   before a future React implementation, so data/cache lookup, content
+   rendering, local UI state, and lifecycle binding remain separate concerns
 
 ### Data Model and Status Semantics
 
