@@ -11,6 +11,26 @@ RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime.js"),
     Path("Commands/preview-ready.js"),
 }
+EXPECTED_BUNDLED_HELPERS = {
+    "bindHoverablePanelLifetime",
+    "bindTemplatePreviewRoots",
+    "collectPreviewTemplates",
+    "configureCloseButton",
+    "createPanelController",
+    "escapeHtml",
+    "hidePanelContent",
+    "pointerWithinPanel",
+    "positionAnchoredPanel",
+    "previewDebug",
+    "previewDebugLabel",
+    "readPanelBehavior",
+    "registerPreviewHydrator",
+    "renderHtmlInto",
+    "resetPanelPosition",
+    "setPreviewHeaderLink",
+    "shouldKeepOpen",
+    "showPanelContent",
+}
 
 
 def _blueprint_js_files() -> list[Path]:
@@ -84,6 +104,13 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         helper_methods = _js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(source_methods & helper_methods)
+
+    def test_bundled_feature_helper_surface_is_intentional(self) -> None:
+        runtime = _blueprint_js_source()
+
+        helper_methods = _js_object_methods(runtime, "bundledFeatureRenderHelpers")
+
+        self.assertEqual(EXPECTED_BUNDLED_HELPERS, helper_methods)
 
     def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
         direct_runtime_reads: list[str] = []

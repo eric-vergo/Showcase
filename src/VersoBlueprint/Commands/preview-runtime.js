@@ -394,14 +394,6 @@
     return map.get(previewKey) || null;
   }
 
-  function readBlueprintManifestEntry(previewKey) {
-    return readBlueprintStoreEntry(blueprintManifestStore, previewKey);
-  }
-
-  function readBlueprintHtmlCacheEntry(previewKey) {
-    return readBlueprintStoreEntry(blueprintHtmlCacheStore, previewKey);
-  }
-
   function previewKey(label, facet) {
     const trimmedLabel = typeof label === "string" ? label.trim() : "";
     if (!trimmedLabel) return "";
@@ -996,18 +988,6 @@
       }, 180);
     }
 
-    function pointerWithinPanel(ev) {
-      if (!(panel instanceof Element)) return false;
-      if (!ev || !Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY)) return false;
-      const rect = panel.getBoundingClientRect();
-      return (
-        ev.clientX >= rect.left &&
-        ev.clientX <= rect.right &&
-        ev.clientY >= rect.top &&
-        ev.clientY <= rect.bottom
-      );
-    }
-
     function positionPanel(anchor) {
       if (!behavior.isAnchored) {
         resetPanelPosition(panel);
@@ -1215,7 +1195,6 @@
     collectPreviewTemplates: collectPreviewTemplates,
     escapeHtml: escapeHtml,
     renderHtmlInto: renderHtmlInto,
-    readHtml: readHtml,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
     readPanelBehavior: readPanelBehavior,

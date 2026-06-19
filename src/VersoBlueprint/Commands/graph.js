@@ -354,7 +354,7 @@
       const requestToken = ++graphState.previewRequestToken;
       const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-      let html = previewUtils.readHtml(previewMap.get(label));
+      let html = previewMap.get(label) || "";
       if (!html && previewKey) {
         const result = await previewUtils.resolvePreview(previewKey);
         html = result && result.ok ? result.html : "";

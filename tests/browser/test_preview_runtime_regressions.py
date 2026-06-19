@@ -8,6 +8,7 @@ from support import (
     assert_no_runtime_errors,
     blueprint_render_api_script,
     record_runtime_errors,
+    wait_for_blueprint_render_api,
 )
 
 
@@ -442,7 +443,6 @@ class TestPreviewRuntimeRegressions:
                 ];
                 const bundledHelperMethods = [
                     "renderHtmlInto",
-                    "readHtml",
                     "bindTemplatePreviewRoots",
                     "registerPreviewHydrator",
                     "readPanelBehavior",
@@ -464,7 +464,8 @@ class TestPreviewRuntimeRegressions:
                         hasReadHtmlCacheEntry: typeof api.readHtmlCacheEntry === "function",
                         hasBindCloseOnce: typeof api.bindCloseOnce === "function",
                         hasBindTemplatePreview: typeof api.bindTemplatePreview === "function",
-                        hasDiagnostics: typeof api.diagnostics !== "undefined"
+                        hasDiagnostics: typeof api.diagnostics !== "undefined",
+                        hasReadHtml: typeof api.readHtml === "function"
                     },
                     legacyGlobals: {
                         hasPreviewUtils: "bpPreviewUtils" in window,
@@ -507,6 +508,7 @@ class TestPreviewRuntimeRegressions:
             "hasBindCloseOnce": False,
             "hasBindTemplatePreview": False,
             "hasDiagnostics": False,
+            "hasReadHtml": False,
         }
         assert rendered["legacyGlobals"] == {
             "hasPreviewUtils": False,
@@ -553,6 +555,7 @@ class TestPreviewRuntimeRegressions:
 
         page.route("**/-verso-data/blueprint-html-cache.json", fail_once)
         page.goto(f"{server}/Blueprint-Summary/")
+        wait_for_blueprint_render_api(page)
 
         cache = page.evaluate(
             blueprint_render_api_script(
