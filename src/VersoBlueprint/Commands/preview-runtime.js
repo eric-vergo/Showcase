@@ -997,6 +997,253 @@
     };
   }
 
+  function bindPreviewTriggers(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const triggerRoot = readRootOption(opts, "triggerRoot", document);
+    const eventRoot = readRootOption(opts, "eventRoot", null);
+    const panel = readElementOption(opts, "panel", null);
+    const triggerSelector = readStringOption(opts, "triggerSelector", "");
+    const triggerBoundAttr = readStringOption(
+      opts,
+      "triggerBoundAttr",
+      "data-bp-preview-trigger-bound"
+    );
+    const eventRootBoundAttr = readStringOption(
+      opts,
+      "eventRootBoundAttr",
+      "data-bp-preview-events-bound"
+    );
+    const panelBoundAttr = readStringOption(
+      opts,
+      "panelBoundAttr",
+      "data-bp-preview-panel-lifetime-bound"
+    );
+    const defaults = readObjectOption(opts, "defaults", {});
+    const behaviorSource = readObjectOption(opts, "behavior", null);
+    const readBehavior = readFunctionOption(opts, "getBehavior", function () {
+      return behaviorSource || readPanelBehavior(panel, defaults);
+    });
+    const show = readFunctionOption(opts, "show", function () {});
+    const hide = readFunctionOption(opts, "hide", function () {});
+    const position = readFunctionOption(opts, "position", function () {});
+    const filterTrigger = readFunctionOption(opts, "filterTrigger", function () { return true; });
+    const getActiveTrigger = readFunctionOption(opts, "getActiveTrigger", function () {
+      return null;
+    });
+    const getActiveAnchor = readFunctionOption(opts, "getActiveAnchor", getActiveTrigger);
+    const resolveTriggerOption = readFunctionOption(opts, "resolveTrigger", null);
+    const shouldKeepPreviewOpen = readFunctionOption(opts, "shouldKeepOpen", null);
+    const onLeave = readFunctionOption(opts, "onLeave", null);
+    const onPanelLeave = readFunctionOption(opts, "onPanelLeave", null);
+    const hideDelay = readNumberOption(opts, "hideDelay", 180);
+    const bindPanel = opts.bindPanel !== false;
+    const bindEscape = opts.bindEscape !== false;
+    const bindWindow = opts.bindWindow !== false;
+    const activateOnClick = opts.activateOnClick === true;
+    const activateOnKeydown = opts.activateOnKeydown === true;
+    const enterRequiresHover = opts.enterRequiresHover === true;
+    let hideTimer = null;
+
+    function behavior() {
+      const next = readBehavior();
+      return next && typeof next === "object"
+        ? next
+        : readPanelBehavior(panel, defaults);
+    }
+
+    function cancelHide() {
+      if (hideTimer !== null) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    }
+
+    function hideNow() {
+      cancelHide();
+      hide();
+    }
+
+    function scheduleHide() {
+      cancelHide();
+      const current = behavior();
+      if (!current.isHover) {
+        hideNow();
+        return;
+      }
+      hideTimer = window.setTimeout(function () {
+        hideTimer = null;
+        hide();
+      }, hideDelay);
+    }
+
+    const controls = {
+      cancelHide: cancelHide,
+      scheduleHide: scheduleHide,
+      hide: hideNow,
+      behavior: behavior
+    };
+
+    function resolveTrigger(target, ev) {
+      if (resolveTriggerOption) {
+        const resolved = resolveTriggerOption(target, ev);
+        return resolved instanceof Element ? resolved : null;
+      }
+      if (!(target instanceof Element)) return null;
+      if (!triggerSelector) return target;
+      if (target.matches(triggerSelector)) return target;
+      const closest = target.closest(triggerSelector);
+      return closest instanceof Element ? closest : null;
+    }
+
+    function keepOpen(trigger, ev) {
+      if (shouldKeepPreviewOpen && shouldKeepPreviewOpen(trigger, ev, controls)) return true;
+      return shouldKeepOpen(ev && ev.relatedTarget, trigger, panel);
+    }
+
+    function showTrigger(trigger, ev, force) {
+      if (!(trigger instanceof Element)) return;
+      if (!filterTrigger(trigger, ev, controls)) return;
+      if (!force && enterRequiresHover && !behavior().isHover) return;
+      cancelHide();
+      show(trigger, ev, controls);
+    }
+
+    function leaveTrigger(trigger, ev) {
+      if (!(trigger instanceof Element)) return;
+      if (!filterTrigger(trigger, ev, controls)) return;
+      const current = behavior();
+      if (!current.isHover) return;
+      if (onLeave && onLeave(trigger, ev, controls)) return;
+      if (keepOpen(trigger, ev)) return;
+      scheduleHide();
+    }
+
+    function activateTrigger(trigger, ev) {
+      if (!(trigger instanceof Element)) return;
+      if (!filterTrigger(trigger, ev, controls)) return;
+      const current = behavior();
+      if (!current.isPinned) return;
+      showTrigger(trigger, ev, true);
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+    }
+
+    function bindDirectTrigger(trigger) {
+      if (!(trigger instanceof Element)) return;
+      if (!filterTrigger(trigger, null, controls)) return;
+      if (trigger.getAttribute(triggerBoundAttr) === "1") return;
+      trigger.setAttribute(triggerBoundAttr, "1");
+      trigger.addEventListener("mouseenter", function (ev) {
+        showTrigger(trigger, ev);
+      });
+      trigger.addEventListener("focusin", function (ev) {
+        showTrigger(trigger, ev);
+      });
+      trigger.addEventListener("mouseleave", function (ev) {
+        leaveTrigger(trigger, ev);
+      });
+      trigger.addEventListener("focusout", function (ev) {
+        leaveTrigger(trigger, ev);
+      });
+      if (activateOnClick) {
+        trigger.addEventListener("click", function (ev) {
+          activateTrigger(trigger, ev);
+        });
+      }
+      if (activateOnKeydown) {
+        trigger.addEventListener("keydown", function (ev) {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          activateTrigger(trigger, ev);
+        });
+      }
+    }
+
+    function bindDelegatedRoot(root) {
+      if (!(root instanceof Element || root instanceof Document)) return;
+      if (root instanceof Element) {
+        if (root.getAttribute(eventRootBoundAttr) === "1") return;
+        root.setAttribute(eventRootBoundAttr, "1");
+      }
+      root.addEventListener("mouseover", function (ev) {
+        showTrigger(resolveTrigger(ev.target, ev), ev);
+      });
+      root.addEventListener("focusin", function (ev) {
+        showTrigger(resolveTrigger(ev.target, ev), ev);
+      });
+      root.addEventListener("mouseout", function (ev) {
+        leaveTrigger(resolveTrigger(ev.target, ev), ev);
+      });
+      root.addEventListener("focusout", function (ev) {
+        leaveTrigger(resolveTrigger(ev.target, ev), ev);
+      });
+      if (activateOnClick) {
+        root.addEventListener("click", function (ev) {
+          activateTrigger(resolveTrigger(ev.target, ev), ev);
+        });
+      }
+      if (activateOnKeydown) {
+        root.addEventListener("keydown", function (ev) {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          activateTrigger(resolveTrigger(ev.target, ev), ev);
+        });
+      }
+    }
+
+    function bindPanelLifetime() {
+      if (!bindPanel || !(panel instanceof Element)) return;
+      if (panel.getAttribute(panelBoundAttr) === "1") return;
+      panel.setAttribute(panelBoundAttr, "1");
+      panel.addEventListener("mouseenter", cancelHide);
+      panel.addEventListener("focusin", cancelHide);
+      const leavePanel = function (ev) {
+        const current = behavior();
+        if (!current.isHover) return;
+        if (onPanelLeave && onPanelLeave(panel, ev, controls)) return;
+        if (shouldKeepOpen(ev && ev.relatedTarget, getActiveAnchor(), panel)) return;
+        scheduleHide();
+      };
+      panel.addEventListener("mouseleave", leavePanel);
+      panel.addEventListener("focusout", leavePanel);
+    }
+
+    function refresh(root) {
+      const scope = root instanceof Element || root instanceof Document ? root : triggerRoot;
+      if (eventRoot) {
+        bindDelegatedRoot(eventRoot);
+        return;
+      }
+      if (!triggerSelector || !(scope instanceof Element || scope instanceof Document)) return;
+      if (scope instanceof Element && scope.matches(triggerSelector)) {
+        bindDirectTrigger(scope);
+      }
+      scope.querySelectorAll(triggerSelector).forEach(bindDirectTrigger);
+    }
+
+    bindPanelLifetime();
+    refresh(triggerRoot);
+
+    if (bindEscape) {
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") hideNow();
+      });
+    }
+    if (bindWindow) {
+      const reposition = function () {
+        const current = behavior();
+        const activeAnchor = getActiveAnchor();
+        if (current.isAnchored && activeAnchor && panel instanceof Element && !panel.hidden) {
+          position(activeAnchor);
+        }
+      };
+      window.addEventListener("resize", reposition);
+      window.addEventListener("scroll", reposition, true);
+    }
+
+    return Object.assign(controls, {
+      refresh: refresh,
+      showTrigger: showTrigger
+    });
+  }
+
   function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
     if (typeof fn !== "function") return;
@@ -1247,33 +1494,14 @@
     }
     const behavior = readPanelBehavior(panel, defaults);
     let activeTrigger = null;
-    let hideTimer = null;
     let showRequestToken = 0;
-
-    function cancelHide() {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    }
+    let triggerLifecycle = null;
 
     function hidePanel() {
-      cancelHide();
+      if (triggerLifecycle) triggerLifecycle.cancelHide();
       showRequestToken += 1;
       hidePanelContent(panel, title, body);
       activeTrigger = null;
-    }
-
-    function scheduleHide() {
-      cancelHide();
-      if (!behavior.isHover) {
-        hidePanel();
-        return;
-      }
-      hideTimer = window.setTimeout(function () {
-        hideTimer = null;
-        hidePanel();
-      }, 180);
     }
 
     function positionPanel(anchor) {
@@ -1315,62 +1543,17 @@
 
     configureCloseButton(close, hidePanel, behavior);
 
-    triggers.forEach(function (trigger) {
-      if (!(trigger instanceof Element)) return;
-      if (trigger.getAttribute(triggerBoundAttr) === "1") return;
-      trigger.setAttribute(triggerBoundAttr, "1");
-      trigger.addEventListener("mouseenter", function () {
-        cancelHide();
-        showFromTrigger(trigger);
-      });
-      trigger.addEventListener("focusin", function () {
-        cancelHide();
-        showFromTrigger(trigger);
-      });
-      trigger.addEventListener("mouseleave", function (ev) {
-        if (!behavior.isHover) return;
-        if (shouldKeepOpen(ev.relatedTarget, trigger, panel)) return;
-        scheduleHide();
-      });
-      trigger.addEventListener("focusout", function (ev) {
-        if (!behavior.isHover) return;
-        if (shouldKeepOpen(ev.relatedTarget, trigger, panel)) return;
-        scheduleHide();
-      });
+    triggerLifecycle = bindPreviewTriggers({
+      triggerRoot: triggerRoot,
+      triggerSelector: triggerSelector,
+      triggerBoundAttr: triggerBoundAttr,
+      panel: panel,
+      behavior: behavior,
+      show: showFromTrigger,
+      hide: hidePanel,
+      position: positionPanel,
+      getActiveTrigger: function () { return activeTrigger; }
     });
-
-    panel.addEventListener("mouseenter", function () {
-      cancelHide();
-    });
-    panel.addEventListener("focusin", function () {
-      cancelHide();
-    });
-    panel.addEventListener("mouseleave", function (ev) {
-      if (!behavior.isHover) return;
-      if (shouldKeepOpen(ev.relatedTarget, activeTrigger, panel)) return;
-      scheduleHide();
-    });
-    panel.addEventListener("focusout", function (ev) {
-      if (!behavior.isHover) return;
-      if (shouldKeepOpen(ev.relatedTarget, activeTrigger, panel)) return;
-      scheduleHide();
-    });
-
-    document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") {
-        hidePanel();
-      }
-    });
-    window.addEventListener("resize", function () {
-      if (behavior.isAnchored && activeTrigger && !panel.hidden) positionPanel(activeTrigger);
-    });
-    window.addEventListener(
-      "scroll",
-      function () {
-        if (behavior.isAnchored && activeTrigger && !panel.hidden) positionPanel(activeTrigger);
-      },
-      true
-    );
 
     return {
       previewMap: previewMap,
@@ -1503,6 +1686,7 @@
     hidePanelContent: hidePanelContent,
     setPreviewHeaderLink: setPreviewHeaderLink,
     showPanelContent: showPanelContent,
+    bindPreviewTriggers: bindPreviewTriggers,
     bindTemplatePreviewRoots: bindTemplatePreviewRoots
   };
 

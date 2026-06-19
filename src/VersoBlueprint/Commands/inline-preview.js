@@ -87,14 +87,13 @@
     let activeTrigger = null;
     let activeHost = null;
     let activePreviewKey = "";
-    let hideTimer = null;
     let updatingPanel = false;
     let ignoreNextPanelExit = false;
     let showRequestToken = 0;
     let childActiveTrigger = null;
-    let childPreviewKey = "";
-    let childHideTimer = null;
     let childShowRequestToken = 0;
+    let mainLifecycle = null;
+    let childLifecycle = null;
     const childBehavior = makeBehavior("hover", "anchored");
 
     function clearPanelSizeLock() {
@@ -110,17 +109,11 @@
     }
 
     function cancelHide() {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
+      if (mainLifecycle) mainLifecycle.cancelHide();
     }
 
     function cancelChildHide() {
-      if (childHideTimer !== null) {
-        clearTimeout(childHideTimer);
-        childHideTimer = null;
-      }
+      if (childLifecycle) childLifecycle.cancelHide();
     }
 
     function setPanelFooter(footerNode, trigger) {
@@ -193,84 +186,13 @@
       previewUtils.configureCloseButton(close, hidePanel, behavior);
     }
 
+    function triggerInsideInlinePanel(trigger) {
+      return trigger instanceof Element && (panel.contains(trigger) || childPanel.contains(trigger));
+    }
+
     function bindInlinePreviewTriggers(root) {
-      if (!(root instanceof Element || root instanceof Document)) return;
-      root.querySelectorAll(triggerSelector).forEach(function (trigger) {
-        if (!(trigger instanceof Element)) return;
-        if (trigger.getAttribute("data-bp-inline-bound") === "1") return;
-        trigger.setAttribute("data-bp-inline-bound", "1");
-        const triggerKey = (trigger.getAttribute("data-bp-preview-id") || "").trim();
-        const triggerInsidePanel = panel.contains(trigger) || childPanel.contains(trigger);
-        trigger.addEventListener("mouseenter", function () {
-          if (triggerInsidePanel) {
-            cancelHide();
-            cancelChildHide();
-            showChildFromTrigger(trigger);
-          } else {
-            cancelHide();
-            showFromTrigger(trigger);
-          }
-        });
-        trigger.addEventListener("focusin", function () {
-          if (triggerInsidePanel) {
-            cancelHide();
-            cancelChildHide();
-            showChildFromTrigger(trigger);
-          } else {
-            cancelHide();
-            showFromTrigger(trigger);
-          }
-        });
-        if (triggerInsidePanel) {
-          trigger.addEventListener("mouseleave", function (ev) {
-            if (childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-            if (previewUtils.shouldKeepOpen(ev.relatedTarget, trigger, childPanel)) return;
-            scheduleChildHide();
-          });
-          trigger.addEventListener("focusout", function (ev) {
-            if (childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-            if (previewUtils.shouldKeepOpen(ev.relatedTarget, trigger, childPanel)) return;
-            scheduleChildHide();
-          });
-          return;
-        }
-        trigger.addEventListener("mouseleave", function (ev) {
-          if (!behavior.isHover) return;
-          if (!trigger.isConnected) return;
-          if (triggerKey && activePreviewKey && triggerKey !== activePreviewKey) return;
-          if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-          if (panel.matches(":hover") || panel.matches(":focus-within")) return;
-          if (previewUtils.shouldKeepOpen(ev.relatedTarget, trigger, panel)) return;
-          previewDebug("inline.trigger.mouseleave", {
-            triggerKey: triggerKey,
-            activePreviewKey: activePreviewKey,
-            trigger: previewDebugLabel(trigger),
-            relatedTarget: previewDebugLabel(ev.relatedTarget),
-            panelHover: panel.matches(":hover"),
-            panelFocus: panel.matches(":focus-within"),
-            updatingPanel: updatingPanel
-          });
-          scheduleHide();
-        });
-        trigger.addEventListener("focusout", function (ev) {
-          if (!behavior.isHover) return;
-          if (!trigger.isConnected) return;
-          if (triggerKey && activePreviewKey && triggerKey !== activePreviewKey) return;
-          if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-          if (panel.matches(":hover") || panel.matches(":focus-within")) return;
-          if (previewUtils.shouldKeepOpen(ev.relatedTarget, trigger, panel)) return;
-          previewDebug("inline.trigger.focusout", {
-            triggerKey: triggerKey,
-            activePreviewKey: activePreviewKey,
-            trigger: previewDebugLabel(trigger),
-            relatedTarget: previewDebugLabel(ev.relatedTarget),
-            panelHover: panel.matches(":hover"),
-            panelFocus: panel.matches(":focus-within"),
-            updatingPanel: updatingPanel
-          });
-          scheduleHide();
-        });
-      });
+      if (mainLifecycle) mainLifecycle.refresh(root);
+      if (childLifecycle) childLifecycle.refresh(root);
     }
 
     function refresh(root) {
@@ -306,34 +228,14 @@
       previewUtils.setPreviewHeaderLink(childHeaderLabel, null);
       setPanelFooter(childFooter, null);
       childActiveTrigger = null;
-      childPreviewKey = "";
     }
 
     function scheduleHide() {
-      cancelHide();
-      if (!behavior.isHover) {
-        hidePanel();
-        return;
-      }
-      hideTimer = window.setTimeout(function () {
-        hideTimer = null;
-        previewDebug("inline.scheduleHide.fire", {
-          activePreviewKey: activePreviewKey,
-          activeTrigger: previewDebugLabel(activeTrigger),
-          panelHover: panel.matches(":hover"),
-          panelFocus: panel.matches(":focus-within"),
-          updatingPanel: updatingPanel
-        });
-        hidePanel();
-      }, 180);
+      if (mainLifecycle) mainLifecycle.scheduleHide();
     }
 
     function scheduleChildHide() {
-      cancelChildHide();
-      childHideTimer = window.setTimeout(function () {
-        childHideTimer = null;
-        hideChildPanel();
-      }, 180);
+      if (childLifecycle) childLifecycle.scheduleHide();
     }
 
     async function resolvePreviewHtml(key, trigger) {
@@ -365,7 +267,6 @@
       const heading = (trigger.getAttribute("data-bp-preview-title") || key).trim() || key;
       cancelHide();
       cancelChildHide();
-      childPreviewKey = key;
       childActiveTrigger = trigger;
       previewUtils.setPreviewHeaderLink(childHeaderLabel, trigger);
       setPanelFooter(childFooter, trigger);
@@ -431,88 +332,91 @@
         }
       }
     }
+
+    function mainTriggerLeaveHandled(trigger, ev) {
+      if (!trigger.isConnected) return true;
+      const triggerKey = (trigger.getAttribute("data-bp-preview-id") || "").trim();
+      if (triggerKey && activePreviewKey && triggerKey !== activePreviewKey) return true;
+      if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return true;
+      if (panel.matches(":hover") || panel.matches(":focus-within")) return true;
+      previewDebug("inline.trigger.leave", {
+        triggerKey: triggerKey,
+        activePreviewKey: activePreviewKey,
+        trigger: previewDebugLabel(trigger),
+        relatedTarget: previewDebugLabel(ev.relatedTarget),
+        panelHover: panel.matches(":hover"),
+        panelFocus: panel.matches(":focus-within"),
+        updatingPanel: updatingPanel
+      });
+      return false;
+    }
+
+    function mainPanelLeaveHandled(_panel, ev) {
+      if (updatingPanel) return true;
+      if (ignoreNextPanelExit) {
+        ignoreNextPanelExit = false;
+        previewDebug("inline.panel.leave.ignored", {
+          activePreviewKey: activePreviewKey,
+          relatedTarget: previewDebugLabel(ev.relatedTarget),
+          panelHover: panel.matches(":hover"),
+          panelFocus: panel.matches(":focus-within")
+        });
+        return true;
+      }
+      if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return true;
+      if (previewUtils.pointerWithinPanel(panel, ev)) return true;
+      if (panel.matches(":hover") || panel.matches(":focus-within")) return true;
+      previewDebug("inline.panel.leave", {
+        activePreviewKey: activePreviewKey,
+        activeTrigger: previewDebugLabel(activeTrigger),
+        relatedTarget: previewDebugLabel(ev.relatedTarget),
+        panelHover: panel.matches(":hover"),
+        panelFocus: panel.matches(":focus-within"),
+        updatingPanel: updatingPanel
+      });
+      return false;
+    }
+
+    function childTriggerLeaveHandled(_trigger, _ev) {
+      return childPanel.matches(":hover") || childPanel.matches(":focus-within");
+    }
+
+    function childPanelLeaveHandled(_panel, ev) {
+      return previewUtils.pointerWithinPanel(childPanel, ev);
+    }
+
     applyBehavior(behavior, null);
     previewUtils.configureCloseButton(childClose, hideChildPanel, childBehavior);
-    panel.addEventListener("mouseenter", function () {
-      cancelHide();
+    mainLifecycle = previewUtils.bindPreviewTriggers({
+      triggerRoot: document,
+      triggerSelector: triggerSelector,
+      triggerBoundAttr: "data-bp-inline-main-bound",
+      panel: panel,
+      getBehavior: function () { return behavior; },
+      filterTrigger: function (trigger) { return !triggerInsideInlinePanel(trigger); },
+      show: showFromTrigger,
+      hide: hidePanel,
+      position: function (anchor) { previewUtils.positionAnchoredPanel(panel, anchor, 12, 10); },
+      getActiveTrigger: function () { return activeTrigger; },
+      onLeave: mainTriggerLeaveHandled,
+      onPanelLeave: mainPanelLeaveHandled,
+      bindWindow: false
     });
-    panel.addEventListener("focusin", function () {
-      cancelHide();
-    });
-    panel.addEventListener("mouseleave", function (ev) {
-      if (!behavior.isHover) return;
-      if (updatingPanel) return;
-      if (ignoreNextPanelExit) {
-        ignoreNextPanelExit = false;
-        previewDebug("inline.panel.mouseleave.ignored", {
-          activePreviewKey: activePreviewKey,
-          relatedTarget: previewDebugLabel(ev.relatedTarget),
-          panelHover: panel.matches(":hover"),
-          panelFocus: panel.matches(":focus-within")
-        });
-        return;
-      }
-      if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-      if (previewUtils.pointerWithinPanel(panel, ev)) return;
-      if (panel.matches(":hover") || panel.matches(":focus-within")) return;
-      if (previewUtils.shouldKeepOpen(ev.relatedTarget, activeTrigger, panel)) return;
-      previewDebug("inline.panel.mouseleave", {
-        activePreviewKey: activePreviewKey,
-        activeTrigger: previewDebugLabel(activeTrigger),
-        relatedTarget: previewDebugLabel(ev.relatedTarget),
-        panelHover: panel.matches(":hover"),
-        panelFocus: panel.matches(":focus-within"),
-        updatingPanel: updatingPanel
-      });
-      scheduleHide();
-    });
-    panel.addEventListener("focusout", function (ev) {
-      if (!behavior.isHover) return;
-      if (updatingPanel) return;
-      if (ignoreNextPanelExit) {
-        ignoreNextPanelExit = false;
-        previewDebug("inline.panel.focusout.ignored", {
-          activePreviewKey: activePreviewKey,
-          relatedTarget: previewDebugLabel(ev.relatedTarget),
-          panelHover: panel.matches(":hover"),
-          panelFocus: panel.matches(":focus-within")
-        });
-        return;
-      }
-      if (childPanel.contains(ev.relatedTarget) || childPanel.matches(":hover") || childPanel.matches(":focus-within")) return;
-      if (panel.matches(":hover") || panel.matches(":focus-within")) return;
-      if (previewUtils.shouldKeepOpen(ev.relatedTarget, activeTrigger, panel)) return;
-      previewDebug("inline.panel.focusout", {
-        activePreviewKey: activePreviewKey,
-        activeTrigger: previewDebugLabel(activeTrigger),
-        relatedTarget: previewDebugLabel(ev.relatedTarget),
-        panelHover: panel.matches(":hover"),
-        panelFocus: panel.matches(":focus-within"),
-        updatingPanel: updatingPanel
-      });
-      scheduleHide();
-    });
-    document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") {
-        hidePanel();
-      }
-    });
-    childPanel.addEventListener("mouseenter", function () {
-      cancelHide();
-      cancelChildHide();
-    });
-    childPanel.addEventListener("focusin", function () {
-      cancelHide();
-      cancelChildHide();
-    });
-    childPanel.addEventListener("mouseleave", function (ev) {
-      if (previewUtils.pointerWithinPanel(childPanel, ev)) return;
-      if (previewUtils.shouldKeepOpen(ev.relatedTarget, childActiveTrigger, childPanel)) return;
-      scheduleChildHide();
-    });
-    childPanel.addEventListener("focusout", function (ev) {
-      if (previewUtils.shouldKeepOpen(ev.relatedTarget, childActiveTrigger, childPanel)) return;
-      scheduleChildHide();
+    childLifecycle = previewUtils.bindPreviewTriggers({
+      triggerRoot: document,
+      triggerSelector: triggerSelector,
+      triggerBoundAttr: "data-bp-inline-child-bound",
+      panel: childPanel,
+      behavior: childBehavior,
+      filterTrigger: triggerInsideInlinePanel,
+      show: showChildFromTrigger,
+      hide: hideChildPanel,
+      position: function (anchor) { previewUtils.positionAnchoredPanel(childPanel, anchor, 12, 10); },
+      getActiveTrigger: function () { return childActiveTrigger; },
+      onLeave: childTriggerLeaveHandled,
+      onPanelLeave: childPanelLeaveHandled,
+      bindEscape: false,
+      bindWindow: false
     });
     window.addEventListener("resize", function () {
       if (behavior.isAnchored && activeTrigger && !panel.hidden) {
