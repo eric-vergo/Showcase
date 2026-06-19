@@ -49,12 +49,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasRenderReadyWiring inlineJs "previewUtils" &&
         hasAllSubstr inlineJs [
           "bp-inline-preview-child-panel",
-          "previewUtils.setPreviewHeaderLink(headerLabel, trigger)",
-          "data-bp-preview-footer-html",
-          "previewUtils.readPanelBehavior(null, { mode: mode, placement: placement })",
-          "previewUtils.resolvePreview(previewLookupKey)",
-          "previewUtils.renderHtmlInto(body, html)",
-          "previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10)"
+          "data-bp-preview-footer-html"
         ] &&
         lacksAllSubstr inlineJs [
           "typeof previewUtils.readPanelBehavior",

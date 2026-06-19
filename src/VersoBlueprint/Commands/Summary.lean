@@ -941,20 +941,17 @@ private def summaryCapRows (rows : Array Output.Html) (noun : String) : Array Ou
 
 private def summaryDetailsList (title : String) (rows : Array Output.Html)
     (className : String := "bp_summary_subsection") (open? : Bool := false) : Output.Html :=
-  if open? then
-    {{ <details class={{className}} open>
-        <summary>{{.text true title}}</summary>
-        <ul class="bp_summary_list">
-          {{rows}}
-        </ul>
-      </details> }}
-  else
-    {{ <details class={{className}}>
-        <summary>{{.text true title}}</summary>
-        <ul class="bp_summary_list">
-          {{rows}}
-        </ul>
-      </details> }}
+  let attrs :=
+    if open? then
+      #[("class", className), ("open", "open")]
+    else
+      #[("class", className)]
+  {{ <details {{attrs}}>
+      <summary>{{.text true title}}</summary>
+      <ul class="bp_summary_list">
+        {{rows}}
+      </ul>
+    </details> }}
 
 private def summaryOptionalDetailsList (visible : Bool) (title : String) (rows : Array Output.Html)
     (className : String := "bp_summary_subsection") (open? : Bool := false) : Output.Html :=
@@ -1705,12 +1702,11 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
         Resolve.resolveInformalDeclHref? s label decl
       previewLookupKey? := fun label => previewLookupKeys.get? label
     }
-    let previewUi := Informal.HoverRender.summaryPreviewUi
+    let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let rows ← SummaryRows.render ctx data
     pure {{
       <div class="bp_summary">
-        {{previewUi.store}}
-        {{previewUi.panel}}
+        {{previewPanel}}
         {{summaryOverviewSection data rows}}
         {{summaryEntryIndexSection data rows}}
         {{summaryDependencyInsightsSection rows}}

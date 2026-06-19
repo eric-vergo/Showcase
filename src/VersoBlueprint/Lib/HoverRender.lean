@@ -15,14 +15,6 @@ namespace Informal.HoverRender
 open Lean
 open Verso.Output.Html
 
-structure PreviewUi where
-  store : Verso.Output.Html := .empty
-  panel : Verso.Output.Html := .empty
-
-abbrev GraphPreviewUi := PreviewUi
-abbrev SummaryPreviewUi := PreviewUi
-abbrev CodeSummaryPreviewUi := PreviewUi
-
 /--
 Preview visibility behavior:
 - `hover`: transient panel, auto-hide on leave/focusout, no close control.
@@ -100,24 +92,53 @@ private def previewPanel
   </aside>
 }}
 
-private def mkPreviewUi
+private def mkPreviewPanel
     (rootClass headerClass titleClass closeClass bodyClass closeLabel : String)
-    (mode : PreviewMode) (placement : PreviewPlacement) : PreviewUi :=
-  {
-    store := .empty
-    panel := previewPanel
-      rootClass
-      headerClass
-      titleClass
-      closeClass
-      bodyClass
-      closeLabel
-      mode placement
-  }
+    (mode : PreviewMode) (placement : PreviewPlacement) : Verso.Output.Html :=
+  previewPanel
+    rootClass
+    headerClass
+    titleClass
+    closeClass
+    bodyClass
+    closeLabel
+    mode placement
 
-def graphPreviewUi
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) : GraphPreviewUi :=
-  mkPreviewUi
+def templatePreviewRoot
+    (rootClass triggerClass activeTriggerClass templateClass keyAttr key previewTitle : String)
+    (trigger body panel : Verso.Output.Html)
+    (focusable : Bool := false)
+    (ariaLabel? : Option String := none) :
+    Verso.Output.Html :=
+  let triggerAttrs := Id.run do
+    let mut attrs := #[
+      ("class", s!"{triggerClass} {activeTriggerClass}"),
+      (keyAttr, key),
+      ("data-bp-preview-title", previewTitle)
+    ]
+    if focusable then
+      attrs := attrs.push ("tabindex", "0")
+      attrs := attrs.push ("role", "button")
+    if let some ariaLabel := ariaLabel? then
+      attrs := attrs.push ("aria-label", ariaLabel)
+    pure attrs
+  let templateAttrs := #[("class", templateClass), (keyAttr, key)]
+  {{
+    <span class={{rootClass}}>
+      <span {{triggerAttrs}}>
+        {{trigger}}
+      </span>
+      <template {{templateAttrs}}>
+        {{body}}
+      </template>
+      {{panel}}
+    </span>
+  }}
+
+def graphPreviewPanel
+    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
+    Verso.Output.Html :=
+  mkPreviewPanel
     "bp_graph_preview bp_preview_panel"
     "bp_graph_preview_header bp_preview_panel_header"
     "bp_graph_preview_title bp_preview_panel_title"
@@ -126,9 +147,10 @@ def graphPreviewUi
     "Close informal preview"
     mode placement
 
-def summaryPreviewUi
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) : SummaryPreviewUi :=
-  mkPreviewUi
+def summaryPreviewPanel
+    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
+    Verso.Output.Html :=
+  mkPreviewPanel
     "bp_summary_preview_panel bp_preview_panel"
     "bp_summary_preview_panel_header bp_preview_panel_header"
     "bp_summary_preview_panel_title bp_preview_panel_title"
@@ -137,9 +159,10 @@ def summaryPreviewUi
     "Close summary preview"
     mode placement
 
-def codeSummaryPreviewUi
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) : CodeSummaryPreviewUi :=
-  mkPreviewUi
+def codeSummaryPreviewPanel
+    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
+    Verso.Output.Html :=
+  mkPreviewPanel
     "bp_code_summary_preview_panel bp_preview_panel"
     "bp_code_summary_preview_header bp_preview_panel_header"
     "bp_code_summary_preview_title bp_preview_panel_title"
@@ -148,9 +171,10 @@ def codeSummaryPreviewUi
     "Close Lean summary preview"
     mode placement
 
-def graphGroupPreviewUi
-    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) : PreviewUi :=
-  mkPreviewUi
+def graphGroupPreviewPanel
+    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
+    Verso.Output.Html :=
+  mkPreviewPanel
     "bp_group_hover_preview bp_preview_panel"
     "bp_group_hover_preview_header bp_preview_panel_header"
     "bp_group_hover_preview_title bp_preview_panel_title"

@@ -1,41 +1,13 @@
 (function () {
-  function previewMessageHtml(previewUtils, kind, title, detail) {
-    const escapeHtml = previewUtils.escapeHtml;
-    const safeKind = String(kind || "info").trim() || "info";
-    let html =
-      '<div class="bp_relation_preview_message" data-bp-preview-message="' +
-      escapeHtml(safeKind) +
-      '">';
-    html +=
-      '<div class="bp_relation_preview_message_title">' +
-      escapeHtml(title || "Preview unavailable") +
-      "</div>";
-    if (detail) {
-      html +=
-        '<div class="bp_relation_preview_message_detail">' +
-        escapeHtml(detail) +
-        "</div>";
-    }
-    html += "</div>";
-    return html;
-  }
-
-  function loadingPreviewHtml(previewUtils) {
-    return previewMessageHtml(
-      previewUtils,
-      "loading",
-      "Loading preview",
-      "Reading this preview from the rendered-fragment cache."
-    );
-  }
-
   function previewExceptionHtml(previewUtils, fallbackDetail) {
-    return previewMessageHtml(
-      previewUtils,
-      "error",
-      "Preview unavailable",
-      fallbackDetail || "The preview cache content could not be loaded."
-    );
+    return previewUtils.previewMessageHtml({
+      rootClass: "bp_relation_preview_message",
+      titleClass: "bp_relation_preview_message_title",
+      detailClass: "bp_relation_preview_message_detail",
+      kind: "error",
+      title: "Preview unavailable",
+      detail: fallbackDetail || "The preview cache content could not be loaded."
+    });
   }
 
   function setRelationBodyHtml(previewUtils, body, html) {
@@ -55,6 +27,7 @@
     if (!(title instanceof Element) || !(headerLabel instanceof Element) || !(body instanceof Element)) return;
 
     const defaultTitle = (title.textContent || "").trim() || "Relation preview";
+    const initialLoadingHtml = (body.innerHTML || "").trim();
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
     let closeTimer = null;
     let activateRequestToken = 0;
@@ -135,7 +108,7 @@
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
       const requestToken = ++activateRequestToken;
       selectItem(item);
-      setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils));
+      setRelationBodyHtml(previewUtils, body, initialLoadingHtml);
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }

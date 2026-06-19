@@ -981,8 +981,8 @@ API installed by the standard Blueprint preview/runtime asset. It loads the
 manifest and rendered-fragment cache from the page's `-verso-data/` directory,
 keeps load status for diagnostics, and hydrates inserted fragments.
 
-Use `renderPreviewInto` when the client just needs to place a preview body into
-the page:
+Use `renderPreviewInto` when the client just needs to place a preview body
+fragment into the page:
 
 ```javascript
 window.VersoBlueprint.onRenderReady(async function (api) {
@@ -996,6 +996,37 @@ window.VersoBlueprint.onRenderReady(async function (api) {
   }
 });
 ```
+
+Use `renderCanonicalPreviewInto` when the client wants the same Blueprint node
+wrapper that appears on the generated page. This resolves the semantic manifest
+entry, follows its generated-page link, extracts the canonical node by id, and
+hydrates the inserted copy:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const key = api.previewKey("addition_right_identity", "statement");
+  const target = document.querySelector("#audit-preview");
+  if (!target) return;
+
+  const result = await api.renderCanonicalPreviewInto(target, key);
+  if (result.ok) {
+    console.log(result.canonicalSourceHref);
+  }
+});
+```
+
+The in-repo `preview_runtime_showcase` test blueprint includes the same pattern
+as a standalone browser client on its `Custom Render Client` page. The client
+asset lives in
+`tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/custom-render-client.js`,
+with the page shell in
+`tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/CustomRenderClient.lean`.
+After generating the test blueprint, inspect
+`_out/test-blueprints/preview_runtime_showcase/html-multi/Custom-Render-Client/`
+or, from a linked worktree,
+`_out/<worktree>/test-blueprints/preview_runtime_showcase/html-multi/Custom-Render-Client/`.
+That fixture is exercised by the browser regression tests, so it is a better
+starting point than copying code from a test body.
 
 Use `resolvePreview` when the client needs semantic data before deciding how to
 display the preview:
@@ -1038,8 +1069,10 @@ Stable custom-client entrypoints:
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolvePreview(key)` | Resolve manifest data and a rendered fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
-| `api.renderPreviewInto(element, key, options)` | Write the rendered body or diagnostic HTML into `element`, then hydrate nested previews and math. |
+| `api.resolvePreview(key)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
+| `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |
+| `api.resolveCanonicalPreview(key)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
+| `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. |
 
 Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
@@ -1064,20 +1097,21 @@ Bundled-feature helper APIs are intentionally narrower. They are exported on
 `window.VersoBlueprint.render` so Blueprint's own clients can share panel
 positioning, close-button behavior, template binding, and hydrator registration
 without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
-`createPanelController`, `bindHoverablePanelLifetime`,
-`registerPreviewHydrator`, `readPanelBehavior`, `showPanelContent`, and
-`setPreviewHeaderLink` should not be treated as stable custom-client API unless
-they are promoted into the table above.
+`createPreviewPanel`, `createPanelController`, `bindHoverablePanelLifetime`,
+`registerPreviewHydrator`, `previewMessageHtml`, `readPanelBehavior`,
+`showPanelContent`, and `setPreviewHeaderLink` should not be treated as stable
+custom-client API unless they are promoted into the table above.
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:
 
-1. Use `renderPreviewInto` when the client only needs to place one Blueprint
-   preview body into a target element and wants standard diagnostics and
-   hydration.
-2. Use `resolvePreview` when the client needs both semantic manifest data and
-   the rendered fragment before deciding where or how to display it.
-3. Use `loadManifest`, `loadHtmlCache`, `loadManifestEntry`, or
+1. Use `renderCanonicalPreviewInto` when the client wants inserted previews to
+   look like normal generated Blueprint nodes.
+2. Use `renderPreviewInto` when the client only needs a body fragment inside a
+   custom wrapper.
+3. Use `resolvePreview` or `resolveCanonicalPreview` when the client needs both
+   semantic manifest data and rendered HTML before deciding how to display it.
+4. Use `loadManifest`, `loadHtmlCache`, `loadManifestEntry`, or
    `loadHtmlCacheEntry` only for advanced clients that need explicit cache
    control, diagnostics, or custom joining behavior.
 
