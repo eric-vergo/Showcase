@@ -1032,6 +1032,21 @@
     };
   }
 
+  function normalizePanelBehavior(panel, defaults, nextBehavior) {
+    const fallback = readPanelBehavior(panel, defaults);
+    if (!nextBehavior || typeof nextBehavior !== "object") return fallback;
+    const mode = normalizePreviewMode(nextBehavior.mode, fallback.mode);
+    const placement = normalizePreviewPlacement(nextBehavior.placement, fallback.placement);
+    return {
+      mode: mode,
+      placement: placement,
+      isPinned: mode === "pinned",
+      isHover: mode === "hover",
+      isAnchored: placement === "anchored",
+      isDocked: placement === "docked"
+    };
+  }
+
   function resetPanelPosition(panel) {
     if (!(panel instanceof Element)) return;
     panel.style.left = "";
@@ -1139,7 +1154,7 @@
       body: slots.body,
       footer: slots.footer,
       closeButton: slots.closeButton,
-      behavior: readPanelBehavior(panel, defaults),
+      behavior: normalizePanelBehavior(panel, defaults, null),
       triggerLifecycle: null,
       repositionLifecycle: null,
       dismissLifecycle: null,
@@ -1147,10 +1162,7 @@
         return !panel.hidden;
       },
       setBehavior: function (nextBehavior) {
-        const behavior =
-          nextBehavior && typeof nextBehavior === "object"
-            ? nextBehavior
-            : readPanelBehavior(panel, defaults);
+        const behavior = normalizePanelBehavior(panel, defaults, nextBehavior);
         surface.behavior = behavior;
         panel.setAttribute("data-bp-preview-mode", behavior.mode);
         panel.setAttribute("data-bp-preview-placement", behavior.placement);
@@ -1238,8 +1250,7 @@
         panel.hidden = false;
       },
       position: function (anchor, nextBehavior) {
-        const behavior =
-          nextBehavior && typeof nextBehavior === "object" ? nextBehavior : surface.behavior;
+        const behavior = normalizePanelBehavior(panel, defaults, nextBehavior || surface.behavior);
         if (positionPanel) {
           positionPanel(panel, anchor, surface);
         } else if (behavior && behavior.isAnchored && readAnchorRect(anchor)) {
@@ -1345,7 +1356,7 @@
     const defaults = readObjectOption(opts, "defaults", {});
     const behaviorSource = readObjectOption(opts, "behavior", null);
     const readBehavior = readFunctionOption(opts, "getBehavior", function () {
-      return behaviorSource || readPanelBehavior(panel, defaults);
+      return behaviorSource;
     });
     const show = readFunctionOption(opts, "show", function () {});
     const hide = readFunctionOption(opts, "hide", function () {});
@@ -1370,10 +1381,7 @@
     let hideTimer = null;
 
     function behavior() {
-      const next = readBehavior();
-      return next && typeof next === "object"
-        ? next
-        : readPanelBehavior(panel, defaults);
+      return normalizePanelBehavior(panel, defaults, readBehavior());
     }
 
     function cancelHide() {
@@ -1958,7 +1966,6 @@
   };
 
   const previewLifecycleHelpers = {
-    readPanelBehavior: readPanelBehavior,
     bindAnchoredPopover: bindAnchoredPopover,
     hidePreviewSurfaces: hidePreviewSurfaces,
   };
@@ -1991,7 +1998,6 @@
   const bundledFeatureRenderHelpers = {
     collectPreviewTemplates: previewTemplateHelpers.collectPreviewTemplates,
     escapeHtml: previewContentHelpers.escapeHtml,
-    readPanelBehavior: previewLifecycleHelpers.readPanelBehavior,
     createPreviewSurface: previewContentHelpers.createPreviewSurface,
     registerPreviewHydrator: previewHydrationHelpers.registerPreviewHydrator,
     previewDebug: previewHydrationHelpers.previewDebug,

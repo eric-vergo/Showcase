@@ -1108,7 +1108,7 @@ callbacks, or generated preview code still need them directly.
 | --- | --- | --- |
 | Template lifecycle | `collectPreviewTemplates` | Graph-local preview stores; summary and code-summary previews use Lean-emitted DOM descriptors that the runtime auto-binds |
 | Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
-| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph controls, graph popovers, inline preview panels, slide-change cleanup, and feature-specific positioning callbacks |
+| Behavior, positioning, and dismissal | `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph popovers, slide-change cleanup, and feature-specific positioning callbacks |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
 Template-preview roots emitted by Lean carry `data-bp-template-preview-*`

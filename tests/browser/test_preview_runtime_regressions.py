@@ -619,6 +619,7 @@ class TestPreviewRuntimeRegressions:
                         hasBindCloseOnce: typeof api.bindCloseOnce === "function",
                         hasBindHoverablePanelLifetime: typeof api.bindHoverablePanelLifetime === "function",
                         hasBindTemplatePreview: typeof api.bindTemplatePreview === "function",
+                        hasReadPanelBehavior: typeof api.readPanelBehavior === "function",
                         hasDiagnostics: typeof api.diagnostics !== "undefined",
                         hasReadHtml: typeof api.readHtml === "function"
                     },
@@ -657,6 +658,7 @@ class TestPreviewRuntimeRegressions:
             "hasBindCloseOnce": False,
             "hasBindHoverablePanelLifetime": False,
             "hasBindTemplatePreview": False,
+            "hasReadPanelBehavior": False,
             "hasDiagnostics": False,
             "hasReadHtml": False,
         }
