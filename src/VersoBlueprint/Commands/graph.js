@@ -749,7 +749,8 @@
             scheduleHide: function () {}
           };
 
-        if (!graphState.windowHandlersBound) {
+        const lifecycleSurface = previewController || groupHoverController;
+        if (!graphState.windowHandlersBound && lifecycleSurface) {
           graphState.windowHandlersBound = true;
           const repositionPanels = function () {
             if (legendPopover && legendPopover.isOpen()) {
@@ -777,9 +778,10 @@
               graphState.groupHoverController.position(graphState.groupHoverAnchorNode);
             }
           };
-          previewUtils.bindDismissHandlers({
+          lifecycleSurface.bindDismissal({
             owner: graphBlock,
             boundAttr: "data-bp-graph-panel-dismiss-bound",
+            closeButton: null,
             bindTrigger: false,
             bindOutside: false,
             bindEscape: true,
@@ -806,7 +808,7 @@
               if (graphState.previewController) graphState.previewController.hide();
             }
           });
-          previewUtils.bindPanelRepositioner({
+          lifecycleSurface.bindRepositioner({
             owner: graphBlock,
             boundAttr: "data-bp-graph-panel-reposition-bound",
             reposition: repositionPanels

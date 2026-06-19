@@ -115,8 +115,12 @@ Base statement for graph preview mode option coverage.
         !hasSubstr graphJs "function blueprintRender()" &&
         hasSubstr graphJs "previewUtils.createPreviewSurface({" &&
         hasSubstr graphJs "previewController.bindTriggers({" &&
+        hasSubstr graphJs "lifecycleSurface.bindDismissal({" &&
+        hasSubstr graphJs "lifecycleSurface.bindRepositioner({" &&
         !hasSubstr graphJs "previewUtils.createPanelController(" &&
         !hasSubstr graphJs "previewUtils.bindPreviewTriggers({" &&
+        !hasSubstr graphJs "previewUtils.bindDismissHandlers({" &&
+        !hasSubstr graphJs "previewUtils.bindPanelRepositioner({" &&
         hasAllSubstr graphJs [
           ".bp_graph_preview_mode_select",
           ".bp_graph_preview_placement_select",

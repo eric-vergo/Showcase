@@ -1298,7 +1298,10 @@
         const dismissOpts =
           dismissOptions && typeof dismissOptions === "object" ? Object.assign({}, dismissOptions) : {};
         if (!(dismissOpts.panel instanceof Element)) dismissOpts.panel = panel;
-        if (!(dismissOpts.closeButton instanceof Element) && slots.closeButton instanceof Element) {
+        if (
+          !Object.prototype.hasOwnProperty.call(dismissOpts, "closeButton") &&
+          slots.closeButton instanceof Element
+        ) {
           dismissOpts.closeButton = slots.closeButton;
         }
         dismissLifecycle = bindDismissHandlers(dismissOpts);
@@ -1972,8 +1975,6 @@
   const previewLifecycleHelpers = {
     readPanelBehavior: readPanelBehavior,
     bindAnchoredPopover: bindAnchoredPopover,
-    bindDismissHandlers: bindDismissHandlers,
-    bindPanelRepositioner: bindPanelRepositioner,
     hidePreviewSurfaces: hidePreviewSurfaces,
     positionAnchoredPanel: positionAnchoredPanel,
     shouldKeepOpen: shouldKeepOpen,
@@ -2022,8 +2023,6 @@
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
-    bindDismissHandlers: previewLifecycleHelpers.bindDismissHandlers,
-    bindPanelRepositioner: previewLifecycleHelpers.bindPanelRepositioner,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces,
     bindTemplatePreviewRoots: previewTemplateHelpers.bindTemplatePreviewRoots
   };
