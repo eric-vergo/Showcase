@@ -84,7 +84,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         hasAllSubstr relationJs [
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
           "previewUtils.previewMessageHtml({",
-          "previewUtils.bindPreviewTriggers({",
+          "previewUtils.createPreviewSurface({",
+          "surface.bindTriggers({",
           "previewUtils.bindDismissHandlers({",
           "triggerSelector: \".bp_relation_chip\"",
           "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
@@ -168,7 +169,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
         hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
+        hasSubstr relationJs "previewUtils.createPreviewSurface({" &&
+        !hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
     )
 

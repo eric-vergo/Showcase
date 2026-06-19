@@ -1103,8 +1103,8 @@ custom-client API unless they are promoted into the table above.
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
 | Template and trigger lifecycle | `bindTemplatePreviewRoots`, `bindPreviewTriggers`, `collectPreviewTemplates` | Summary previews, relation panels, graph node previews, and inline preview cards |
-| Panel shell and content | `createPreviewPanel`, `createPanelController`, `createPreviewSurface`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
-| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `configureCloseButton`, `pointerWithinPanel` | Graph preview controls, graph legend/options popovers, relation panels, inline preview panels, Escape close, outside-click close, and shared resize/scroll repositioning |
+| Panel shell and content | `createPreviewPanel`, `createPreviewSurface`, `showPanelContent`, `hidePanelContent`, `setPreviewHeaderLink`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, and relation-panel diagnostics |
+| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `bindDismissHandlers`, `bindPanelRepositioner`, `hidePreviewSurfaces`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `configureCloseButton`, `pointerWithinPanel` | Graph preview controls, graph legend/options popovers, relation panels, inline preview panels, slide-change cleanup, Escape close, outside-click close, and shared resize/scroll repositioning |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
 `createPreviewSurface` is the higher-level bundled helper for Blueprint-owned
