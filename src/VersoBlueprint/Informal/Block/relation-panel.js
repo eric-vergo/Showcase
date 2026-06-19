@@ -88,6 +88,10 @@
       setExpanded(false);
     }
 
+    function wrapIsOpen() {
+      return wrap instanceof Element && wrap.classList.contains("bp_relation_wrap_open");
+    }
+
     async function activate(item, options) {
       if (!(item instanceof Element)) return;
       const opts = options && typeof options === "object" ? options : {};
@@ -156,28 +160,22 @@
         onPanelEnter: function () { openWrap(); },
         bindWindow: false
       });
-      chip.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        cancelClose();
-        wrap.classList.toggle("bp_relation_wrap_open");
-        const expanded = wrap.classList.contains("bp_relation_wrap_open");
-        setExpanded(expanded);
-        if (expanded) {
-          loadActivePreview();
-        }
-      });
-      panel.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-      });
-      document.addEventListener("click", function (ev) {
-        if (!(ev.target instanceof Element)) {
-          closeWrap();
-          return;
-        }
-        if (!wrap.contains(ev.target)) {
-          closeWrap();
-        }
+      previewUtils.bindDismissHandlers({
+        owner: wrap,
+        root: wrap,
+        trigger: chip,
+        panel: panel,
+        boundAttr: "data-bp-relation-dismiss-bound",
+        isOpen: wrapIsOpen,
+        close: closeWrap,
+        toggle: function () {
+          if (wrapIsOpen()) {
+            closeWrap();
+          } else {
+            openWrap();
+          }
+        },
+        stopPanelClick: true
       });
     }
   }

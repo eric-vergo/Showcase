@@ -85,6 +85,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
           "previewUtils.previewMessageHtml({",
           "previewUtils.bindPreviewTriggers({",
+          "previewUtils.bindDismissHandlers({",
           "triggerSelector: \".bp_relation_chip\"",
           "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
         ] &&

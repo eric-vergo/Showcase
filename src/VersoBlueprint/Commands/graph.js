@@ -758,10 +758,10 @@
         if (!graphState.windowHandlersBound) {
           graphState.windowHandlersBound = true;
           const repositionPanels = function () {
-            if (legendPopover && !graphBlock.querySelector(".bp_graph_legend_popover").hidden) {
+            if (legendPopover && legendPopover.isOpen()) {
               legendPopover.position();
             }
-            if (optionsPopover && !graphBlock.querySelector(".bp_graph_options_popover").hidden) {
+            if (optionsPopover && optionsPopover.isOpen()) {
               optionsPopover.position();
             }
             if (
@@ -783,12 +783,34 @@
               graphState.groupHoverController.position(graphState.groupHoverAnchorNode);
             }
           };
-          window.addEventListener("keydown", function (ev) {
-            if (ev.key !== "Escape") return;
-            if (legendPopover) legendPopover.close();
-            if (optionsPopover) optionsPopover.close();
-            if (graphState.groupHoverController) graphState.groupHoverController.hide();
-            if (graphState.previewController) graphState.previewController.hide();
+          previewUtils.bindDismissHandlers({
+            owner: graphBlock,
+            boundAttr: "data-bp-graph-panel-dismiss-bound",
+            bindTrigger: false,
+            bindOutside: false,
+            bindEscape: true,
+            isOpen: function () {
+              return (
+                (legendPopover && legendPopover.isOpen()) ||
+                (optionsPopover && optionsPopover.isOpen()) ||
+                (
+                  graphState.groupHoverController &&
+                  graphState.groupHoverController.panel &&
+                  !graphState.groupHoverController.panel.hidden
+                ) ||
+                (
+                  graphState.previewController &&
+                  graphState.previewController.panel &&
+                  !graphState.previewController.panel.hidden
+                )
+              );
+            },
+            close: function () {
+              if (legendPopover) legendPopover.close();
+              if (optionsPopover) optionsPopover.close();
+              if (graphState.groupHoverController) graphState.groupHoverController.hide();
+              if (graphState.previewController) graphState.previewController.hide();
+            }
           });
           previewUtils.bindPanelRepositioner({
             owner: graphBlock,
