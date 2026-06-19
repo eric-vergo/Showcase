@@ -392,16 +392,13 @@
       if (label) show(label, node);
       return !!label;
     };
-    previewUtils.bindPreviewTriggers({
+    previewController.bindTriggers({
       eventRoot: svg,
       eventRootBoundAttr: "data-bp-preview-bound",
       triggerSelector: "g.node",
-      panel: previewController.panel,
-      getBehavior: function () { return previewController.behavior; },
       filterTrigger: canPreviewNode,
       show: showFromNode,
       hide: function () { previewController.hide(); },
-      position: function (node) { previewController.position(node); },
       getActiveTrigger: function () { return graphState.previewActiveNode; },
       activateOnClick: true,
       activateOnKeydown: true,
