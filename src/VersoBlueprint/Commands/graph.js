@@ -290,27 +290,18 @@
     return behaviorSource && typeof behaviorSource === "object" ? behaviorSource : null;
   }
 
-  function makeHtmlPanelPositioner(previewUtils, behaviorSource) {
-    return function (panel, anchorNode) {
-      const behavior = readBehaviorSource(behaviorSource);
-      if (
-        behavior &&
-        behavior.isAnchored &&
-        anchorNode instanceof Element
-      ) {
-        previewUtils.positionAnchoredPanel(panel, anchorNode, 12, 10);
-      } else {
-        previewUtils.resetPanelPosition(panel);
-      }
-    };
+  function resetPanelPosition(panel) {
+    if (!(panel instanceof Element)) return;
+    panel.style.left = "";
+    panel.style.top = "";
   }
 
-  function makeGroupPanelPositioner(previewUtils, graphBlock, behaviorSource) {
+  function makeGroupPanelPositioner(graphBlock, behaviorSource) {
     return function (panel, anchorNode) {
       const behavior = readBehaviorSource(behaviorSource);
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
       if (!behavior || !behavior.isAnchored) {
-        previewUtils.resetPanelPosition(panel);
+        resetPanelPosition(panel);
         return;
       }
       if (!(anchorNode instanceof Element)) return;
@@ -582,12 +573,6 @@
             mode: previewPanelBehavior.mode,
             placement: previewPanelBehavior.placement
           },
-          renderBody: function (body, html) {
-            previewUtils.renderHtmlInto(body, typeof html === "string" ? html : "");
-          },
-          positionPanel: makeHtmlPanelPositioner(previewUtils, function () {
-            return previewController ? previewController.behavior : previewPanelBehavior;
-          }),
           onHide: function () {
             graphState.previewRequestToken += 1;
             graphState.previewActiveNode = null;
@@ -724,7 +709,7 @@
               .height(height)
               .renderDot(dotForVariantOptions(variant, getActiveOptions()));
           },
-          positionPanel: makeGroupPanelPositioner(previewUtils, graphBlock, function () {
+          positionPanel: makeGroupPanelPositioner(graphBlock, function () {
             return groupHoverController ? groupHoverController.behavior : groupHoverBehavior;
           }),
           onHide: function () {

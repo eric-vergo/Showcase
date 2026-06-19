@@ -1107,17 +1107,18 @@ callbacks, or generated preview code still need them directly.
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
 | Template lifecycle | `bindTemplatePreviewRoots`, `collectPreviewTemplates` | Summary previews, code-summary previews, and graph-local preview stores |
-| Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `previewMessageHtml`, `renderHtmlInto`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
-| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `hidePreviewSurfaces`, `positionAnchoredPanel`, `shouldKeepOpen`, `resetPanelPosition`, `pointerWithinPanel` | Graph controls, graph popovers, inline preview panels, slide-change cleanup, and feature-specific positioning callbacks |
+| Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
+| Behavior, positioning, and dismissal | `readPanelBehavior`, `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph controls, graph popovers, inline preview panels, slide-change cleanup, and feature-specific positioning callbacks |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
 `createPreviewSurface` is the higher-level bundled helper for Blueprint-owned
 preview panels. It groups a panel's slots, current behavior, content/header
-updates, close-button wiring, trigger binding, dismissal binding, and
-reposition binding into one controller object. Bundled feature scripts should
-prefer `surface.bindTriggers`, `surface.bindDismissal`, and
-`surface.bindRepositioner` over direct lifecycle helpers. External clients
-should stay on the stable custom-client API above.
+updates, close-button wiring, trigger binding, dismissal binding, reposition
+binding, pointer checks, and keep-open checks into one controller object.
+Bundled feature scripts should prefer `surface.bindTriggers`,
+`surface.bindDismissal`, `surface.bindRepositioner`, `surface.position`,
+`surface.pointerWithin`, and `surface.shouldKeepOpen` over direct lifecycle
+helpers. External clients should stay on the stable custom-client API above.
 
 For new custom interfaces, prefer the highest-level entry point that fits the
 job:

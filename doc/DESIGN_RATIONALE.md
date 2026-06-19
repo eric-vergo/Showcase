@@ -321,7 +321,7 @@ hydration.
 | Browser canonical generated-node insertion | `Commands/preview-runtime.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
 | Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, `bindTemplatePreviewRoots`, `hidePreviewSurfaces`, and panel helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults and feature-specific positioning callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
 | Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
-| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` and shared lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, and resize/scroll binding use shared runtime helpers |
+| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
 | Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; preview panel slots, trigger lifetimes, Escape close, and resize/scroll binding use surfaces; popover binding uses the shared runtime popover helper |
 | Browser summary and code-summary preview binders | `Commands/summary-preview.js` and `Informal/Block/code-summary-preview.js` | summary page labels and code-summary triggers | thin selector-only binders over `bindTemplatePreviewRoots` |
 
@@ -377,13 +377,13 @@ The workflow implies a few constraints for renderers:
   Blueprint visuals do not need to reconstruct headings, relation chips, or
   code extras in JavaScript. Blueprint's bundled feature
   scripts also share helper methods for runtime panel creation, surface-owned
-  trigger/dismissal binding, panel positioning, template-root binding, and
-  feature hydrator registration. Those
+  trigger/dismissal binding, surface-owned panel positioning and pointer
+  checks, template-root binding, and feature hydrator registration. Those
   helpers keep bundled graph, summary, relation-panel, inline-preview, and
   slide scripts on one runtime path. `createPreviewSurface` is the
   component-shaped helper in this tier: it groups panel slots, behavior state,
   custom body rendering, content updates, trigger binding, dismissal binding,
-  and reposition binding without exposing a
+  reposition binding, pointer checks, and keep-open checks without exposing a
   stable external contract. These helpers are not a public custom-client
   contract unless promoted into the manual's stable API table. New public
   browser APIs should start as stable custom-client entries only when an
