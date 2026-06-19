@@ -48,6 +48,32 @@
     });
   }
 
+  function readPanelParts(panel) {
+    if (!(panel instanceof Element)) return null;
+    const title = panel.querySelector(".bp_inline_preview_panel_title");
+    const headerLabel = panel.querySelector(".bp_inline_preview_panel_label");
+    const body = panel.querySelector(".bp_inline_preview_panel_body");
+    const footer = panel.querySelector(".bp_inline_preview_panel_footer");
+    const close = panel.querySelector(".bp_inline_preview_panel_close");
+    if (
+      !(title instanceof Element) ||
+      !(headerLabel instanceof Element) ||
+      !(body instanceof Element) ||
+      !(footer instanceof Element) ||
+      !(close instanceof Element)
+    ) {
+      return null;
+    }
+    return {
+      panel: panel,
+      title: title,
+      headerLabel: headerLabel,
+      body: body,
+      footer: footer,
+      close: close
+    };
+  }
+
   function bindInlinePreview(previewUtils) {
     if (!(document.body instanceof Element)) return;
     if (document.body.getAttribute("data-bp-inline-preview-bound") === "1") return;
@@ -57,27 +83,13 @@
     const previewDebug = previewUtils.previewDebug;
     const previewDebugLabel = previewUtils.previewDebugLabel;
 
-    const panel = getPanel(previewUtils, "bp-inline-preview-panel", "");
-    const title = panel.querySelector(".bp_inline_preview_panel_title");
-    const headerLabel = panel.querySelector(".bp_inline_preview_panel_label");
-    const body = panel.querySelector(".bp_inline_preview_panel_body");
-    const footer = panel.querySelector(".bp_inline_preview_panel_footer");
-    const close = panel.querySelector(".bp_inline_preview_panel_close");
-    const childPanel = getPanel(previewUtils, "bp-inline-preview-child-panel", "bp_inline_preview_panel_child");
-    const childTitle = childPanel.querySelector(".bp_inline_preview_panel_title");
-    const childHeaderLabel = childPanel.querySelector(".bp_inline_preview_panel_label");
-    const childBody = childPanel.querySelector(".bp_inline_preview_panel_body");
-    const childFooter = childPanel.querySelector(".bp_inline_preview_panel_footer");
-    const childClose = childPanel.querySelector(".bp_inline_preview_panel_close");
-    if (
-      !(title instanceof Element) || !(headerLabel instanceof Element) ||
-      !(body instanceof Element) || !(footer instanceof Element) || !(close instanceof Element) ||
-      !(childTitle instanceof Element) || !(childHeaderLabel instanceof Element) ||
-      !(childBody instanceof Element) || !(childFooter instanceof Element) ||
-      !(childClose instanceof Element)
-    ) {
-      return;
-    }
+    const mainParts = readPanelParts(getPanel(previewUtils, "bp-inline-preview-panel", ""));
+    const childParts = readPanelParts(
+      getPanel(previewUtils, "bp-inline-preview-child-panel", "bp_inline_preview_panel_child")
+    );
+    if (!mainParts || !childParts) return;
+    const panel = mainParts.panel;
+    const childPanel = childParts.panel;
 
     function makeBehavior(mode, placement) {
       return previewUtils.readPanelBehavior(null, { mode: mode, placement: placement });
@@ -116,19 +128,49 @@
       if (childLifecycle) childLifecycle.cancelHide();
     }
 
-    function setPanelFooter(footerNode, trigger) {
-      if (!(footerNode instanceof Element)) return;
+    function setPanelFooter(parts, trigger) {
+      if (!parts || !(parts.footer instanceof Element)) return;
       const footerHtml =
         trigger instanceof Element
           ? (trigger.getAttribute("data-bp-preview-footer-html") || "").trim()
           : "";
       if (footerHtml.length > 0) {
-        previewUtils.renderHtmlInto(footerNode, footerHtml);
-        footerNode.hidden = false;
+        previewUtils.renderHtmlInto(parts.footer, footerHtml);
+        parts.footer.hidden = false;
       } else {
-        footerNode.replaceChildren();
-        footerNode.hidden = true;
+        parts.footer.replaceChildren();
+        parts.footer.hidden = true;
       }
+    }
+
+    function clearPanelParts(parts) {
+      previewUtils.hidePanelContent(parts.panel, parts.title, parts.body);
+      previewUtils.setPreviewHeaderLink(parts.headerLabel, null);
+      setPanelFooter(parts, null);
+    }
+
+    function showPanelParts(parts, heading, html, nextBehavior, trigger) {
+      previewUtils.setPreviewHeaderLink(parts.headerLabel, trigger);
+      setPanelFooter(parts, trigger);
+      previewUtils.showPanelContent(
+        parts.panel,
+        parts.title,
+        parts.body,
+        heading,
+        html,
+        nextBehavior,
+        trigger,
+        12,
+        10
+      );
+    }
+
+    function replacePanelPartsBody(parts, heading, html, trigger) {
+      parts.title.textContent = heading;
+      previewUtils.setPreviewHeaderLink(parts.headerLabel, trigger);
+      setPanelFooter(parts, trigger);
+      previewUtils.renderHtmlInto(parts.body, html);
+      parts.panel.hidden = false;
     }
 
     function readInlinePreviewHost(trigger) {
@@ -183,7 +225,7 @@
       } else {
         panel.removeAttribute("data-bp-inline-host");
       }
-      previewUtils.configureCloseButton(close, hidePanel, behavior);
+      previewUtils.configureCloseButton(mainParts.close, hidePanel, behavior);
     }
 
     function triggerInsideInlinePanel(trigger) {
@@ -212,9 +254,7 @@
         updatingPanel: updatingPanel
       });
       clearPanelSizeLock();
-      previewUtils.hidePanelContent(panel, title, body);
-      previewUtils.setPreviewHeaderLink(headerLabel, null);
-      setPanelFooter(footer, null);
+      clearPanelParts(mainParts);
       activeTrigger = null;
       activeHost = null;
       activePreviewKey = "";
@@ -224,18 +264,8 @@
     function hideChildPanel() {
       cancelChildHide();
       childShowRequestToken += 1;
-      previewUtils.hidePanelContent(childPanel, childTitle, childBody);
-      previewUtils.setPreviewHeaderLink(childHeaderLabel, null);
-      setPanelFooter(childFooter, null);
+      clearPanelParts(childParts);
       childActiveTrigger = null;
-    }
-
-    function scheduleHide() {
-      if (mainLifecycle) mainLifecycle.scheduleHide();
-    }
-
-    function scheduleChildHide() {
-      if (childLifecycle) childLifecycle.scheduleHide();
     }
 
     async function resolvePreviewHtml(key, trigger) {
@@ -268,9 +298,7 @@
       cancelHide();
       cancelChildHide();
       childActiveTrigger = trigger;
-      previewUtils.setPreviewHeaderLink(childHeaderLabel, trigger);
-      setPanelFooter(childFooter, trigger);
-      previewUtils.showPanelContent(childPanel, childTitle, childBody, heading, html, childBehavior, trigger, 12, 10);
+      showPanelParts(childParts, heading, html, childBehavior, trigger);
     }
 
     async function showFromTrigger(trigger) {
@@ -309,11 +337,7 @@
         lockPanelSizeToCurrentRect();
         activeTrigger = null;
         ignoreNextPanelExit = true;
-        title.textContent = heading;
-        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
-        setPanelFooter(footer, trigger);
-        previewUtils.renderHtmlInto(body, html);
-        panel.hidden = false;
+        replacePanelPartsBody(mainParts, heading, html, trigger);
         if (behavior.isDocked && activeHost) {
           positionDockedPanel(activeHost);
         }
@@ -324,9 +348,7 @@
         hideChildPanel();
         clearPanelSizeLock();
         activeTrigger = trigger;
-        previewUtils.setPreviewHeaderLink(headerLabel, trigger);
-        setPanelFooter(footer, trigger);
-        previewUtils.showPanelContent(panel, title, body, heading, html, behavior, trigger, 12, 10);
+        showPanelParts(mainParts, heading, html, behavior, trigger);
         if (behavior.isDocked && activeHost) {
           positionDockedPanel(activeHost);
         }
@@ -385,8 +407,19 @@
       return previewUtils.pointerWithinPanel(childPanel, ev);
     }
 
+    function repositionPanels() {
+      if (behavior.isAnchored && activeTrigger && !panel.hidden) {
+        previewUtils.positionAnchoredPanel(panel, activeTrigger, 12, 10);
+      } else if (behavior.isDocked && activeHost && !panel.hidden) {
+        positionDockedPanel(activeHost);
+      }
+      if (childActiveTrigger && !childPanel.hidden) {
+        previewUtils.positionAnchoredPanel(childPanel, childActiveTrigger, 12, 10);
+      }
+    }
+
     applyBehavior(behavior, null);
-    previewUtils.configureCloseButton(childClose, hideChildPanel, childBehavior);
+    previewUtils.configureCloseButton(childParts.close, hideChildPanel, childBehavior);
     mainLifecycle = previewUtils.bindPreviewTriggers({
       triggerRoot: document,
       triggerSelector: triggerSelector,
@@ -418,26 +451,11 @@
       bindEscape: false,
       bindWindow: false
     });
-    window.addEventListener("resize", function () {
-      if (behavior.isAnchored && activeTrigger && !panel.hidden) {
-        previewUtils.positionAnchoredPanel(panel, activeTrigger, 12, 10);
-      } else if (behavior.isDocked && activeHost && !panel.hidden) {
-        positionDockedPanel(activeHost);
-      }
-      if (childActiveTrigger && !childPanel.hidden) {
-        previewUtils.positionAnchoredPanel(childPanel, childActiveTrigger, 12, 10);
-      }
+    previewUtils.bindPanelRepositioner({
+      owner: document.body,
+      boundAttr: "data-bp-inline-panel-reposition-bound",
+      reposition: repositionPanels
     });
-    window.addEventListener("scroll", function () {
-      if (behavior.isAnchored && activeTrigger && !panel.hidden) {
-        previewUtils.positionAnchoredPanel(panel, activeTrigger, 12, 10);
-      } else if (behavior.isDocked && activeHost && !panel.hidden) {
-        positionDockedPanel(activeHost);
-      }
-      if (childActiveTrigger && !childPanel.hidden) {
-        previewUtils.positionAnchoredPanel(childPanel, childActiveTrigger, 12, 10);
-      }
-    }, true);
 
     previewUtils.registerPreviewHydrator("inline", refresh);
 

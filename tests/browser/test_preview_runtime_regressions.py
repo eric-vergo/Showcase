@@ -10,6 +10,7 @@ from support import (
     record_runtime_errors,
     wait_for_blueprint_render_api,
 )
+from tests.preview_runtime_api import runtime_api_methods
 
 
 def require_box(locator: Locator):
@@ -588,6 +589,8 @@ class TestPreviewRuntimeRegressions:
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
 
+        stable_client_methods = runtime_api_methods("stableCustomClientApi")
+        bundled_helper_methods = runtime_api_methods("bundledFeatureRenderHelpers")
         rendered = page.evaluate(
             blueprint_render_api_script(
                 """
@@ -597,35 +600,8 @@ class TestPreviewRuntimeRegressions:
                 const mutatedHtmlCacheStatus = api.readHtmlCacheStatus();
                 mutatedManifestStatus.state = "mutated";
                 mutatedHtmlCacheStatus.state = "mutated";
-                const stableClientMethods = [
-                    "dataUrl",
-                    "manifestUrl",
-                    "htmlCacheUrl",
-                    "loadManifest",
-                    "readManifestStatus",
-                    "loadManifestEntry",
-                    "loadHtmlCache",
-                    "readHtmlCacheStatus",
-                    "loadHtmlCacheEntry",
-                    "previewKey",
-                    "statementPreviewKey",
-                    "resolvePreview",
-                    "renderPreviewInto",
-                    "resolveCanonicalPreview",
-                    "renderCanonicalPreviewInto",
-                    "hydrate"
-                ];
-                const bundledHelperMethods = [
-                    "renderHtmlInto",
-                    "bindTemplatePreviewRoots",
-                    "bindAnchoredPopover",
-                    "bindPreviewTriggers",
-                    "registerPreviewHydrator",
-                    "previewMessageHtml",
-                    "createPreviewPanel",
-                    "readPanelBehavior",
-                    "setPreviewHeaderLink"
-                ];
+                const stableClientMethods = __STABLE_CLIENT_METHODS__;
+                const bundledHelperMethods = __BUNDLED_HELPER_METHODS__;
                 return {
                     hasApi: true,
                     stableClientApiTypes: Object.fromEntries(
@@ -664,6 +640,8 @@ class TestPreviewRuntimeRegressions:
                     htmlCacheStatusAfterMutation: api.readHtmlCacheStatus()
                 };
                 """
+                .replace("__STABLE_CLIENT_METHODS__", json.dumps(stable_client_methods))
+                .replace("__BUNDLED_HELPER_METHODS__", json.dumps(bundled_helper_methods))
             )
         )
 

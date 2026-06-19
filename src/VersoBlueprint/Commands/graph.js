@@ -790,8 +790,11 @@
             if (graphState.groupHoverController) graphState.groupHoverController.hide();
             if (graphState.previewController) graphState.previewController.hide();
           });
-          window.addEventListener("resize", repositionPanels);
-          window.addEventListener("scroll", repositionPanels, true);
+          previewUtils.bindPanelRepositioner({
+            owner: graphBlock,
+            boundAttr: "data-bp-graph-panel-reposition-bound",
+            reposition: repositionPanels
+          });
         }
 
         const showGroupHoverPreview = function (nodeId, nextKey, anchorNode) {
