@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoSlides
 import Verso.Doc.Elab
+import VersoBlueprint.Compat
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Graft.Assets

@@ -8,6 +8,7 @@ import Lean
 import Lean.Elab.Command
 import Verso
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Summary.Data
 import VersoBlueprint.Data

@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common

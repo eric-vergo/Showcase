@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoManual
 
+import VersoBlueprint.Compat
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.GroupData

@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual.Bibliography
+import VersoBlueprint.Compat
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Informal.Block.Model

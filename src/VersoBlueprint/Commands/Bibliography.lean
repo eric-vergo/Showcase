@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.PreviewCache

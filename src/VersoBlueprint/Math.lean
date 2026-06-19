@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual
+import VersoBlueprint.Compat
 import VersoBlueprint.MathLint
 import VersoBlueprint.Macros
 

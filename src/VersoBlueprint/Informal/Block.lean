@@ -13,6 +13,7 @@ import Lean.Elab.InfoTree.Types
 
 import VersoManual
 
+import VersoBlueprint.Compat
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Environment
