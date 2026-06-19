@@ -1061,6 +1061,70 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             self.assertEqual(seen["package_root"], layout.package_root)
             self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
 
+    def test_reference_cache_checkout_rewrites_override_to_absolute_linked_worktree_path(self) -> None:
+        import scripts.blueprint_harness_references as refs_mod
+
+        project = HarnessProject(
+            project_id="external-blueprint",
+            source_kind="git_checkout",
+            project_root=".",
+            build_target=None,
+            generator=None,
+            repository="https://github.com/example/external-blueprint.git",
+            ref="main",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen"),
+            site_subdir="html-multi",
+            panel_regression_script=None,
+            browser_tests_path=None,
+            description=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            worktrees_root = root / ".worktrees"
+            package_root = worktrees_root / "docs-431-reference-catalog"
+            cache_dir = worktrees_root / "_reference-blueprints" / "cache" / reference_dependency_cache_key(project)
+            cache_dir.mkdir(parents=True)
+            (cache_dir / ".git").mkdir()
+            lakefile = cache_dir / "lakefile.lean"
+            lakefile.write_text(OFFICIAL_BLUEPRINT_REQUIRE + "\n", encoding="utf-8")
+            package_root.mkdir(parents=True)
+            layout = SimpleNamespace(
+                package_root=package_root,
+                repo_root=root,
+                reference_source_cache_root=worktrees_root / "_reference-blueprints" / "cache",
+                reference_dependency_cache_root=worktrees_root / "_reference-blueprints" / "deps",
+            )
+
+            originals = {
+                "update_git_checkout": refs_mod.update_git_checkout,
+                "bootstrap_reference_checkout": refs_mod.bootstrap_reference_checkout,
+                "project_lake_update_command": refs_mod.project_lake_update_command,
+                "run": refs_mod.run,
+            }
+            seen: dict[str, str] = {}
+
+            def fake_run(command, *, cwd):
+                if command == ["lake", "update"]:
+                    seen["lakefile_during_update"] = lakefile.read_text(encoding="utf-8")
+                    return
+                raise AssertionError(f"unexpected command: {command}")
+
+            try:
+                refs_mod.update_git_checkout = lambda _project, _cache_dir: None
+                refs_mod.bootstrap_reference_checkout = lambda *, project_dir: None
+                refs_mod.project_lake_update_command = lambda _package_root, _project_dir: ["lake", "update"]
+                refs_mod.run = fake_run
+
+                refs_mod.sync_reference_cache_checkout(layout, project, warm_build=False)
+            finally:
+                for name, value in originals.items():
+                    setattr(refs_mod, name, value)
+
+            self.assertIn(f'require VersoBlueprint from "{package_root.resolve()}"', seen["lakefile_during_update"])
+            self.assertNotIn("../../../docs-431-reference-catalog", seen["lakefile_during_update"])
+            self.assertEqual(lakefile.read_text(encoding="utf-8"), OFFICIAL_BLUEPRINT_REQUIRE + "\n")
+
     def test_reference_cache_warm_build_failure_reports_recovery_hints(self) -> None:
         import scripts.blueprint_harness_references as refs_mod
 

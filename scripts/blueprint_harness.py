@@ -512,7 +512,7 @@ def command_create_worktree(args: argparse.Namespace) -> int:
             _release_target, projects = resolve_release_projects(catalog, None, new_layout.package_root, None)
         except (FileNotFoundError, ValueError) as err:
             raise SystemExit(f"[blueprint-harness] {err}") from err
-        sync_reference_blueprints(new_layout, projects, warm_build=True, prepare_local_checkout=True)
+        sync_reference_blueprints(new_layout, projects, warm_build=False, prepare_local_checkout=True)
     if any(value is not None for value in (args.owner, args.priority, args.summary, args.status, args.scope)) or args.lock:
         update_worktree_record(
             layout.repo_root,
@@ -1318,7 +1318,7 @@ def add_create_worktree_command(subparsers) -> None:
         "create-worktree",
         help=(
             "Create a linked worktree under `.worktrees/<name>`, then by default "
-            "sync the root `.lake/` and warm the reference blueprint clones."
+            "sync the root `.lake/` and prepare the reference blueprint clones."
         ),
     )
     create_worktree.add_argument("name", help="Worktree directory name under `.worktrees/`.")
@@ -1340,12 +1340,12 @@ def add_create_worktree_command(subparsers) -> None:
     create_worktree.add_argument(
         "--skip-reference-sync",
         action="store_true",
-        help="Do not warm the shared and per-worktree reference blueprint clones after creating the worktree.",
+        help="Do not prepare the shared and per-worktree reference blueprint clones after creating the worktree.",
     )
     create_worktree.add_argument(
         "--lightweight",
         action="store_true",
-        help="Create only the git worktree and skip both `.lake/` sync and reference-cache warm-up.",
+        help="Create only the git worktree and skip both `.lake/` sync and reference-checkout preparation.",
     )
     create_worktree.add_argument("--owner", default=None, help="Owner or agent responsible for the worktree.")
     create_worktree.add_argument("--lock", action="store_true", help="Mark the worktree as locked for active exclusive work.")
