@@ -778,11 +778,17 @@
           }
         );
         graphState.groupHoverController = groupHoverController;
-        const groupHoverLifetime = previewUtils.bindHoverablePanelLifetime(
-          groupHoverController,
-          function () { return graphState.groupHoverAnchorNode; },
-          "data-bp-group-hover-bound"
-        );
+        const groupHoverLifetime = previewUtils.bindPreviewTriggers({
+          panel: groupHoverController ? groupHoverController.panel : null,
+          panelBoundAttr: "data-bp-group-hover-bound",
+          behavior: groupHoverBehavior,
+          hide: function () {
+            if (groupHoverController) groupHoverController.hide();
+          },
+          getActiveTrigger: function () { return graphState.groupHoverAnchorNode; },
+          bindEscape: false,
+          bindWindow: false
+        });
         previewUtils.configureCloseButton(groupHoverClose, function () {
           if (groupHoverController) groupHoverController.hide();
         }, groupHoverBehavior);

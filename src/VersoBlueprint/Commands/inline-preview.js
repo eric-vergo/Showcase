@@ -126,7 +126,7 @@
         previewUtils.renderHtmlInto(footerNode, footerHtml);
         footerNode.hidden = false;
       } else {
-        footerNode.innerHTML = "";
+        footerNode.replaceChildren();
         footerNode.hidden = true;
       }
     }

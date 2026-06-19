@@ -13,6 +13,7 @@ RUNTIME_BOOTSTRAP_JS = {
 }
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
+    "bindHoverablePanelLifetime",
     "bindTemplatePreview",
     "readHtml",
     "readBlueprintManifestEntry",

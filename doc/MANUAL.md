@@ -1100,7 +1100,6 @@ Bundled-feature helper APIs are intentionally narrower. They are exported on
 positioning, close-button behavior, template binding, and hydrator registration
 without duplicating runtime logic. Helpers such as `bindTemplatePreviewRoots`,
 `bindPreviewTriggers`, `createPreviewPanel`, `createPanelController`,
-`bindHoverablePanelLifetime`,
 `registerPreviewHydrator`, `previewMessageHtml`, `readPanelBehavior`,
 `showPanelContent`, and `setPreviewHeaderLink` should not be treated as stable
 custom-client API unless they are promoted into the table above.
