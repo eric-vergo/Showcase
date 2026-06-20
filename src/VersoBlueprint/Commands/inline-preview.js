@@ -216,16 +216,19 @@
       childActiveTrigger = null;
     }
 
-    async function resolvePreviewHtml(key, trigger) {
+    async function resolveInlinePreviewHtml(key, trigger) {
       const previewLookupKey =
         trigger instanceof Element
           ? (trigger.getAttribute("data-bp-preview-key") || "").trim()
           : "";
+      const fallbackHtml = fallbackInlinePreviewHtml(trigger, key, escapeHtml);
       if (previewLookupKey) {
-        const result = await previewUtils.resolvePreview(previewLookupKey);
-        if (result && result.ok && result.html) return result.html;
+        const resolved = await previewUtils.resolvePreviewHtml(previewLookupKey, {
+          fallbackHtml: fallbackHtml
+        });
+        return resolved.html || "";
       }
-      return fallbackInlinePreviewHtml(trigger, key, escapeHtml);
+      return fallbackHtml;
     }
 
     async function showChildFromTrigger(trigger) {
@@ -236,7 +239,7 @@
         return;
       }
       const requestToken = ++childShowRequestToken;
-      const html = await resolvePreviewHtml(key, trigger);
+      const html = await resolveInlinePreviewHtml(key, trigger);
       if (requestToken !== childShowRequestToken) return;
       if (!html) {
         hideChildPanel();
@@ -267,7 +270,7 @@
         return;
       }
       const requestToken = ++showRequestToken;
-      const html = await resolvePreviewHtml(key, trigger);
+      const html = await resolveInlinePreviewHtml(key, trigger);
       if (requestToken !== showRequestToken) return;
       if (!html) {
         hidePanel();
