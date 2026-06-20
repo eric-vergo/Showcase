@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprintTests.Blueprint.Support
 import VersoBlueprintTests.BlueprintPreviewSource.Provider
+import VersoBlueprint.GraphApi
 
 open Lean
 open Informal
@@ -17,9 +18,27 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
 #guard_msgs in
 #eval
   show CoreM Bool from do
-    let some preview := Informal.PreviewSource.fromEnvironment? (← getEnv) (Name.mkSimple "preview.imported")
+    let label := Name.mkSimple "preview.imported"
+    let some selection := Informal.PreviewSource.environmentSelection? (← getEnv) label
       | return false
-    pure <| !preview.blocks.isEmpty && preview.stxs.isEmpty
+    pure <|
+      selection.facet == .statement &&
+      selection.key == PreviewCache.statementKey label &&
+      !selection.preview.blocks.isEmpty &&
+      selection.preview.stxs.isEmpty
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show CoreM Bool from do
+    let label := Name.mkSimple "preview.proof_fallback"
+    let some selection := Informal.PreviewSource.environmentSelection? (← getEnv) label
+      | return false
+    pure <|
+      selection.facet == .proof &&
+      selection.key == PreviewCache.proofKey label &&
+      !selection.preview.blocks.isEmpty &&
+      selection.preview.stxs.isEmpty
 
 /-- info: true -/
 #guard_msgs in
@@ -30,12 +49,44 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let label := Name.mkSimple "preview.proof_fallback"
     let entry? := Informal.PreviewSource.traversalEntry? st label
     let lookupKey? := Informal.PreviewSource.traversalLookupKey? st label
+    let selection? := Informal.PreviewSource.traversalSelection? st label
     pure <|
-      match entry?, lookupKey? with
-      | some entry, some lookupKey =>
+      match entry?, lookupKey?, selection? with
+      | some entry, some lookupKey, some selection =>
         entry.facet == .proof &&
+        selection.facet == .proof &&
+        selection.key == lookupKey &&
+        selection.preview.blocks.size == entry.blocks.size &&
         !entry.blocks.isEmpty &&
-        lookupKey == PreviewCache.key label .proof
-      | _, _ => false
+        lookupKey == PreviewCache.proofKey label
+      | _, _, _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
+    let label := Name.mkSimple "preview.proof_fallback"
+    let statementKey := PreviewCache.statementKey label
+    let proofKey := PreviewCache.proofKey label
+    let semantic : Informal.Graph.GraphData := {
+      nodes := #[{
+        label
+        title := "Proof fallback"
+        displayLabel := "Proof fallback"
+        previewKey := statementKey
+        visual := { fillcolor := "#ffffff" }
+      }]
+    }
+    let finalized := Informal.GraphApi.finalData st semantic
+    let variants := finalized.renderVariants {}
+    pure <|
+      match finalized.nodes[0]? with
+      | some node =>
+        node.previewKey == proofKey &&
+        variants.any (fun variant =>
+          variant.previewKeyByNodeId.any (fun (_, key) => key == proofKey))
+      | none => false
 
 end Verso.VersoBlueprintTests.BlueprintPreviewSource

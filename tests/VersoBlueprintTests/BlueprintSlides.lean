@@ -236,7 +236,7 @@ private def writeSlidesPreviewDataFiles
     let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
     let file := files.manifest
     let cache := files.htmlCache
-    let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
+    let blockKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey `Nat.add
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
@@ -281,7 +281,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor usedByPreviewDoc
     let file := files.manifest
-    let blockKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:used.target") .statement
+    let blockKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target")
     let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
@@ -293,7 +293,7 @@ private def writeSlidesPreviewDataFiles
 #eval
   show IO Bool from do
     let files ← buildPreviewDataFor leanCodeLinkPreviewDoc
-    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
+    let key := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
@@ -312,7 +312,7 @@ private def writeSlidesPreviewDataFiles
 #eval
   show IO Bool from do
     let files ← buildPreviewDataFor slideMetadataPanelDoc
-    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:slide.meta.panel") .statement
+    let key := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:slide.meta.panel")
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some files.manifest) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:slide.meta.panel" key)
@@ -332,7 +332,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor groupPreviewDoc
     let file := files.manifest
-    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.target") .statement
+    let key := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:group.target")
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
@@ -369,7 +369,7 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor missingGroupPreviewDoc
     let file := files.manifest
-    let key := Informal.PreviewCache.key (Lean.Name.mkSimple "def:group.missing.target") .statement
+    let key := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:group.missing.target")
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
@@ -408,7 +408,7 @@ private def writeSlidesPreviewDataFiles
     let index ← IO.FS.readFile indexPath
     let copiedManifest := Informal.Slides.blueprintSlidesManifestPath outDir
     let copiedHtmlCache := Informal.Slides.blueprintSlidesHtmlCachePath outDir
-    let normalizedKey := Informal.PreviewCache.key (Lean.Name.mkSimple "def:code.preview") .statement
+    let normalizedKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
     pure <|
       (← copiedManifest.pathExists) &&
         (← copiedHtmlCache.pathExists) &&

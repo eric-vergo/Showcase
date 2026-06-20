@@ -723,17 +723,24 @@ That contract is intentionally narrow and phase-specific:
 - renderers that only need one label at a time should prefer it over direct
   `PreviewCache.Entry` decoding
 
-`PreviewSource` does not yet expose one top-level "best available preview"
-selector. That is acceptable for now because current callers are still split
-cleanly by phase and output needs.
+`PreviewSource` exposes a small `Selection` result for callers that need the
+best available preview for one label. The selection keeps the chosen facet, the
+manifest/cache lookup key, and the phase-local preview payload together, so
+environment-time and traversal-time callers share the same statement-then-proof
+fallback rule without learning each other's storage details.
 
-The remaining direct `PreviewCache` decoding is in manifest construction, where
-the code is intentionally enumerating all stored preview entries to emit the
-shared browser manifest rather than retrieving previews one label at a time.
+Callers should distinguish selected preview keys from fixed facet keys. Browser
+surfaces such as graph node hovers, summary previews, and relation-panel entries
+should use `PreviewSource.Selection` when traversal state is available, because
+they want the best rendered preview for a label. Code that is explicitly naming
+a facet, such as grafting `statement` or `proof` from a manifest/cache pair,
+should use `PreviewCache.statementKey` or `PreviewCache.proofKey` so the fixed
+identity is visible at the call site.
 
-That convergence is not complete yet. Manifest construction still decodes
+Manifest construction is the remaining intentional exception. It still decodes
 `PreviewCache` and `Informal.LeanCodePreview` entries directly because it
-enumerates stored preview domains to emit the shared browser manifest.
+enumerates stored preview domains to emit the shared browser manifest, not one
+selected label at a time.
 
 ### Traversal Storage Roles
 

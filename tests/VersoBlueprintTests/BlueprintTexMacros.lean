@@ -51,10 +51,15 @@ Widget preview uses $`\widgetmacro`.
 #eval
   show Lean.Elab.Term.TermElabM Bool from do
     let out ← buildFor (Name.mkSimple "widget_preview")
-    let statementHtml := toJson (← Informal.PreviewSource.renderWidgetHtml out.statementPreview?)
-    let encoded := Json.compress statementHtml
+    let some selection := out.previewSelection?
+      | return false
+    let previewHtml := toJson (← Informal.PreviewSource.renderWidgetHtml (some selection.preview))
+    let encoded := Json.compress previewHtml
     pure (
-      out.statementPreview?.map (fun preview => !preview.blocks.isEmpty && preview.stxs.isEmpty) == some true &&
+      selection.facet == .statement &&
+      selection.key == PreviewCache.statementKey (Name.mkSimple "widget_preview") &&
+      !selection.preview.blocks.isEmpty &&
+      selection.preview.stxs.isEmpty &&
       hasSubstr encoded "data-bp-tex-prelude-id" &&
       !hasSubstr encoded "data-bp-tex-prelude=\\\"" &&
       !hasSubstr encoded "\"texPrelude\"" &&
