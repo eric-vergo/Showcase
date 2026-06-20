@@ -128,6 +128,66 @@ def first_preview_node(page: Page):
 
 
 class TestGraphLayoutRuntime:
+    def test_public_graph_api_exposes_rendered_page_and_manifest_data(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        page.goto(f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        graph_data = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const pageGraph = api.getGraphData(block);
+                const globalPageGraph = window.bpGraphApi.getGraphData(block);
+                const manifestGraphs = await api.loadGraphs();
+                const manifestGraph = manifestGraphs.find((graph) => graph.key === pageGraph.key) || null;
+                const variants = api.getGraphVariants(block);
+                const globalVariants = window.bpGraphApi.getGraphVariants(block);
+                const sample = pageGraph.nodes.find((node) => node.label === "used_target") || null;
+                const manifestSample = manifestGraph
+                    ? manifestGraph.nodes.find((node) => node.label === "used_target") || null
+                    : null;
+                return {
+                    apiVersion: window.bpGraphApi.version,
+                    sameGlobalKey: !!globalPageGraph && globalPageGraph.key === pageGraph.key,
+                    pageKey: pageGraph.key,
+                    manifestGraphs: manifestGraphs.length,
+                    manifestKey: manifestGraph ? manifestGraph.key : "",
+                    pageNodes: pageGraph.nodes.length,
+                    pageEdges: pageGraph.edges.length,
+                    pageGroups: pageGraph.groups.length,
+                    manifestNodes: manifestGraph ? manifestGraph.nodes.length : 0,
+                    manifestEdges: manifestGraph ? manifestGraph.edges.length : 0,
+                    manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
+                    variantKeys: variants.map((variant) => variant.key),
+                    globalVariantKeys: globalVariants.map((variant) => variant.key),
+                    sampleTitle: sample ? sample.title : "",
+                    sampleHref: sample ? sample.href : "",
+                    manifestSampleTitle: manifestSample ? manifestSample.title : "",
+                    manifestSampleHref: manifestSample ? manifestSample.href : ""
+                };
+                """
+            )
+        )
+
+        assert graph_data["apiVersion"] == 1
+        assert graph_data["sameGlobalKey"]
+        assert graph_data["pageKey"].startswith("graph:#<")
+        assert graph_data["manifestGraphs"] == 1
+        assert graph_data["manifestKey"] == graph_data["pageKey"]
+        assert graph_data["pageNodes"] == 55
+        assert graph_data["pageEdges"] == 13
+        assert graph_data["pageGroups"] == 3
+        assert graph_data["manifestNodes"] == graph_data["pageNodes"]
+        assert graph_data["manifestEdges"] == graph_data["pageEdges"]
+        assert graph_data["manifestGroups"] == graph_data["pageGroups"]
+        assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
+        assert set(graph_data["variantKeys"]) == set(graph_data["globalVariantKeys"])
+        assert graph_data["sampleTitle"].startswith("Definition")
+        assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"
+        assert graph_data["manifestSampleTitle"] == graph_data["sampleTitle"]
+        assert graph_data["manifestSampleHref"] == graph_data["sampleHref"]
+
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
         page.goto(f"{server}/Dependency-Graph/")

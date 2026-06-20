@@ -9,6 +9,7 @@ import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanDeclPreviewKey
+import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 
@@ -187,6 +188,47 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
   saveObjectData state domainName label.toString data
 
 end Groups
+
+namespace Graphs
+
+def spec : StoreSpec := {
+  name := Resolve.graphDomainName
+  kind := .runtimeCache
+  key := "graph block key"
+  value := "semantic GraphData plus graph block anchor ids"
+  summary := "Traversal-cached Blueprint graph data finalized by GraphApi for manifest and browser consumers."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (key : String) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName key
+
+def data? (state : TraverseState) (key : String) : Option Informal.Graph.GraphData :=
+  objectData? state domainName key
+
+def saveId
+    (state : TraverseState) (key : String) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName key id
+
+def saveData (state : TraverseState) (key : String) (data : Informal.Graph.GraphData) :
+    TraverseState :=
+  saveObjectData state domainName key (toJson data)
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+def allData (state : TraverseState) : Array Informal.Graph.GraphData :=
+  match domain? state with
+  | none => #[]
+  | some domain =>
+    domain.objects.foldl (init := #[]) fun acc _key obj =>
+      match fromJson? (α := Informal.Graph.GraphData) obj.data with
+      | .ok data => acc.push data
+      | .error _ => acc
+    |>.qsort (fun a b => a.key < b.key)
+
+end Graphs
 
 namespace TraversalPreviews
 
@@ -375,6 +417,7 @@ def allSpecs : Array StoreSpec := #[
   InlineCode.spec,
   ExternalMarkup.spec,
   Groups.spec,
+  Graphs.spec,
   TraversalPreviews.spec,
   LeanCodePreviews.spec,
   ExternalDeclAnchors.spec,

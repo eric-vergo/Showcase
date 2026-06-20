@@ -112,6 +112,69 @@
     appendFact(facts, "Code previews", Array.isArray(entry.leanCodePreviewKeys) ? entry.leanCodePreviewKeys.length : 0);
   }
 
+  function graphSampleNodes(graph) {
+    if (!graph || !Array.isArray(graph.nodes)) return [];
+    const preferred = ["used_target", "used_grouped_proof_panel", "preview_final"];
+    const selected = [];
+    preferred.forEach(function (label) {
+      const node = graph.nodes.find(function (node) { return node && node.label === label; });
+      if (node && !selected.includes(node)) selected.push(node);
+    });
+    graph.nodes.forEach(function (node) {
+      if (selected.length >= 5) return;
+      if (node && !selected.includes(node)) selected.push(node);
+    });
+    return selected;
+  }
+
+  function renderGraphNodeLink(parent, node) {
+    const tagName = node && node.href ? "a" : "span";
+    const item = appendTextNode(
+      parent,
+      tagName,
+      "bp_custom_render_client_graph_node",
+      node && node.title ? node.title : (node && node.label ? node.label : "node")
+    );
+    if (tagName === "a") item.href = node.href;
+    if (node && node.label) item.dataset.bpGraphNodeLabel = node.label;
+    return item;
+  }
+
+  async function renderGraphData(api, root) {
+    const card = root.querySelector("[data-bp-custom-client-graph]");
+    if (!card) return { ok: true };
+    const summary = card.querySelector("[data-bp-custom-client-graph-summary]");
+    const nodesTarget = card.querySelector("[data-bp-custom-client-graph-nodes]");
+    if (summary) summary.replaceChildren();
+    if (nodesTarget) nodesTarget.replaceChildren();
+    const graphs = typeof api.loadGraphs === "function" ? await api.loadGraphs() : [];
+    const graph = graphs[0] || null;
+    card.dataset.bpGraphOk = graph ? "true" : "false";
+    card.dataset.bpGraphCount = String(graphs.length);
+    card.dataset.bpGraphKey = graph && graph.key ? graph.key : "";
+    card.dataset.bpGraphNodeCount = graph && Array.isArray(graph.nodes) ? String(graph.nodes.length) : "0";
+    card.dataset.bpGraphEdgeCount = graph && Array.isArray(graph.edges) ? String(graph.edges.length) : "0";
+    card.dataset.bpGraphGroupCount = graph && Array.isArray(graph.groups) ? String(graph.groups.length) : "0";
+    if (!graph) {
+      if (summary) appendFact(summary, "Status", "no graph data");
+      return { ok: false };
+    }
+    if (summary) {
+      const facts = appendTextNode(summary, "div", "bp_custom_render_client_facts", "");
+      appendFact(facts, "Graphs", graphs.length);
+      appendFact(facts, "Key", graph.key);
+      appendFact(facts, "Nodes", graph.nodes.length);
+      appendFact(facts, "Edges", graph.edges.length);
+      appendFact(facts, "Groups", graph.groups.length);
+    }
+    if (nodesTarget) {
+      graphSampleNodes(graph).forEach(function (node) {
+        renderGraphNodeLink(nodesTarget, node);
+      });
+    }
+    return { ok: true, graph: graph, graphs: graphs };
+  }
+
   async function renderExample(api, example) {
     const body = example.querySelector("[data-bp-custom-client-body]");
     if (!body) return null;
@@ -145,9 +208,10 @@
       const results = await Promise.all(examples.map(function (example) {
         return renderExample(api, example);
       }));
+      const graphResult = await renderGraphData(api, root);
       const ok = results.every(function (result, index) {
         return result && result.ok === expectedOk(examples[index]);
-      });
+      }) && graphResult.ok;
       root.dataset.bpCustomClientStatus = ok ? "ready" : "error";
       setText(root, "[data-bp-custom-client-status-text]", ok ? "Ready" : "Incomplete");
     } catch (err) {
