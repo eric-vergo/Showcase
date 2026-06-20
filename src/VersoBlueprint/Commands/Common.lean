@@ -163,7 +163,10 @@ def previewPanelCss : String := r##"
 -- Keep this module rebuilt when the embedded preview runtime changes.
 -- This module owns the shared Blueprint render API boundary, so adjacent edits
 -- here should land whenever preview runtime assets are intentionally refreshed.
-def previewHoverUtilsJs : String := include_str "preview-runtime.js"
+private def previewGraphCoreJs : String := include_str "../blueprint-graph-core.js"
+
+def previewHoverUtilsJs : String :=
+  previewGraphCoreJs ++ "\n" ++ include_str "preview-runtime.js"
 
 -- Keep this module rebuilt when the preview client readiness shim changes.
 def previewClientReadyJs : String := include_str "preview-ready.js"

@@ -85,21 +85,27 @@
 
   // Manifest and rendered-fragment cache stores.
 
+  function blueprintGraphApi() {
+    return window.bpGraphApi && typeof window.bpGraphApi === "object" ? window.bpGraphApi : null;
+  }
+
+  function callBlueprintGraphApi(name, args, fallback) {
+    const api = blueprintGraphApi();
+    const method = api && api[name];
+    if (typeof method === "function") {
+      return method.apply(api, args);
+    }
+    if (typeof fallback === "function") {
+      return fallback();
+    }
+    return fallback;
+  }
+
   function blueprintDataUrl(filename) {
-    const safeFilename = String(filename || "").trim();
-    if (!safeFilename) return "-verso-data/";
-    try {
-      const url = new URL(window.location.href);
-      const markers = ["/html-multi/", "/html-single/"];
-      for (const marker of markers) {
-        const idx = url.pathname.indexOf(marker);
-        if (idx >= 0) {
-          const rootPath = url.pathname.slice(0, idx + marker.length);
-          return rootPath + "-verso-data/" + safeFilename;
-        }
-      }
-    } catch (_err) {}
-    return "-verso-data/" + safeFilename;
+    return callBlueprintGraphApi("dataUrl", [filename], function () {
+      const safeFilename = String(filename || "").trim();
+      return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
+    });
   }
 
   function fetchBlueprintJson(url) {
@@ -171,79 +177,37 @@
     return blueprintDataUrl("blueprint-manifest.json");
   }
 
-  function graphCanvasFor(root) {
-    const node = root || document;
-    if (node instanceof Element) {
-      if (node.matches(".bp_graph_canvas")) return node;
-      const ownCanvas = node.querySelector(".bp_graph_canvas");
-      if (ownCanvas instanceof Element) return ownCanvas;
-      const block = node.closest(".bp_graph_fullwidth");
-      if (block instanceof Element) {
-        const blockCanvas = block.querySelector(".bp_graph_canvas");
-        if (blockCanvas instanceof Element) return blockCanvas;
-      }
-      return null;
-    }
-    if (node instanceof Document || node instanceof DocumentFragment) {
-      const canvas = node.querySelector(".bp_graph_canvas");
-      return canvas instanceof Element ? canvas : null;
-    }
-    return null;
+  function graphApiModuleUrl() {
+    return blueprintDataUrl("api/graph.mjs");
   }
 
-  function readGraphJsonScript(root, selector) {
-    const container = graphCanvasFor(root);
-    if (!(container instanceof Element)) return null;
-    const payloadNode = container.querySelector(selector);
-    if (!(payloadNode instanceof HTMLScriptElement)) return null;
-    try {
-      return JSON.parse((payloadNode.textContent || "").trim());
-    } catch (_err) {
-      return null;
-    }
-  }
-
-  function normalizeGraphDataPayload(rawData) {
-    if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
-    return {
-      schemaVersion: Number.isFinite(rawData.schemaVersion) ? rawData.schemaVersion : 1,
-      key: typeof rawData.key === "string" ? rawData.key : "graph",
-      nodes: Array.isArray(rawData.nodes) ? rawData.nodes : [],
-      edges: Array.isArray(rawData.edges) ? rawData.edges : [],
-      groups: Array.isArray(rawData.groups) ? rawData.groups : []
-    };
+  function previewApiModuleUrl() {
+    return blueprintDataUrl("api/preview.mjs");
   }
 
   function graphDataFromManifest(manifest) {
-    if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.graphs)) {
-      return [];
-    }
-    return manifest.graphs
-      .map(normalizeGraphDataPayload)
-      .filter(function (graphData) { return !!graphData; });
+    return callBlueprintGraphApi("graphsFromManifest", [manifest], []);
   }
 
   function collectGraphData(root) {
-    return normalizeGraphDataPayload(readGraphJsonScript(root, "script.bp-graph-data"));
+    return callBlueprintGraphApi("getGraphData", [root], null);
   }
 
   function collectGraphVariants(root) {
-    const parsed = readGraphJsonScript(root, "script.bp-graph-variants");
-    return Array.isArray(parsed) ? parsed : [];
+    return callBlueprintGraphApi("getGraphVariants", [root], []);
   }
 
   function loadManifestGraphs(url, options) {
     const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrl();
-    return fetch(manifestUrl, options).then(function (response) {
-      if (!response.ok) {
-        throw new Error("Could not load Blueprint graph manifest: " + response.status);
-      }
-      return response.json();
-    }).then(graphDataFromManifest);
+    return callBlueprintGraphApi("loadManifestGraphs", [manifestUrl, options], function () {
+      return Promise.reject(new Error("Blueprint graph API unavailable"));
+    });
   }
 
-  function loadBlueprintGraphs() {
-    return loadManifestGraphs(blueprintManifestUrl());
+  function loadBlueprintGraphs(options) {
+    return callBlueprintGraphApi("loadGraphs", [options], function () {
+      return loadManifestGraphs(blueprintManifestUrl(), options);
+    });
   }
 
   function missingPreviewKeyDiagnosticHtml() {
@@ -2022,6 +1986,8 @@
     graphsFromManifest: graphDataFromManifest,
     loadManifestGraphs: loadManifestGraphs,
     loadGraphs: loadBlueprintGraphs,
+    graphApiModuleUrl: graphApiModuleUrl,
+    previewApiModuleUrl: previewApiModuleUrl,
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
@@ -2071,6 +2037,8 @@
     graphsFromManifest: previewDataApi.graphsFromManifest,
     loadManifestGraphs: previewDataApi.loadManifestGraphs,
     loadGraphs: previewDataApi.loadGraphs,
+    graphApiModuleUrl: previewDataApi.graphApiModuleUrl,
+    previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
     resolvePreview: previewDataApi.resolvePreview,
@@ -2099,15 +2067,12 @@
     bundledFeatureRenderHelpers
   );
 
-  const graphApi =
-    window.bpGraphApi && typeof window.bpGraphApi === "object" ? window.bpGraphApi : {};
-  graphApi.version = 1;
-  graphApi.getGraphData = previewDataApi.getGraphData;
-  graphApi.getGraphVariants = previewDataApi.getGraphVariants;
-  graphApi.graphsFromManifest = previewDataApi.graphsFromManifest;
-  graphApi.loadManifestGraphs = previewDataApi.loadManifestGraphs;
-  graphApi.loadGraphs = previewDataApi.loadGraphs;
-  window.bpGraphApi = graphApi;
+  if (!window.bpGraphApi || typeof window.bpGraphApi !== "object") {
+    window.bpGraphApi = {};
+  }
+  if (typeof window.bpGraphApi.graphApiModuleUrl !== "function") {
+    window.bpGraphApi.graphApiModuleUrl = previewDataApi.graphApiModuleUrl;
+  }
 
   function reportRenderReadyError(err) {
     window.setTimeout(function () {
