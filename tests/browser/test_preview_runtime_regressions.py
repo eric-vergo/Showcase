@@ -417,6 +417,20 @@ class TestPreviewRuntimeRegressions:
         client = page.locator("#custom-render-client-example").first
         expect(client).to_have_attribute("data-bp-custom-client-status", "ready")
         expect(client.locator("[data-bp-custom-client-example]")).to_have_count(8)
+        preview_module_card = client.locator("[data-bp-preview-module-example]").first
+        expect(preview_module_card).to_have_attribute("data-bp-preview-module-ok", "true")
+        expect(preview_module_card).to_have_attribute(
+            "data-bp-preview-module-render-api", "true"
+        )
+        expect(preview_module_card).to_have_attribute(
+            "data-bp-preview-module-key", "preview_facets--statement"
+        )
+        expect(preview_module_card).to_have_attribute(
+            "data-bp-preview-module-entry-count", re.compile(r"^[1-9][0-9]*$")
+        )
+        expect(
+            preview_module_card.locator("[data-bp-preview-module-body]").first
+        ).to_contain_text("Statement facet marker")
         graph_card = client.locator("[data-bp-custom-client-graph]").first
         expect(graph_card.locator("[data-bp-custom-client-title]").first).to_have_text(
             "Graph manifest data"
@@ -424,6 +438,9 @@ class TestPreviewRuntimeRegressions:
         expect(graph_card).to_have_attribute("data-bp-graph-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-key", re.compile(r"^graph:#<"))
+        expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
+        expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
+        expect(graph_card).to_have_attribute("data-bp-graph-module-key", re.compile(r"^graph:#<"))
         expect(graph_card).to_have_attribute("data-bp-graph-node-count", "55")
         expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "13")
         expect(graph_card).to_have_attribute("data-bp-graph-group-count", "3")

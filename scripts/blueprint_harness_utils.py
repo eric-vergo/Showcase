@@ -19,8 +19,10 @@ class EmbeddedAssetOwner:
 EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/inline-preview.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),

@@ -238,6 +238,107 @@ private def graphDataExample : Verso.Output.Html :=
        ("data-bp-graph-ok", "false") ]
     (Verso.Output.Html.seq #[titleNode, noteNode, summaryNode, nodeList])
 
+private def previewModuleExample : Verso.Output.Html :=
+  let titleNode :=
+    clientTag "h3" #[("data-bp-custom-client-title", "true")] (clientText "Preview ESM import")
+  let noteNode :=
+    clientTag "p" #[("class", "bp_custom_render_client_note")]
+      (clientText "ESM access with renderPreviewInto from -verso-data/api/preview.mjs.")
+  let summaryNode :=
+    clientTag "div"
+      #[("class", "bp_custom_render_client_summary"), ("data-bp-preview-module-summary", "true")]
+      (clientText "Waiting for preview module.")
+  let bodyNode :=
+    clientTag "div"
+      #[("class", "bp_custom_render_client_body"), ("data-bp-preview-module-body", "true")]
+      .empty
+  clientTag "article"
+    #[ ("class", "bp_custom_render_client_example"),
+       ("data-bp-preview-module-example", "true"),
+       ("data-bp-preview-module-ok", "false") ]
+    (Verso.Output.Html.seq #[titleNode, noteNode, summaryNode, bodyNode])
+
+private def previewModuleExampleScript : Verso.Output.Html :=
+  clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
+// Import the generated preview/render ESM API.
+import {
+  getRenderApi,
+  loadManifest,
+  previewKey,
+  renderPreviewInto,
+  resolvePreview
+} from "../-verso-data/api/preview.mjs";
+
+// Find the showcase card that will display this module-based result.
+const card = document.querySelector("[data-bp-preview-module-example]");
+if (card) {
+  // Locate the text summary and preview body targets inside the card.
+  const summary = card.querySelector("[data-bp-preview-module-summary]");
+  const body = card.querySelector("[data-bp-preview-module-body]");
+  try {
+    // Build the manifest/cache key for the statement facet.
+    const key = previewKey("preview_facets", "statement");
+
+    // Load the generated preview manifest through the shared runtime cache.
+    const manifest = await loadManifest();
+
+    // Resolve semantic manifest data and cached HTML for the key.
+    const resolved = await resolvePreview(key);
+
+    // Render the preview body fragment into the body target.
+    if (body) await renderPreviewInto(body, key);
+
+    // Read the shared runtime API to prove the module and runtime are connected.
+    const api = await getRenderApi();
+
+    // Store test-visible attributes that describe what the module resolved.
+    card.dataset.bpPreviewModuleOk = resolved.ok ? "true" : "false";
+    card.dataset.bpPreviewModuleKey = resolved.key || "";
+    card.dataset.bpPreviewModuleTitle =
+      resolved.manifestEntry && resolved.manifestEntry.title ? resolved.manifestEntry.title : "";
+    card.dataset.bpPreviewModuleEntryCount =
+      manifest instanceof Map ? String(manifest.size) : "0";
+    card.dataset.bpPreviewModuleRenderApi =
+      api && typeof api.renderPreviewInto === "function" ? "true" : "false";
+
+    // Update the visible status text for humans inspecting the fixture.
+    if (summary) summary.textContent = resolved.ok ? "Rendered through ESM" : resolved.reason;
+  } catch (err) {
+    // Preserve any import/load/render error for the browser regression test.
+    card.dataset.bpPreviewModuleOk = "false";
+    card.dataset.bpPreviewModuleError = err && err.message ? err.message : String(err);
+    if (summary) summary.textContent = "Preview module error";
+  }
+}
+"##
+
+private def graphModuleExampleScript : Verso.Output.Html :=
+  clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
+// Import the generated graph-data ESM API.
+import { loadGraphs } from "../-verso-data/api/graph.mjs";
+
+// Find the showcase card that already displays graph manifest data.
+const card = document.querySelector("[data-bp-custom-client-graph]");
+if (card) {
+  try {
+    // Load every finalized graph record from blueprint-manifest.json.graphs.
+    const graphs = await loadGraphs();
+
+    // Use the first graph in this small fixture.
+    const graph = graphs[0] || null;
+
+    // Store test-visible attributes that prove the ESM module loaded data.
+    card.dataset.bpGraphModuleOk = graph ? "true" : "false";
+    card.dataset.bpGraphModuleCount = String(graphs.length);
+    card.dataset.bpGraphModuleKey = graph && graph.key ? graph.key : "";
+  } catch (err) {
+    // Preserve any import/load error for the browser regression test.
+    card.dataset.bpGraphModuleOk = "false";
+    card.dataset.bpGraphModuleError = err && err.message ? err.message : String(err);
+  }
+}
+"##
+
 def customRenderClientHtml : Verso.Output.Html :=
   let heading := clientTag "h2" #[] (clientText "Standalone Render Client")
   let status :=
@@ -277,14 +378,17 @@ def customRenderClientHtml : Verso.Output.Html :=
           "missing"
           "An expected miss that demonstrates the runtime diagnostic branch for custom clients."
           false,
+        previewModuleExample,
         graphDataExample
       ])
-  clientTag "section"
-    #[ ("class", "bp_custom_render_client"),
-       ("id", "custom-render-client-example"),
-       ("data-bp-custom-render-client", "true"),
-       ("data-bp-custom-client-status", "idle") ]
-    (Verso.Output.Html.seq #[header, examples])
+  let sectionBlock :=
+    clientTag "section"
+      #[ ("class", "bp_custom_render_client"),
+         ("id", "custom-render-client-example"),
+         ("data-bp-custom-render-client", "true"),
+         ("data-bp-custom-client-status", "idle") ]
+      (Verso.Output.Html.seq #[header, examples])
+  Verso.Output.Html.seq #[sectionBlock, previewModuleExampleScript, graphModuleExampleScript]
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.customRenderClientExample where
