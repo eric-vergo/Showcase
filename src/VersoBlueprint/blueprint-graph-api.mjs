@@ -41,7 +41,7 @@ export function dataUrl(filename, baseUrl = currentHref()) {
 }
 
 export function graphApiModuleUrl(baseUrl = currentHref()) {
-  return dataUrl("blueprint-graph-api.mjs", baseUrl);
+  return dataUrl("api/graph.mjs", baseUrl);
 }
 
 export function graphCanvasFor(root = currentDocument()) {

@@ -114,7 +114,7 @@ export function graphApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.graphApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.graphApiModuleUrl();
   }
-  return dataUrl("blueprint-graph-api.mjs", baseUrl);
+  return dataUrl("api/graph.mjs", baseUrl);
 }
 
 export function previewApiModuleUrl(baseUrl = currentHref()) {
@@ -122,7 +122,7 @@ export function previewApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.previewApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.previewApiModuleUrl();
   }
-  return dataUrl("blueprint-preview-api.mjs", baseUrl);
+  return dataUrl("api/preview.mjs", baseUrl);
 }
 
 export function previewKey(label, facet) {

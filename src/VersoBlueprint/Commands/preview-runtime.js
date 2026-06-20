@@ -172,11 +172,11 @@
   }
 
   function graphApiModuleUrl() {
-    return blueprintDataUrl("blueprint-graph-api.mjs");
+    return blueprintDataUrl("api/graph.mjs");
   }
 
   function previewApiModuleUrl() {
-    return blueprintDataUrl("blueprint-preview-api.mjs");
+    return blueprintDataUrl("api/preview.mjs");
   }
 
   function graphCanvasFor(root) {
