@@ -11,8 +11,10 @@ import shutil
 EMBEDDED_ASSET_OWNER_PATHS: tuple[tuple[str, str, str], ...] = (
     ("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     ("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    ("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     ("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     ("src/VersoBlueprint/Commands/inline-preview.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    ("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     ("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     ("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     ("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),

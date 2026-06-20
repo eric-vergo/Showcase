@@ -1,4 +1,5 @@
 import {
+  dataUrl as graphDataUrl,
   getGraphData,
   getGraphVariants,
   graphsFromManifest,
@@ -77,20 +78,7 @@ export function dataUrl(filename, baseUrl = currentHref()) {
   if (api && typeof api.dataUrl === "function" && baseUrl === currentHref()) {
     return api.dataUrl(filename);
   }
-  const safeFilename = String(filename || "").trim();
-  if (!safeFilename) return "-verso-data/";
-  try {
-    const url = new URL(baseUrl);
-    const markers = ["/html-multi/", "/html-single/"];
-    for (const marker of markers) {
-      const idx = url.pathname.indexOf(marker);
-      if (idx >= 0) {
-        const rootPath = url.pathname.slice(0, idx + marker.length);
-        return rootPath + "-verso-data/" + safeFilename;
-      }
-    }
-  } catch (_err) {}
-  return "-verso-data/" + safeFilename;
+  return graphDataUrl(filename, baseUrl);
 }
 
 export function manifestUrl(baseUrl = currentHref()) {

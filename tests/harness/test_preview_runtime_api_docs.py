@@ -43,6 +43,30 @@ PREVIEW_ESM_EXTRA_EXPORTS = {
     "ready",
     "version",
 }
+GRAPH_CORE_HELPERS = {
+    "dataUrl",
+    "graphCanvasFor",
+    "readGraphJsonScript",
+    "graphFallbackVariants",
+    "normalizeGraphData",
+    "graphsFromManifest",
+    "getGraphData",
+    "getGraphVariants",
+    "loadJson",
+    "loadManifestGraphs",
+    "loadGraphs",
+}
+GRAPH_CORE_IMPLEMENTATION_HELPERS = {
+    "dataUrl",
+    "graphCanvasFor",
+    "readGraphJsonScript",
+    "graphFallbackVariants",
+    "normalizeGraphData",
+    "graphsFromManifest",
+    "getGraphData",
+    "getGraphVariants",
+    "loadJson",
+}
 
 
 class PreviewRuntimeApiDocsTests(unittest.TestCase):
@@ -154,6 +178,21 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertEqual([], direct_runtime_reads)
         self.assertEqual([], missing_ready_callbacks)
+
+    def test_graph_helpers_are_owned_by_graph_core(self) -> None:
+        core = (BLUEPRINT_SRC / "blueprint-graph-core.js").read_text(encoding="utf-8")
+        graph_esm = (BLUEPRINT_SRC / "blueprint-graph-api.mjs").read_text(encoding="utf-8")
+        runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('import "./blueprint-graph-core.js";', graph_esm)
+        self.assertIn("callBlueprintGraphApi", runtime)
+        for helper in GRAPH_CORE_HELPERS:
+            self.assertIn(f"function {helper}", core)
+            self.assertNotIn(f"function {helper}", graph_esm)
+        for helper in GRAPH_CORE_IMPLEMENTATION_HELPERS:
+            self.assertNotIn(f"function {helper}", runtime)
 
 
 if __name__ == "__main__":

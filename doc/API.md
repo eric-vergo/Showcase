@@ -277,7 +277,10 @@ module URL from an arbitrary page should use `api.previewApiModuleUrl()` or
 
 The root files `-verso-data/blueprint-preview-api.mjs` and
 `-verso-data/blueprint-graph-api.mjs` are still emitted as compatibility
-targets. New clients should use the shorter `-verso-data/api/` paths.
+targets. The generated data directory also contains implementation support
+files used by those modules, such as `blueprint-graph-core.js`. Those support
+files are not public import paths. New clients should use the shorter
+`-verso-data/api/` paths.
 
 URL, graph-data, and key helpers in `api/preview.mjs` are available
 immediately. Manifest/cache loading, rendering, and hydration helpers wait for
