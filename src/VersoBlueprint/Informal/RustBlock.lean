@@ -21,6 +21,9 @@ open Lean Lean.Elab
 
 namespace Informal
 
+def rustBlockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Block.Assets.codeAssetBundle.withCss [Informal.Rust.css]
+
 block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
@@ -36,8 +39,8 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
       modify fun s => s.saveDomainObjectData Informal.Rust.informalRustCodeDomain cdata.label.toString (toJson cdata)
       pure none
   toTeX := none
-  extraCss := Informal.Block.Assets.codeCssAssets ++ [Informal.Rust.css]
-  extraJs := ([] : List String)
+  extraCss := rustBlockAssetBundle.css
+  extraJs := rustBlockAssetBundle.js
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in

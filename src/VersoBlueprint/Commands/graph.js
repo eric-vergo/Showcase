@@ -131,18 +131,31 @@
     );
   }
 
-  function collectGraphData(previewUtils, root) {
-    if (!previewUtils || typeof previewUtils.getGraphData !== "function") return null;
-    return previewUtils.getGraphData(root);
+  function readPublicGraphData(previewUtils, root) {
+    if (previewUtils && typeof previewUtils.getGraphData === "function") {
+      return previewUtils.getGraphData(root);
+    }
+    const api = window.bpGraphApi;
+    if (api && typeof api.getGraphData === "function") {
+      return api.getGraphData(root);
+    }
+    return null;
   }
 
-  function collectGraphVariants(previewUtils, graphContainer) {
-    if (!previewUtils || typeof previewUtils.getGraphVariants !== "function") return [];
-    const root =
-      graphContainer && typeof graphContainer.node === "function"
-        ? graphContainer.node()
-        : graphContainer;
-    return previewUtils.getGraphVariants(root);
+  function readPublicGraphVariants(previewUtils, root) {
+    let variants = [];
+    if (previewUtils && typeof previewUtils.getGraphVariants === "function") {
+      variants = previewUtils.getGraphVariants(root);
+    } else {
+      const api = window.bpGraphApi;
+      if (api && typeof api.getGraphVariants === "function") {
+        variants = api.getGraphVariants(root);
+      }
+    }
+    if (Array.isArray(variants) && variants.length > 0) {
+      return variants;
+    }
+    return [];
   }
 
   function dotWithGraphAttribute(dot, name, value) {
@@ -551,7 +564,7 @@
         const graphContainer = d3.select(graphRoot);
         if (graphContainer.empty()) return;
         const graphState = ensureGraphBlockState(graphBlock);
-        const graphApiData = collectGraphData(previewUtils, graphBlock);
+        const graphApiData = readPublicGraphData(previewUtils, graphBlock);
         if (graphApiData) {
           graphState.graphData = graphApiData;
           graphBlock.__bpGraphData = graphApiData;
@@ -621,7 +634,7 @@
           { keepOpen: true }
         );
 
-        const rawVariants = collectGraphVariants(previewUtils, graphContainer);
+        const rawVariants = readPublicGraphVariants(previewUtils, graphBlock);
         if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
         const variantsByKey = new Map();
         rawVariants.forEach(function (variant) {

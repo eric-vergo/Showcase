@@ -83,7 +83,9 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         !hasSubstr relationJs "function blueprintRender()" &&
         hasAllSubstr relationJs [
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
-          "previewUtils.previewMessageHtml({",
+          "previewUtils.renderPreviewIntoSurface(surface, previewKey, {",
+          "relationPreviewDiagnosticOptions(",
+          "shouldRender: function () {",
           "previewUtils.createPreviewSurface({",
           "surface.bindTriggers({",
           "surface.bindDismissal({",
@@ -92,6 +94,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         ] &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
+          "previewUtils.resolvePreview(previewKey)",
           "previewUtils.readHtmlCacheStatus()",
           "previewUtils.bindDismissHandlers({",
           "previewUtils.shouldKeepOpen(",
@@ -170,7 +173,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
+        hasSubstr relationJs "previewUtils.renderPreviewIntoSurface(surface, previewKey, {" &&
         hasSubstr relationJs "previewUtils.createPreviewSurface({" &&
         !hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
@@ -202,7 +205,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
+        hasSubstr relationJs "previewUtils.renderPreviewIntoSurface(surface, previewKey, {" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false
     )

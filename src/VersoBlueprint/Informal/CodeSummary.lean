@@ -98,22 +98,10 @@ private structure SummaryTooltipSection where
   emptyText : String := "No associated Lean declarations."
 
 private def declSummaryStatusText (item : DeclSummaryItem) : String :=
-  if !item.present then
-    "missing declaration"
-  else if item.status.isIncomplete then
-    provedStatusSummaryText item.status
-  else
-    "complete"
+  (item.status.presentation (present := item.present)).summaryText
 
 private def declSummaryStatusClass (item : DeclSummaryItem) : String :=
-  if !item.present || item.status.isMissing then
-    "bp_code_decl_status_missing"
-  else if item.status.isAxiomLike then
-    "bp_code_decl_status_axiom"
-  else if item.status.isIncomplete then
-    "bp_code_decl_status_warning"
-  else
-    "bp_code_decl_status_ok"
+  (item.status.presentation (present := item.present)).codeDeclClass
 
 private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Output.Html :=
   open Verso.Output.Html in
@@ -272,37 +260,18 @@ private def renderSummaryPreview (_label : Data.Label) (cdata : ComputedData)
       </div>
     }}
 
-private inductive CodeEntryVisual where
-  | absent
-  | proved
-  | warning
-  | missing
-  | axiom
-deriving BEq
-
-private def CodeEntryVisual.symbol : CodeEntryVisual → String
-  | .absent => "X"
-  | .proved => "✓"
-  | .warning => "⚠"
-  | .missing => "!"
-  | .axiom => "A"
-
-private def CodeEntryVisual.classSuffix : CodeEntryVisual → String
-  | .absent => "absent"
-  | .proved => "proved"
-  | .warning => "warning"
-  | .missing => "missing"
-  | .axiom => "axiom"
+private structure CodeEntryVisual where
+  classSuffix : String
+  symbol : String
+  absent : Bool := false
+deriving Inhabited
 
 private def codeEntryVisual (hasSource : Bool) (statusMark : BlockStatusMark) : CodeEntryVisual :=
   if !hasSource then
-    .absent
+    { classSuffix := "absent", symbol := "X", absent := true }
   else
-    match statusMark.status with
-    | .proved => .proved
-    | .containsSorry _ => .warning
-    | .missing => .missing
-    | .axiomLike => .axiom
+    let view := statusMark.status.presentation
+    { classSuffix := view.codeEntryClassSuffix, symbol := view.codeEntrySymbol }
 
 private structure ExternalRenderHealth where
   failureCount : Nat := 0
@@ -331,7 +300,7 @@ private def renderCodeEntryNode (href : Option String) (title : String) (visual 
     (renderHealth : ExternalRenderHealth := {}) : Output.Html :=
   open Verso.Output.Html in
   let linkClass := s!"bp_code_link bp_code_link_status bp_code_link_status_{visual.classSuffix}" ++
-    (if visual == .absent then " bp_code_link_empty" else "")
+    (if visual.absent then " bp_code_link_empty" else "")
   let body : Output.Html := {{
     {{renderCodeHeadingRenderHealthBadge renderHealth}}
     <span class="bp_code_status_symbol">{{.text true visual.symbol}}</span>
@@ -518,15 +487,16 @@ private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCo
       .empty
     else
       let segments := orderedDecls.map fun decl =>
-        let hasSorry := provedStatusHasSorry decl.provedStatus
+        let hasSorry := decl.provedStatus.isIncomplete
+        let statusView := decl.provedStatus.presentation
         let cls := progressSegmentClass false hasSorry
         let weight := max decl.weight 1
         let title :=
           if hasSorry then
-            if provedStatusContainsSorry decl.provedStatus then
-              s!"{decl.name}: contains sorry {provedStatusLocationText decl.provedStatus}"
+            if decl.provedStatus.containsExplicitSorry then
+              s!"{decl.name}: {statusView.externalPanelText}"
             else
-              s!"{decl.name}: {provedStatusLocationText decl.provedStatus}"
+              s!"{decl.name}: {statusView.summaryText}"
           else
             s!"{decl.name}: complete"
         {{
@@ -586,14 +556,35 @@ private def externalIndicatorText
   else
     declText
 
-private def externalIndicatorStatus
-    (health : Informal.Graph.CodeHealth) : String × String × String :=
+private structure ExternalIndicatorPresentation where
+  className : String
+  iconText : String := "●"
+  title : String
+  badgeText : String
+deriving Inhabited
+
+private def externalIndicatorPresentation
+    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) :
+    ExternalIndicatorPresentation :=
+  let badgeText := externalIndicatorText decls health
   if health.missingDecls > 0 then
-    ("bp_external_status_missing", "●", s!"Lean declarations: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)")
+    {
+      className := "bp_external_status_missing"
+      title := s!"Lean declarations: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)"
+      badgeText
+    }
   else if health.anyGapCount > 0 then
-    ("bp_external_status_sorry", "●", s!"Lean declarations: all present, {health.anyGapCount} incomplete")
+    {
+      className := "bp_external_status_sorry"
+      title := s!"Lean declarations: all present, {health.anyGapCount} incomplete"
+      badgeText
+    }
   else
-    ("bp_external_status_ok", "●", s!"Lean declarations: all {health.totalDecls} present")
+    {
+      className := "bp_external_status_ok"
+      title := s!"Lean declarations: all {health.totalDecls} present"
+      badgeText
+    }
 
 private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
     (label : Data.Label) (hrefOf : Name → Option String) : PanelIndicatorParts :=
@@ -601,18 +592,17 @@ private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
   let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
   let renderHealth := externalRenderHealth decls
   let previewBody := renderSummaryPreview label { source := some (.external decls) } hrefOf
-  let (iconClass, iconText, iconTitle) := externalIndicatorStatus health
-  let badgeText := externalIndicatorText decls health
+  let presentation := externalIndicatorPresentation decls health
   let summaryTitle :=
     s!"Lean code for {label}: " ++ appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
       renderHealth
   let badgeTitle :=
-    appendRenderHealthSummary iconTitle renderHealth
+    appendRenderHealthSummary presentation.title renderHealth
   let badge : Output.Html := {{
-    <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {iconClass}"}} title={{badgeTitle}}>
-      <span class={{s!"bp_external_status_icon {iconClass}"}}>{{.text true iconText}}</span>
-      <span class="bp_external_status_badge_text">{{.text true badgeText}}</span>
+    <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {presentation.className}"}} title={{badgeTitle}}>
+      <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text true presentation.iconText}}</span>
+      <span class="bp_external_status_badge_text">{{.text true presentation.badgeText}}</span>
     </span>
   }}
   {

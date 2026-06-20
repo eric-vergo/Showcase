@@ -43,6 +43,27 @@ open Verso.VersoBlueprintTests.BlueprintGraph.Shared
   status.statusLabel = "contains sorry" &&
   status.sorryRefCounts = (2, 3)
 
+/-- info: true -/
+#guard_msgs in
+#eval
+  let sorryStatus : Data.ProvedStatus :=
+    .containsSorry #[{ location := .proof, refs? := some 1 }]
+  let sorryView := sorryStatus.presentation
+  let missingView := Data.ProvedStatus.proved.presentation (present := false)
+  let axiomView := Data.ProvedStatus.axiomLike.presentation
+  sorryView.summaryText == "sorry in proof" &&
+    sorryView.externalPanelText == "contains sorry in proof" &&
+    sorryView.externalHeaderText == "contains sorry" &&
+    sorryView.codeDeclClass == "bp_code_decl_status_warning" &&
+    sorryView.externalDeclClass == "bp_external_decl_sorry" &&
+    sorryView.codeEntryClassSuffix == "warning" &&
+    missingView.summaryText == "missing declaration" &&
+    missingView.externalHeaderText == "missing" &&
+    missingView.codeEntryClassSuffix == "missing" &&
+    axiomView.summaryText == "axiom-like (no body)" &&
+    axiomView.codeEntryClassSuffix == "axiom" &&
+    axiomView.statusMarkSymbol == "⚠"
+
 def nestedPopState : Environment.State :=
   {
     data := (mkState [(`outer, { kind := .definition, statement := some (mkInformal #[]) })]).data

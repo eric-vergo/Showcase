@@ -162,21 +162,6 @@ private def linkedExternalDecl
     anchorAttrs := getDeclAnchorAttrs decl
   }
 
-private def externalDeclSorryLocation (decl : LinkedExternalDecl) : String :=
-  if decl.decl.present then
-    provedStatusLocationText decl.decl.provedStatus
-  else
-    "location unknown"
-
-private def externalDeclGapStatusText? (item : LinkedExternalDecl) : Option String :=
-  if externalDeclHasGap item.decl then
-    if provedStatusContainsSorry item.decl.provedStatus then
-      some s!"contains sorry {externalDeclSorryLocation item}"
-    else
-      some (externalDeclSorryLocation item)
-  else
-    none
-
 /--
 Status-derived rendering data for one linked external declaration.
 
@@ -189,22 +174,12 @@ private structure ExternalDeclStatusView where
   renderedMetaText : String
 
 private def externalDeclStatusView (item : LinkedExternalDecl) : ExternalDeclStatusView :=
-  let className :=
-    if !item.decl.present then
-      "bp_external_decl_missing"
-    else if (externalRenderFailure? item.decl).isSome then
-      "bp_external_decl_error"
-    else if externalDeclHasGap item.decl then
-      "bp_external_decl_sorry"
+  let statusView := item.decl.provedStatus.presentation (present := item.decl.present)
+  let (className, panelText) :=
+    if item.decl.present && (externalRenderFailure? item.decl).isSome then
+      ("bp_external_decl_error", "render failed")
     else
-      "bp_external_decl_ok"
-  let panelText :=
-    if !item.decl.present then
-      "missing declaration"
-    else if (externalRenderFailure? item.decl).isSome then
-      "render failed"
-    else
-      (externalDeclGapStatusText? item).getD "complete"
+      (statusView.externalDeclClass, statusView.externalPanelText)
   { className, panelText, renderedMetaText := panelText }
 
 private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
