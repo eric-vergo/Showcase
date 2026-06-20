@@ -390,13 +390,17 @@ def customRenderClientHtml : Verso.Output.Html :=
       (Verso.Output.Html.seq #[header, examples])
   Verso.Output.Html.seq #[sectionBlock, previewModuleExampleScript, graphModuleExampleScript]
 
+def customRenderClientAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  (Informal.Commands.blueprintCssAssetBundle [customRenderClientCss]).append
+    (Informal.Commands.previewRuntimeJsAssetBundle.withJs [] [customRenderClientJs])
+
 open Verso Doc Elab Genre Manual in
 block_extension Block.customRenderClientExample where
   data := Lean.Json.null
   traverse _id _data _contents := pure none
   toTeX := none
-  extraCss := Informal.Commands.withBlueprintCssAssets [customRenderClientCss]
-  extraJs := Informal.Commands.withPreviewRuntimeJsAssets [] [customRenderClientJs]
+  extraCss := customRenderClientAssetBundle.css
+  extraJs := customRenderClientAssetBundle.js
   toHtml :=
     some <| fun _goI _goB _id _data _blocks => do
       pure customRenderClientHtml

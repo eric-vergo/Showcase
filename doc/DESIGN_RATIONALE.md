@@ -106,6 +106,14 @@ Per-command CSS overlays stay with their commands:
 - `Commands/summary.css`
 - `Commands/bibliography.css`
 
+Browser asset composition is intentionally separate from physical emission.
+`Informal.Commands.BlueprintAssetBundle` in `Commands/Common.lean` records the
+ordered CSS and JavaScript fragments needed by a Blueprint feature. Manual pages
+consume those bundles as inline Verso `HtmlAssets`; Slides consume the same
+logical bundles when building their standalone composite slide files. The Python
+`EMBEDDED_ASSET_OWNERS` inventory remains rebuild metadata for `include_str`
+owner modules, not the semantic source of asset ordering.
+
 ## Rendering Clients
 
 The same Blueprint object data is consumed in three broad ways:
@@ -317,7 +325,8 @@ hydration.
 | Relation panel/chip markup and relation-row badges | `Informal.RelatedPanel.renderPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | single Lean owner |
 | Relation panel browser activation, loading/error replacement, and cache lookup | `Informal/Block/relation-panel.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` trigger and dismissal binding | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single JS owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and relation-panel JS reuses the Lean-rendered loading body and only owns runtime error diagnostics |
 | Code-summary trigger, template, and preview panel shell | `Informal.HoverRender.templatePreviewRoot`, configured by `Informal.CodeSummary.renderCodeSummaryPreview` | heading code badges and code-panel indicators | shared wrapper helper, code-summary-specific selectors |
-| Code-summary semantics, declaration rows, status marks, and indicators | `Informal.CodeSummary` | node heading code extra and code-panel summary indicator | single semantic owner |
+| Declaration-level Lean status labels, classes, and symbols | `Informal.Data.ProvedStatus.presentation` | code-summary declaration rows, summary detail rows, heading status marks, heading code-entry icons, external-code rows/footers, rendered external declaration header badges | single presentation owner for declaration status; renderers still own their surrounding HTML |
+| Code-summary semantics, declaration rows, status marks, and indicators | `Informal.CodeSummary` using `ProvedStatus.presentation` for declaration-status vocabulary | node heading code extra and code-panel summary indicator | single code-summary owner; declaration status presentation is delegated to `ProvedStatus` |
 | Companion Lean/external-code panel shell | `Informal.mkCodePanel` | inline Lean panels, external declaration panels, Rust panels, manifest/cache-backed code panels | single panel-shell owner |
 | External declaration rows and rendered declaration body strategy | `Informal.ExternalCode.renderExternalDeclRowsWith` | external-code panels and HTML-cache-backed Lean-code previews | shared row/status/footer owner with page-hover and self-contained body strategies |
 | Manifest/cache-backed block shell assembly | `Informal.PreviewManifest.BlockRender.renderWithRenderedContent` | Slides, grafts, and custom generated consumers | single manifest-backed assembly owner; callers only supply config and content |
@@ -608,6 +617,8 @@ pre-emit boundary as the asset normalization.
 The current policy is:
 
 - semantic completion remains driven by `ProvedStatus`
+- declaration-level status labels, classes, and symbols come from
+  `ProvedStatus.presentation`
 - external render failures surface as local UI warnings
 - optional summary diagnostics can expose those failures for maintainers
 - coverage buckets and completion counts remain semantic rather than
@@ -874,8 +885,9 @@ the node fill.
 
 These are the current architectural fault lines that still deserve care:
 
-1. status semantics can still drift between local block rendering and global
-   outputs
+1. aggregate graph/summary status buckets still need care when new completion
+   states are added, even though declaration-level labels/classes now share
+   `ProvedStatus.presentation`
 2. preview retrieval still has multiple internal representations and adapters
 3. external hover and panel rendering still share concepts that are not fully
    unified in one view model

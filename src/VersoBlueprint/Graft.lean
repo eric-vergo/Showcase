@@ -27,6 +27,9 @@ open Verso.Genre Manual
 open Verso.Output
 open Verso.Output.Html
 
+def manualGraftAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Block.Assets.blockAssetBundle.withCss Informal.Graft.cssAssets
+
 private def manualNodeClass (node : Informal.Graft.BlueprintNode) : String :=
   if node.compact then
     "bp_graft_node bp_graft_manifest_node bp_graft_node_compact"
@@ -147,8 +150,8 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConf
   data := toJson cfg
   traverse _ _ _ := pure none
   toTeX := none
-  extraCss := Informal.Block.Assets.blockCssAssets ++ Informal.Graft.cssAssets
-  extraJs := Informal.Block.Assets.blockJsAssets
+  extraCss := manualGraftAssetBundle.css
+  extraJs := manualGraftAssetBundle.js
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in
@@ -164,8 +167,8 @@ block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideC
   data := toJson cfg
   traverse _ _ _ := pure none
   toTeX := none
-  extraCss := Informal.Block.Assets.blockCssAssets ++ Informal.Graft.cssAssets
-  extraJs := Informal.Block.Assets.blockJsAssets
+  extraCss := manualGraftAssetBundle.css
+  extraJs := manualGraftAssetBundle.js
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in

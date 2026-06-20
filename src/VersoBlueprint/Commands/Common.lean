@@ -375,28 +375,69 @@ def withPreviewClientReadyJs (js : String) : String :=
 -- Keep this module rebuilt when the embedded inline preview runtime changes.
 def inlineLinkPreviewJs : String := withPreviewClientReadyJs (include_str "inline-preview.js")
 
-def withBlueprintCssAssets (extras : List String := []) : List String :=
-  [blueprintTokensCss] ++ extras
+/--
+Logical Blueprint browser assets before choosing a physical output mode.
 
-def withPreviewPanelCssAssets (extras : List String := []) : List String :=
-  withBlueprintCssAssets ([previewPanelCss] ++ extras)
+Manual renderers currently inline these lists through Verso `HtmlAssets`; Slides
+turn selected bundles into named files. Keeping composition here lets both paths
+share ordering and dependencies while preserving their existing emitters.
+-/
+structure BlueprintAssetBundle where
+  css : List String := []
+  js : List String := []
+deriving Inhabited
 
-def withInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withBlueprintCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
+namespace BlueprintAssetBundle
 
-def withPreviewPanelInlinePreviewCssAssets (extras : List String := []) : List String :=
-  withPreviewPanelCssAssets (extras ++ [previewHeaderCss, inlinePreviewCss])
+def append (left right : BlueprintAssetBundle) : BlueprintAssetBundle :=
+  { css := left.css ++ right.css
+    js := left.js ++ right.js }
 
-def previewRuntimeJsAssets : List String :=
-  [previewHoverUtilsJs]
+def withCss (assets : BlueprintAssetBundle) (extras : List String) : BlueprintAssetBundle :=
+  { assets with css := assets.css ++ extras }
 
-def inlinePreviewJsAssets : List String :=
-  previewRuntimeJsAssets ++ [inlineLinkPreviewJs]
+def withJs (assets : BlueprintAssetBundle) (before after : List String) : BlueprintAssetBundle :=
+  { assets with js := before ++ assets.js ++ after }
 
-def withPreviewRuntimeJsAssets (before : List String) (after : List String) : List String :=
-  before ++ previewRuntimeJsAssets ++ after
+end BlueprintAssetBundle
 
-def withInlinePreviewJsAssets (before : List String) (after : List String) : List String :=
-  before ++ inlinePreviewJsAssets ++ after
+def blueprintCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
+  ({ css := [blueprintTokensCss] } : BlueprintAssetBundle).withCss extras
+
+def previewPanelCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
+  (blueprintCssAssetBundle [previewPanelCss]).withCss extras
+
+def inlinePreviewCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
+  (blueprintCssAssetBundle extras).withCss [previewHeaderCss, inlinePreviewCss]
+
+def previewPanelInlinePreviewCssAssetBundle (extras : List String := []) : BlueprintAssetBundle :=
+  (previewPanelCssAssetBundle extras).withCss [previewHeaderCss, inlinePreviewCss]
+
+def previewRuntimeJsAssetBundle : BlueprintAssetBundle :=
+  { js := [previewHoverUtilsJs] }
+
+def inlinePreviewJsAssetBundle : BlueprintAssetBundle :=
+  { js := previewRuntimeJsAssetBundle.js ++ [inlineLinkPreviewJs] }
+
+def previewPanelAssetBundle
+    (cssExtras : List String := [])
+    (jsBefore : List String := [])
+    (jsAfter : List String := []) : BlueprintAssetBundle :=
+  (previewPanelCssAssetBundle cssExtras).append
+    (previewRuntimeJsAssetBundle.withJs jsBefore jsAfter)
+
+def inlinePreviewAssetBundle
+    (cssExtras : List String := [])
+    (jsBefore : List String := [])
+    (jsAfter : List String := []) : BlueprintAssetBundle :=
+  (inlinePreviewCssAssetBundle cssExtras).append
+    (inlinePreviewJsAssetBundle.withJs jsBefore jsAfter)
+
+def previewPanelInlinePreviewAssetBundle
+    (cssExtras : List String := [])
+    (jsBefore : List String := [])
+    (jsAfter : List String := []) : BlueprintAssetBundle :=
+  (previewPanelInlinePreviewCssAssetBundle cssExtras).append
+    (inlinePreviewJsAssetBundle.withJs jsBefore jsAfter)
 
 end Informal.Commands

@@ -798,6 +798,9 @@ private def Summary.previewLabels (data : Summary) : Array Name :=
 -- Keep this binding in Lean so summary CSS edits ride along with command module rebuilds.
 def summaryCss := include_str "summary.css"
 
+def summaryAssetBundle : BlueprintAssetBundle :=
+  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss]) (jsBefore := [openTargetDetailsJs])
+
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
 open Verso.Multi (AllRemotes)
@@ -862,8 +865,30 @@ private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Nam
     let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}} (ctx.declHref? label decl)
     {{ <li>{{declNode}}</li> }}
 
-private def summaryBadge (text : String) (className : String := "bp_summary_badge") : Output.Html :=
+private def summaryBadgeClass : String := "bp_summary_badge"
+
+private def summaryBadgeWarnClass : String :=
+  s!"{summaryBadgeClass} bp_summary_badge_warn"
+
+private def summaryBadgeErrorClass : String :=
+  s!"{summaryBadgeClass} bp_summary_badge_error"
+
+private def summaryBadge (text : String) (className : String := summaryBadgeClass) : Output.Html :=
   {{ <span class={{className}}>s!"{text}"</span> }}
+
+private def summaryWarnBadge (text : String) : Output.Html :=
+  summaryBadge text summaryBadgeWarnClass
+
+private def summaryErrorBadge (text : String) : Output.Html :=
+  summaryBadge text summaryBadgeErrorClass
+
+private def summaryBadgeClassForStatus (status : Data.ProvedStatus) : String :=
+  if status.isMissing then
+    summaryBadgeErrorClass
+  else if status.isIncomplete then
+    summaryBadgeWarnClass
+  else
+    summaryBadgeClass
 
 private def summaryBadgeRow (badges : Array Output.Html) : Output.Html :=
   if badges.isEmpty then
@@ -873,11 +898,10 @@ private def summaryBadgeRow (badges : Array Output.Html) : Output.Html :=
 
 private def summaryMetadataBadges (metadata : MetadataPresentation) : Array Output.Html :=
   metadata.summaryBadgeSpecs.map fun badge =>
-    summaryBadge badge.text <|
-      if badge.warning then
-        "bp_summary_badge bp_summary_badge_warn"
-      else
-        "bp_summary_badge"
+    if badge.warning then
+      summaryWarnBadge badge.text
+    else
+      summaryBadge badge.text
 
 private def summaryMetadataActionLinks (metadata : MetadataPresentation) : Array Output.Html :=
   metadata.summaryActionLinks.map fun action =>
@@ -889,8 +913,13 @@ private def summaryActionLinksRow (actionLinks : Array Output.Html) : Output.Htm
   else
     {{<div class="bp_summary_item_actions">"Links: " {{(actionLinks.toList.intersperse {{<span class="bp_summary_sep">" | "</span>}}).toArray}}</div>}}
 
+private def summaryCardClass : String := "bp_summary_card"
+
+private def summaryCardWarnClass : String :=
+  s!"{summaryCardClass} bp_summary_card_warn"
+
 private def summaryCard (label value : String) (status? : Option String := Option.none)
-    (className : String := "bp_summary_card") : Output.Html :=
+    (className : String := summaryCardClass) : Output.Html :=
   let statusNode : Output.Html :=
     match status? with
     | Option.some status => {{<span class="bp_summary_status">{{.text true status}}</span>}}
@@ -902,7 +931,7 @@ private def summaryCard (label value : String) (status? : Option String := Optio
     </div> }}
 
 private def summaryOptionalCard (visible : Bool) (label value : String)
-    (status? : Option String := Option.none) (className : String := "bp_summary_card") :
+    (status? : Option String := Option.none) (className : String := summaryCardClass) :
     Output.Html :=
   if visible then
     summaryCard label value status? className
@@ -911,7 +940,7 @@ private def summaryOptionalCard (visible : Bool) (label value : String)
 
 private def summaryWarnCard (label value : String) (status? : Option String := Option.none) :
     Output.Html :=
-  summaryCard label value status? "bp_summary_card bp_summary_card_warn"
+  summaryCard label value status? summaryCardWarnClass
 
 private def summaryOptionalWarnCard (visible : Bool) (label value : String)
     (status? : Option String := Option.none) : Output.Html :=
@@ -949,6 +978,18 @@ private def summaryDetailsList (title : String) (rows : Array Output.Html)
       <ul class="bp_summary_list">
         {{rows}}
       </ul>
+    </details> }}
+
+private def summarySection (title : String) (content : Output.Html)
+    (open? : Bool := false) : Output.Html :=
+  let attrs :=
+    if open? then
+      #[("class", "bp_summary_section"), ("open", "open")]
+    else
+      #[("class", "bp_summary_section")]
+  {{ <details {{attrs}}>
+      <summary>{{.text true title}}</summary>
+      {{content}}
     </details> }}
 
 private def summaryOptionalDetailsList (visible : Bool) (title : String) (rows : Array Output.Html)
@@ -1018,24 +1059,34 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
   let entryRef := ctx.entryRef item.label
   let declLink :=
     summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}} (ctx.declHref? item.label item.decl)
-  let statusInfo ←
+  let view := item.status.presentation
+  let declPrefix ←
     match item.status with
-    | .missing =>
-      pure ("missing", "Missing declaration: ", "bp_summary_badge bp_summary_badge_error",
-        item.status.sorryLocationText, "n/a")
-    | .axiomLike =>
-      pure ("axiom-like", "Axiom-like declaration: ", "bp_summary_badge bp_summary_badge_warn",
-        item.status.sorryLocationText, "n/a")
+    | .missing => pure "Missing declaration: "
+    | .axiomLike => pure "Axiom-like declaration: "
+    | .containsSorry _ => pure "Declaration with sorry: "
+    | .proved =>
+      Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
+      pure "Declaration: "
+  let refsTxt :=
+    match item.status with
     | .containsSorry _ =>
       let (typeSorryRefs, proofSorryRefs) := item.status.sorryRefCounts
       let sorryRefs := typeSorryRefs + proofSorryRefs
-      let refsTxt := if sorryRefs > 0 then toString sorryRefs else "unknown"
-      pure ("contains sorry", "Declaration with sorry: ", "bp_summary_badge bp_summary_badge_warn",
-        item.status.sorryLocationText, refsTxt)
-    | .proved =>
-      Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
-      pure ("proved", "Declaration: ", "bp_summary_badge", "proved", "0")
-  let (statusLabel, declPrefix, badgeClass, whereTxt, refsTxt) := statusInfo
+      if sorryRefs > 0 then toString sorryRefs else "unknown"
+    | .proved => "0"
+    | _ => "n/a"
+  let statusLabel :=
+    if item.status.isProved then
+      item.status.statusLabel
+    else
+      view.externalHeaderText
+  let whereTxt :=
+    if item.status.isProved then
+      item.status.statusLabel
+    else
+      item.status.sorryLocationText
+  let badgeClass := summaryBadgeClassForStatus item.status
   let body := {{
     <div class="bp_summary_item_body">
       {{.text true declPrefix}} {{declLink}} " "
@@ -1059,14 +1110,14 @@ private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (labe
     {{ <span> <code>s!"{written}"</code> " (resolved as " {{canonicalNode}} ")" </span> }}
 
 private def SummaryHtmlContext.externalDeclIssueRow (ctx : SummaryHtmlContext) (label : Name)
-    (kind : String) (written canonical : Name) (bodyPrefix badgeText badgeClass : String)
+    (kind : String) (written canonical : Name) (bodyPrefix : String) (badge : Output.Html)
     (actions : Output.Html := .empty) : Output.Html :=
   let entryRef := ctx.entryRef label
   let declNode := ctx.externalDeclNode label written canonical
   let body := {{
     <div class="bp_summary_item_body">
         {{.text true bodyPrefix}} {{declNode}} " "
-        <span class={{badgeClass}}>{{.text true badgeText}}</span>
+        {{badge}}
     </div>
   }}
   summaryItemShell entryRef (some (.text true s!"({kind})")) body .empty #[actions]
@@ -1074,12 +1125,12 @@ private def SummaryHtmlContext.externalDeclIssueRow (ctx : SummaryHtmlContext) (
 private def SummaryHtmlContext.missingRow (ctx : SummaryHtmlContext) (item : MissingLeanDeclItem) :
     Output.Html :=
   ctx.externalDeclIssueRow item.label item.kind item.written item.canonical
-    "Missing external Lean declaration: " "[missing declaration]" "bp_summary_badge bp_summary_badge_error"
+    "Missing external Lean declaration: " (summaryErrorBadge "[missing declaration]")
 
 private def SummaryHtmlContext.renderFailureRow (ctx : SummaryHtmlContext) (item : RenderFailureItem) :
     Output.Html :=
   ctx.externalDeclIssueRow item.label item.kind item.written item.canonical
-    "External render failed for " "[render failure]" "bp_summary_badge bp_summary_badge_warn"
+    "External render failed for " (summaryWarnBadge "[render failure]")
     (summaryItemActions {{<code>{{.text true item.message}}</code>}})
 
 private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : PriorityItem) :
@@ -1110,7 +1161,7 @@ private def SummaryHtmlContext.usageRow (ctx : SummaryHtmlContext) (item : Usage
   let entryRef := ctx.entryRef item.label
   let badges :=
     #[
-      summaryBadge s!"{primaryLabel}: {primaryCount}" "bp_summary_badge bp_summary_badge_warn",
+      summaryWarnBadge s!"{primaryLabel}: {primaryCount}",
       summaryBadge s!"{secondaryLabel}: {secondaryCount}",
       summaryBadge s!"direct uses: {item.directUses}",
       summaryBadge s!"downstream unlocks: {item.downstreamUses}"
@@ -1125,7 +1176,7 @@ private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
   let entryRef := ctx.entryRef item.label
   let badges :=
     #[
-      summaryBadge s!"total deps: {item.totalDeps}" "bp_summary_badge bp_summary_badge_warn",
+      summaryWarnBadge s!"total deps: {item.totalDeps}",
       summaryBadge s!"statement deps: {item.statementDeps}",
       summaryBadge s!"proof deps: {item.proofDeps}",
       summaryBadge s!"direct uses: {item.directUses}",
@@ -1139,7 +1190,7 @@ private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
 private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
   let badges :=
     #[
-      summaryBadge s!"affected entries: {item.affectedEntries}" "bp_summary_badge bp_summary_badge_warn",
+      summaryWarnBadge s!"affected entries: {item.affectedEntries}",
       summaryBadge s!"incomplete decls: {item.incompleteDecls}",
       summaryBadge s!"missing decls: {item.missingDecls}",
       summaryBadge s!"total debt: {item.totalDebt}"
@@ -1155,7 +1206,7 @@ private def summaryRollupBadges (totalEntries actionableEntries quickWins linked
     Array Output.Html :=
   #[
     summaryBadge s!"entries: {totalEntries}",
-    summaryBadge s!"actionable: {actionableEntries}" "bp_summary_badge bp_summary_badge_warn",
+    summaryWarnBadge s!"actionable: {actionableEntries}",
     summaryBadge s!"quick wins: {quickWins}",
     summaryBadge s!"linked PRs: {linkedPrs}"
   ]
@@ -1174,7 +1225,7 @@ private def summaryTagRollupRow (item : TagRollupItem) : Output.Html :=
   let badges :=
     summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
   summaryItemShell
-    (summaryBadge s!"tag: {item.tag}" "bp_summary_badge bp_summary_badge_warn")
+    (summaryWarnBadge s!"tag: {item.tag}")
     Option.none
     .empty
     (summaryBadgeRow badges)
@@ -1202,7 +1253,7 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
       summaryBadge s!"total: {item.totalEntries}",
       summaryBadge s!"closed: {item.closedEntries}",
       summaryBadge s!"local-only: {item.localOnlyEntries}",
-      summaryBadge s!"ready: {item.readyEntries}" "bp_summary_badge bp_summary_badge_warn",
+      summaryWarnBadge s!"ready: {item.readyEntries}",
       summaryBadge s!"blocked: {item.blockedEntries}",
       summaryBadge s!"incomplete Lean: {item.incompleteLeanEntries}",
       summaryBadge s!"unlock score: {item.unlockScore}"
@@ -1219,7 +1270,7 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
     let nextRef := ctx.entryRef next.label
     let priorityBadges : Array Output.Html :=
       match next.priority with
-      | Option.some priority => #[summaryBadge s!"priority: {priority}" "bp_summary_badge bp_summary_badge_warn"]
+      | Option.some priority => #[summaryWarnBadge s!"priority: {priority}"]
       | Option.none => #[]
     summaryItemShell
       (.text true item.header)
@@ -1328,8 +1379,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
   let showBlockers := rows.blockerCount > 0
   let showPendingInformal := !rows.pendingInformalRows.isEmpty
   let showQuickWins := !rows.quickWinRows.isEmpty
-  {{ <details class="bp_summary_section" open>
-      <summary>"Overview"</summary>
+  summarySection "Overview" {{
       <div class="bp_summary_grid">
         {{summaryCard "Total entries" (toString data.totalEntries) (Option.some (statusCountsText data.totalStatus))}}
         {{summaryCard
@@ -1380,7 +1430,7 @@ private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Outpu
           showPendingInformal
           s!"Missing informal coverage ({data.pendingInformalEntries.length})"
           rows.pendingInformalRows}}
-    </details> }}
+    }} true
 
 private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showDefinitionCard := data.definitions > 0
@@ -1398,8 +1448,7 @@ private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Out
   if !(showDefinitionIndex || showTheoremLikeIndex || showAxiomIndex) then
     .empty
   else
-    {{ <details class="bp_summary_section">
-        <summary>s!"Entry index ({data.totalEntries})"</summary>
+    summarySection s!"Entry index ({data.totalEntries})" {{
         <div class="bp_summary_grid">
           {{summaryOptionalCard
               showDefinitionCard
@@ -1446,14 +1495,13 @@ private def summaryEntryIndexSection (data : Summary) (rows : SummaryRows) : Out
             s!"Axiom-like Index ({data.axiomIndex.length})"
             rows.axiomRows
             "bp_summary_subsection bp_summary_subsection_warn"}}
-      </details> }}
+      }}
 
 private def summaryDependencyInsightsSection (rows : SummaryRows) : Output.Html :=
   if rows.statementUsedRows.isEmpty && rows.proofUsedRows.isEmpty && rows.groupHealthRows.isEmpty then
     .empty
   else
-    {{ <details class="bp_summary_section">
-        <summary>"Dependency insights"</summary>
+    summarySection "Dependency insights" {{
         <div class="bp_summary_grid">
           {{summaryOptionalCard
               (!rows.statementUsedRows.isEmpty)
@@ -1486,7 +1534,7 @@ private def summaryDependencyInsightsSection (rows : SummaryRows) : Output.Html 
             s!"Group health ({rows.groupHealthRows.size})"
             rows.groupHealthRows
             "groups"}}
-      </details> }}
+      }}
 
 private def summaryMetadataSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showQuickWins := !rows.quickWinRows.isEmpty
@@ -1499,8 +1547,7 @@ private def summaryMetadataSection (data : Summary) (rows : SummaryRows) : Outpu
   if !(showMetadataCards || showMetadataAudit) then
     .empty
   else
-    {{ <details class="bp_summary_section">
-        <summary>"Metadata"</summary>
+    summarySection "Metadata" {{
         {{if showMetadataCards then
             {{<div class="bp_summary_grid">
               {{summaryOptionalCard
@@ -1582,14 +1629,13 @@ private def summaryMetadataSection (data : Summary) (rows : SummaryRows) : Outpu
                   "bp_summary_nested"}}
             </details>}}
           else .empty}}
-      </details> }}
+      }}
 
 private def summaryDiagnosticsSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   if !(data.showDebugDiagnostics && !rows.renderFailureRows.isEmpty) then
     .empty
   else
-    {{ <details class="bp_summary_section">
-        <summary>"Maintainer diagnostics"</summary>
+    summarySection "Maintainer diagnostics" {{
         <div class="bp_summary_grid">
           {{summaryWarnCard
               "Render failures"
@@ -1601,7 +1647,7 @@ private def summaryDiagnosticsSection (data : Summary) (rows : SummaryRows) : Ou
             rows.renderFailureRows
             "render-failure entries"
             "bp_summary_subsection bp_summary_subsection_warn"}}
-      </details> }}
+      }}
 
 private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showHeaviestPrerequisites := !rows.heaviestPrerequisiteRows.isEmpty
@@ -1618,8 +1664,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
       showNoDependents || showProofDebtHotspots) then
     .empty
   else
-    {{ <details class="bp_summary_section">
-        <summary>"Structure and coverage"</summary>
+    summarySection "Structure and coverage" {{
         <div class="bp_summary_grid">
           {{summaryOptionalCard
               (data.coverageSplit.informalOnly > 0)
@@ -1668,7 +1713,7 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
             rows.proofDebtHotspotRows
             "proof-debt hotspots"
             "bp_summary_subsection bp_summary_subsection_warn"}}
-      </details> }}
+      }}
 
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls IO)) :=
   fun _goI _goB _id json _blocks => do
@@ -1717,8 +1762,8 @@ block_extension Block.summary (summary : Summary) where
     return none
   toTeX := none
   toHtml := some summaryBlockToHtml
-  extraCss := withPreviewPanelInlinePreviewCssAssets [summaryCss]
-  extraJs := withInlinePreviewJsAssets [openTargetDetailsJs] []
+  extraCss := summaryAssetBundle.css
+  extraJs := summaryAssetBundle.js
 
 open Verso Doc Elab Syntax in
 def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
