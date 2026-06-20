@@ -309,12 +309,13 @@ from `../-verso-data/api/...`. Generated clients that need to resolve the
 module URL from an arbitrary page should use `api.previewApiModuleUrl()` or
 `api.graphApiModuleUrl()`.
 
-The root files `-verso-data/blueprint-preview-api.mjs` and
-`-verso-data/blueprint-graph-api.mjs` are still emitted as compatibility
-targets. The generated data directory also contains implementation support
-files used by those modules, such as `blueprint-graph-core.js`. Those support
-files are not public import paths. New clients should use the shorter
-`-verso-data/api/` paths.
+Generated sites also emit root implementation modules,
+`-verso-data/blueprint-preview-api.mjs` and
+`-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
+those implementations from stable, shorter import paths. The generated data
+directory also contains internal support files used by those modules, such as
+`blueprint-graph-core.js`; those support files are not public import paths. New
+clients should use the `-verso-data/api/` paths.
 
 URL, graph-data, and key helpers in `api/preview.mjs` are available
 immediately. Manifest/cache loading, rendering, and hydration helpers wait for
