@@ -929,7 +929,7 @@ def nodeDataWithExternal
       kind := some node.kind
       parent := node.parent
       href := resolveHref? label
-      previewKey := PreviewCache.key label .statement
+      previewKey := PreviewCache.statementKey label
       statementUses := statementUses node
       proofUses := proofUses node
       statementStatus := statement
@@ -945,7 +945,7 @@ def nodeDataWithExternal
       kind := none
       parent := none
       href := resolveHref? label
-      previewKey := PreviewCache.key label .statement
+      previewKey := PreviewCache.statementKey label
       statementUses := #[]
       proofUses := #[]
       statementStatus := .blocked
@@ -1410,10 +1410,12 @@ graphs additionally produce a synthetic group overview and one focused subgraph
 per parent group.
 -/
 def mkGraphVariants (graph : Graph String) (options : GraphOptions)
-    (groupTitles : Lean.NameMap String) : Array GraphRenderVariant :=
+    (groupTitles : Lean.NameMap String)
+    (previewKeyForLabel : Name → String := PreviewCache.statementKey) :
+    Array GraphRenderVariant :=
   let previewKeyByNodeId (graph : Graph String) : Array (String × String) :=
     graph.map fun node =>
-      (graphNodeSvgId node.label, PreviewCache.key node.label .statement)
+      (graphNodeSvgId node.label, previewKeyForLabel node.label)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
   let parentChildren := graphParentChildren graph
@@ -1468,6 +1470,10 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
 
 /-- Build the bundled renderer's DOT variants from finalized public graph data. -/
 def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array GraphRenderVariant :=
-  mkGraphVariants data.toGraph options data.groupTitleMap
+  let previewKeyForLabel label :=
+    match data.nodes.find? (fun node => node.label == label) with
+    | some node => node.previewKey
+    | none => PreviewCache.statementKey label
+  mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
 
 end Informal.Graph

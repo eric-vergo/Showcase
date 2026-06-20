@@ -1,6 +1,6 @@
 # Blueprint Roadmap
 
-Last reviewed: 2026-05-06
+Last reviewed: 2026-06-21
 
 This document tracks repository-local engineering work for `verso-blueprint`.
 Requests that should eventually move into upstream `verso`, Lake, or Lean live
@@ -41,8 +41,9 @@ Current shape:
 
 Work:
 
-1. finish consolidating callers around `PreviewSource` so graph, summary,
-   citation, code, and widget previews do not decode preview payloads directly
+1. keep one-label preview callers behind `PreviewSource`; the shared
+   `Selection` API now owns statement/proof fallback, selected facet, and
+   preview lookup keys for traversal-time and environment-time callers
 2. merge the traversal preview cache and widget `elabStx` preview path behind a
    phase-safe representation
 3. define one canonical API for preview labels and titles; avoid mixing raw

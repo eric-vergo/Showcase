@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -49,7 +50,8 @@ private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) 
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
   let href := nodeHref? state node.label <|> node.href
-  { node with title, href }
+  let previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state node.label
+  { node with title, href, previewKey }
 
 private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
     Informal.Graph.GroupData :=
