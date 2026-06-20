@@ -70,8 +70,7 @@ export function getRenderApi() {
   });
 }
 
-export const ready = getRenderApi;
-export const render = getRenderApi();
+export const ready = getRenderApi();
 
 export function dataUrl(filename, baseUrl = currentHref()) {
   const api = currentRenderApi();
@@ -223,7 +222,6 @@ const previewApi = {
   currentRenderApi,
   getRenderApi,
   ready,
-  render,
   onRenderReady,
   loadManifest,
   readManifestStatus,

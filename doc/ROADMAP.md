@@ -9,7 +9,8 @@ in [`UPSTREAM_BACKLOG.md`](./UPSTREAM_BACKLOG.md).
 This is not the place for operational commands, option reference material, or
 architecture narrative. Those live in
 [`MAINTAINER_GUIDE.md`](./MAINTAINER_GUIDE.md),
-[`MANUAL.md`](./MANUAL.md), and
+[`MANUAL.md`](./MANUAL.md),
+[`API.md`](./API.md), and
 [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
 
 ## Working Principles

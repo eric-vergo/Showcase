@@ -81,7 +81,7 @@ def runtime_api_methods(name: str) -> list[str]:
     return sorted(js_object_methods(blueprint_js_source(), name))
 
 
-def manual_stable_api_methods(source: str) -> set[str]:
+def documented_stable_api_methods(source: str) -> set[str]:
     start_marker = "Stable custom-client entrypoints:"
     end_marker = "Blueprint's bundled graph"
     start = source.index(start_marker) + len(start_marker)
@@ -90,7 +90,7 @@ def manual_stable_api_methods(source: str) -> set[str]:
     return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", section))
 
 
-def manual_bundled_helper_methods(source: str) -> set[str]:
+def documented_bundled_helper_methods(source: str) -> set[str]:
     start_marker = "| Helper family | Helpers | Bundled consumers |"
     end_marker = "For new custom interfaces"
     start = source.index(start_marker)

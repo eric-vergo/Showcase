@@ -1,6 +1,29 @@
 export const version = 1;
 
-export function dataUrl(filename, baseUrl = window.location.href) {
+function currentHref() {
+  return typeof window !== "undefined" && window.location ? window.location.href : "";
+}
+
+function currentDocument() {
+  return typeof document !== "undefined" ? document : null;
+}
+
+function isElement(node) {
+  return typeof Element !== "undefined" && node instanceof Element;
+}
+
+function isDocumentLike(node) {
+  return (
+    (typeof Document !== "undefined" && node instanceof Document) ||
+    (typeof DocumentFragment !== "undefined" && node instanceof DocumentFragment)
+  );
+}
+
+function isScriptElement(node) {
+  return !!node && typeof node.tagName === "string" && node.tagName.toLowerCase() === "script";
+}
+
+export function dataUrl(filename, baseUrl = currentHref()) {
   const safeFilename = String(filename || "").trim();
   if (!safeFilename) return "-verso-data/";
   try {
@@ -17,35 +40,36 @@ export function dataUrl(filename, baseUrl = window.location.href) {
   return "-verso-data/" + safeFilename;
 }
 
-export function graphApiModuleUrl(baseUrl = window.location.href) {
+export function graphApiModuleUrl(baseUrl = currentHref()) {
   return dataUrl("blueprint-graph-api.mjs", baseUrl);
 }
 
-export function graphCanvasFor(root = document) {
-  const node = root || document;
-  if (node instanceof Element) {
+export function graphCanvasFor(root = currentDocument()) {
+  const node = root || currentDocument();
+  if (!node) return null;
+  if (isElement(node)) {
     if (node.matches(".bp_graph_canvas")) return node;
     const ownCanvas = node.querySelector(".bp_graph_canvas");
-    if (ownCanvas instanceof Element) return ownCanvas;
+    if (isElement(ownCanvas)) return ownCanvas;
     const block = node.closest(".bp_graph_fullwidth");
-    if (block instanceof Element) {
+    if (isElement(block)) {
       const blockCanvas = block.querySelector(".bp_graph_canvas");
-      if (blockCanvas instanceof Element) return blockCanvas;
+      if (isElement(blockCanvas)) return blockCanvas;
     }
     return null;
   }
-  if (node instanceof Document || node instanceof DocumentFragment) {
+  if (isDocumentLike(node)) {
     const canvas = node.querySelector(".bp_graph_canvas");
-    return canvas instanceof Element ? canvas : null;
+    return isElement(canvas) ? canvas : null;
   }
   return null;
 }
 
 export function readGraphJsonScript(root, selector) {
   const container = graphCanvasFor(root);
-  if (!(container instanceof Element)) return null;
+  if (!isElement(container)) return null;
   const payloadNode = container.querySelector(selector);
-  if (!(payloadNode instanceof HTMLScriptElement)) return null;
+  if (!isScriptElement(payloadNode)) return null;
   try {
     return JSON.parse((payloadNode.textContent || "").trim());
   } catch (_err) {
@@ -53,9 +77,9 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-export function graphFallbackVariants(root = document) {
+export function graphFallbackVariants(root = currentDocument()) {
   const graphRoot = graphCanvasFor(root);
-  if (!(graphRoot instanceof Element)) return [];
+  if (!isElement(graphRoot)) return [];
   const dotSource = graphRoot.querySelector("script.dot-source");
   const dotTxt = dotSource ? (dotSource.textContent || "").trim() : "";
   if (!dotTxt) return [];
@@ -92,11 +116,11 @@ export function graphsFromManifest(manifest) {
     .filter(function (graphData) { return !!graphData; });
 }
 
-export function getGraphData(root = document) {
+export function getGraphData(root = currentDocument()) {
   return normalizeGraphData(readGraphJsonScript(root, "script.bp-graph-data"));
 }
 
-export function getGraphVariants(root = document) {
+export function getGraphVariants(root = currentDocument()) {
   const parsed = readGraphJsonScript(root, "script.bp-graph-variants");
   if (Array.isArray(parsed) && parsed.length > 0) return parsed;
   return graphFallbackVariants(root);

@@ -13,6 +13,7 @@ It is intentionally not:
 
 Those responsibilities live in
 [`MANUAL.md`](./MANUAL.md),
+[`API.md`](./API.md),
 [`MAINTAINER_GUIDE.md`](./MAINTAINER_GUIDE.md), and
 [`ROADMAP.md`](./ROADMAP.md).
 
@@ -389,7 +390,7 @@ The workflow implies a few constraints for renderers:
   custom body rendering, content updates, trigger binding, dismissal binding,
   reposition binding, pointer checks, and keep-open checks without exposing a
   stable external contract. These helpers are not a public custom-client
-  contract unless promoted into the manual's stable API table. New public
+  contract unless promoted into the API reference's stable API table. New public
   browser APIs should start as stable custom-client entries only when an
   external interface can describe its responsibility without depending on
   Blueprint-owned DOM structure; otherwise they should remain bundled helpers
@@ -408,11 +409,11 @@ The workflow implies a few constraints for renderers:
 - **Keep readiness and API guards source-level.**
   Feature JavaScript must start through `window.VersoBlueprint.onRenderReady`;
   direct reads from `window.VersoBlueprint.render` are limited to the runtime
-  bootstrap path. Stable render API additions must be reflected in the Manual's
-  custom-client table, while bundled helper additions stay out of that table
-  unless intentionally promoted. Lean rendering tests should assert emitted
-  markup, stable API wiring, and removed legacy paths; source-level guards and
-  browser tests own private JavaScript helper shape. The harness test
+  bootstrap path. Stable render API additions must be reflected in the API
+  reference's custom-client table, while bundled helper additions stay out of
+  that table unless intentionally promoted. Lean rendering tests should assert
+  emitted markup, stable API wiring, and removed legacy paths; source-level
+  guards and browser tests own private JavaScript helper shape. The harness test
   `tests/harness/test_preview_runtime_api_docs.py` owns these source-level
   guardrails so Lean rendering tests can focus on emitted markup, assets, and
   behavior instead of brittle JavaScript object-shape assertions.

@@ -8,14 +8,15 @@ from tests.preview_runtime_api import (
     RUNTIME_BOOTSTRAP_JS,
     blueprint_js_files,
     blueprint_js_source,
+    documented_bundled_helper_methods,
+    documented_stable_api_methods,
     esm_named_exports,
     js_object_keys,
     js_object_methods,
-    manual_bundled_helper_methods,
-    manual_stable_api_methods,
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+API_DOC = PACKAGE_ROOT / "doc" / "API.md"
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
     "bindDismissHandlers",
@@ -40,38 +41,37 @@ PREVIEW_ESM_EXTRA_EXPORTS = {
     "normalizeGraphData",
     "onRenderReady",
     "ready",
-    "render",
     "version",
 }
 
 
 class PreviewRuntimeApiDocsTests(unittest.TestCase):
-    def test_manual_stable_api_table_matches_runtime_source(self) -> None:
+    def test_api_stable_api_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
-        manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
+        api_doc = API_DOC.read_text(encoding="utf-8")
 
         source_methods = js_object_methods(runtime, "stableCustomClientApi")
-        documented_methods = manual_stable_api_methods(manual)
+        documented_methods = documented_stable_api_methods(api_doc)
 
         self.assertEqual(documented_methods, source_methods)
-        self.assertIn("`window.VersoBlueprint.onRenderReady(callback)`", manual)
+        self.assertIn("`window.VersoBlueprint.onRenderReady(callback)`", api_doc)
         self.assertIn("namespace.onRenderReady = onRenderReady", runtime)
 
-    def test_manual_stable_api_table_excludes_bundled_feature_helpers(self) -> None:
+    def test_api_stable_api_table_excludes_bundled_feature_helpers(self) -> None:
         runtime = blueprint_js_source()
-        manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
+        api_doc = API_DOC.read_text(encoding="utf-8")
 
-        documented_methods = manual_stable_api_methods(manual)
+        documented_methods = documented_stable_api_methods(api_doc)
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(documented_methods & helper_methods)
 
-    def test_manual_bundled_helper_table_matches_runtime_source(self) -> None:
+    def test_api_bundled_helper_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
-        manual = (PACKAGE_ROOT / "doc" / "MANUAL.md").read_text(encoding="utf-8")
+        api_doc = API_DOC.read_text(encoding="utf-8")
 
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
-        documented_methods = manual_bundled_helper_methods(manual)
+        documented_methods = documented_bundled_helper_methods(api_doc)
 
         self.assertEqual(documented_methods, helper_methods)
 
