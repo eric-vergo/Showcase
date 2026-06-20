@@ -131,20 +131,13 @@
     );
   }
 
-  function collectGraphVariants(graphContainer) {
-    const payloadNode = graphContainer.select("script.bp-graph-variants").node();
-    if (payloadNode) {
-      try {
-        const parsed = JSON.parse((payloadNode.textContent || "").trim());
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (_err) {}
-    }
-    const dotTxt = graphContainer.select("script.dot-source").text().trim();
+  function legacyGraphVariants(graphRoot) {
+    if (!(graphRoot instanceof Element)) return [];
+    const dotSource = graphRoot.querySelector("script.dot-source");
+    const dotTxt = dotSource ? (dotSource.textContent || "").trim() : "";
     if (!dotTxt) return [];
-    const fallbackDirection = normalizeGraphDirection(graphContainer.attr("data-bp-graph-direction"));
-    const fallbackPack = normalizeGraphPack(graphContainer.attr("data-bp-graph-pack"));
+    const fallbackDirection = normalizeGraphDirection(graphRoot.getAttribute("data-bp-graph-direction"));
+    const fallbackPack = normalizeGraphPack(graphRoot.getAttribute("data-bp-graph-pack"));
     return [{
       key: "full",
       label: "Full Graph",
@@ -153,6 +146,33 @@
       selectOnNodeId: [],
       hoverOnNodeId: []
     }];
+  }
+
+  function readPublicGraphData(previewUtils, root) {
+    if (previewUtils && typeof previewUtils.getGraphData === "function") {
+      return previewUtils.getGraphData(root);
+    }
+    const api = window.bpGraphApi;
+    if (api && typeof api.getGraphData === "function") {
+      return api.getGraphData(root);
+    }
+    return null;
+  }
+
+  function readPublicGraphVariants(previewUtils, root, graphRoot) {
+    let variants = [];
+    if (previewUtils && typeof previewUtils.getGraphVariants === "function") {
+      variants = previewUtils.getGraphVariants(root);
+    } else {
+      const api = window.bpGraphApi;
+      if (api && typeof api.getGraphVariants === "function") {
+        variants = api.getGraphVariants(root);
+      }
+    }
+    if (Array.isArray(variants) && variants.length > 0) {
+      return variants;
+    }
+    return legacyGraphVariants(graphRoot);
   }
 
   function dotWithGraphAttribute(dot, name, value) {
@@ -211,6 +231,7 @@
       groupHoverController: null,
       groupHoverShownKey: "",
       groupHoverShownNodeId: "",
+      graphData: null,
       graphviz: null,
       renderedVariantKey: "",
       renderedOptionsKey: "",
@@ -546,13 +567,13 @@
   }
 
   window.VersoBlueprint.onRenderReady(function (previewUtils) {
-    Promise.resolve()
+    function bindGraphs() {
+      const graphBlocks = Array.from(document.querySelectorAll(".bp_graph_fullwidth"));
+      if (graphBlocks.length === 0) return;
+      Promise.resolve()
       .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
       .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
       .then(function () {
-      const graphBlocks = Array.from(document.querySelectorAll(".bp_graph_fullwidth"));
-      if (graphBlocks.length === 0) return;
-
       function initGraphBlock(graphBlock) {
         if (!(graphBlock instanceof Element)) return;
         const graphRoot = graphBlock.querySelector(".bp_graph_canvas");
@@ -560,6 +581,11 @@
         const graphContainer = d3.select(graphRoot);
         if (graphContainer.empty()) return;
         const graphState = ensureGraphBlockState(graphBlock);
+        const graphApiData = readPublicGraphData(previewUtils, graphBlock);
+        if (graphApiData) {
+          graphState.graphData = graphApiData;
+          graphBlock.__bpGraphData = graphApiData;
+        }
         const selector = graphBlock.querySelector(".bp_graph_view_select");
         const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
         const packInput = graphBlock.querySelector(".bp_graph_pack_input");
@@ -625,7 +651,7 @@
           { keepOpen: true }
         );
 
-        const rawVariants = collectGraphVariants(graphContainer);
+        const rawVariants = readPublicGraphVariants(previewUtils, graphBlock, graphRoot);
         if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
         const variantsByKey = new Map();
         rawVariants.forEach(function (variant) {
@@ -654,6 +680,7 @@
         });
         const variants = Array.from(variantsByKey.values());
         if (variants.length === 0) return;
+        graphBlock.__bpGraphVariants = variants;
 
         if (selector && selector.options.length === 0) {
           variants.forEach(function (variant) {
@@ -1012,5 +1039,12 @@
 
       graphBlocks.forEach(initGraphBlock);
       });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bindGraphs, { once: true });
+    } else {
+      bindGraphs();
+    }
   });
 })();

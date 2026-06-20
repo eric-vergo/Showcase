@@ -266,22 +266,6 @@ def blueprintWidget : Component GraphParams where
 
 end BlueprintWidget
 
-abbrev GraphNode := Informal.Graph.GraphNode Unit
-abbrev Graph := Informal.Graph.Graph Unit
-
-def graphDotHeader : String := r##"strict digraph "" {
-  rankdir=LR;
-  bgcolor="white";
-  splines=true;
-  nodesep=0.35;
-  ranksep=0.45;
-  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, margin="0.05,0.03", color="#6b7280", penwidth=1.4];
-  edge [color="#6b7280", arrowhead=vee, arrowsize=0.5, penwidth=0.9];
-  graph [fontname="Helvetica"];"##
-
-def Graph.toDot (g : Graph) (resolveGroupTitle : Name → Option String := fun _ => none) : String :=
-  Informal.Graph.Graph.toDot g graphDotHeader (groupLabel? := some resolveGroupTitle)
-
 open Informal Data Environment
 structure BuildResult where
   dot : String
@@ -298,10 +282,11 @@ def buildFor [Monad m] [MonadEnv m] [MonadError m] (label : Name) : m BuildResul
           |>.map (·.1.toString)
           |>.take 12
       throwError m!"No Label Found for '{label}'. Known labels (first {available.size}): {String.intercalate ", " available.toList}"
-  let graph : Graph := Informal.Graph.build state #[label]
-  let dot := graph.toDot (fun group => state.groups.get? group)
+  let graphData := Informal.Graph.buildData state #[label] (groupTitles := state.groups.toArray)
+  let dot := graphData.toDotWith { direction := .LR } Informal.Graph.GraphDotStyle.compact
   let statementPreview? := Informal.PreviewSource.fromEnvironment? env label
-  let includeMathlibLegend := graph.any (fun node => node.color == Informal.Graph.statementBorderMathlibColor)
+  let includeMathlibLegend :=
+    graphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
   let legend := toJson (Informal.Graph.graphLegendGroups includeMathlibLegend)
   pure { dot, statementPreview?, legend }
 

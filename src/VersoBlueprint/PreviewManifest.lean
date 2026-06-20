@@ -18,6 +18,7 @@ import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
+import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
 import VersoBlueprint.Process
@@ -680,6 +681,13 @@ structure File where
   Lean preview key, or citation key.
   -/
   previews : Array Entry := #[]
+  /--
+  Public graph data captured from rendered `{blueprint_graph}` blocks.
+
+  These entries share the same schema as the page-embedded graph data used by
+  the browser runtime.
+  -/
+  graphs : Array Informal.Graph.GraphData := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-
@@ -1426,8 +1434,9 @@ def buildPreviewDataFiles
   let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
   let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
   let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  let graphs := Informal.GraphApi.cachedData state
   pure {
-    manifest := { previews }
+    manifest := { previews, graphs }
     htmlCache := {
       entries := htmlEntries
       hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup

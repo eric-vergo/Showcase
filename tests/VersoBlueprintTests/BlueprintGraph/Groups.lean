@@ -9,11 +9,10 @@ import VersoBlueprintTests.BlueprintGraph.Shared
 namespace Verso.VersoBlueprintTests.BlueprintGraph.Groups
 
 open Lean
-open Informal.Commands
 open Informal.Graph
 open Verso.VersoBlueprintTests.BlueprintGraph.Shared
 
-def groupedGraphInput : Informal.Commands.Graph := #[
+def groupedGraphInput : Informal.Graph.Graph String := #[
   {
     label := `ga_stmt
     deps := #[`gb_source]
@@ -65,13 +64,20 @@ def groupedGraphTitleMap : Lean.NameMap String :=
   groupedGraphTitles.foldl (init := ({} : Lean.NameMap String)) fun acc (group, title) =>
     acc.insert group title
 
-def groupedOverview : Informal.Commands.Graph :=
-  Informal.Commands.mkParentOverviewGraph groupedGraphInput #[`group_alpha, `group_beta] groupedGraphTitleMap
+def groupedOverview : Informal.Graph.Graph String :=
+  Informal.Graph.mkParentOverviewGraph groupedGraphInput #[`group_alpha, `group_beta] groupedGraphTitleMap
 
-def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
-  Informal.Commands.mkGraphVariants
-    { graph := groupedGraphInput, options := { direction := .TB, pack := true }, groupTitles := groupedGraphTitles }
-    (fun _ => none)
+def groupedGraphData : Informal.Graph.GraphData :=
+  {
+    nodes := #[]
+    edges := Informal.Graph.edgesForGraph groupedGraphInput
+    groups := Informal.Graph.groupDataForGraph groupedGraphInput groupedGraphTitles
+  }
+
+def groupedVariants : Array Informal.Graph.GraphRenderVariant :=
+  Informal.Graph.mkGraphVariants
+    groupedGraphInput
+    { direction := .TB, pack := true }
     groupedGraphTitleMap
 
 /-- info: true -/
@@ -79,7 +85,7 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
 #eval
   hasNodeWith groupedOverview `group_alpha (fun n =>
     n.shape == "tab" &&
-    n.displayLabel? == some (Informal.Commands.graphParentDisplayLabel groupedGraphTitleMap `group_alpha) &&
+    n.displayLabel? == some "Readable Alpha Group Title" &&
     n.deps.contains `group_beta &&
     n.proofDeps.contains `group_beta &&
     n.tooltip?.getD "" == "Group View: Readable Alpha Group Title (2 nodes)")
@@ -88,13 +94,14 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
 #guard_msgs in
 #eval
   graphNodeSvgId `group_alpha == "bp-node-group-005Falpha" &&
-  match groupedVariants.find? (·.key == Informal.Commands.groupVariantKey) with
+  match groupedVariants.find? (·.key == Informal.Graph.groupVariantKey) with
   | none => false
   | some variant =>
     let expectedId := graphNodeSvgId `group_alpha
-    let expectedLabel := escapeDotString (Informal.Commands.graphParentDisplayLabel groupedGraphTitleMap `group_alpha)
-    variant.selectOnNodeId.contains (expectedId, Informal.Commands.parentVariantKey `group_alpha) &&
-    variant.hoverOnNodeId.contains (expectedId, Informal.Commands.parentVariantKey `group_alpha) &&
+    let expectedLabel := escapeDotString "Readable Alpha Group Title"
+    let expectedVariantKey := s!"parent:{`group_alpha}"
+    variant.selectOnNodeId.contains (expectedId, expectedVariantKey) &&
+    variant.hoverOnNodeId.contains (expectedId, expectedVariantKey) &&
     variant.dot.contains s!"id=\"{expectedId}\"" &&
     variant.dot.contains s!"label=\"{expectedLabel}\"" &&
     !variant.dot.contains "label=\"group_alpha\""
@@ -102,11 +109,26 @@ def groupedVariants : Array Informal.Commands.GraphRenderVariant :=
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.graphDotHeader |>.contains "pack=false;"
+  Informal.Graph.graphDotHeader |>.contains "pack=false;"
 
 /-- info: true -/
 #guard_msgs in
 #eval
-  Informal.Commands.graphDotHeader { direction := .TB, pack := true } |>.contains "pack=true;"
+  Informal.Graph.graphDotHeader { direction := .TB, pack := true } |>.contains "pack=true;"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  groupedGraphData.edges.any (fun edge =>
+    edge.source == `gb_source &&
+    edge.target == `ga_stmt &&
+    edge.axes == #[Informal.Graph.EdgeAxis.statement]) &&
+  match groupedGraphData.groups.find? (·.label == `group_alpha) with
+  | none => false
+  | some group =>
+    group.title == "Readable Alpha Group Title" &&
+    group.declared &&
+    group.children.contains `ga_stmt &&
+    group.children.contains `ga_proof
 
 end Verso.VersoBlueprintTests.BlueprintGraph.Groups
