@@ -23,6 +23,9 @@ namespace Informal.Cite
 
 open Verso.Genre.Manual.Bibliography
 
+def citeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Commands.inlinePreviewAssetBundle
+
 syntax (name := bib) "bib" ppSpace str : attr
 
 private def parseNameOrSimple (s : String) : Name :=
@@ -513,8 +516,8 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
             })
         | Option.none => st
     pure none
-  extraCss := Informal.Commands.withInlinePreviewCssAssets
-  extraJs := Informal.Commands.withInlinePreviewJsAssets [] []
+  extraCss := citeAssetBundle.css
+  extraJs := citeAssetBundle.js
   toTeX :=
     open Verso.Output.TeX in
     some <| fun go _id data content => do

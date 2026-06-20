@@ -29,6 +29,7 @@ lean_lib VersoBlueprintTests where
   srcDir := "tests"
   roots := #[
     `VersoBlueprintTests.Blueprint.Support,
+    `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,

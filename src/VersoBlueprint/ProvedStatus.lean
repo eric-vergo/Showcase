@@ -17,7 +17,8 @@ The API is organized into:
 - state predicates (`isProved`, `isMissing`, `isIncomplete`, ...),
 - axis predicates (`hasTypeGap`, `hasProofGap`),
 - completion policy (`blocksStatementCompletion`, `blocksProofCompletion`),
-- rendering helpers (`statusLabel`, `sorryLocationText`, `sorryRefCounts`),
+- rendering helpers (`statusLabel`, `sorryLocationText`, `sorryRefCounts`,
+  `presentation`),
 - collection helpers (`any*`),
 - constructors/merging (`of*`, `mergeConservative`),
 - Lean environment bridge (`ConstantInfo.blueprint*`).
@@ -99,6 +100,89 @@ def ProvedStatus.statusLabel : ProvedStatus → String
   | .axiomLike => "axiom-like"
   | .containsSorry _ => "contains sorry"
   | .proved => "proved"
+
+/--
+Presentation data shared by the renderers that show declaration-level Lean
+status. The semantic source remains `ProvedStatus`; this structure keeps the
+small visual vocabulary from being reconstructed independently by each renderer.
+-/
+structure ProvedStatusPresentation where
+  /-- Bracketed status text used in compact declaration-summary rows. -/
+  summaryText : String
+  /-- Status text used in expanded external-code panel rows. -/
+  externalPanelText : String
+  /-- Short status text used in rendered external declaration headers. -/
+  externalHeaderText : String
+  /-- CSS class used by compact declaration-summary rows. -/
+  codeDeclClass : String
+  /-- CSS class used by external declaration badges. -/
+  externalDeclClass : String
+  /-- CSS class suffix used by heading-level code-entry icons. -/
+  codeEntryClassSuffix : String
+  /-- Symbol used by heading-level code-entry icons. -/
+  codeEntrySymbol : String
+  /-- Default symbol used by statement-heading status marks. -/
+  statusMarkSymbol : String
+deriving Repr, Inhabited
+
+/--
+Declaration-level status presentation.
+
+`present := false` handles unresolved external references even when their
+stored semantic status has not already been normalized to `.missing`.
+-/
+def ProvedStatus.presentation (status : ProvedStatus) (present : Bool := true) :
+    ProvedStatusPresentation :=
+  let missingView : ProvedStatusPresentation := {
+    summaryText := "missing declaration"
+    externalPanelText := "missing declaration"
+    externalHeaderText := "missing"
+    codeDeclClass := "bp_code_decl_status_missing"
+    externalDeclClass := "bp_external_decl_missing"
+    codeEntryClassSuffix := "missing"
+    codeEntrySymbol := "!"
+    statusMarkSymbol := "✗"
+  }
+  if !present || status.isMissing then
+    missingView
+  else
+    match status with
+    | .proved =>
+      {
+        summaryText := "complete"
+        externalPanelText := "complete"
+        externalHeaderText := "complete"
+        codeDeclClass := "bp_code_decl_status_ok"
+        externalDeclClass := "bp_external_decl_ok"
+        codeEntryClassSuffix := "proved"
+        codeEntrySymbol := "✓"
+        statusMarkSymbol := "✓"
+      }
+    | .missing =>
+      missingView
+    | .axiomLike =>
+      {
+        summaryText := "axiom-like (no body)"
+        externalPanelText := "axiom-like (no body)"
+        externalHeaderText := "axiom-like"
+        codeDeclClass := "bp_code_decl_status_axiom"
+        externalDeclClass := "bp_external_decl_sorry"
+        codeEntryClassSuffix := "axiom"
+        codeEntrySymbol := "A"
+        statusMarkSymbol := "⚠"
+      }
+    | .containsSorry _ =>
+      let locationText := status.sorryLocationText
+      {
+        summaryText := s!"sorry {locationText}"
+        externalPanelText := s!"contains sorry {locationText}"
+        externalHeaderText := "contains sorry"
+        codeDeclClass := "bp_code_decl_status_warning"
+        externalDeclClass := "bp_external_decl_sorry"
+        codeEntryClassSuffix := "warning"
+        codeEntrySymbol := "⚠"
+        statusMarkSymbol := "✗"
+      }
 
 /-- Aggregate per-axis sorry reference counts `(statementRefs, proofRefs)`. -/
 def ProvedStatus.sorryRefCounts : ProvedStatus → Nat × Nat

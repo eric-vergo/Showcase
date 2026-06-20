@@ -25,6 +25,9 @@ open Lean.Doc.Syntax
 
 namespace Informal
 
+def usesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Commands.inlinePreviewAssetBundle
+
 /--
 Arguments accepted by the inline `{uses ...}` role.
 
@@ -118,8 +121,8 @@ inline_extension Inline.informal (data : InlineData) where
       | Verso.reportError s!"Malformed data in Inline.informal traversal: {data}"
         pure none
     pure none
-  extraCss := Informal.Commands.withInlinePreviewCssAssets
-  extraJs := Informal.Commands.withInlinePreviewJsAssets [] []
+  extraCss := usesAssetBundle.css
+  extraJs := usesAssetBundle.js
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in

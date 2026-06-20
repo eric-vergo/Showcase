@@ -27,31 +27,15 @@ class FakeGitHubApi:
         *,
         pull_requests: dict[int, dict[str, object]] | None = None,
         pull_request_commits: dict[int, list[backport_mod.PullRequestCommit]] | None = None,
-        commit_diffs: dict[str, str] | None = None,
     ) -> None:
         self._pull_requests = pull_requests or {}
         self._pull_request_commits = pull_request_commits or {}
-        self._commit_diffs = commit_diffs or {}
 
     def pull_request(self, number: int) -> dict[str, object]:
         return self._pull_requests[number]
 
     def pull_request_commits(self, number: int) -> list[backport_mod.PullRequestCommit]:
         return self._pull_request_commits[number]
-
-    def commit_diff(self, sha: str) -> str:
-        return self._commit_diffs[sha]
-
-
-def diff_for(line: str) -> str:
-    return (
-        "diff --git a/demo.txt b/demo.txt\n"
-        "index e69de29..4b825dc 100644\n"
-        "--- a/demo.txt\n"
-        "+++ b/demo.txt\n"
-        "@@ -0,0 +1 @@\n"
-        f"+{line}\n"
-    )
 
 
 def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
@@ -143,12 +127,6 @@ Backport v4.26.0: exempt: no longer maintained
                     ),
                 ],
             },
-            commit_diffs={
-                "a" * 40: diff_for("one"),
-                "b" * 40: diff_for("two"),
-                "c" * 40: diff_for("one"),
-                "d" * 40: diff_for("two"),
-            },
         )
         backport_mod.verify_backport_commit_series(api, 11, 13)
 
@@ -158,15 +136,11 @@ Backport v4.26.0: exempt: no longer maintained
                 11: [backport_mod.PullRequestCommit(sha="a" * 40, message="fix: one")],
                 13: [backport_mod.PullRequestCommit(sha="c" * 40, message="fix: one")],
             },
-            commit_diffs={
-                "a" * 40: diff_for("one"),
-                "c" * 40: diff_for("one"),
-            },
         )
         with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing `\\(cherry picked from commit <sha>\\)` provenance"):
             backport_mod.verify_backport_commit_series(api, 11, 13)
 
-    def test_verify_backport_commit_series_rejects_patch_mismatch(self) -> None:
+    def test_verify_backport_commit_series_accepts_release_line_adapted_cherry_picks(self) -> None:
         api = FakeGitHubApi(
             pull_request_commits={
                 11: [backport_mod.PullRequestCommit(sha="a" * 40, message="fix: one")],
@@ -177,13 +151,8 @@ Backport v4.26.0: exempt: no longer maintained
                     )
                 ],
             },
-            commit_diffs={
-                "a" * 40: diff_for("one"),
-                "c" * 40: diff_for("adapted"),
-            },
         )
-        with self.assertRaisesRegex(backport_mod.BackportCheckError, "does not match the patch from source commit"):
-            backport_mod.verify_backport_commit_series(api, 11, 13)
+        backport_mod.verify_backport_commit_series(api, 11, 13)
 
     def test_verify_backport_pr_accepts_structural_match_without_ci_status(self) -> None:
         api = FakeGitHubApi(
@@ -202,10 +171,6 @@ Backport v4.26.0: exempt: no longer maintained
                         message=f"fix: one\n\n(cherry picked from commit {'a' * 40})",
                     )
                 ],
-            },
-            commit_diffs={
-                "a" * 40: diff_for("one"),
-                "c" * 40: diff_for("one"),
             },
         )
         backport_mod.verify_backport_pr(api, 11, "v4.28.0", backport_mod.BackportEntry(branch="v4.28.0", pr_number=13))

@@ -77,7 +77,9 @@ def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : Str
 -- plus user-controlled resize persistence and cheap height resets.
 def loadD3Dot := withPreviewClientReadyJs (include_str "graph.js")
 
--- block_extension Block.dependency_graph (label : String) where
+def graphAssetBundle : BlueprintAssetBundle :=
+  previewPanelAssetBundle (cssExtras := [graphCss]) (jsAfter := [loadD3Dot])
+
 open Verso Doc Elab Genre Manual in
 block_extension Block.graph (graphData : GraphBlockData) where
   -- for TOC
@@ -335,8 +337,8 @@ block_extension Block.graph (graphData : GraphBlockData) where
           {{groupHoverPanel}}
         </div>
       }}
-  extraCss := withPreviewPanelCssAssets [graphCss]
-  extraJs := withPreviewRuntimeJsAssets [] [loadD3Dot]
+  extraCss := graphAssetBundle.css
+  extraJs := graphAssetBundle.js
 
 def buildAll : CoreM Informal.Graph.GraphData := do
   reportImportedConflicts

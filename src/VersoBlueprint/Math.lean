@@ -66,6 +66,14 @@ private def lintBpMathTerm [Monad m] [MonadLiftT IO m] [MonadOptions m]
     logWarningAt (warningRef.getD ref) failure.toMessageData
   | none => pure ()
 
+private def mathHtmlAssets (texPrelude : String) : HtmlAssets :=
+  {
+    extraJs := [
+      Informal.Macros.texPreludeTableJs texPrelude,
+      Informal.Macros.blueprintMathJs
+    ]
+  }
+
 inline_extension Inline.bpMath (data : BpMathData) where
   data := toJson data
   traverse _id data _contents := do
@@ -74,12 +82,7 @@ inline_extension Inline.bpMath (data : BpMathData) where
         pure none
     modify fun st =>
       st.modifyHtmlAssets fun assets =>
-        assets.combine {
-          extraJs := [
-            Informal.Macros.texPreludeTableJs texPrelude,
-            Informal.Macros.blueprintMathJs
-          ]
-        }
+        assets.combine (mathHtmlAssets texPrelude)
     pure none
   toTeX :=
     open Verso.Output.TeX in

@@ -1481,20 +1481,25 @@ div.proof_content {
 }
 "##
 
-def codeCssAssets : List String :=
-  Informal.Commands.withBlueprintCssAssets [css, Verso.Genre.Manual.docstringStyle]
-
-def blockCssAssets : List String :=
-  Informal.Commands.withPreviewPanelInlinePreviewCssAssets
-    [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle]
-
 -- Keep this module rebuilt when relation panel runtime changes.
 def relationPanelJs : String :=
   Informal.Commands.withPreviewClientReadyJs (include_str "relation-panel.js")
 
+def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Commands.blueprintCssAssetBundle [css, Verso.Genre.Manual.docstringStyle]
+
+def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  Informal.Commands.previewPanelInlinePreviewAssetBundle
+    (cssExtras := [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle])
+    (jsAfter := [relationPanelJs, Informal.StyleSwitcher.jsInteractive])
+
+def codeCssAssets : List String :=
+  codeAssetBundle.css
+
+def blockCssAssets : List String :=
+  blockAssetBundle.css
+
 def blockJsAssets : List String :=
-  Informal.Commands.withInlinePreviewJsAssets
-    []
-    [relationPanelJs, Informal.StyleSwitcher.jsInteractive]
+  blockAssetBundle.js
 
 end Informal.Block.Assets

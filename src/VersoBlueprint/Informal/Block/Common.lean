@@ -59,12 +59,7 @@ deriving Repr, Inhabited
 def BlockStatusMark.text (s : BlockStatusMark) : String :=
   match s.symbolOverride? with
   | some txt => txt
-  | none =>
-    match s.status with
-    | .proved => "✓"
-    | .missing => "✗"
-    | .axiomLike => "⚠"
-    | .containsSorry _ => "✗"
+  | none => s.status.presentation.statusMarkSymbol
 
 def BlockStatusMark.toHtml (s : BlockStatusMark) : Output.Html :=
   open Verso.Output.Html in
@@ -139,24 +134,8 @@ register_option verso.blueprint.foldCodeBlocks : Bool := {
   descr := "Render VersoBlueprint Lean, Rust, and external code panels as collapsed details blocks"
 }
 
-def provedStatusHasSorry (status : Data.ProvedStatus) : Bool :=
-  status.isIncomplete
-
-def provedStatusLocationText (status : Data.ProvedStatus) : String :=
-  status.sorryLocationText
-
-def provedStatusContainsSorry (status : Data.ProvedStatus) : Bool :=
-  status.containsExplicitSorry
-
-def provedStatusSummaryText (status : Data.ProvedStatus) : String :=
-  match status with
-  | .missing => "missing declaration"
-  | .axiomLike => "axiom-like (no body)"
-  | .containsSorry _ => s!"sorry {provedStatusLocationText status}"
-  | .proved => "unknown"
-
 def externalDeclHasGap (decl : Data.ExternalRef) : Bool :=
-  decl.present && provedStatusHasSorry decl.provedStatus
+  decl.present && decl.provedStatus.isIncomplete
 
 def externalCodeEntryTitle (found total missing withGaps : Nat) : String :=
   if missing > 0 then

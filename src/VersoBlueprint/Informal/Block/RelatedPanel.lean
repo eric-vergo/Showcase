@@ -37,25 +37,25 @@ private structure GroupRenderInfo where
   title : String
   declared : Bool := false
 
-/-- Render-time context shared by group and dependency header panels. -/
-structure Context where
+/-- Traversal-backed render context shared by group and dependency header panels. -/
+structure RenderContext where
   state : Verso.Genre.Manual.TraverseState
   storedBlocks : Array BlockData
 
 /-- Collect the traversal data needed to render related-block panels. -/
-def Context.ofState (state : Verso.Genre.Manual.TraverseState) : Context := {
+def RenderContext.ofState (state : Verso.Genre.Manual.TraverseState) : RenderContext := {
   state
   storedBlocks := collectStoredBlocks state
 }
 
-private def blockSummaryTitle (ctx : Context) (data : BlockData) : String :=
+private def blockSummaryTitle (ctx : RenderContext) (data : BlockData) : String :=
   data.displayTitle ctx.state
 
-private def storedBlockByLabel? (ctx : Context) (label : Data.Label) : Option BlockData :=
+private def storedBlockByLabel? (ctx : RenderContext) (label : Data.Label) : Option BlockData :=
   ctx.storedBlocks.find? (·.label == label)
 
 private def groupRenderInfo?
-    (ctx : Context) (data : BlockData) : Option GroupRenderInfo := do
+    (ctx : RenderContext) (data : BlockData) : Option GroupRenderInfo := do
   let parent ← data.parent
   match resolveStoredGroupData? ctx.state parent with
   | some groupData => some { label := parent, title := groupData.header, declared := true }
@@ -259,7 +259,7 @@ private def addUsedByEntry
     acc.push <| mergeUsedByEntry { source } useRef isProof
 
 private def collectUsedByEntries
-    (ctx : Context) (target : Data.Label) : Array UsedByEntry :=
+    (ctx : RenderContext) (target : Data.Label) : Array UsedByEntry :=
   sortUsedByEntries <| ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target then
       acc
@@ -281,7 +281,7 @@ private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProo
   }
 
 private def addUsesEntry
-    (ctx : Context) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    (ctx : RenderContext) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     Array UsesEntry :=
   if acc.any (·.label == useRef.label) then
     acc.map fun entry =>
@@ -303,7 +303,7 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
   | none, none => a.label.toString < b.label.toString
 
 private def collectUsesEntries
-    (ctx : Context) (data : BlockData) : Array UsesEntry :=
+    (ctx : RenderContext) (data : BlockData) : Array UsesEntry :=
   let source := (storedBlockByLabel? ctx data.label).getD data
   let isProof :=
     match data.kind with
@@ -316,7 +316,7 @@ private def collectUsesEntries
   |>.qsort usesEntryLess
 
 private def collectGroupEntries
-    (ctx : Context) (target : BlockData) (group : GroupRenderInfo) :
+    (ctx : RenderContext) (target : BlockData) (group : GroupRenderInfo) :
     Array BlockData :=
   ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target.label then
@@ -345,25 +345,29 @@ private def relationBadge (className title text : String) : Output.Html :=
   open Verso.Output.Html in
   {{<span class={{className}} title={{title}}>{{.text true text}}</span>}}
 
+private def relationBadgeBaseClass : String :=
+  "bp_relation_axis_badge"
+
+private def relationScopedBadgeClass (scope variant : String) : String :=
+  s!"{relationBadgeBaseClass} bp_relation_badge_{scope} bp_relation_badge_{scope}_{variant}"
+
+private def relationAxisBadgeClass (axis : String) : String :=
+  s!"{relationBadgeBaseClass} bp_relation_badge_axis bp_relation_badge_{axis}"
+
 private def useOriginBadgeClass : Data.UseOrigin → String
-  | .manual =>
-    "bp_relation_axis_badge bp_relation_badge_origin bp_relation_badge_origin_manual"
-  | .automatic =>
-    "bp_relation_axis_badge bp_relation_badge_origin bp_relation_badge_origin_automatic"
+  | .manual => relationScopedBadgeClass "origin" "manual"
+  | .automatic => relationScopedBadgeClass "origin" "automatic"
 
 private def useIntentBadgeClass : Data.UseIntent → String
-  | .regular =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_regular"
-  | .auxiliary =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_auxiliary"
-  | .technical =>
-    "bp_relation_axis_badge bp_relation_badge_intent bp_relation_badge_intent_technical"
+  | .regular => relationScopedBadgeClass "intent" "regular"
+  | .auxiliary => relationScopedBadgeClass "intent" "auxiliary"
+  | .technical => relationScopedBadgeClass "intent" "technical"
 
 private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let statementBadge : Array Output.Html :=
     if inStatement then
       #[relationBadge
-          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_statement"
+          (relationAxisBadgeClass "statement")
           "Declared in the statement"
           "statement"]
     else
@@ -371,7 +375,7 @@ private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let proofBadge : Array Output.Html :=
     if inProof then
       #[relationBadge
-          "bp_relation_axis_badge bp_relation_badge_axis bp_relation_badge_proof"
+          (relationAxisBadgeClass "proof")
           "Declared in the proof"
           "proof"]
     else
@@ -398,7 +402,7 @@ private def renderUseMetadataBadges
 
 private def mkBlockEntry {m}
     [Monad m]
-    (ctx : Context)
+    (ctx : RenderContext)
     (source : BlockData) (previewId : String)
     (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
@@ -416,7 +420,7 @@ private def mkBlockEntry {m}
 
 private def mkLabelEntry {m}
     [Monad m]
-    (ctx : Context)
+    (ctx : RenderContext)
     (label : Data.Label) (previewId : String)
     (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
@@ -555,7 +559,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}
     [Monad m]
-    (ctx : Context)
+    (ctx : RenderContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   match data.kind with
@@ -574,7 +578,7 @@ def renderUsedByExtra {m}
 /-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
-    (ctx : Context)
+    (ctx : RenderContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries ctx data
@@ -597,7 +601,7 @@ def renderUsesExtra {m}
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
     [Monad m]
-    (ctx : Context)
+    (ctx : RenderContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
   match data.kind, groupRenderInfo? ctx data with

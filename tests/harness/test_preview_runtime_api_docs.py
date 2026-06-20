@@ -158,6 +158,15 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("window.bpSlideNodeRuntime", runtime)
         self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 
+    def test_graph_runtime_uses_structured_variants_only(self) -> None:
+        runtime = (BLUEPRINT_SRC / "Commands" / "graph.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("readPublicGraphVariants(previewUtils, graphBlock)", runtime)
+        self.assertIn("previewUtils.getGraphVariants(root)", runtime)
+        self.assertNotIn("legacyGraphVariants", runtime)
+
     def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
         direct_runtime_reads: list[str] = []
         missing_ready_callbacks: list[str] = []
