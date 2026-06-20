@@ -171,6 +171,14 @@
     return blueprintDataUrl("blueprint-manifest.json");
   }
 
+  function graphApiModuleUrl() {
+    return blueprintDataUrl("blueprint-graph-api.mjs");
+  }
+
+  function previewApiModuleUrl() {
+    return blueprintDataUrl("blueprint-preview-api.mjs");
+  }
+
   function graphCanvasFor(root) {
     const node = root || document;
     if (node instanceof Element) {
@@ -203,6 +211,25 @@
     }
   }
 
+  function graphFallbackVariants(root) {
+    const graphRoot = graphCanvasFor(root);
+    if (!(graphRoot instanceof Element)) return [];
+    const dotSource = graphRoot.querySelector("script.dot-source");
+    const dotTxt = dotSource ? (dotSource.textContent || "").trim() : "";
+    if (!dotTxt) return [];
+    return [{
+      key: "full",
+      label: "Full Graph",
+      dot: dotTxt,
+      options: {
+        direction: graphRoot.getAttribute("data-bp-graph-direction"),
+        pack: graphRoot.getAttribute("data-bp-graph-pack")
+      },
+      selectOnNodeId: [],
+      hoverOnNodeId: []
+    }];
+  }
+
   function normalizeGraphDataPayload(rawData) {
     if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
     return {
@@ -229,7 +256,8 @@
 
   function collectGraphVariants(root) {
     const parsed = readGraphJsonScript(root, "script.bp-graph-variants");
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    return graphFallbackVariants(root);
   }
 
   function loadManifestGraphs(url, options) {
@@ -242,8 +270,8 @@
     }).then(graphDataFromManifest);
   }
 
-  function loadBlueprintGraphs() {
-    return loadManifestGraphs(blueprintManifestUrl());
+  function loadBlueprintGraphs(options) {
+    return loadManifestGraphs(blueprintManifestUrl(), options);
   }
 
   function missingPreviewKeyDiagnosticHtml() {
@@ -2022,6 +2050,8 @@
     graphsFromManifest: graphDataFromManifest,
     loadManifestGraphs: loadManifestGraphs,
     loadGraphs: loadBlueprintGraphs,
+    graphApiModuleUrl: graphApiModuleUrl,
+    previewApiModuleUrl: previewApiModuleUrl,
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
     resolvePreview: resolveBlueprintPreview,
@@ -2071,6 +2101,8 @@
     graphsFromManifest: previewDataApi.graphsFromManifest,
     loadManifestGraphs: previewDataApi.loadManifestGraphs,
     loadGraphs: previewDataApi.loadGraphs,
+    graphApiModuleUrl: previewDataApi.graphApiModuleUrl,
+    previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
     resolvePreview: previewDataApi.resolvePreview,
@@ -2102,11 +2134,15 @@
   const graphApi =
     window.bpGraphApi && typeof window.bpGraphApi === "object" ? window.bpGraphApi : {};
   graphApi.version = 1;
+  graphApi.graphCanvasFor = graphCanvasFor;
+  graphApi.readGraphJsonScript = readGraphJsonScript;
+  graphApi.normalizeGraphData = normalizeGraphDataPayload;
   graphApi.getGraphData = previewDataApi.getGraphData;
   graphApi.getGraphVariants = previewDataApi.getGraphVariants;
   graphApi.graphsFromManifest = previewDataApi.graphsFromManifest;
   graphApi.loadManifestGraphs = previewDataApi.loadManifestGraphs;
   graphApi.loadGraphs = previewDataApi.loadGraphs;
+  graphApi.graphApiModuleUrl = previewDataApi.graphApiModuleUrl;
   window.bpGraphApi = graphApi;
 
   function reportRenderReadyError(err) {

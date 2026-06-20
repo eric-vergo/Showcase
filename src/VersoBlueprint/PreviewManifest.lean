@@ -537,6 +537,15 @@ def manifestFilename : String := "blueprint-manifest.json"
 
 def htmlCacheFilename : String := "blueprint-html-cache.json"
 
+def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
+
+def previewApiModuleFilename : String := "blueprint-preview-api.mjs"
+
+-- Keep this module rebuilt when the standalone browser ESM APIs change.
+private def graphApiModuleJs : String := include_str "blueprint-graph-api.mjs"
+
+private def previewApiModuleJs : String := include_str "blueprint-preview-api.mjs"
+
 inductive EntryKind where
   | block
   | leanDecl
@@ -1561,6 +1570,8 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.createDirAll dataDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
+  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleJs
+  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleJs
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 
