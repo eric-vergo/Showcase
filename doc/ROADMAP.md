@@ -76,9 +76,11 @@ Work:
    traversal indexes as rendered-site projections; consolidate only if the
    replacement keeps numbering, hrefs, preview ids, and HTML-cache keys
    phase-safe
-3. define a shared status record derived from `Data.Node` plus external
-   declaration checks, and route graph, summary, and local block badges through
-   it
+3. extend the centralized declaration-level presentation in
+   `ProvedStatus.presentation` into a broader node-health record derived from
+   `Data.Node` plus external declaration checks; declaration rows, summary
+   detail rows, heading marks, code-entry icons, and external-code rows already
+   share the declaration-status vocabulary
 4. encode the intended ownership rules for `CodeRef.external`, especially the
    difference between Blueprint-owned labels and Lean-owned declaration names
 5. decide whether richer group metadata belongs in the core data model, then

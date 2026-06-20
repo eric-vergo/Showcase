@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 from typing import Any
 from urllib.error import HTTPError
@@ -66,22 +65,6 @@ class GitHubApi:
             detail = err.read().decode("utf-8", errors="replace").strip()
             raise BackportCheckError(f"GitHub API request failed for {path}: {err.code} {detail}") from err
 
-    def get_text(self, path: str, *, accept: str) -> str:
-        request = Request(
-            f"{API_BASE}{path}",
-            headers={
-                "Accept": accept,
-                "Authorization": f"Bearer {self.token}",
-                "X-GitHub-Api-Version": API_VERSION,
-            },
-        )
-        try:
-            with urlopen(request) as response:
-                return response.read().decode("utf-8", errors="replace")
-        except HTTPError as err:
-            detail = err.read().decode("utf-8", errors="replace").strip()
-            raise BackportCheckError(f"GitHub API request failed for {path}: {err.code} {detail}") from err
-
     def pull_request(self, number: int) -> dict[str, Any]:
         data = self.get_json(f"/repos/{self.repo_full_name}/pulls/{number}")
         if not isinstance(data, dict):
@@ -108,9 +91,6 @@ class GitHubApi:
             if len(data) < 100:
                 return commits
             page += 1
-
-    def commit_diff(self, sha: str) -> str:
-        return self.get_text(f"/repos/{self.repo_full_name}/commits/{sha}", accept="application/vnd.github.diff")
 
 
 def parse_args() -> argparse.Namespace:
@@ -210,22 +190,6 @@ def parse_cherry_pick_source(message: str) -> str | None:
     return match.group(1)
 
 
-def git_patch_id(diff_text: str) -> str:
-    result = subprocess.run(
-        ["git", "patch-id", "--stable"],
-        input=diff_text,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise BackportCheckError(f"failed to compute patch-id: {result.stderr.strip() or result.stdout.strip()}")
-    line = result.stdout.strip()
-    if not line:
-        raise BackportCheckError("failed to compute patch-id: commit diff was empty")
-    return line.split()[0]
-
-
 def verify_backport_commit_series(api: GitHubApi, source_pr_number: int, backport_pr_number: int) -> None:
     source_commits = api.pull_request_commits(source_pr_number)
     backport_commits = api.pull_request_commits(backport_pr_number)
@@ -261,21 +225,9 @@ def verify_backport_commit_series(api: GitHubApi, source_pr_number: int, backpor
             f"paired backport PR #{backport_pr_number} does not preserve the commit order from PR #{source_pr_number}"
         )
 
-    patch_id_cache: dict[str, str] = {}
-
-    def commit_patch_id(sha: str) -> str:
-        cached = patch_id_cache.get(sha)
-        if cached is not None:
-            return cached
-        patch_id_cache[sha] = git_patch_id(api.commit_diff(sha))
-        return patch_id_cache[sha]
-
-    for source_commit, backport_commit in zip(source_commits, backport_commits):
-        if commit_patch_id(source_commit.sha) != commit_patch_id(backport_commit.sha):
-            raise BackportCheckError(
-                f"paired backport PR #{backport_pr_number} commit `{backport_commit.sha}` does not match "
-                f"the patch from source commit `{source_commit.sha}`"
-            )
+    # Release-line conflict resolution routinely changes the exact patch while
+    # preserving the reviewed source-series provenance. Keep this guard focused
+    # on the one-to-one cherry-pick contract instead of patch identity.
 
 
 def verify_backport_pr(

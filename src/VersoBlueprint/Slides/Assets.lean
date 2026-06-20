@@ -19,27 +19,29 @@ def blueprintSlidesJsFilename : String := "blueprint-slides.js"
 
 private def slideNodeCss : String := include_str "blueprint-slides.css"
 
-def blueprintSlidesCss : String :=
-  String.intercalate "\n\n" <|
-    Informal.Commands.withPreviewPanelInlinePreviewCssAssets
-      [Informal.Block.Assets.css, Informal.Graft.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]
-
-def blueprintSlidesCssFile : VersoSlides.CssFile where
-  filename := blueprintSlidesCssFilename
-  contents := ⟨blueprintSlidesCss⟩
-
 /--
 Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
 while generating the slide deck.
 -/
 private def slideNodeHydrationJs : String := include_str "blueprint-slides.js"
 
+def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
+  { css :=
+      (Informal.Commands.previewPanelInlinePreviewCssAssetBundle
+        [Informal.Block.Assets.css, Informal.Graft.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]).css
+    js :=
+      (Informal.Commands.inlinePreviewJsAssetBundle.withJs []
+        [Informal.Block.Assets.relationPanelJs, slideNodeHydrationJs]).js }
+
+def blueprintSlidesCss : String :=
+  String.intercalate "\n\n" blueprintSlidesAssetBundle.css
+
+def blueprintSlidesCssFile : VersoSlides.CssFile where
+  filename := blueprintSlidesCssFilename
+  contents := ⟨blueprintSlidesCss⟩
+
 def blueprintSlidesJs : String :=
-  String.intercalate "\n\n" <|
-    Informal.Commands.inlinePreviewJsAssets ++
-      [ Informal.Block.Assets.relationPanelJs
-      , slideNodeHydrationJs
-      ]
+  String.intercalate "\n\n" blueprintSlidesAssetBundle.js
 
 private def pushIfMissing [BEq α] (values : Array α) (value : α) : Array α :=
   if values.contains value then values else values.push value

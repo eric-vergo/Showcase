@@ -163,7 +163,9 @@ generated HTML or browser tests:
 The tracked owner inventory lives in `EMBEDDED_ASSET_OWNERS` in
 `scripts/blueprint_harness_utils.py`. When adding a new `include_str` browser
 asset, add it to that inventory and cover the mapping in the harness tests so
-artifact generation rebuilds the right Lean owner.
+artifact generation rebuilds the right Lean owner. Keep semantic asset ordering
+in the Lean `BlueprintAssetBundle` definitions; the Python inventory is only
+rebuild metadata.
 
 ### Generate Review Artifacts
 

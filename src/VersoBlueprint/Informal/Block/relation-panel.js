@@ -1,22 +1,13 @@
 (function () {
-  function previewExceptionHtml(previewUtils, fallbackDetail) {
-    return previewUtils.previewMessageHtml({
+  function relationPreviewDiagnosticOptions(detail) {
+    return {
       rootClass: "bp_relation_preview_message",
       titleClass: "bp_relation_preview_message_title",
       detailClass: "bp_relation_preview_message_detail",
       kind: "error",
       title: "Preview unavailable",
-      detail: fallbackDetail || "The preview cache content could not be loaded."
-    });
-  }
-
-  function setRelationBodyHtml(surface, html, renderOptions) {
-    surface.replaceBody({
-      heading: surface.title ? (surface.title.textContent || "") : "",
-      html: html,
-      allowEmpty: true,
-      renderOptions: renderOptions || { hydrate: false, renderMath: false }
-    });
+      detail: detail || "The preview cache content could not be loaded."
+    };
   }
 
   function bindRelationPanel(previewUtils, panel) {
@@ -111,31 +102,24 @@
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
       const requestToken = ++activateRequestToken;
       selectItem(item);
-      setRelationBodyHtml(surface, initialLoadingHtml);
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }
-      try {
-        const result = await previewUtils.resolvePreview(previewKey);
-        if (requestToken !== activateRequestToken) return;
-        if (!result || !result.ok) {
-          const diagnosticHtml = result && typeof result.diagnosticHtml === "string"
-            ? result.diagnosticHtml
-            : "";
-          setRelationBodyHtml(
-            surface,
-            diagnosticHtml || previewExceptionHtml(previewUtils, "The preview cache content could not be loaded.")
-          );
-          return;
-        }
-        setRelationBodyHtml(surface, result.html, {});
-      } catch (_err) {
-        if (requestToken !== activateRequestToken) return;
-        setRelationBodyHtml(surface, previewExceptionHtml(
-          previewUtils,
+      await previewUtils.renderPreviewIntoSurface(surface, previewKey, {
+        loadingHtml: initialLoadingHtml,
+        renderOptions: {},
+        loadingRenderOptions: { hydrate: false, renderMath: false },
+        diagnosticRenderOptions: { hydrate: false, renderMath: false },
+        shouldRender: function () {
+          return requestToken === activateRequestToken;
+        },
+        fallbackDiagnostic: relationPreviewDiagnosticOptions(
+          "The preview cache content could not be loaded."
+        ),
+        exceptionDiagnostic: relationPreviewDiagnosticOptions(
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
-        ));
-      }
+        )
+      });
     }
 
     items.forEach(function (item) {

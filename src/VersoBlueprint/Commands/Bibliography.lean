@@ -29,6 +29,9 @@ deriving FromJson, ToJson
 
 def bibliographyCss := include_str "bibliography.css"
 
+def bibliographyAssetBundle : BlueprintAssetBundle :=
+  inlinePreviewAssetBundle (cssExtras := [bibliographyCss]) (jsBefore := [openTargetDetailsJs])
+
 open Verso Doc Elab Genre Manual in
 block_extension Block.bibliography (biblio : BibliographyData) where
   data := toJson biblio
@@ -133,8 +136,8 @@ block_extension Block.bibliography (biblio : BibliographyData) where
           </details>
         </div>
       }}
-  extraCss := Informal.Commands.withInlinePreviewCssAssets [bibliographyCss]
-  extraJs := Informal.Commands.withInlinePreviewJsAssets [openTargetDetailsJs] []
+  extraCss := bibliographyAssetBundle.css
+  extraJs := bibliographyAssetBundle.js
 
 open Verso Doc Elab Syntax in
 def mkBibliographyPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do

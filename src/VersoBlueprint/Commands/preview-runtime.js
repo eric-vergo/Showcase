@@ -1371,6 +1371,76 @@
     return surface;
   }
 
+  async function renderPreviewIntoSurface(surface, previewKey, options) {
+    if (!surface || typeof surface.replaceBody !== "function") {
+      throw new Error("renderPreviewIntoSurface surface must be a preview surface");
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    const heading = readStringOption(
+      opts,
+      "heading",
+      surface.title instanceof Element ? (surface.title.textContent || "") : ""
+    );
+    const loadingHtml = readStringOption(opts, "loadingHtml", "");
+    const renderOptions = readObjectOption(opts, "renderOptions", {});
+    const loadingRenderOptions =
+      readObjectOption(opts, "loadingRenderOptions", { hydrate: false, renderMath: false });
+    const diagnosticRenderOptions =
+      readObjectOption(opts, "diagnosticRenderOptions", { hydrate: false, renderMath: false });
+    const shouldRender = readFunctionOption(opts, "shouldRender", null);
+    const mayRender = function () {
+      return !shouldRender || shouldRender();
+    };
+    const replaceBody = function (html, bodyRenderOptions) {
+      if (!mayRender()) return false;
+      surface.replaceBody({
+        heading: heading,
+        html: html,
+        allowEmpty: true,
+        renderOptions: bodyRenderOptions
+      });
+      return true;
+    };
+    const fallbackDiagnostic = function (optionName, fallbackDetail) {
+      const messageOptions = readObjectOption(opts, optionName, {});
+      return previewMessageHtml(Object.assign({
+        kind: "error",
+        title: "Preview unavailable",
+        detail: fallbackDetail
+      }, messageOptions));
+    };
+
+    if (loadingHtml.length > 0) {
+      replaceBody(loadingHtml, loadingRenderOptions);
+    }
+    try {
+      const result = await resolveBlueprintPreview(previewKey);
+      if (!mayRender()) return result;
+      if (!result || !result.ok) {
+        const diagnosticHtml = result && typeof result.diagnosticHtml === "string"
+          ? result.diagnosticHtml
+          : "";
+        replaceBody(
+          diagnosticHtml ||
+            fallbackDiagnostic("fallbackDiagnostic", "The preview cache content could not be loaded."),
+          diagnosticRenderOptions
+        );
+        return result;
+      }
+      replaceBody(result.html, renderOptions);
+      return result;
+    } catch (_err) {
+      replaceBody(
+        fallbackDiagnostic(
+          "exceptionDiagnostic",
+          "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
+        ),
+        diagnosticRenderOptions
+      );
+      return null;
+    }
+  }
+
   function bindPreviewTriggers(options) {
     const opts = options && typeof options === "object" ? options : {};
     const triggerRoot = readRootOption(opts, "triggerRoot", document);
@@ -2008,7 +2078,8 @@
     escapeHtml: escapeHtml,
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
-    createPreviewSurface: createPreviewSurface
+    createPreviewSurface: createPreviewSurface,
+    renderPreviewIntoSurface: renderPreviewIntoSurface
   };
 
   const previewLifecycleHelpers = {
@@ -2057,6 +2128,7 @@
     previewDebugLabel: previewHydrationHelpers.previewDebugLabel,
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
+    renderPreviewIntoSurface: previewContentHelpers.renderPreviewIntoSurface,
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces
   };

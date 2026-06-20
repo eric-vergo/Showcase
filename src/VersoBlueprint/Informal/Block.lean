@@ -84,7 +84,7 @@ block_extension Block.informal (data : BlockData) where
         let s ← HtmlT.state
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
-        let relatedPanelContext := RelatedPanel.Context.ofState s
+        let relatedPanelContext := RelatedPanel.RenderContext.ofState s
         let attrs := s.htmlId id
         let codeHref : Option String :=
           match Informal.TraversalIndex.InlineCode.object? s data.label with

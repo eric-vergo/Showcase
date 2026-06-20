@@ -235,15 +235,8 @@ private def mkProvenance (workspaceRoot : System.FilePath)
       .outWorkspace moduleName none
 
 private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclHeaderBadge :=
-  match status with
-  | .proved =>
-    { className := "bp_external_decl_ok", text := "complete" }
-  | .missing =>
-    { className := "bp_external_decl_missing", text := "missing" }
-  | .axiomLike =>
-    { className := "bp_external_decl_sorry", text := "axiom-like" }
-  | .containsSorry _ =>
-    { className := "bp_external_decl_sorry", text := "contains sorry" }
+  let view := status.presentation
+  { className := view.externalDeclClass, text := view.externalHeaderText }
 
 /--
 Build a full snapshot for one external declaration reference using the environment
