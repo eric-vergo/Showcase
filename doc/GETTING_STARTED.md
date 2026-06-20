@@ -209,5 +209,7 @@ After copying the template:
 After the first site renders:
 
 1. read [doc/MANUAL.md](./MANUAL.md) for the full authoring surface
-2. return to [project_template/README.md](../project_template/README.md) when
+2. read [doc/API.md](./API.md) when you need stable Lean, generated-data, or
+   browser integration APIs
+3. return to [project_template/README.md](../project_template/README.md) when
    you want to compare your project against the starter layout

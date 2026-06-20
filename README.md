@@ -22,6 +22,8 @@ If you want to start a Blueprint project today, read these in order:
 1. [project_template/README.md](./project_template/README.md)
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)
 3. [doc/MANUAL.md](./doc/MANUAL.md)
+4. [doc/API.md](./doc/API.md) when you need stable Lean, generated-data, or
+   browser integration APIs
 
 ## Current Project Shape
 
@@ -198,7 +200,8 @@ manifest, its schema, and the rendered-fragment cache
 (`blueprint-html-cache.json`) used by preview consumers. The cache includes the
 hover payloads needed by cached Lean fragments. These are command-line flags
 passed to the generator binary, such as
-`--dump-manifest`, `--dump-html-cache`, and `--dump-schema`.
+`--dump-manifest`, `--dump-html-cache`, and `--dump-schema`. See
+[doc/API.md](./doc/API.md) for the stable generated-data contract.
 
 ### Widget
 
@@ -254,19 +257,20 @@ Read these in order:
    project and file layout
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md): first Blueprint walkthrough
 3. [doc/MANUAL.md](./doc/MANUAL.md): authoring and rendering reference
+4. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs
 
 ### Developer Documentation
 
-4. [doc/CONTRIBUTING.md](./doc/CONTRIBUTING.md): contribution conventions for
+5. [doc/CONTRIBUTING.md](./doc/CONTRIBUTING.md): contribution conventions for
    this repository
-5. [doc/MAINTAINER_GUIDE.md](./doc/MAINTAINER_GUIDE.md): repository-local
+6. [doc/MAINTAINER_GUIDE.md](./doc/MAINTAINER_GUIDE.md): repository-local
    generation, validation, CI publication, and worktree workflow
-6. [scripts/README.md](./scripts/README.md): lightweight guide to the
+7. [scripts/README.md](./scripts/README.md): lightweight guide to the
    repository scripts and harness entry points
-7. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
+8. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
    boundaries
-8. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
-9. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
+9. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
+10. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
    back into `verso`, Lake, or Lean
 
 ### Agent Helper Skill

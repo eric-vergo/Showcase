@@ -18,7 +18,8 @@ It focuses on:
 
 End-user onboarding lives in
 [`../project_template/README.md`](../project_template/README.md),
-[`GETTING_STARTED.md`](./GETTING_STARTED.md), and [`MANUAL.md`](./MANUAL.md).
+[`GETTING_STARTED.md`](./GETTING_STARTED.md), [`MANUAL.md`](./MANUAL.md), and
+[`API.md`](./API.md).
 Architecture background lives in [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
 Planned cleanup and follow-up work live in [`ROADMAP.md`](./ROADMAP.md).
 
@@ -824,9 +825,10 @@ Current project-specific reference:
    [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the user-facing project
    shape.
 2. Read [`MANUAL.md`](./MANUAL.md) for authoring, rendering, and options.
-3. Return here for repository-local commands, outputs, and worktree behavior.
-4. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branch, commit, PR, and
+3. Read [`API.md`](./API.md) for stable Lean, generated-data, and browser APIs.
+4. Return here for repository-local commands, outputs, and worktree behavior.
+5. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branch, commit, PR, and
    local coordination conventions.
-5. Read [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md) before touching
+6. Read [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md) before touching
    architecture boundaries.
-6. Read [`ROADMAP.md`](./ROADMAP.md) before starting structural cleanup.
+7. Read [`ROADMAP.md`](./ROADMAP.md) before starting structural cleanup.
