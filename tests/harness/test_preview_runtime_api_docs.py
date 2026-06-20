@@ -8,6 +8,8 @@ from tests.preview_runtime_api import (
     RUNTIME_BOOTSTRAP_JS,
     blueprint_js_files,
     blueprint_js_source,
+    esm_named_exports,
+    js_object_keys,
     js_object_methods,
     manual_bundled_helper_methods,
     manual_stable_api_methods,
@@ -31,6 +33,15 @@ INTERNAL_ONLY_HELPERS = {
     "renderHtmlInto",
     "resetPanelPosition",
     "shouldKeepOpen",
+}
+PREVIEW_ESM_EXTRA_EXPORTS = {
+    "currentRenderApi",
+    "getRenderApi",
+    "normalizeGraphData",
+    "onRenderReady",
+    "ready",
+    "render",
+    "version",
 }
 
 
@@ -71,6 +82,22 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(source_methods & helper_methods)
+
+    def test_preview_esm_exports_stable_custom_client_api(self) -> None:
+        runtime = blueprint_js_source()
+        source = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(encoding="utf-8")
+
+        stable_methods = js_object_methods(runtime, "stableCustomClientApi")
+        named_exports = esm_named_exports(source)
+        default_methods = js_object_keys(source, "previewApi")
+        helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
+
+        self.assertLessEqual(stable_methods, named_exports)
+        self.assertLessEqual(stable_methods, default_methods)
+        self.assertEqual(named_exports, stable_methods | PREVIEW_ESM_EXTRA_EXPORTS)
+        self.assertEqual(default_methods, stable_methods | PREVIEW_ESM_EXTRA_EXPORTS)
+        self.assertFalse(named_exports & helper_methods)
+        self.assertFalse(default_methods & helper_methods)
 
     def test_internal_runtime_helpers_are_not_exported(self) -> None:
         runtime = blueprint_js_source()

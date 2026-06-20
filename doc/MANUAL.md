@@ -688,7 +688,37 @@ Graph data is available through stable Lean, manifest, and browser APIs:
   `window.VersoBlueprint.onRenderReady` for a rendered graph block, or
   `api.loadGraphs()` for standalone clients that want the manifest `graphs`
   array without requiring a graph block on the current page. The same helpers
-  are also exposed on `window.bpGraphApi` for graph-specific clients.
+  are also exposed on `window.bpGraphApi` for graph-specific clients. Generated
+  sites also emit `-verso-data/blueprint-graph-api.mjs` for ordinary browser
+  modules:
+
+  ```javascript
+  // Import graph helpers from the generated graph API module.
+  import { loadGraphs, getGraphData } from "../-verso-data/blueprint-graph-api.mjs";
+
+  // Load every finalized graph record from blueprint-manifest.json.graphs.
+  const graphs = await loadGraphs();
+
+  // Read graph data embedded in a rendered graph block on the current page.
+  const graph = getGraphData(document);
+  ```
+
+  When a client must resolve the module URL relative to an arbitrary generated
+  page, use `api.graphApiModuleUrl()` from the render API:
+
+  ```javascript
+  // Wait until the generated preview runtime has installed the render API.
+  window.VersoBlueprint.onRenderReady(async function (api) {
+    // Resolve and import the generated graph API module relative to this page.
+    const graphApi = await import(api.graphApiModuleUrl());
+
+    // Load every finalized graph record from the generated manifest.
+    const graphs = await graphApi.loadGraphs();
+
+    // Use the records in the custom client.
+    console.log(graphs.length);
+  });
+  ```
 
 Lean-side consumers should choose the API that matches their phase. Before
 Verso traversal finishes, graph data is semantic and may not yet include
@@ -1056,6 +1086,89 @@ API installed by the standard Blueprint preview/runtime asset. It loads the
 manifest and rendered-fragment cache from the page's `-verso-data/` directory,
 keeps load status for diagnostics, and hydrates inserted fragments.
 
+Generated sites also emit the same stable custom-client surface as an ESM
+module at `-verso-data/blueprint-preview-api.mjs`. URL, graph-data, and key
+helpers are available immediately; manifest/cache loading, rendering, and
+hydration helpers wait for the page runtime before delegating to the shared
+render API:
+
+```javascript
+// Import the key builder and body-fragment renderer from the generated module.
+import {
+  previewKey,
+  renderPreviewInto
+} from "../-verso-data/blueprint-preview-api.mjs";
+
+// Build the manifest/cache key for one rendered statement preview.
+const key = previewKey("addition_right_identity", "statement");
+
+// Choose the DOM element where the rendered fragment should be inserted.
+const target = document.querySelector("#audit-preview");
+if (target) {
+  // Render only the preview body fragment into the target element.
+  await renderPreviewInto(target, key);
+}
+```
+
+When a page already has the generated module path and preview key, it can render
+the full generated Blueprint node directly:
+
+```html
+<!-- Provide a target element for the rendered Blueprint node. -->
+<div id="blueprint-node"></div>
+
+<script type="module">
+  // Point at the generated ESM preview/render API module.
+  const apiModulePath = "../-verso-data/blueprint-preview-api.mjs";
+
+  // Use a full preview key: "<label>--<facet>".
+  const key = "addition_right_identity--statement";
+
+  // Import the full-node renderer from the generated module.
+  const { renderCanonicalPreviewInto } = await import(apiModulePath);
+
+  // Find the target element in this page.
+  const target = document.querySelector("#blueprint-node");
+  if (target) {
+    // Render the same Blueprint node wrapper used on the generated page.
+    const result = await renderCanonicalPreviewInto(target, key);
+
+    // Surface diagnostics when the key or generated source page is unavailable.
+    if (!result.ok) {
+      console.warn("Could not render Blueprint node:", result.reason);
+    }
+  }
+</script>
+```
+
+For generated clients that need to resolve the module URL from an arbitrary
+page, use `api.previewApiModuleUrl()`:
+
+```javascript
+// Wait for the generated runtime so it can resolve URLs for this page.
+window.VersoBlueprint.onRenderReady(async function (api) {
+  // Dynamically import the generated preview/render module.
+  const previewApi = await import(api.previewApiModuleUrl());
+
+  // Build a normalized preview key from a label and facet.
+  const key = previewApi.previewKey("addition_right_identity", "statement");
+
+  // Choose the DOM element that will receive the rendered fragment.
+  const target = document.querySelector("#audit-preview");
+  if (target) {
+    // Render the preview body fragment through the imported module.
+    await previewApi.renderPreviewInto(target, key);
+  }
+});
+```
+
+The generated ESM modules expose these entrypoint groups:
+
+| Module | Exports |
+| --- | --- |
+| `blueprint-preview-api.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`, `render`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `hydrate`. |
+| `blueprint-graph-api.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`. |
+
 Use `renderPreviewInto` when the client just needs to place a preview body
 fragment into the page:
 
@@ -1093,8 +1206,10 @@ window.VersoBlueprint.onRenderReady(async function (api) {
 The in-repo `preview_runtime_showcase` test blueprint includes the same pattern
 as a standalone browser client on its `Custom Render Client` page. It also
 includes a graph-data card that calls `api.loadGraphs()` to read
-`blueprint-manifest.json.graphs` without embedding a rendered graph. The client
-asset lives in
+`blueprint-manifest.json.graphs` without embedding a rendered graph, a
+`type="module"` example that imports `renderPreviewInto` from
+`-verso-data/blueprint-preview-api.mjs`, and a graph module example that imports
+`loadGraphs` from `-verso-data/blueprint-graph-api.mjs`. The client asset lives in
 `tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/custom-render-client.js`,
 with the page shell in
 `tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/CustomRenderClient.lean`.
@@ -1149,6 +1264,8 @@ Stable custom-client entrypoints:
 | `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
 | `api.getGraphData(element)` / `api.getGraphVariants(element)` | Read page-embedded graph data and render variants from a rendered graph block. |
 | `api.graphsFromManifest(manifestJson)` / `api.loadManifestGraphs(url, options)` / `api.loadGraphs()` | Decode or fetch finalized graph records from `blueprint-manifest.json.graphs`; `loadGraphs` uses the current page's generated manifest URL. |
+| `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. |
+| `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
 | `api.resolvePreview(key)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |
