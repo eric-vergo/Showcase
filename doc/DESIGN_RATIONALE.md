@@ -57,7 +57,8 @@ Command modules are split by concern:
 - the target-details opener in `VersoBlueprint/Commands/open-target-details.js`
 - the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
 - the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
-- summary preview binding in `VersoBlueprint/Commands/summary-preview.js`
+- descriptor-driven summary and code-summary preview binding in the shared
+  preview runtime
 
 Informal-block support is now split across smaller modules instead of one large
 `Block.lean` bucket:
@@ -67,8 +68,6 @@ Informal-block support is now split across smaller modules instead of one large
 - `Informal/Block/Assets.lean`:
   block-specific CSS and browser JS bundle wiring; the block-owned preview
   handlers live in adjacent JS assets
-- `Informal/Block/code-summary-preview.js`:
-  code-summary preview binding
 - `Informal/Block/relation-panel.js`:
   relation-panel preview binding (`uses`, `used by`, and group panels)
 - `Informal/Block/Store.lean`:
@@ -91,9 +90,7 @@ Shared and feature-specific browser assets stay with their owning commands:
 - `Commands/preview-runtime.js`
 - `Commands/inline-preview.js`
 - `Commands/open-target-details.js`
-- `Commands/summary-preview.js`
 - `Commands/graph.js`
-- `Informal/Block/code-summary-preview.js`
 - `Informal/Block/relation-panel.js`
 
 Per-command CSS overlays stay with their commands:
@@ -291,10 +288,51 @@ This inventory is also the answer to "how many render contexts do we have?" for
 grafted Blueprint nodes. `VersoBlueprint.Graft.Render` owns the one concrete
 manifest/cache render context, `Informal.Graft.RenderContext`. It stores the
 manifest index, HTML-cache index, and error logger. `VersoBlueprint.Slides.Render`
-only aliases that type and supplies slide-specific render configuration. Manual
+uses that context with slide-specific render configuration. Manual
 grafts do not use a manifest render context, because they already have the live
 `TraverseState`; they still end at `Informal.Graft.renderNodeWithContent` so the
 block shell is assembled the same way.
+
+### Node Component Ownership
+
+A rendered Blueprint node is intentionally assembled from a small set of owned
+components. When adding or changing node UI, use this table as the duplication
+check: a component should have one semantic renderer, with genre- or
+browser-specific code limited to configuration, lookup, insertion, or
+hydration.
+
+| Component | Single owner | Used by | Duplication status |
+| --- | --- | --- | --- |
+| Node wrapper, heading, title row, label, body container, and folded/open details shape | `Informal.Block.Render.renderInformalBlockModel` through `renderInformalBlockShell` | normal Manual blocks, manifest/cache rendering, grafted nodes, Slides nodes | single Lean owner |
+| Statement metadata panel for owner, effort, priority, tags, and PR link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
+| Header-extra slot ordering and wrapper classes | `Informal.Block.Render.renderHeaderExtras` | group, uses, used-by, code, and custom extras in normal and manifest-backed nodes | single layout owner |
+| Relation panel/chip markup and relation-row badges | `Informal.RelatedPanel.renderPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | single Lean owner |
+| Relation panel browser activation, loading/error replacement, and cache lookup | `Informal/Block/relation-panel.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` trigger and dismissal binding | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single JS owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and relation-panel JS reuses the Lean-rendered loading body and only owns runtime error diagnostics |
+| Code-summary trigger, template, and preview panel shell | `Informal.HoverRender.templatePreviewRoot`, configured by `Informal.CodeSummary.renderCodeSummaryPreview` | heading code badges and code-panel indicators | shared wrapper helper, code-summary-specific selectors |
+| Code-summary semantics, declaration rows, status marks, and indicators | `Informal.CodeSummary` | node heading code extra and code-panel summary indicator | single semantic owner |
+| Companion Lean/external-code panel shell | `Informal.mkCodePanel` | inline Lean panels, external declaration panels, Rust panels, manifest/cache-backed code panels | single panel-shell owner |
+| External declaration rows and rendered declaration body strategy | `Informal.ExternalCode.renderExternalDeclRowsWith` | external-code panels and HTML-cache-backed Lean-code previews | shared row/status/footer owner with page-hover and self-contained body strategies |
+| Manifest/cache-backed block shell assembly | `Informal.PreviewManifest.BlockRender.renderWithRenderedContent` | Slides, grafts, and custom generated consumers | single manifest-backed assembly owner; callers only supply config and content |
+| Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
+| Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime.js` `resolvePreview` and `renderPreviewInto` | graph, summary, relation panels, inline previews, custom browser clients | single JS data/cache owner |
+| Browser canonical generated-node insertion | `Commands/preview-runtime.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
+| Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, descriptor-driven template binding, `hidePreviewSurfaces`, and panel helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
+| Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
+| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
+| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; preview panel slots, trigger lifetimes, Escape close, and resize/scroll binding use surfaces; popover binding uses the shared runtime popover helper |
+| Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime.js` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
+
+When adding node UI, use this checklist before introducing a renderer or
+browser helper:
+
+1. Identify the semantic owner for the component in the table above.
+2. Keep genre-specific Lean code to lookup, options, rendered body content, or
+   caller-provided attributes.
+3. Keep browser code to cache lookup, insertion, hydration, and interaction
+   behavior; do not reconstruct node semantics from DOM fragments.
+4. Prefer existing shell, metadata, relation-panel, code-panel, and preview
+   helper APIs before adding a new wrapper.
+5. Add a new owner to this table when a genuinely new component appears.
 
 ### Render-Path Consequences
 
@@ -327,12 +365,23 @@ The workflow implies a few constraints for renderers:
 
 - **The browser render API has two tiers.**
   Custom clients should treat `onRenderReady`, manifest/cache loading and
-  status readers, keyed lookup, `resolvePreview`, `renderPreviewInto`, and
-  `hydrate` as the stable integration surface. Blueprint's bundled feature
-  scripts also share helper methods for panel positioning, close-button
-  behavior, template-root binding, and feature hydrator registration. Those
+  status readers, keyed lookup, `resolvePreview`, `renderPreviewInto`,
+  `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, and `hydrate` as the
+  stable integration surface. `resolvePreview` and `renderPreviewInto` expose
+  body fragments for clients that own their wrapper. The canonical-preview
+  helpers follow the manifest entry's generated-page link and extract the
+  actual Lean-rendered Blueprint node wrapper, so clients that want normal
+  Blueprint visuals do not need to reconstruct headings, relation chips, or
+  code extras in JavaScript. Blueprint's bundled feature
+  scripts also share helper methods for runtime panel creation, surface-owned
+  trigger/dismissal binding, surface-owned panel positioning and pointer
+  checks, template-root binding, and feature hydrator registration. Those
   helpers keep bundled graph, summary, relation-panel, inline-preview, and
-  slide scripts on one runtime path, but they are not a public custom-client
+  slide scripts on one runtime path. `createPreviewSurface` is the
+  component-shaped helper in this tier: it groups panel slots, behavior state,
+  custom body rendering, content updates, trigger binding, dismissal binding,
+  reposition binding, pointer checks, and keep-open checks without exposing a
+  stable external contract. These helpers are not a public custom-client
   contract unless promoted into the manual's stable API table. New public
   browser APIs should start as stable custom-client entries only when an
   external interface can describe its responsibility without depending on
@@ -341,11 +390,12 @@ The workflow implies a few constraints for renderers:
 
 - **Split JavaScript by responsibility, not feature semantics.**
   The current preview runtime is still bundled as one asset, but its internal
-  responsibilities are the boundaries for any future split: debug/template
-  utilities, manifest and rendered-fragment cache stores, preview resolution,
-  fragment insertion and hydration, panel behavior helpers, template binding,
-  and API readiness. A split module may load files, join entries by preview key,
-  insert opaque fragments, or call hydrators; it should not infer Blueprint
+  responsibilities are the boundaries for any future split: preview-data access,
+  fragment rendering and hydration, template binding, panel/surface content,
+  panel lifecycle, debug/hydration hooks, and API readiness. These groups are
+  deliberately close to future component boundaries. A split module may load
+  files, join entries by preview key, insert opaque fragments, own a preview
+  surface's local UI state, or call hydrators; it should not infer Blueprint
   relation topology, ownership, status, or code associations from HTML markup.
 
 - **Keep readiness and API guards source-level.**

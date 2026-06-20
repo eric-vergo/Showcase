@@ -1,45 +1,22 @@
 (function () {
-  function previewMessageHtml(previewUtils, kind, title, detail) {
-    const escapeHtml = previewUtils.escapeHtml;
-    const safeKind = String(kind || "info").trim() || "info";
-    let html =
-      '<div class="bp_relation_preview_message" data-bp-preview-message="' +
-      escapeHtml(safeKind) +
-      '">';
-    html +=
-      '<div class="bp_relation_preview_message_title">' +
-      escapeHtml(title || "Preview unavailable") +
-      "</div>";
-    if (detail) {
-      html +=
-        '<div class="bp_relation_preview_message_detail">' +
-        escapeHtml(detail) +
-        "</div>";
-    }
-    html += "</div>";
-    return html;
-  }
-
-  function loadingPreviewHtml(previewUtils) {
-    return previewMessageHtml(
-      previewUtils,
-      "loading",
-      "Loading preview",
-      "Reading this preview from the rendered-fragment cache."
-    );
-  }
-
   function previewExceptionHtml(previewUtils, fallbackDetail) {
-    return previewMessageHtml(
-      previewUtils,
-      "error",
-      "Preview unavailable",
-      fallbackDetail || "The preview cache content could not be loaded."
-    );
+    return previewUtils.previewMessageHtml({
+      rootClass: "bp_relation_preview_message",
+      titleClass: "bp_relation_preview_message_title",
+      detailClass: "bp_relation_preview_message_detail",
+      kind: "error",
+      title: "Preview unavailable",
+      detail: fallbackDetail || "The preview cache content could not be loaded."
+    });
   }
 
-  function setRelationBodyHtml(previewUtils, body, html) {
-    previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false });
+  function setRelationBodyHtml(surface, html, renderOptions) {
+    surface.replaceBody({
+      heading: surface.title ? (surface.title.textContent || "") : "",
+      html: html,
+      allowEmpty: true,
+      renderOptions: renderOptions || { hydrate: false, renderMath: false }
+    });
   }
 
   function bindRelationPanel(previewUtils, panel) {
@@ -49,15 +26,20 @@
 
     const wrap = panel.closest(".bp_relation_wrap");
     const chip = wrap instanceof Element ? wrap.querySelector(".bp_relation_chip") : null;
-    const title = panel.querySelector(".bp_relation_preview_title");
-    const headerLabel = panel.querySelector(".bp_relation_preview_header_label");
-    const body = panel.querySelector(".bp_relation_preview_body");
-    if (!(title instanceof Element) || !(headerLabel instanceof Element) || !(body instanceof Element)) return;
+    const surface = previewUtils.createPreviewSurface({
+      panel: panel,
+      titleSelector: ".bp_relation_preview_title",
+      headerLabelSelector: ".bp_relation_preview_header_label",
+      bodySelector: ".bp_relation_preview_body",
+      defaults: { mode: "hover", placement: "anchored" }
+    });
+    if (!surface || !(surface.headerLabel instanceof Element)) return;
 
-    const defaultTitle = (title.textContent || "").trim() || "Relation preview";
+    const defaultTitle = (surface.title.textContent || "").trim() || "Relation preview";
+    const initialLoadingHtml = (surface.body.innerHTML || "").trim();
     const items = Array.from(panel.querySelectorAll(".bp_relation_item[data-bp-relation-preview-id]"));
-    let closeTimer = null;
     let activateRequestToken = 0;
+    let relationLifecycle = null;
 
     function setExpanded(expanded) {
       if (chip instanceof Element) {
@@ -66,10 +48,7 @@
     }
 
     function cancelClose() {
-      if (closeTimer !== null) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
+      if (relationLifecycle) relationLifecycle.cancelHide();
     }
 
     function activeItem() {
@@ -86,9 +65,13 @@
           other.classList.toggle("bp_relation_item_active", other === item);
         }
       });
-      title.textContent = itemTitle;
-      previewUtils.setPreviewHeaderLink(headerLabel, item);
-      setRelationBodyHtml(previewUtils, body, "");
+      surface.replaceBody({
+        heading: itemTitle,
+        source: item,
+        html: "",
+        allowEmpty: true,
+        renderOptions: { hydrate: false, renderMath: false }
+      });
     }
 
     function loadActivePreview() {
@@ -118,15 +101,8 @@
       setExpanded(false);
     }
 
-    function scheduleClose() {
-      cancelClose();
-      closeTimer = window.setTimeout(function () {
-        closeTimer = null;
-        if (wrap instanceof Element) {
-          wrap.classList.remove("bp_relation_wrap_open");
-        }
-        setExpanded(false);
-      }, 180);
+    function wrapIsOpen() {
+      return wrap instanceof Element && wrap.classList.contains("bp_relation_wrap_open");
     }
 
     async function activate(item, options) {
@@ -135,7 +111,7 @@
       const previewKey = (item.getAttribute("data-bp-relation-preview-key") || "").trim();
       const requestToken = ++activateRequestToken;
       selectItem(item);
-      setRelationBodyHtml(previewUtils, body, loadingPreviewHtml(previewUtils));
+      setRelationBodyHtml(surface, initialLoadingHtml);
       if (opts.openWrap !== false) {
         openWrap({ loadPreview: false });
       }
@@ -147,16 +123,15 @@
             ? result.diagnosticHtml
             : "";
           setRelationBodyHtml(
-            previewUtils,
-            body,
+            surface,
             diagnosticHtml || previewExceptionHtml(previewUtils, "The preview cache content could not be loaded.")
           );
           return;
         }
-        previewUtils.renderHtmlInto(body, result.html);
+        setRelationBodyHtml(surface, result.html, {});
       } catch (_err) {
         if (requestToken !== activateRequestToken) return;
-        setRelationBodyHtml(previewUtils, body, previewExceptionHtml(
+        setRelationBodyHtml(surface, previewExceptionHtml(
           previewUtils,
           "The preview cache content could not be loaded. Refresh the page, or rebuild the site if this persists."
         ));
@@ -181,45 +156,35 @@
 
     if (wrap instanceof Element && chip instanceof Element) {
       setExpanded(wrap.classList.contains("bp_relation_wrap_open"));
-      const previewAwareClose = function (ev) {
-        if (previewUtils.shouldKeepOpen(ev.relatedTarget, wrap, panel)) return;
-        scheduleClose();
-      };
-      chip.addEventListener("mouseenter", openWrap);
-      chip.addEventListener("focusin", openWrap);
-      chip.addEventListener("mouseleave", previewAwareClose);
-      chip.addEventListener("focusout", previewAwareClose);
-      panel.addEventListener("mouseenter", openWrap);
-      panel.addEventListener("focusin", openWrap);
-      panel.addEventListener("mouseleave", previewAwareClose);
-      panel.addEventListener("focusout", previewAwareClose);
-      chip.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        cancelClose();
-        wrap.classList.toggle("bp_relation_wrap_open");
-        const expanded = wrap.classList.contains("bp_relation_wrap_open");
-        setExpanded(expanded);
-        if (expanded) {
-          loadActivePreview();
-        }
+      relationLifecycle = surface.bindTriggers({
+        triggerRoot: wrap,
+        triggerSelector: ".bp_relation_chip",
+        triggerBoundAttr: "data-bp-relation-chip-bound",
+        panelBoundAttr: "data-bp-relation-panel-lifetime-bound",
+        show: function () { openWrap(); },
+        hide: closeWrap,
+        getActiveTrigger: function () { return chip; },
+        shouldKeepOpen: function (_trigger, ev) {
+          return surface.shouldKeepOpen(ev && ev.relatedTarget, wrap);
+        },
+        onPanelEnter: function () { openWrap(); },
+        bindWindow: false
       });
-      panel.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-      });
-      document.addEventListener("click", function (ev) {
-        if (!(ev.target instanceof Element)) {
-          closeWrap();
-          return;
-        }
-        if (!wrap.contains(ev.target)) {
-          closeWrap();
-        }
-      });
-      document.addEventListener("keydown", function (ev) {
-        if (ev.key === "Escape") {
-          closeWrap();
-        }
+      surface.bindDismissal({
+        owner: wrap,
+        root: wrap,
+        trigger: chip,
+        boundAttr: "data-bp-relation-dismiss-bound",
+        isOpen: wrapIsOpen,
+        close: closeWrap,
+        toggle: function () {
+          if (wrapIsOpen()) {
+            closeWrap();
+          } else {
+            openWrap();
+          }
+        },
+        stopPanelClick: true
       });
     }
   }

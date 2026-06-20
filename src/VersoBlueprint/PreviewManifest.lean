@@ -453,6 +453,10 @@ private def highlightedTacticShowGuardBefore : String :=
   "if (inst.reference.className == 'tactic') {
             const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
 
+private def highlightedTacticShowGuardBeforeNoScope : String :=
+  "if (inst.reference.className == 'tactic') {
+            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
+
 private def highlightedTacticShowGuardAfter : String :=
   "if (inst.reference.className == 'tactic') {
             if (!inst.reference.querySelector(\".tactic-state\")) {
@@ -463,6 +467,10 @@ private def highlightedTacticShowGuardAfter : String :=
 private def highlightedTacticContentBefore : String :=
   "if (tgt.className == 'tactic') {
             const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
+
+private def highlightedTacticContentBeforeNoScope : String :=
+  "if (tgt.className == 'tactic') {
+            const state = tgt.querySelector(\".tactic-state\").cloneNode(true);"
 
 private def highlightedTacticContentAfter : String :=
   "if (tgt.className == 'tactic') {
@@ -476,11 +484,22 @@ private def isHighlightedStartupJs (source : String) : Bool :=
   source.contains "let docsJson = \"-verso-docs.json\";" &&
     source.contains "const defaultTippyProps = {"
 
+private def replaceFirstHighlightedJs?
+    (beforeOptions : List String)
+    (after source : String) : Option String :=
+  match beforeOptions with
+  | [] => none
+  | before :: rest =>
+      if source.contains before then
+        some (source.replace before after)
+      else
+        replaceFirstHighlightedJs? rest after source
+
 private def replaceRequiredHighlightedJs
-    (label before after source : String) : String :=
-  if source.contains before then
-    source.replace before after
-  else
+    (label : String) (beforeOptions : List String) (after source : String) : String :=
+  match replaceFirstHighlightedJs? beforeOptions after source with
+  | some source => source
+  | none =>
     panic! s!"Blueprint highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
 
 private def patchHighlightedStartupJs (js : JS) : JS :=
@@ -491,15 +510,15 @@ private def patchHighlightedStartupJs (js : JS) : JS :=
     js.js
       |> replaceRequiredHighlightedJs
           "docstring textContent read"
-          highlightedDocstringInnerTextRead
+          [highlightedDocstringInnerTextRead]
           highlightedDocstringTextContentRead
       |> replaceRequiredHighlightedJs
           "tactic show guard"
-          highlightedTacticShowGuardBefore
+          [highlightedTacticShowGuardBefore, highlightedTacticShowGuardBeforeNoScope]
           highlightedTacticShowGuardAfter
       |> replaceRequiredHighlightedJs
           "tactic content guard"
-          highlightedTacticContentBefore
+          [highlightedTacticContentBefore, highlightedTacticContentBeforeNoScope]
           highlightedTacticContentAfter
   { js with js := patched }
 
