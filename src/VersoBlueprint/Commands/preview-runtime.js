@@ -1463,6 +1463,35 @@
     }
   }
 
+  async function resolvePreviewHtml(previewKey, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const fallbackHtml = readStringOption(opts, "fallbackHtml", "");
+    try {
+      const result = await resolveBlueprintPreview(previewKey);
+      if (result && result.ok && typeof result.html === "string" && result.html.length > 0) {
+        return {
+          ok: true,
+          key: result.key,
+          html: result.html,
+          result: result
+        };
+      }
+      return {
+        ok: false,
+        key: result && typeof result.key === "string" ? result.key : previewKey,
+        html: fallbackHtml,
+        result: result || null
+      };
+    } catch (_err) {
+      return {
+        ok: false,
+        key: previewKey,
+        html: fallbackHtml,
+        result: null
+      };
+    }
+  }
+
   function bindPreviewTriggers(options) {
     const opts = options && typeof options === "object" ? options : {};
     const triggerRoot = readRootOption(opts, "triggerRoot", document);
@@ -2103,7 +2132,8 @@
     previewMessageHtml: previewMessageHtml,
     createPreviewPanel: createPreviewPanel,
     createPreviewSurface: createPreviewSurface,
-    renderPreviewIntoSurface: renderPreviewIntoSurface
+    renderPreviewIntoSurface: renderPreviewIntoSurface,
+    resolvePreviewHtml: resolvePreviewHtml
   };
 
   const previewLifecycleHelpers = {
@@ -2153,6 +2183,7 @@
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
     renderPreviewIntoSurface: previewContentHelpers.renderPreviewIntoSurface,
+    resolvePreviewHtml: previewContentHelpers.resolvePreviewHtml,
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces
   };

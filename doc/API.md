@@ -564,7 +564,7 @@ callbacks, or generated preview code still need them directly.
 | Helper family | Helpers | Bundled consumers |
 | --- | --- | --- |
 | Template lifecycle | `collectPreviewTemplates` | Graph-local preview stores; summary and code-summary previews use Lean-emitted DOM descriptors that the runtime auto-binds |
-| Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `renderPreviewIntoSurface`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
+| Surface, shell, and content | `createPreviewSurface`, `createPreviewPanel`, `renderPreviewIntoSurface`, `resolvePreviewHtml`, `previewMessageHtml`, `escapeHtml` | Graph preview panels, inline preview panels, relation panels, and runtime diagnostics |
 | Behavior, positioning, and dismissal | `bindAnchoredPopover`, `hidePreviewSurfaces` | Graph popovers, slide-change cleanup, and feature-specific positioning callbacks |
 | Hydration and debug hooks | `registerPreviewHydrator`, `previewDebug`, `previewDebugLabel` | Bundled previews that need feature-specific post-render binding or local runtime diagnostics |
 
@@ -579,10 +579,13 @@ updates, close-button wiring, trigger binding, dismissal binding, reposition
 binding, pointer checks, and keep-open checks into one controller object.
 `renderPreviewIntoSurface` layers shared preview lookup, diagnostics, loading
 content, stale-request checks, and rendered-fragment insertion on top of that
-surface controller. Bundled feature scripts should prefer
+surface controller. `resolvePreviewHtml` provides the narrower shared lookup
+path for bundled feature scripts that need to keep feature-specific panel
+rendering or fallback rules. Bundled feature scripts should prefer
 `surface.bindTriggers`, `surface.bindDismissal`, `surface.bindRepositioner`,
 `surface.position`, `surface.pointerWithin`, `surface.shouldKeepOpen`, and
-`renderPreviewIntoSurface` over direct lifecycle and cache-resolution helpers.
+`renderPreviewIntoSurface` or `resolvePreviewHtml` over direct lifecycle and
+cache-resolution helpers.
 External clients should stay on the stable custom-client API above.
 
 For new custom interfaces, prefer the highest-level entry point that fits the
