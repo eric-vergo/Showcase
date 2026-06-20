@@ -798,9 +798,6 @@ private def Summary.previewLabels (data : Summary) : Array Name :=
 -- Keep this binding in Lean so summary CSS edits ride along with command module rebuilds.
 def summaryCss := include_str "summary.css"
 
--- Keep this module rebuilt when the embedded summary preview runtime changes.
-def summaryPreviewJs : String := withPreviewClientReadyJs (include_str "summary-preview.js")
-
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
 open Verso.Multi (AllRemotes)
@@ -942,20 +939,17 @@ private def summaryCapRows (rows : Array Output.Html) (noun : String) : Array Ou
 
 private def summaryDetailsList (title : String) (rows : Array Output.Html)
     (className : String := "bp_summary_subsection") (open? : Bool := false) : Output.Html :=
-  if open? then
-    {{ <details class={{className}} open>
-        <summary>{{.text true title}}</summary>
-        <ul class="bp_summary_list">
-          {{rows}}
-        </ul>
-      </details> }}
-  else
-    {{ <details class={{className}}>
-        <summary>{{.text true title}}</summary>
-        <ul class="bp_summary_list">
-          {{rows}}
-        </ul>
-      </details> }}
+  let attrs :=
+    if open? then
+      #[("class", className), ("open", "open")]
+    else
+      #[("class", className)]
+  {{ <details {{attrs}}>
+      <summary>{{.text true title}}</summary>
+      <ul class="bp_summary_list">
+        {{rows}}
+      </ul>
+    </details> }}
 
 private def summaryOptionalDetailsList (visible : Bool) (title : String) (rows : Array Output.Html)
     (className : String := "bp_summary_subsection") (open? : Bool := false) : Output.Html :=
@@ -973,6 +967,35 @@ private def summaryOptionalCappedDetailsList (visible : Bool) (title : String)
     (open? : Bool := false) : Output.Html :=
   summaryOptionalDetailsList visible title (summaryCapRows rows noun) className open?
 
+private def summaryItemTop (head : Output.Html) (meta? : Option Output.Html) : Output.Html :=
+  let metaNode :=
+    match meta? with
+    | Option.some metaHtml => {{<span class="bp_summary_item_meta">{{metaHtml}}</span>}}
+    | Option.none => .empty
+  {{ <div class="bp_summary_item_top">
+      <span class="bp_summary_item_head">{{head}}</span>
+      {{metaNode}}
+    </div> }}
+
+private def summaryItemBody (body : Output.Html) : Output.Html :=
+  {{ <div class="bp_summary_item_body">{{body}}</div> }}
+
+private def summaryItemTextBody (text : String) : Output.Html :=
+  summaryItemBody (.text true text)
+
+private def summaryItemActions (body : Output.Html) : Output.Html :=
+  {{ <div class="bp_summary_item_actions">{{body}}</div> }}
+
+private def summaryItemShell
+    (head : Output.Html) (meta? : Option Output.Html)
+    (body badges : Output.Html) (extra : Array Output.Html) : Output.Html :=
+  {{ <li class="bp_summary_item">
+      {{summaryItemTop head meta?}}
+      {{body}}
+      {{badges}}
+      {{extra}}
+    </li> }}
+
 private def SummaryHtmlContext.associatedDecls (ctx : SummaryHtmlContext) (label : Name)
     (leanObjects : List Name) : Output.Html :=
   if leanObjects.isEmpty then
@@ -983,13 +1006,8 @@ private def SummaryHtmlContext.associatedDecls (ctx : SummaryHtmlContext) (label
 private def SummaryHtmlContext.leanRow (ctx : SummaryHtmlContext) (label : Name) (kind : String)
     (leanObjects : List Name) : Output.Html :=
   let entryRef := ctx.entryRef label
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({kind})"</span>
-      </div>
-      {{ctx.associatedDecls label leanObjects}}
-    </li> }}
+  summaryItemShell entryRef (some (.text true s!"({kind})"))
+    .empty .empty #[ctx.associatedDecls label leanObjects]
 
 private def SummaryHtmlContext.leanRows (ctx : SummaryHtmlContext) (items : List IndexItem) :
     Array Output.Html :=
@@ -1018,18 +1036,15 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
       Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
       pure ("proved", "Declaration: ", "bp_summary_badge", "proved", "0")
   let (statusLabel, declPrefix, badgeClass, whereTxt, refsTxt) := statusInfo
-  pure {{ <li class="bp_summary_item">
-            <div class="bp_summary_item_top">
-              <span class="bp_summary_item_head">{{entryRef}}</span>
-              <span class="bp_summary_item_meta">s!"({item.kind})"</span>
-            </div>
-            <div class="bp_summary_item_body">
-              {{.text true declPrefix}} {{declLink}} " "
-              <span class={{badgeClass}}>
-                s!"[{if item.isTheorem then "theorem/lemma" else "definition"}; {statusLabel}; {whereTxt}; refs: {refsTxt}]"
-              </span>
-            </div>
-          </li> }}
+  let body := {{
+    <div class="bp_summary_item_body">
+      {{.text true declPrefix}} {{declLink}} " "
+      <span class={{badgeClass}}>
+        s!"[{if item.isTheorem then "theorem/lemma" else "definition"}; {statusLabel}; {whereTxt}; refs: {refsTxt}]"
+      </span>
+    </div>
+  }}
+  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body .empty #[]
 
 private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (label written canonical : Name) :
     Output.Html :=
@@ -1048,17 +1063,13 @@ private def SummaryHtmlContext.externalDeclIssueRow (ctx : SummaryHtmlContext) (
     (actions : Output.Html := .empty) : Output.Html :=
   let entryRef := ctx.entryRef label
   let declNode := ctx.externalDeclNode label written canonical
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({kind})"</span>
-      </div>
-      <div class="bp_summary_item_body">
+  let body := {{
+    <div class="bp_summary_item_body">
         {{.text true bodyPrefix}} {{declNode}} " "
         <span class={{badgeClass}}>{{.text true badgeText}}</span>
-      </div>
-      {{actions}}
-    </li> }}
+    </div>
+  }}
+  summaryItemShell entryRef (some (.text true s!"({kind})")) body .empty #[actions]
 
 private def SummaryHtmlContext.missingRow (ctx : SummaryHtmlContext) (item : MissingLeanDeclItem) :
     Output.Html :=
@@ -1069,7 +1080,7 @@ private def SummaryHtmlContext.renderFailureRow (ctx : SummaryHtmlContext) (item
     Output.Html :=
   ctx.externalDeclIssueRow item.label item.kind item.written item.canonical
     "External render failed for " "[render failure]" "bp_summary_badge bp_summary_badge_warn"
-    {{<div class="bp_summary_item_actions"><code>{{.text true item.message}}</code></div>}}
+    (summaryItemActions {{<code>{{.text true item.message}}</code>}})
 
 private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : PriorityItem) :
     Output.Html :=
@@ -1089,16 +1100,10 @@ private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : Pr
       summaryBadge s!"direct uses: {item.directUses}",
       summaryBadge s!"downstream unlocks: {item.downstreamUses}"
     ] ++ proofBadges
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({item.kind})"</span>
-      </div>
-      <div class="bp_summary_item_body">s!"Ready for {item.stage} work."</div>
-      {{summaryBadgeRow badges}}
-      {{ctx.associatedDecls item.label item.leanObjects}}
-      {{summaryActionLinksRow actionLinks}}
-    </li> }}
+  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+    (summaryItemTextBody s!"Ready for {item.stage} work.")
+    (summaryBadgeRow badges)
+    #[ctx.associatedDecls item.label item.leanObjects, summaryActionLinksRow actionLinks]
 
 private def SummaryHtmlContext.usageRow (ctx : SummaryHtmlContext) (item : UsageItem)
     (bodyText primaryLabel secondaryLabel : String) (primaryCount secondaryCount : Nat) : Output.Html :=
@@ -1110,15 +1115,10 @@ private def SummaryHtmlContext.usageRow (ctx : SummaryHtmlContext) (item : Usage
       summaryBadge s!"direct uses: {item.directUses}",
       summaryBadge s!"downstream unlocks: {item.downstreamUses}"
     ]
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({item.kind})"</span>
-      </div>
-      <div class="bp_summary_item_body">{{.text true bodyText}}</div>
-      {{summaryBadgeRow badges}}
-      {{ctx.associatedDecls item.label item.leanObjects}}
-    </li> }}
+  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+    (summaryItemTextBody bodyText)
+    (summaryBadgeRow badges)
+    #[ctx.associatedDecls item.label item.leanObjects]
 
 private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
     (item : DependencyLoadItem) : Output.Html :=
@@ -1131,15 +1131,10 @@ private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
       summaryBadge s!"direct uses: {item.directUses}",
       summaryBadge s!"downstream unlocks: {item.downstreamUses}"
     ]
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({item.kind})"</span>
-      </div>
-      <div class="bp_summary_item_body">"Prerequisite fan-in measured from the current statement/proof dependency graph."</div>
-      {{summaryBadgeRow badges}}
-      {{ctx.associatedDecls item.label item.leanObjects}}
-    </li> }}
+  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+    (summaryItemTextBody "Prerequisite fan-in measured from the current statement/proof dependency graph.")
+    (summaryBadgeRow badges)
+    #[ctx.associatedDecls item.label item.leanObjects]
 
 private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
   let badges :=
@@ -1149,14 +1144,12 @@ private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
       summaryBadge s!"missing decls: {item.missingDecls}",
       summaryBadge s!"total debt: {item.totalDebt}"
     ]
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{.text true item.header}}</span>
-        <span class="bp_summary_item_meta"><code>s!"{item.parent}"</code></span>
-      </div>
-      <div class="bp_summary_item_body">"Grouped proof/code debt derived from the current incomplete-declaration snapshots."</div>
-      {{summaryBadgeRow badges}}
-    </li> }}
+  summaryItemShell
+    (.text true item.header)
+    (some {{<code>s!"{item.parent}"</code>}})
+    (summaryItemTextBody "Grouped proof/code debt derived from the current incomplete-declaration snapshots.")
+    (summaryBadgeRow badges)
+    #[]
 
 private def summaryRollupBadges (totalEntries actionableEntries quickWins linkedPrs : Nat) :
     Array Output.Html :=
@@ -1170,23 +1163,22 @@ private def summaryRollupBadges (totalEntries actionableEntries quickWins linked
 private def summaryOwnerRollupRow (item : OwnerRollupItem) : Output.Html :=
   let badges :=
     summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{.text true item.displayName}}</span>
-        <span class="bp_summary_item_meta"><code>s!"{item.owner}"</code></span>
-      </div>
-      {{summaryBadgeRow badges}}
-    </li> }}
+  summaryItemShell
+    (.text true item.displayName)
+    (some {{<code>s!"{item.owner}"</code>}})
+    .empty
+    (summaryBadgeRow badges)
+    #[]
 
 private def summaryTagRollupRow (item : TagRollupItem) : Output.Html :=
   let badges :=
     summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{summaryBadge s!"tag: {item.tag}" "bp_summary_badge bp_summary_badge_warn"}}</span>
-      </div>
-      {{summaryBadgeRow badges}}
-    </li> }}
+  summaryItemShell
+    (summaryBadge s!"tag: {item.tag}" "bp_summary_badge bp_summary_badge_warn")
+    Option.none
+    .empty
+    (summaryBadgeRow badges)
+    #[]
 
 private def SummaryHtmlContext.metadataEntryRow (ctx : SummaryHtmlContext) (item : MetadataEntryItem)
     (bodyText : String) : Output.Html :=
@@ -1194,16 +1186,10 @@ private def SummaryHtmlContext.metadataEntryRow (ctx : SummaryHtmlContext) (item
   let metadata := metadataPresentationOfMetadataEntryItem item
   let badges := summaryMetadataBadges metadata
   let actionLinks := summaryMetadataActionLinks metadata
-  {{ <li class="bp_summary_item">
-      <div class="bp_summary_item_top">
-        <span class="bp_summary_item_head">{{entryRef}}</span>
-        <span class="bp_summary_item_meta">s!"({item.kind})"</span>
-      </div>
-      <div class="bp_summary_item_body">{{.text true bodyText}}</div>
-      {{summaryBadgeRow badges}}
-      {{ctx.associatedDecls item.label item.leanObjects}}
-      {{summaryActionLinksRow actionLinks}}
-    </li> }}
+  summaryItemShell entryRef (some (.text true s!"({item.kind})"))
+    (summaryItemTextBody bodyText)
+    (summaryBadgeRow badges)
+    #[ctx.associatedDecls item.label item.leanObjects, summaryActionLinksRow actionLinks]
 
 private def SummaryHtmlContext.metadataEntryRows (ctx : SummaryHtmlContext)
     (items : List MetadataEntryItem) (bodyText : String) : Array Output.Html :=
@@ -1223,36 +1209,30 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
     ]
   match item.nextPriority? with
   | Option.none =>
-    {{ <li class="bp_summary_item">
-        <div class="bp_summary_item_top">
-          <span class="bp_summary_item_head">{{.text true item.header}}</span>
-          <span class="bp_summary_item_meta"><code>s!"{item.parent}"</code></span>
-        </div>
-        <div class="bp_summary_item_body">"Grouped view over entries sharing the same parent."</div>
-        {{summaryBadgeRow badges}}
-        <div class="bp_summary_item_actions">"Next: no ready child currently unlocks downstream work."</div>
-      </li> }}
+    summaryItemShell
+      (.text true item.header)
+      (some {{<code>s!"{item.parent}"</code>}})
+      (summaryItemTextBody "Grouped view over entries sharing the same parent.")
+      (summaryBadgeRow badges)
+      #[summaryItemActions (.text true "Next: no ready child currently unlocks downstream work.")]
   | Option.some next =>
     let nextRef := ctx.entryRef next.label
     let priorityBadges : Array Output.Html :=
       match next.priority with
       | Option.some priority => #[summaryBadge s!"priority: {priority}" "bp_summary_badge bp_summary_badge_warn"]
       | Option.none => #[]
-    {{ <li class="bp_summary_item">
-        <div class="bp_summary_item_top">
-          <span class="bp_summary_item_head">{{.text true item.header}}</span>
-          <span class="bp_summary_item_meta"><code>s!"{item.parent}"</code></span>
-        </div>
-        <div class="bp_summary_item_body">"Grouped view over entries sharing the same parent."</div>
-        {{summaryBadgeRow badges}}
-        <div class="bp_summary_item_actions">
+    summaryItemShell
+      (.text true item.header)
+      (some {{<code>s!"{item.parent}"</code>}})
+      (summaryItemTextBody "Grouped view over entries sharing the same parent.")
+      (summaryBadgeRow badges)
+      #[summaryItemActions {{
           "Next: " {{nextRef}} " "
           {{priorityBadges ++ #[
             summaryBadge s!"stage: {next.stage}",
             summaryBadge s!"downstream unlocks: {next.downstreamUses}"
           ]}}
-        </div>
-      </li> }}
+        }}]
 
 private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
     (group : ParentTheoremGroup) : Output.Html :=
@@ -1706,12 +1686,21 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
         Resolve.resolveInformalDeclHref? s label decl
       previewLookupKey? := fun label => previewLookupKeys.get? label
     }
-    let previewUi := Informal.HoverRender.summaryPreviewUi
+    let previewPanel := Informal.HoverRender.summaryPreviewPanel
+    let summaryAttrs :=
+      #[("class", "bp_summary")] ++
+        Informal.HoverRender.templatePreviewDescriptorAttrs
+          ".bp_summary_preview_panel"
+          "template.bp_summary_preview_tpl[data-bp-preview-label]"
+          ".bp_summary_preview_wrap_active[data-bp-preview-label]"
+          ".bp_summary_preview_panel_title"
+          ".bp_summary_preview_panel_body"
+          ".bp_summary_preview_panel_close"
+          (allowHtmlCache := true)
     let rows ← SummaryRows.render ctx data
     pure {{
-      <div class="bp_summary">
-        {{previewUi.store}}
-        {{previewUi.panel}}
+      <div {{summaryAttrs}}>
+        {{previewPanel}}
         {{summaryOverviewSection data rows}}
         {{summaryEntryIndexSection data rows}}
         {{summaryDependencyInsightsSection rows}}
@@ -1729,7 +1718,7 @@ block_extension Block.summary (summary : Summary) where
   toTeX := none
   toHtml := some summaryBlockToHtml
   extraCss := withPreviewPanelInlinePreviewCssAssets [summaryCss]
-  extraJs := withInlinePreviewJsAssets [openTargetDetailsJs] [summaryPreviewJs]
+  extraJs := withInlinePreviewJsAssets [openTargetDetailsJs] []
 
 open Verso Doc Elab Syntax in
 def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do

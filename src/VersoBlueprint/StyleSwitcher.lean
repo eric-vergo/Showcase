@@ -227,7 +227,12 @@ private def jsTemplate : String := r##"(function () {
 
       const select = document.createElement("select");
       select.id = selectId;
-      select.innerHTML = options.join("");
+      options.forEach(function (value) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
 
       control.appendChild(label);
       control.appendChild(select);
@@ -236,9 +241,9 @@ private def jsTemplate : String := r##"(function () {
     }
 
     const styleSelect = appendControl("Style", "bp-style-select", [
-      '<option value="blueprint">blueprint</option>',
-      '<option value="modern">modern</option>',
-      '<option value="bold">bold</option>'
+      "blueprint",
+      "modern",
+      "bold"
     ]);
 
     const currentStyle = getSavedStyle();

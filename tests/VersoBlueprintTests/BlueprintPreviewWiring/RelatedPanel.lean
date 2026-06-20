@@ -83,16 +83,19 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
         !hasSubstr relationJs "function blueprintRender()" &&
         hasAllSubstr relationJs [
           "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
-          "previewUtils.resolvePreview(previewKey)",
-          "previewUtils.renderHtmlInto(body, result.html)",
-          "previewUtils.renderHtmlInto(body, html, { hydrate: false, renderMath: false })",
-          "previewUtils.setPreviewHeaderLink(headerLabel, item)",
-          "item.addEventListener(\"mouseenter\"",
-          "item.addEventListener(\"focusin\""
+          "previewUtils.previewMessageHtml({",
+          "previewUtils.createPreviewSurface({",
+          "surface.bindTriggers({",
+          "surface.bindDismissal({",
+          "triggerSelector: \".bp_relation_chip\"",
+          "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
         ] &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
           "previewUtils.readHtmlCacheStatus()",
+          "previewUtils.bindDismissHandlers({",
+          "previewUtils.shouldKeepOpen(",
+          "function previewMessageHtml(previewUtils",
           "fallbackTemplates"
         ]
       | none => false
@@ -168,7 +171,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
         hasSubstr relationJs "previewUtils.resolvePreview(previewKey)" &&
-        hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
+        hasSubstr relationJs "previewUtils.createPreviewSurface({" &&
+        !hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
     )
 

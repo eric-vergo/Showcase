@@ -113,14 +113,18 @@ Base statement for graph preview mode option coverage.
       | some graphJs =>
         hasRenderReadyWiring graphJs "previewUtils" &&
         !hasSubstr graphJs "function blueprintRender()" &&
+        hasSubstr graphJs "previewUtils.createPreviewSurface({" &&
+        hasSubstr graphJs "previewController.bindTriggers({" &&
+        hasSubstr graphJs "lifecycleSurface.bindDismissal({" &&
+        hasSubstr graphJs "lifecycleSurface.bindRepositioner({" &&
+        !hasSubstr graphJs "previewUtils.createPanelController(" &&
+        !hasSubstr graphJs "previewUtils.bindPreviewTriggers({" &&
+        !hasSubstr graphJs "previewUtils.bindDismissHandlers({" &&
+        !hasSubstr graphJs "previewUtils.bindPanelRepositioner({" &&
+        !hasSubstr graphJs "previewUtils.renderHtmlInto(" &&
+        !hasSubstr graphJs "previewUtils.positionAnchoredPanel(" &&
+        !hasSubstr graphJs "previewUtils.resetPanelPosition(" &&
         hasAllSubstr graphJs [
-          "previewUtils.collectPreviewTemplates(",
-          "previewUtils.createPanelController(",
-          "previewUtils.bindHoverablePanelLifetime(",
-          "previewUtils.configureCloseButton(",
-          "previewUtils.resolvePreview(previewKey)",
-          "previewUtils.readPanelBehavior(null, {",
-          "previewUtils.renderHtmlInto(body, html)",
           ".bp_graph_preview_mode_select",
           ".bp_graph_preview_placement_select",
           ".bp_graph_direction_select",

@@ -1488,10 +1488,6 @@ def blockCssAssets : List String :=
   Informal.Commands.withPreviewPanelInlinePreviewCssAssets
     [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle]
 
--- Keep this module rebuilt when block preview runtimes change.
-def codeSummaryPreviewJs : String :=
-  Informal.Commands.withPreviewClientReadyJs (include_str "code-summary-preview.js")
-
 -- Keep this module rebuilt when relation panel runtime changes.
 def relationPanelJs : String :=
   Informal.Commands.withPreviewClientReadyJs (include_str "relation-panel.js")
@@ -1499,6 +1495,6 @@ def relationPanelJs : String :=
 def blockJsAssets : List String :=
   Informal.Commands.withInlinePreviewJsAssets
     []
-    [codeSummaryPreviewJs, relationPanelJs, Informal.StyleSwitcher.jsInteractive]
+    [relationPanelJs, Informal.StyleSwitcher.jsInteractive]
 
 end Informal.Block.Assets

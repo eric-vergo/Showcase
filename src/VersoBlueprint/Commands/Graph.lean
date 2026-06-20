@@ -576,11 +576,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
         match graphVariants[0]? with
         | some variant => variant.dot
         | Option.none => graphToDot graphData.graph graphData.options resolveHref resolveGroupTitle
-      let previewUi :=
-        Informal.HoverRender.graphPreviewUi
+      let previewPanel :=
+        Informal.HoverRender.graphPreviewPanel
           graphData.previewMode
           graphData.previewPlacement
-      let groupHoverUi := Informal.HoverRender.graphGroupPreviewUi
+      let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
       return {{
         <div class="bp_graph_fullwidth">
           <div class="bp_graph_controls">
@@ -674,9 +674,8 @@ block_extension Block.graph (graphData : GraphBlockData) where
               {{.text false s!"{fallbackDot}"}}
             </script>
           </div>
-          {{previewUi.store}}
-          {{previewUi.panel}}
-          {{groupHoverUi.panel}}
+          {{previewPanel}}
+          {{groupHoverPanel}}
         </div>
       }}
   extraCss := withPreviewPanelCssAssets [graphCss]
