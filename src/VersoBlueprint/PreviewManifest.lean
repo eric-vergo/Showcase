@@ -533,10 +533,28 @@ def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
 
 def previewApiModuleFilename : String := "blueprint-preview-api.mjs"
 
+def apiModuleDirname : String := "api"
+
+def graphApiModuleAliasFilename : String := "graph.mjs"
+
+def previewApiModuleAliasFilename : String := "preview.mjs"
+
+def graphApiModulePath : String := apiModuleDirname ++ "/" ++ graphApiModuleAliasFilename
+
+def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModuleAliasFilename
+
 -- Keep this module rebuilt when the standalone browser ESM APIs change.
 private def graphApiModuleJs : String := include_str "blueprint-graph-api.mjs"
 
 private def previewApiModuleJs : String := include_str "blueprint-preview-api.mjs"
+
+private def graphApiModuleAliasJs : String :=
+  "export * from \"../" ++ graphApiModuleFilename ++ "\";\n" ++
+  "export { default } from \"../" ++ graphApiModuleFilename ++ "\";\n"
+
+private def previewApiModuleAliasJs : String :=
+  "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
+  "export { default } from \"../" ++ previewApiModuleFilename ++ "\";\n"
 
 inductive EntryKind where
   | block
@@ -1553,11 +1571,15 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   let files ← buildPreviewDataFiles extensionImpls logError state
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
+  let apiDir := dataDir / apiModuleDirname
   IO.FS.createDirAll dataDir
+  IO.FS.createDirAll apiDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
   IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleJs
   IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleJs
+  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasJs
+  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasJs
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 

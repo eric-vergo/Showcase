@@ -243,7 +243,7 @@ private def previewModuleExample : Verso.Output.Html :=
     clientTag "h3" #[("data-bp-custom-client-title", "true")] (clientText "Preview ESM import")
   let noteNode :=
     clientTag "p" #[("class", "bp_custom_render_client_note")]
-      (clientText "ESM access with renderPreviewInto from blueprint-preview-api.mjs.")
+      (clientText "ESM access with renderPreviewInto from -verso-data/api/preview.mjs.")
   let summaryNode :=
     clientTag "div"
       #[("class", "bp_custom_render_client_summary"), ("data-bp-preview-module-summary", "true")]
@@ -267,7 +267,7 @@ import {
   previewKey,
   renderPreviewInto,
   resolvePreview
-} from "../-verso-data/blueprint-preview-api.mjs";
+} from "../-verso-data/api/preview.mjs";
 
 // Find the showcase card that will display this module-based result.
 const card = document.querySelector("[data-bp-preview-module-example]");
@@ -315,7 +315,7 @@ if (card) {
 private def graphModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
 // Import the generated graph-data ESM API.
-import { loadGraphs } from "../-verso-data/blueprint-graph-api.mjs";
+import { loadGraphs } from "../-verso-data/api/graph.mjs";
 
 // Find the showcase card that already displays graph manifest data.
 const card = document.querySelector("[data-bp-custom-client-graph]");

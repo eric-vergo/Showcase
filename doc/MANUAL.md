@@ -932,8 +932,7 @@ The detailed public API reference lives in [`API.md`](./API.md). It covers:
 - the generated `blueprint-manifest.json` and `blueprint-html-cache.json` files
 - finalized graph data from Lean, the manifest, and browser clients
 - `Informal.Graft` and manifest/cache rendering helpers for custom generators
-- generated ESM modules such as `blueprint-preview-api.mjs` and
-  `blueprint-graph-api.mjs`
+- generated ESM modules such as `api/preview.mjs` and `api/graph.mjs`
 - the stable browser runtime API and the boundary around bundled helper APIs
 
 ## The Generator Entry Point
