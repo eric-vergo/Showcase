@@ -12,6 +12,7 @@ import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.Rust
 
 /-!
 Typed accessors for Blueprint's traversal-time stores.
@@ -145,6 +146,11 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
+/-- Decode every informal-node store entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.StoredBlockData)) :=
+  decodeStoreEntries state domainName
+
 end Nodes
 
 namespace InlineCode
@@ -175,6 +181,36 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
   saveObjectData state domainName label.toString data
 
 end InlineCode
+
+namespace RustInlineCode
+
+def spec : StoreSpec := {
+  name := Informal.Rust.informalRustCodeDomain
+  kind := .internalIndex
+  key := "informal label"
+  value := "Rust.InlineCodeData plus code-panel anchor ids and folding settings"
+  summary := "Traversal-local index for Blueprint Rust code-panel sources keyed by informal label."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName label.toString
+
+def data? (state : TraverseState) (label : Name) : Option Informal.Rust.InlineCodeData :=
+  objectData? state domainName label.toString
+
+def href? (state : TraverseState) (label : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName label.toString
+
+def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName label.toString id
+
+def saveData (state : TraverseState) (label : Name) (data : Informal.Rust.InlineCodeData) :
+    TraverseState :=
+  saveObjectData state domainName label.toString (toJson data)
+
+end RustInlineCode
 
 namespace ExternalMarkup
 
@@ -459,6 +495,7 @@ compare against one source location instead of rediscovering each domain name.
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
   InlineCode.spec,
+  RustInlineCode.spec,
   ExternalMarkup.spec,
   Groups.spec,
   Graphs.spec,
