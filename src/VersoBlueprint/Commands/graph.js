@@ -353,8 +353,8 @@
       const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
       let html = previewMap.get(label) || "";
       if (!html && previewKey) {
-        const result = await previewUtils.resolvePreview(previewKey);
-        html = result && result.ok ? result.html : "";
+        const resolved = await previewUtils.resolvePreviewHtml(previewKey);
+        html = resolved.html || "";
       }
       if (requestToken !== graphState.previewRequestToken) return;
       if (!html) return;

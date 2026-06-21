@@ -248,7 +248,9 @@ python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-p
 ```
 
 Use `git cherry-pick -x` for paired backport branches so the paired-backport
-check can verify recorded source SHAs and patch IDs.
+check can verify recorded source SHAs, commit count, and commit order. The
+check intentionally does not require patch-id equality, because release-line
+conflict resolution often changes the exact diff while preserving provenance.
 
 Each paired backport PR should carry the scaffolded release label, such as
 `backport-v4.30.0`, so release-specific queues remain visible when several
@@ -482,8 +484,9 @@ worktree, apply the series, and resolve conflicts release by release.
 
 When populating the paired backport branch itself, use `git cherry-pick -x` so
 each backport commit records `(cherry picked from commit <sha>)`. The
-paired-backport check verifies those recorded source SHAs and also compares the
-patch IDs of the default-development and backport commit series.
+paired-backport check verifies those recorded source SHAs, commit count, and
+commit order; it does not compare patch IDs because release-line conflict
+resolution can legitimately change the exact diff.
 
 CI keeps the `Paired Backport` check visible on draft PRs so the declared plan
 is part of PR health, and once the PR is ready it additionally checks that the
