@@ -1326,16 +1326,15 @@ private def buildTraversalEntries
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
-  let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
-    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  for (_key, obj) in domain.objects.toArray do
-    match fromJson? (α := PreviewCache.Entry) obj.data with
+  for decoded in Informal.PreviewSource.traversalStoredEntries state do
+    match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed preview entry {obj.canonicalName}: {err}"
-    | .ok entry =>
+      logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let entry := stored.entry
       if entry.blocks.isEmpty then
         continue
       let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
@@ -1344,10 +1343,9 @@ private def buildTraversalEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
-      let key := PreviewCache.key entry.label entry.facet
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key, html }
+      htmlEntries := htmlEntries.push { key := stored.key, html }
   pure (entries, htmlEntries, hoverState)
 
 private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
