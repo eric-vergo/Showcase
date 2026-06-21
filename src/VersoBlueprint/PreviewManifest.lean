@@ -1206,7 +1206,7 @@ private def relatedEntryForLabel
     label
     title := blockTitle state label .statement blockData?
     href := blockHref state label
-    previewKey := PreviewCache.key label .statement
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state label
     axes
   }
 
@@ -1218,7 +1218,7 @@ private def relatedEntryForBlock
     label := blockData.label
     title := blockTitle state blockData.label .statement (some blockData)
     href := blockHref state blockData.label
-    previewKey := PreviewCache.key blockData.label .statement
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state blockData.label
     axes
   }
 

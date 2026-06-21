@@ -130,8 +130,8 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
   show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls proofFallbackSummaryDoc
     let label := Lean.Name.mkSimple "thm:preview.proof_fallback"
-    let proofKey := PreviewCache.key label .proof
-    let statementKey := PreviewCache.key label .statement
+    let proofKey := PreviewCache.proofKey label
+    let statementKey := PreviewCache.statementKey label
     pure (
       hasSubstr out "bp_summary_preview_wrap_active" &&
       hasSubstr out s!"data-bp-preview-key=\"{proofKey}\"" &&

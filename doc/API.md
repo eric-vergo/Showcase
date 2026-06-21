@@ -123,6 +123,22 @@ contains `schemaVersion`, `nodes`, `edges`, and `groups`, with status enums,
 dependency axes, preview keys, hrefs when traversal resolved them, and visual
 metadata for renderers that want Blueprint's default styling.
 
+That finished traversal state is the stable boundary. Consumers should not
+reconstruct graph hrefs or titles from lower-level traversal internals when the
+finalized graph data is available.
+
+Finalized graph node `previewKey` values are selected preview keys: when a
+statement preview is unavailable but a proof preview exists, graph and relation
+UI can point at the proof preview. Use fixed facet keys such as
+`PreviewCache.statementKey` or `PreviewCache.proofKey` only when your code is
+explicitly requesting that facet.
+
+| Need | Use |
+| --- | --- |
+| Best rendered preview for one label from finished traversal state | `PreviewSource.Selection` or the finalized node `previewKey` |
+| Explicit statement facet identity | `PreviewCache.statementKey label` |
+| Explicit proof facet identity | `PreviewCache.proofKey label` |
+
 The bundled graph renderer uses that finalized graph data as its block-level
 source of truth and derives DOT render variants with
 `Informal.Graph.GraphData.renderVariants`, so page rendering and custom clients

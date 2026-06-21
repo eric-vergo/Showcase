@@ -137,8 +137,8 @@ public meta instance : FromArgs BlueprintNodeConfig DocElabM where
 private def previewKey (label facet : String) : String :=
   let label := Informal.LabelNameParsing.parse label
   match facet with
-  | "statement" => Informal.PreviewCache.key label .statement
-  | "proof" => Informal.PreviewCache.key label .proof
+  | "statement" => Informal.PreviewCache.statementKey label
+  | "proof" => Informal.PreviewCache.proofKey label
   | other => s!"{label}--{other}"
 
 def BlueprintNodeConfig.toNode (cfg : BlueprintNodeConfig) : BlueprintNode :=

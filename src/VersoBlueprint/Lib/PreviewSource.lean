@@ -31,8 +31,8 @@ The current split is intentionally phase-specific:
   need cached preview blocks or manifest lookup keys
 - environment-time callers use the environment helpers when they need semantic
   preview content from `Informal.Environment.State`
-- callers that need preview data for one label should still come here first,
-  even though there is not yet one unified "best available preview" selector
+- callers that need preview data for one label should use the selection helpers
+  here so statement/proof fallback semantics stay consistent
 
 Known exception:
 
@@ -48,30 +48,51 @@ structure Preview where
   stxs : Array Syntax := #[]
 deriving Inhabited, Repr
 
-private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
-  if xs.isEmpty then none else some xs
+/-- A selected preview for one Blueprint label.
 
-private def firstNonEmptyFacet? {α}
-    (fetch : PreviewCache.Facet → Option (Array α)) : Option (Array α) :=
-  match (fetch .statement).bind nonEmptyOrNone with
-  | some xs => some xs
-  | none => (fetch .proof).bind nonEmptyOrNone
+The `facet` and `key` fields identify the preview that should be used by
+callers, while `preview` contains the phase-local renderable payload. -/
+structure Selection where
+  label : Name
+  facet : PreviewCache.Facet
+  key : String
+  preview : Preview
+deriving Inhabited, Repr
 
-private def firstNonEmptyEntry?
-    (fetch : PreviewCache.Facet → Option PreviewCache.Entry) : Option PreviewCache.Entry :=
+def Preview.isEmpty (preview : Preview) : Bool :=
+  preview.blocks.isEmpty && preview.stxs.isEmpty
+
+def Preview.nonEmpty (preview : Preview) : Bool :=
+  !preview.isEmpty
+
+def Preview.ofTraversalEntry (entry : PreviewCache.Entry) : Preview :=
+  { blocks := entry.blocks }
+
+def Selection.ofPreview (label : Name) (facet : PreviewCache.Facet) (preview : Preview) :
+    Selection :=
+  {
+    label
+    facet
+    key := PreviewCache.key label facet
+    preview
+  }
+
+private def preferredFacet? {α}
+    (fetch : PreviewCache.Facet → Option α)
+    (nonEmpty : α → Bool) : Option (PreviewCache.Facet × α) :=
   match fetch .statement with
-  | some entry =>
-    if entry.blocks.isEmpty then
-      match fetch .proof with
-      | some proofEntry =>
-        if proofEntry.blocks.isEmpty then none else some proofEntry
-      | none => none
+  | some value =>
+    if nonEmpty value then
+      some (.statement, value)
     else
-      some entry
+      match fetch .proof with
+      | some proofValue =>
+        if nonEmpty proofValue then some (.proof, proofValue) else none
+      | none => none
   | none =>
     match fetch .proof with
-    | some entry =>
-      if entry.blocks.isEmpty then none else some entry
+    | some value =>
+      if nonEmpty value then some (.proof, value) else none
     | none => none
 
 def traversalEntryByKey?
@@ -87,17 +108,33 @@ def traversalFacetEntry?
 
 def traversalEntry?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option PreviewCache.Entry := do
-  firstNonEmptyEntry? (traversalFacetEntry? s label)
+  let (_, entry) ←
+    preferredFacet? (traversalFacetEntry? s label) (fun entry => !entry.blocks.isEmpty)
+  pure entry
+
+def traversalSelection?
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Selection := do
+  let entry ← traversalEntry? s label
+  pure <| Selection.ofPreview entry.label entry.facet (Preview.ofTraversalEntry entry)
 
 def traversalLookupKey?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option String := do
-  let entry ← traversalEntry? s label
-  pure <| PreviewCache.key entry.label entry.facet
+  let selection ← traversalSelection? s label
+  pure selection.key
+
+/-- Selected traversal preview key, falling back to the fixed statement key.
+
+Use this for rendered browser surfaces that need "the best available preview
+for this label" while still producing a deterministic statement key when no
+cached traversal preview exists. -/
+def traversalLookupKeyOrStatement
+    (s : Verso.Genre.Manual.TraverseState) (label : Name) : String :=
+  (traversalLookupKey? s label).getD (PreviewCache.statementKey label)
 
 def traversalPreview?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option Preview := do
-  let entry ← traversalEntry? s label
-  return { blocks := entry.blocks }
+  let selection ← traversalSelection? s label
+  pure selection.preview
 
 def traversalBlocks?
     (s : Verso.Genre.Manual.TraverseState) (label : Name) : Option (Array ManualBlock) :=
@@ -112,7 +149,10 @@ def renderTraversalPreview? {m} [Monad m]
   | some preview =>
     pure <| some (← preview.blocks.mapM renderBlock)
 
-private def envFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
+private def nonEmptyOrNone {α} (xs : Array α) : Option (Array α) :=
+  if xs.isEmpty then none else some xs
+
+private def nodeFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : Option Preview := do
   let informalData ←
     match facet with
     | .statement => node.statement
@@ -124,25 +164,22 @@ private def envFacetPreview? (node : Data.Node) (facet : PreviewCache.Facet) : O
     | some stxs => some { stxs }
     | none => none
 
-private def firstNonEmptyPreview?
-    (fetch : PreviewCache.Facet → Option Preview) : Option Preview :=
-  match fetch .statement with
-  | some preview =>
-    if !(preview.blocks.isEmpty && preview.stxs.isEmpty) then
-      some preview
-    else
-      fetch .proof
-  | none => fetch .proof
-
-private def envFacetStxs? (node : Data.Node) (facet : PreviewCache.Facet) : Option (Array Syntax) :=
-  match facet with
-  | .statement => node.statement.bind (nonEmptyOrNone ·.elabStx)
-  | .proof => node.proof.bind (nonEmptyOrNone ·.elabStx)
-
-def fromEnvironment? (env : Environment) (label : Name) : Option Preview := do
+def environmentFacetPreview? (env : Environment) (label : Name)
+    (facet : PreviewCache.Facet) : Option Preview := do
   let state := informalExt.getState env
   let node ← state.data.get? label
-  firstNonEmptyPreview? (envFacetPreview? node)
+  nodeFacetPreview? node facet
+
+def environmentSelection? (env : Environment) (label : Name) : Option Selection := do
+  let state := informalExt.getState env
+  let node ← state.data.get? label
+  let (facet, preview) ←
+    preferredFacet? (nodeFacetPreview? node) Preview.nonEmpty
+  pure <| Selection.ofPreview label facet preview
+
+def fromEnvironment? (env : Environment) (label : Name) : Option Preview := do
+  let selection ← environmentSelection? env label
+  pure selection.preview
 
 def renderWidgetHtml (preview? : Option Preview) : Lean.Elab.Term.TermElabM Verso.Output.Html := do
   match preview? with

@@ -185,7 +185,7 @@ Summary-only content should stay hidden.
     let traversedTex := externalMarkupRaw? traversed .tex "statement" |>.getD ""
     let traversedMd := externalMarkupRaw? traversed .markdown "proof" |>.getD ""
     let externalFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) externalState
-    let externalBlockKey := Informal.PreviewCache.key (Name.mkSimple "external.markup") .statement
+    let externalBlockKey := Informal.PreviewCache.statementKey (Name.mkSimple "external.markup")
     let externalMarkupOnlyKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.markup")
     let some externalBlockEntry := externalFiles.manifest.previews.find? (fun entry => entry.key == externalBlockKey)
       | return false
