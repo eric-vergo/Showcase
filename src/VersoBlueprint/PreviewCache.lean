@@ -28,6 +28,18 @@ def Facet.ofInProgressKind : Informal.Data.InProgressKind → Facet
 def key (label : Name) (facet : Facet) : String :=
   s!"{label}--{facet.suffix}"
 
+/-- Preview-cache key for the statement facet of a Blueprint label.
+
+Use this when the caller intentionally needs the fixed statement preview
+identity. Callers that want the best available preview for a rendered label
+should use `PreviewSource` selection helpers instead. -/
+def statementKey (label : Name) : String :=
+  key label .statement
+
+/-- Preview-cache key for the proof facet of a Blueprint label. -/
+def proofKey (label : Name) : String :=
+  key label .proof
+
 /--
 Preview payload stored during traversal.
 `blocks` are already in the Manual genre and can be rendered by later HTML consumers.

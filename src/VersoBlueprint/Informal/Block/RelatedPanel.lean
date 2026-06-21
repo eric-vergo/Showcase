@@ -9,6 +9,7 @@ import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.TraversalIndex
 
@@ -427,7 +428,7 @@ private def mkLabelEntry {m}
   let previewTitle := s!"{label}"
   pure {
     previewId
-    previewKey := PreviewCache.key label .statement
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement ctx.state label
     previewTitle
     label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
