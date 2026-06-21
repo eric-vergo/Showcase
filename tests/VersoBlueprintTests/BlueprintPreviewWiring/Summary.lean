@@ -110,14 +110,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls externalDocstringDedupDoc
     let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
       `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.externalDocstringDedupDecl
-    let previewObjects :=
-      match Informal.TraversalIndex.LeanCodePreviews.domain? st with
-      | some domain => domain.objects.toArray
-      | none => #[]
-    let previewData? := previewObjects[0]?.map fun (_key, obj) => obj.data.compress
+    let previewEntries := Informal.TraversalIndex.LeanCodePreviews.entries st
+    let previewData? := previewEntries[0]?.bind fun
+      | .ok stored => some (Lean.toJson stored.data).compress
+      | .error _ => none
     pure (
       countSubstr out s!"data-bp-preview-key=\"{previewKey}\"" >= 2 &&
-      previewObjects.size == 1 &&
+      previewEntries.size == 1 &&
       match previewData? with
       | some previewData =>
         hasSubstr previewData "External declaration docstring dedup marker"

@@ -49,12 +49,6 @@ structure Preview where
   stxs : Array Syntax := #[]
 deriving Inhabited, Repr
 
-/-- Failed traversal-preview decode with enough context for caller-owned diagnostics. -/
-structure DecodeError where
-  canonicalName : String
-  message : String
-deriving Inhabited, Repr
-
 /--
 A decoded traversal-preview object as stored after Manual traversal.
 
@@ -129,20 +123,16 @@ construction needs every renderable facet, while one-label consumers should use
 -/
 def traversalStoredEntries
     (s : Verso.Genre.Manual.TraverseState) :
-    Array (Except DecodeError StoredTraversalEntry) :=
-  match Informal.TraversalIndex.TraversalPreviews.domain? s with
-  | none => #[]
-  | some domain =>
-      domain.objects.toArray.map fun (_key, obj) =>
-        match fromJson? (α := PreviewCache.Entry) obj.data with
-        | .error err =>
-            .error { canonicalName := obj.canonicalName, message := err }
-        | .ok entry =>
-            .ok {
-              key := PreviewCache.key entry.label entry.facet
-              canonicalName := obj.canonicalName
-              entry
-            }
+    Array (Except Informal.TraversalIndex.DecodeError StoredTraversalEntry) :=
+  Informal.TraversalIndex.TraversalPreviews.entries s |>.map fun
+    | .error err => .error err
+    | .ok stored =>
+        let entry := stored.data
+        .ok {
+          key := PreviewCache.key entry.label entry.facet
+          canonicalName := stored.canonicalName
+          entry
+        }
 
 def traversalFacetEntry?
     (s : Verso.Genre.Manual.TraverseState)
