@@ -92,6 +92,20 @@ methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
 `Entry.matchesText` and `Entry.matchesCode` provide the same search predicates
 used by the `lake exe vbp query` interface.
 
+```lean
+import VersoBlueprint.PreviewManifest
+
+def primaryNodeTitle?
+    (manifest : Informal.PreviewManifest.File)
+    (label : String) : Option String :=
+  (manifest.findPrimaryBlockEntry? label).map (·.title)
+
+def workQueueLabels
+    (manifest : Informal.PreviewManifest.File) : Array String :=
+  manifest.workQueueEntries.map fun entry =>
+    Informal.PreviewManifest.labelString entry.label
+```
+
 Three common workflows consume that same model:
 
 1. A Manual page can graft a node from the same document while traversal state
