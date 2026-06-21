@@ -616,6 +616,16 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
 
 end Informal.Cite
 
+namespace Informal.TraversalIndex.CitationPreviews
+
+/-- Decode every citation-preview store entry, preserving per-entry decode errors. -/
+def entries (state : Verso.Genre.Manual.TraverseState) :
+    Array (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.Cite.CitationPreviewData)) :=
+  Informal.TraversalIndex.decodeStoreEntries state domainName
+
+end Informal.TraversalIndex.CitationPreviews
+
 namespace Informal
 
 open Verso.Genre.Manual.Bibliography
