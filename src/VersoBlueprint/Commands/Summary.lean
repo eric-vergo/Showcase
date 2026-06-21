@@ -895,6 +895,29 @@ private def summaryBadgeRow (badges : Array Output.Html) : Output.Html :=
   else
     {{ <div class="bp_summary_badge_row">{{badges}}</div> }}
 
+private def summaryMetricBadge [ToString α] (label : String) (value : α)
+    (warning : Bool := false) : Output.Html :=
+  let text := s!"{label}: {value}"
+  if warning then
+    summaryWarnBadge text
+  else
+    summaryBadge text
+
+private def summaryWarnMetricBadge [ToString α] (label : String) (value : α) : Output.Html :=
+  summaryMetricBadge label value (warning := true)
+
+private def summaryOptionalMetricBadge (label value : String) : Array Output.Html :=
+  if value.isEmpty then
+    #[]
+  else
+    #[summaryMetricBadge label value]
+
+private def summaryUsageBadges (directUses downstreamUses : Nat) : Array Output.Html :=
+  #[
+    summaryMetricBadge "direct uses" directUses,
+    summaryMetricBadge "downstream unlocks" downstreamUses
+  ]
+
 private def summaryMetadataBadges (metadata : MetadataPresentation) : Array Output.Html :=
   metadata.summaryBadgeSpecs.map fun badge =>
     if badge.warning then
@@ -1137,19 +1160,13 @@ private def SummaryHtmlContext.priorityRow (ctx : SummaryHtmlContext) (item : Pr
   let entryRef := ctx.entryRef item.label
   let metadata := metadataPresentationOfPriorityItem item
   let metadataBadges := summaryMetadataBadges metadata
-  let proofBadges : Array Output.Html :=
-    if item.proofStatus.isEmpty then
-      #[]
-    else
-      #[summaryBadge s!"proof: {item.proofStatus}"]
+  let proofBadges := summaryOptionalMetricBadge "proof" item.proofStatus
   let actionLinks := summaryMetadataActionLinks metadata
   let badges :=
     metadataBadges ++ #[
-      summaryBadge s!"stage: {item.stage}",
-      summaryBadge s!"statement: {item.statementStatus}",
-      summaryBadge s!"direct uses: {item.directUses}",
-      summaryBadge s!"downstream unlocks: {item.downstreamUses}"
-    ] ++ proofBadges
+      summaryMetricBadge "stage" item.stage,
+      summaryMetricBadge "statement" item.statementStatus
+    ] ++ summaryUsageBadges item.directUses item.downstreamUses ++ proofBadges
   summaryItemShell entryRef (some (.text true s!"({item.kind})"))
     (summaryItemTextBody s!"Ready for {item.stage} work.")
     (summaryBadgeRow badges)
@@ -1160,27 +1177,35 @@ private def SummaryHtmlContext.usageRow (ctx : SummaryHtmlContext) (item : Usage
   let entryRef := ctx.entryRef item.label
   let badges :=
     #[
-      summaryWarnBadge s!"{primaryLabel}: {primaryCount}",
-      summaryBadge s!"{secondaryLabel}: {secondaryCount}",
-      summaryBadge s!"direct uses: {item.directUses}",
-      summaryBadge s!"downstream unlocks: {item.downstreamUses}"
-    ]
+      summaryWarnMetricBadge primaryLabel primaryCount,
+      summaryMetricBadge secondaryLabel secondaryCount
+    ] ++ summaryUsageBadges item.directUses item.downstreamUses
   summaryItemShell entryRef (some (.text true s!"({item.kind})"))
     (summaryItemTextBody bodyText)
     (summaryBadgeRow badges)
     #[ctx.associatedDecls item.label item.leanObjects]
+
+private def SummaryHtmlContext.usageRowsForAxis (ctx : SummaryHtmlContext)
+    (items : Array UsageItem) (bodyText primaryLabel secondaryLabel : String)
+    (primaryUses secondaryUses : UsageItem → Nat) : Array UsageItem × Array Output.Html :=
+  let usedItems :=
+    sortUsageItemsByAxis
+      (items.filter fun item => primaryUses item > 0)
+      primaryUses
+  let rows :=
+    usedItems.map fun item =>
+      ctx.usageRow item bodyText primaryLabel secondaryLabel (primaryUses item) (secondaryUses item)
+  (usedItems, rows)
 
 private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
     (item : DependencyLoadItem) : Output.Html :=
   let entryRef := ctx.entryRef item.label
   let badges :=
     #[
-      summaryWarnBadge s!"total deps: {item.totalDeps}",
-      summaryBadge s!"statement deps: {item.statementDeps}",
-      summaryBadge s!"proof deps: {item.proofDeps}",
-      summaryBadge s!"direct uses: {item.directUses}",
-      summaryBadge s!"downstream unlocks: {item.downstreamUses}"
-    ]
+      summaryWarnMetricBadge "total deps" item.totalDeps,
+      summaryMetricBadge "statement deps" item.statementDeps,
+      summaryMetricBadge "proof deps" item.proofDeps
+    ] ++ summaryUsageBadges item.directUses item.downstreamUses
   summaryItemShell entryRef (some (.text true s!"({item.kind})"))
     (summaryItemTextBody "Prerequisite fan-in measured from the current statement/proof dependency graph.")
     (summaryBadgeRow badges)
@@ -1189,10 +1214,10 @@ private def SummaryHtmlContext.dependencyLoadRow (ctx : SummaryHtmlContext)
 private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
   let badges :=
     #[
-      summaryWarnBadge s!"affected entries: {item.affectedEntries}",
-      summaryBadge s!"incomplete decls: {item.incompleteDecls}",
-      summaryBadge s!"missing decls: {item.missingDecls}",
-      summaryBadge s!"total debt: {item.totalDebt}"
+      summaryWarnMetricBadge "affected entries" item.affectedEntries,
+      summaryMetricBadge "incomplete decls" item.incompleteDecls,
+      summaryMetricBadge "missing decls" item.missingDecls,
+      summaryMetricBadge "total debt" item.totalDebt
     ]
   summaryItemShell
     (.text true item.header)
@@ -1204,10 +1229,10 @@ private def summaryProofDebtHotspotRow (item : DebtHotspotItem) : Output.Html :=
 private def summaryRollupBadges (totalEntries actionableEntries quickWins linkedPrs : Nat) :
     Array Output.Html :=
   #[
-    summaryBadge s!"entries: {totalEntries}",
-    summaryWarnBadge s!"actionable: {actionableEntries}",
-    summaryBadge s!"quick wins: {quickWins}",
-    summaryBadge s!"linked PRs: {linkedPrs}"
+    summaryMetricBadge "entries" totalEntries,
+    summaryWarnMetricBadge "actionable" actionableEntries,
+    summaryMetricBadge "quick wins" quickWins,
+    summaryMetricBadge "linked PRs" linkedPrs
   ]
 
 private def summaryOwnerRollupRow (item : OwnerRollupItem) : Output.Html :=
@@ -1224,7 +1249,7 @@ private def summaryTagRollupRow (item : TagRollupItem) : Output.Html :=
   let badges :=
     summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
   summaryItemShell
-    (summaryWarnBadge s!"tag: {item.tag}")
+    (summaryWarnMetricBadge "tag" item.tag)
     Option.none
     .empty
     (summaryBadgeRow badges)
@@ -1249,13 +1274,13 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
     Output.Html :=
   let badges :=
     #[
-      summaryBadge s!"total: {item.totalEntries}",
-      summaryBadge s!"closed: {item.closedEntries}",
-      summaryBadge s!"local-only: {item.localOnlyEntries}",
-      summaryWarnBadge s!"ready: {item.readyEntries}",
-      summaryBadge s!"blocked: {item.blockedEntries}",
-      summaryBadge s!"incomplete Lean: {item.incompleteLeanEntries}",
-      summaryBadge s!"unlock score: {item.unlockScore}"
+      summaryMetricBadge "total" item.totalEntries,
+      summaryMetricBadge "closed" item.closedEntries,
+      summaryMetricBadge "local-only" item.localOnlyEntries,
+      summaryWarnMetricBadge "ready" item.readyEntries,
+      summaryMetricBadge "blocked" item.blockedEntries,
+      summaryMetricBadge "incomplete Lean" item.incompleteLeanEntries,
+      summaryMetricBadge "unlock score" item.unlockScore
     ]
   match item.nextPriority? with
   | Option.none =>
@@ -1269,7 +1294,7 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
     let nextRef := ctx.entryRef next.label
     let priorityBadges : Array Output.Html :=
       match next.priority with
-      | Option.some priority => #[summaryWarnBadge s!"priority: {priority}"]
+      | Option.some priority => #[summaryWarnMetricBadge "priority" priority]
       | Option.none => #[]
     summaryItemShell
       (.text true item.header)
@@ -1279,8 +1304,8 @@ private def SummaryHtmlContext.groupHealthRow (ctx : SummaryHtmlContext) (item :
       #[summaryItemActions {{
           "Next: " {{nextRef}} " "
           {{priorityBadges ++ #[
-            summaryBadge s!"stage: {next.stage}",
-            summaryBadge s!"downstream unlocks: {next.downstreamUses}"
+            summaryMetricBadge "stage" next.stage,
+            summaryMetricBadge "downstream unlocks" next.downstreamUses
           ]}}
         }}]
 
@@ -1303,30 +1328,22 @@ private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : Sum
   let renderFailureRows := data.renderFailures.toArray.map ctx.renderFailureRow
   let topPriorityRows := data.topPriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
-  let statementUsedItems :=
-    sortUsageItemsByAxis
-      (data.mostUsed.toArray.filter fun item => item.statementUses > 0)
+  let (statementUsedItems, statementUsedRows) :=
+    ctx.usageRowsForAxis
+      data.mostUsed.toArray
+      "Reverse dependencies recorded in statement dependencies."
+      "statement uses"
+      "proof uses"
       (fun item => item.statementUses)
-  let proofUsedItems :=
-    sortUsageItemsByAxis
-      (data.mostUsed.toArray.filter fun item => item.proofUses > 0)
       (fun item => item.proofUses)
-  let statementUsedRows :=
-    statementUsedItems.map fun item =>
-      ctx.usageRow item
-        "Reverse dependencies recorded in statement dependencies."
-        "statement uses"
-        "proof uses"
-        item.statementUses
-        item.proofUses
-  let proofUsedRows :=
-    proofUsedItems.map fun item =>
-      ctx.usageRow item
-        "Reverse dependencies recorded in proof dependencies."
-        "proof uses"
-        "statement uses"
-        item.proofUses
-        item.statementUses
+  let (proofUsedItems, proofUsedRows) :=
+    ctx.usageRowsForAxis
+      data.mostUsed.toArray
+      "Reverse dependencies recorded in proof dependencies."
+      "proof uses"
+      "statement uses"
+      (fun item => item.proofUses)
+      (fun item => item.statementUses)
   let heaviestPrerequisiteRows := data.heaviestPrerequisites.toArray.map ctx.dependencyLoadRow
   let noPrerequisiteRows := ctx.leanRows data.noPrerequisites
   let noDependentRows := ctx.leanRows data.noDependents
