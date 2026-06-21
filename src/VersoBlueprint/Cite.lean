@@ -626,6 +626,18 @@ def entries (state : Verso.Genre.Manual.TraverseState) :
 
 end Informal.TraversalIndex.CitationPreviews
 
+namespace Informal.TraversalIndex.CitationUsages
+
+/-- Decode citation-use backlinks for one bibliography label. -/
+def data? (state : Verso.Genre.Manual.TraverseState) (label : String) :
+    Option Informal.Cite.CitationUsageData := do
+  let obj ← object? state label
+  match Informal.TraversalIndex.decodeObjectData obj with
+  | .error _ => none
+  | .ok stored => some stored.data
+
+end Informal.TraversalIndex.CitationUsages
+
 namespace Informal
 
 open Verso.Genre.Manual.Bibliography

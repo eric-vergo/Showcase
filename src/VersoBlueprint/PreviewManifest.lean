@@ -884,6 +884,81 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
+/-- Stable string form used by manifest query APIs for Blueprint labels. -/
+def labelString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
+
+/-- Whether this manifest entry represents an informal Blueprint block. -/
+def Entry.isBlock (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .block => true
+  | _ => false
+
+/-- Whether this manifest entry represents the statement facet. -/
+def Entry.isStatement (entry : Entry) : Bool :=
+  match entry.facet with
+  | .statement => true
+  | _ => false
+
+/-- Statement-facet block entries, the primary row set for client label queries. -/
+def File.blockStatementEntries (file : File) : Array Entry :=
+  file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
+
+/-- All block entries matching the public label string, including non-statement facets. -/
+def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
+  file.previews.filter fun entry =>
+    entry.isBlock && labelString entry.label == label
+
+/--
+Best public block entry for a label.
+
+Statement entries are primary because most clients ask for node metadata rather
+than a proof-only rendered facet. If a label only has another facet, return it.
+-/
+def File.findPrimaryBlockEntry? (file : File) (label : String) : Option Entry :=
+  let entries := file.findBlockEntriesByLabel label
+  entries.find? (·.isStatement) <|> entries[0]?
+
+private def pushUniqueString (values : Array String) (value : String) : Array String :=
+  if values.contains value then values else values.push value
+
+/-- Sorted owner names present on statement-facet block entries. -/
+def File.ownerValues (file : File) : Array String :=
+  let owners := file.blockStatementEntries.foldl (init := #[]) fun owners entry =>
+      match entry.ownerDisplayName with
+      | none => owners
+      | some owner => pushUniqueString owners owner
+  owners.qsort (· < ·)
+
+/-- Sorted tag values present on statement-facet block entries. -/
+def File.tagValues (file : File) : Array String :=
+  let tags := file.blockStatementEntries.foldl (init := #[]) fun tags entry =>
+      entry.tags.foldl pushUniqueString tags
+  tags.qsort (· < ·)
+
+/-- Statement-facet block entries carrying work-queue metadata. -/
+def File.workQueueEntries (file : File) : Array Entry :=
+  file.blockStatementEntries.filter fun entry =>
+    entry.ownerDisplayName.isSome || entry.priority.isSome ||
+      entry.effort.isSome || !entry.tags.isEmpty
+
+private def containsSearchText (text value : String) : Bool :=
+  value.toLower.contains text
+
+/-- Case-insensitive text search over user-facing block manifest fields. -/
+def Entry.matchesText (entry : Entry) (query : String) : Bool :=
+  let text := query.toLower
+  containsSearchText text (labelString entry.label) ||
+    containsSearchText text entry.title ||
+    entry.parentTitle.any (containsSearchText text) ||
+    entry.tags.any (containsSearchText text) ||
+    entry.ownerDisplayName.any (containsSearchText text)
+
+/-- Search whether the entry references a Lean-code preview key containing `decl`. -/
+def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
+  entry.leanCodePreviewKeys.any (fun key => key.contains decl)
+
 def externalMarkupEntryKey (label : Name) : String :=
   s!"externalMarkup:{label}"
 

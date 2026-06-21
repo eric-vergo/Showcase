@@ -64,12 +64,8 @@ def manifestPathForSite (site : FilePath) : IO FilePath := do
 def htmlCachePathForSite (site : FilePath) : IO FilePath := do
   pure ((← dataDirForSite site) / Informal.PreviewManifest.htmlCacheFilename)
 
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
-
 private def nameJson (name : Name) : Json :=
-  Json.str (labelString name)
+  Json.str (Informal.PreviewManifest.labelString name)
 
 private def optionStringJson : Option String → Json
   | none => Json.null
@@ -179,47 +175,6 @@ private def entryAllJson (label : String) (entry : Entry) : Json :=
     ("group", entryGroupJson entry)
   ]
 
-def isBlockEntry (entry : Entry) : Bool :=
-  match entry.targetKind with
-  | .block => true
-  | _ => false
-
-def isStatementEntry (entry : Entry) : Bool :=
-  match entry.facet with
-  | .statement => true
-  | _ => false
-
-def blockStatementEntries (manifest : ManifestFile) : Array Entry :=
-  manifest.previews.filter (fun entry => isBlockEntry entry && isStatementEntry entry)
-
-def findBlockEntriesByLabel (manifest : ManifestFile) (label : String) : Array Entry :=
-  manifest.previews.filter fun entry =>
-    isBlockEntry entry && labelString entry.label == label
-
-def findPrimaryBlockEntry? (manifest : ManifestFile) (label : String) : Option Entry :=
-  let entries := findBlockEntriesByLabel manifest label
-  entries.find? isStatementEntry <|> entries[0]?
-
-def ownerValues (manifest : ManifestFile) : Array String :=
-  let owners := blockStatementEntries manifest |>.foldl (init := #[]) fun owners entry =>
-      match entry.ownerDisplayName with
-      | none => owners
-      | some owner =>
-          if owners.contains owner then owners else owners.push owner
-  owners.qsort (· < ·)
-
-def tagValues (manifest : ManifestFile) : Array String :=
-  let tags := blockStatementEntries manifest |>.foldl (init := #[]) fun tags entry =>
-      entry.tags.foldl
-        (fun tags tag => if tags.contains tag then tags else tags.push tag)
-        tags
-  tags.qsort (· < ·)
-
-def workQueueEntries (manifest : ManifestFile) : Array Entry :=
-  blockStatementEntries manifest |>.filter fun entry =>
-    entry.ownerDisplayName.isSome || entry.priority.isSome ||
-      entry.effort.isSome || !entry.tags.isEmpty
-
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
   let rec go (seen : Bool) (acc : Array (String × Nat)) : List (String × Nat) → Array (String × Nat)
     | [] =>
@@ -236,7 +191,7 @@ private def countsJson (counts : Array (String × Nat)) : Json :=
   Json.mkObj (counts.toList.map fun (key, count) => (key, Json.num count))
 
 private def statsJson (manifest : ManifestFile) : Json :=
-  let entries := blockStatementEntries manifest
+  let entries := manifest.blockStatementEntries
   let byKind := entries.foldl (fun counts entry => incrementCount counts (kindString entry.kind)) #[]
   let byOwner := entries.foldl
     (fun counts entry => entry.ownerDisplayName.map (incrementCount counts ·) |>.getD counts)
@@ -251,20 +206,6 @@ private def statsJson (manifest : ManifestFile) : Json :=
     ("byTag", countsJson byTag)
   ]
 
-private def containsSearchText (text value : String) : Bool :=
-  value.toLower.contains text
-
-private def entryMatchesText (text : String) (entry : Entry) : Bool :=
-  let text := text.toLower
-  containsSearchText text (labelString entry.label) ||
-    containsSearchText text entry.title ||
-    entry.parentTitle.any (containsSearchText text) ||
-    entry.tags.any (containsSearchText text) ||
-    entry.ownerDisplayName.any (containsSearchText text)
-
-private def entryMatchesCode (decl : String) (entry : Entry) : Bool :=
-  entry.leanCodePreviewKeys.any (fun key => key.contains decl)
-
 private def missingLabelJson (label : String) : Json :=
   responseJson [
     ("error", Json.str "unknown-label"),
@@ -273,7 +214,7 @@ private def missingLabelJson (label : String) : Json :=
 
 private def withPrimaryEntry
     (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Except String Json :=
-  match findPrimaryBlockEntry? manifest label with
+  match manifest.findPrimaryBlockEntry? label with
   | some entry => .ok (mkJson entry)
   | none => .ok (missingLabelJson label)
 
@@ -283,7 +224,7 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok querySelectorsJson
   | ["labels"] =>
       .ok <| responseJson [
-        ("labels", Json.arr (blockStatementEntries manifest |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries.map entrySummaryJson))
       ]
   | ["node", label] =>
       withPrimaryEntry manifest label entryResponseJson
@@ -310,22 +251,22 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
           ("group", entryGroupJson entry)
         ]
   | ["owners"] =>
-      .ok <| responseJson [("owners", stringArrayJson (ownerValues manifest))]
+      .ok <| responseJson [("owners", stringArrayJson manifest.ownerValues)]
   | ["tags"] =>
-      .ok <| responseJson [("tags", stringArrayJson (tagValues manifest))]
+      .ok <| responseJson [("tags", stringArrayJson manifest.tagValues)]
   | ["work-queue"] =>
       .ok <| responseJson [
-        ("entries", Json.arr (workQueueEntries manifest |>.map entrySummaryJson))
+        ("entries", Json.arr (manifest.workQueueEntries.map entrySummaryJson))
       ]
   | ["search", text] =>
       .ok <| responseJson [
         ("query", Json.str text),
-        ("labels", Json.arr (blockStatementEntries manifest |>.filter (entryMatchesText text) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
       ]
   | ["code", decl] =>
       .ok <| responseJson [
         ("query", Json.str decl),
-        ("labels", Json.arr (blockStatementEntries manifest |>.filter (entryMatchesCode decl) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
       ]
   | ["stats"] =>
       .ok (statsJson manifest)
@@ -370,7 +311,10 @@ private def checkRelatedEntries
     (cacheKeys : Std.HashSet String) (context : String) (entries : Array RelatedEntry)
     (errors : Array String) : Array String :=
   entries.foldl
-    (fun errors entry => pushMissingCacheKey cacheKeys errors s!"{context} relation {labelString entry.label}" entry.previewKey)
+    (fun errors entry =>
+      pushMissingCacheKey cacheKeys errors
+        s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
+        entry.previewKey)
     errors
 
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
@@ -389,7 +333,10 @@ def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : A
       let errors := checkRelatedEntries cacheKeys s!"used-by of {entry.key}" entry.usedBy errors
       match entry.group with
       | none => errors
-      | some group => checkRelatedEntries cacheKeys s!"group {labelString group.label} on {entry.key}" group.entries errors)
+      | some group =>
+          checkRelatedEntries cacheKeys
+            s!"group {Informal.PreviewManifest.labelString group.label} on {entry.key}"
+            group.entries errors)
     #[]
 
 def checkJsonFromErrors
