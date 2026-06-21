@@ -114,9 +114,10 @@ Do those upstream write actions only when they are explicitly requested.
   exist mainly so CI and merge state are visible on the maintenance line.
 - Paired backport branches should be built with `git cherry-pick -x` so every
   backport commit records the source commit SHA from the default-development PR.
-- The paired-backport check now verifies both the recorded source SHAs and the
-  patch IDs for the commit series, so a paired backport PR should remain a
-  one-to-one cherry-pick of the default-development series.
+- The paired-backport check verifies the paired PR target branch, non-draft
+  status, source commit SHAs, commit count, and commit order. It deliberately
+  does not compare patch IDs, because normal release-line conflict resolution
+  can change the exact diff while preserving the reviewed cherry-pick series.
 - The expected workflow is:
   - keep the default-development PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted
