@@ -165,6 +165,9 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def data? (state : TraverseState) (label : Name) : Option Informal.InlineCodeData :=
   objectData? state domainName label.toString
 
+def href? (state : TraverseState) (label : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName label.toString
+
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 

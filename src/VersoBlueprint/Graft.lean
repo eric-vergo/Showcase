@@ -15,7 +15,6 @@ import VersoBlueprint.Graft.Node
 import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Slides.Node
-import VersoBlueprint.TraversalIndex
 
 set_option doc.verso true
 
@@ -80,19 +79,17 @@ private def renderLeanCodePreviewBody?
     (state : TraverseState)
     (key : String) :
     Doc.Html.HtmlT Verso.Genre.Manual m (Option Html) := do
-  match Informal.TraversalIndex.LeanCodePreviews.object? state key with
+  match Informal.TraversalIndex.LeanCodePreviews.decodedEntry? state key with
   | none =>
       Verso.reportError s!"Blueprint graft: missing Lean-code preview {key}"
       pure none
-  | some obj =>
-      match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
-      | .error err =>
-          Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err}"
-          pure none
-      | .ok entry =>
-          match entry.source with
-          | .inlineBlocks blocks => some <$> renderManualBlocks goB blocks
-          | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
+  | some (.error err) =>
+      Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err.message}"
+      pure none
+  | some (.ok stored) =>
+      match stored.data.source with
+      | .inlineBlocks blocks => some <$> renderManualBlocks goB blocks
+      | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
 
 private def renderLeanCodeBodies
     [Monad m]

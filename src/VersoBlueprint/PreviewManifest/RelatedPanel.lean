@@ -23,7 +23,9 @@ def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
   if title.isEmpty then entry.displayLabel else title
 
 def RelationAxis.badgeHtml (axis : RelationAxis) : Html :=
-  {{<span class="bp_relation_axis_badge">{{Html.ofString axis.display}}</span>}}
+  match axis with
+  | .statement => Informal.RelatedPanel.statementAxisBadge
+  | .proof => Informal.RelatedPanel.proofAxisBadge
 
 def RelatedEntry.badgesHtml (entry : RelatedEntry) : Html :=
   .seq <| entry.axes.map RelationAxis.badgeHtml

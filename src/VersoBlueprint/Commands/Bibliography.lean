@@ -61,12 +61,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
         let itemId := s!"bp-bib-{Informal.Cite.citationAnchorId entry.label}"
         let usageHrefs := Informal.TraversalIndex.CitationUsages.hrefs st entry.label
         let usageData : Informal.Cite.CitationUsageData :=
-          match Informal.TraversalIndex.CitationUsages.object? st entry.label with
-          | some obj =>
-            match fromJson? (α := Informal.Cite.CitationUsageData) obj.data with
-            | .ok data => data
-            | .error _ => {}
-          | Option.none => {}
+          (Informal.TraversalIndex.CitationUsages.data? st entry.label).getD {}
         let usageDetails := usageData.uses.toArray.qsort (fun a b => a.href < b.href)
         let usageRows : Array Output.Html :=
           if usageDetails.isEmpty then
