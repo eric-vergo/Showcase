@@ -33,12 +33,13 @@ The current split is intentionally phase-specific:
   preview content from `Informal.Environment.State`
 - callers that need preview data for one label should use the selection helpers
   here so statement/proof fallback semantics stay consistent
+- manifest construction uses the traversal enumeration helpers here when it
+  needs every stored statement/proof preview entry
 
 Known exception:
 
-- manifest construction still enumerates stored preview domains directly because
-  it emits the shared browser manifest from all stored preview entries rather
-  than asking for one label at a time
+- manifest construction still enumerates the whole stored preview domain because
+  it emits every renderable entry, not one selected label at a time
 -/
 
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
@@ -46,6 +47,20 @@ abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 structure Preview where
   blocks : Array ManualBlock := #[]
   stxs : Array Syntax := #[]
+deriving Inhabited, Repr
+
+/--
+A decoded traversal-preview object as stored after Manual traversal.
+
+This is for whole-domain consumers such as manifest construction. Callers that
+need one best preview for a label should use `Selection` instead.
+-/
+structure StoredTraversalEntry where
+  /-- Manifest/cache key for this statement or proof preview facet. -/
+  key : String
+  /-- Canonical name of the underlying traversal object, for diagnostics. -/
+  canonicalName : String
+  entry : PreviewCache.Entry
 deriving Inhabited, Repr
 
 /-- A selected preview for one Blueprint label.
@@ -98,6 +113,26 @@ private def preferredFacet? {α}
 def traversalEntryByKey?
     (s : Verso.Genre.Manual.TraverseState) (key : String) : Option PreviewCache.Entry :=
   Informal.TraversalIndex.TraversalPreviews.entry? s key
+
+/--
+Decode every stored statement/proof traversal preview entry.
+
+This intentionally does not apply statement/proof selection: manifest
+construction needs every renderable facet, while one-label consumers should use
+`traversalSelection?`.
+-/
+def traversalStoredEntries
+    (s : Verso.Genre.Manual.TraverseState) :
+    Array (Except Informal.TraversalIndex.DecodeError StoredTraversalEntry) :=
+  Informal.TraversalIndex.TraversalPreviews.entries s |>.map fun
+    | .error err => .error err
+    | .ok stored =>
+        let entry := stored.data
+        .ok {
+          key := PreviewCache.key entry.label entry.facet
+          canonicalName := stored.canonicalName
+          entry
+        }
 
 def traversalFacetEntry?
     (s : Verso.Genre.Manual.TraverseState)

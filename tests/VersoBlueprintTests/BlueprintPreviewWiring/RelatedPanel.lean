@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Informal.Block.RelatedPanel
+import VersoBlueprint.PreviewManifest.RelatedPanel
 import VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 namespace Verso.VersoBlueprintTests.BlueprintPreviewWiring.RelatedPanel
@@ -18,6 +19,22 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   previewTitle := "Target"
   label := Lean.Name.mkSimple "target"
 }
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let entry : Informal.PreviewManifest.RelatedEntry := {
+      label := Lean.Name.mkSimple "target"
+      title := "Target"
+      previewKey := "informal:target:statement"
+      axes := #[.statement, .proof]
+    }
+    let badges := entry.badgesHtml.asString
+    hasSubstr badges "bp_relation_badge_statement" &&
+      hasSubstr badges "bp_relation_badge_proof" &&
+      hasSubstr badges "title=\"Declared in the statement\"" &&
+      hasSubstr badges "title=\"Declared in the proof\""
 
 /-- info: true -/
 #guard_msgs in

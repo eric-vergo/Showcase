@@ -68,6 +68,28 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
       Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
     let label := Name.mkSimple "preview.proof_fallback"
+    let proofKey := PreviewCache.proofKey label
+    let decoded := Informal.PreviewSource.traversalStoredEntries st
+    let entries := decoded.filterMap fun
+      | .ok entry => some entry
+      | .error _ => none
+    pure <|
+      decoded.all (fun
+        | .ok _ => true
+        | .error _ => false) &&
+      entries.any (fun stored =>
+        stored.key == proofKey &&
+        stored.entry.label == label &&
+        stored.entry.facet == .proof &&
+        !stored.entry.blocks.isEmpty)
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show IO Bool from do
+    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
+      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
+    let label := Name.mkSimple "preview.proof_fallback"
     let statementKey := PreviewCache.statementKey label
     let proofKey := PreviewCache.proofKey label
     let semantic : Informal.Graph.GraphData := {

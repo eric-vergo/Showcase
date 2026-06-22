@@ -142,8 +142,13 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
 #guard_msgs in
 #eval
   show Bool from
-    VersoBlueprint.Vbp.ownerValues sampleMetadataManifest == #["Alpha", "Zed"] &&
-      VersoBlueprint.Vbp.tagValues sampleMetadataManifest == #["alpha", "beta", "zeta"]
+    sampleManifest.blockStatementEntries.size == 2 &&
+      (sampleManifest.findPrimaryBlockEntry? "addition_assoc").map (·.key) ==
+        some "informal:addition_assoc:statement" &&
+      sampleMetadataManifest.ownerValues == #["Alpha", "Zed"] &&
+      sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
+      sampleMetadataManifest.workQueueEntries.map (fun entry =>
+        Informal.PreviewManifest.labelString entry.label) == #["zeta_statement", "alpha_statement"]
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do
   let suffix ← IO.rand 0 1000000000000

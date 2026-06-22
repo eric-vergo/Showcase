@@ -876,6 +876,81 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
+/-- Stable string form used by manifest query APIs for Blueprint labels. -/
+def labelString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
+
+/-- Whether this manifest entry represents an informal Blueprint block. -/
+def Entry.isBlock (entry : Entry) : Bool :=
+  match entry.targetKind with
+  | .block => true
+  | _ => false
+
+/-- Whether this manifest entry represents the statement facet. -/
+def Entry.isStatement (entry : Entry) : Bool :=
+  match entry.facet with
+  | .statement => true
+  | _ => false
+
+/-- Statement-facet block entries, the primary row set for client label queries. -/
+def File.blockStatementEntries (file : File) : Array Entry :=
+  file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
+
+/-- All block entries matching the public label string, including non-statement facets. -/
+def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
+  file.previews.filter fun entry =>
+    entry.isBlock && labelString entry.label == label
+
+/--
+Best public block entry for a label.
+
+Statement entries are primary because most clients ask for node metadata rather
+than a proof-only rendered facet. If a label only has another facet, return it.
+-/
+def File.findPrimaryBlockEntry? (file : File) (label : String) : Option Entry :=
+  let entries := file.findBlockEntriesByLabel label
+  entries.find? (·.isStatement) <|> entries[0]?
+
+private def pushUniqueString (values : Array String) (value : String) : Array String :=
+  if values.contains value then values else values.push value
+
+/-- Sorted owner names present on statement-facet block entries. -/
+def File.ownerValues (file : File) : Array String :=
+  let owners := file.blockStatementEntries.foldl (init := #[]) fun owners entry =>
+      match entry.ownerDisplayName with
+      | none => owners
+      | some owner => pushUniqueString owners owner
+  owners.qsort (· < ·)
+
+/-- Sorted tag values present on statement-facet block entries. -/
+def File.tagValues (file : File) : Array String :=
+  let tags := file.blockStatementEntries.foldl (init := #[]) fun tags entry =>
+      entry.tags.foldl pushUniqueString tags
+  tags.qsort (· < ·)
+
+/-- Statement-facet block entries carrying work-queue metadata. -/
+def File.workQueueEntries (file : File) : Array Entry :=
+  file.blockStatementEntries.filter fun entry =>
+    entry.ownerDisplayName.isSome || entry.priority.isSome ||
+      entry.effort.isSome || !entry.tags.isEmpty
+
+private def containsSearchText (text value : String) : Bool :=
+  value.toLower.contains text
+
+/-- Case-insensitive text search over user-facing block manifest fields. -/
+def Entry.matchesText (entry : Entry) (query : String) : Bool :=
+  let text := query.toLower
+  containsSearchText text (labelString entry.label) ||
+    containsSearchText text entry.title ||
+    entry.parentTitle.any (containsSearchText text) ||
+    entry.tags.any (containsSearchText text) ||
+    entry.ownerDisplayName.any (containsSearchText text)
+
+/-- Search whether the entry references a Lean-code preview key containing `decl`. -/
+def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
+  entry.leanCodePreviewKeys.any (fun key => key.contains decl)
+
 def externalMarkupEntryKey (label : Name) : String :=
   s!"externalMarkup:{label}"
 
@@ -1171,12 +1246,9 @@ private def externalDeclsFromLeanPreviewKeys
     (state : TraverseState)
     (keys : Array String) : Array Informal.Data.ExternalRef :=
   keys.filterMap fun key =>
-    match Informal.TraversalIndex.LeanCodePreviews.object? state key with
-    | none => none
-    | some obj =>
-        match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
-        | .ok { source := .externalDecl decl, .. } => some decl
-        | _ => none
+    match Informal.TraversalIndex.LeanCodePreviews.entry? state key with
+    | some { source := .externalDecl decl, .. } => some decl
+    | _ => none
 
 private def blockCodeData?
     (state : TraverseState)
@@ -1318,16 +1390,15 @@ private def buildTraversalEntries
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
-  let some domain := Informal.TraversalIndex.TraversalPreviews.domain? state
-    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  for (_key, obj) in domain.objects.toArray do
-    match fromJson? (α := PreviewCache.Entry) obj.data with
+  for decoded in Informal.PreviewSource.traversalStoredEntries state do
+    match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed preview entry {obj.canonicalName}: {err}"
-    | .ok entry =>
+      logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let entry := stored.entry
       if entry.blocks.isEmpty then
         continue
       let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
@@ -1336,10 +1407,9 @@ private def buildTraversalEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
-      let key := PreviewCache.key entry.label entry.facet
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
-      htmlEntries := htmlEntries.push { key, html }
+      htmlEntries := htmlEntries.push { key := stored.key, html }
   pure (entries, htmlEntries, hoverState)
 
 private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
@@ -1350,14 +1420,13 @@ private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (previewBackedEntries : Array Entry) : IO (Array Entry) := do
-  let some domain := Informal.TraversalIndex.ExternalMarkup.domain? state
-    | return #[]
   let mut entries := #[]
-  for (_key, obj) in domain.objects.toArray do
-    match fromJson? (α := Informal.Data.ExternalMarkupData) obj.data with
+  for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
+    match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed external-markup entry {obj.canonicalName}: {err}"
-    | .ok data =>
+      logError s!"Blueprint manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let data := stored.data
       if data.markup.isEmpty then
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
@@ -1378,16 +1447,15 @@ private def buildLeanCodeEntries
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
-  let some domain := Informal.TraversalIndex.LeanCodePreviews.domain? state
-    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  for (_key, obj) in domain.objects.toArray do
-    match fromJson? (α := Informal.LeanCodePreview.Entry) obj.data with
+  for decoded in Informal.TraversalIndex.LeanCodePreviews.entries state do
+    match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed Lean-code preview entry {obj.canonicalName}: {err}"
-    | .ok entry =>
+      logError s!"Blueprint manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let entry := stored.data
       let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
@@ -1424,16 +1492,15 @@ private def buildCitationEntries
     (state : TraverseState)
     (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
-  let some domain := Informal.TraversalIndex.CitationPreviews.domain? state
-    | return (#[], #[], hoverState)
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  for (_key, obj) in domain.objects.toArray do
-    match fromJson? (α := Informal.Cite.CitationPreviewData) obj.data with
+  for decoded in Informal.TraversalIndex.CitationPreviews.entries state do
+    match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed citation preview entry {obj.canonicalName}: {err}"
-    | .ok citation =>
+      logError s!"Blueprint manifest: malformed citation preview entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let citation := stored.data
       let (html, hoverState') ← renderCitationEntryHtml impls logError state citation hoverState
       hoverState := hoverState'
       if html.trimAscii.isEmpty then
