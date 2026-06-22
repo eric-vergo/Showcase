@@ -146,7 +146,7 @@ flowchart TD
   elab["Lean / Verso elaboration<br/>directive parsing and local semantic registration"]
   env["Environment.State<br/>persistent semantic data in oleans"]
   traverse["Verso traversal<br/>numbering, hrefs, anchors, local preview blocks"]
-  indexes["TraversalIndex domains<br/>Nodes, InlineCode, TraversalPreviews,<br/>LeanCodePreviews, citations, external-decl anchors"]
+  indexes["TraversalIndex domains<br/>Nodes, InlineCode, RustInlineCode,<br/>TraversalPreviews, LeanCodePreviews,<br/>citations, external-decl anchors"]
   render["HTML page rendering<br/>manual pages, graph, summary, bibliography"]
   manifest["PreviewManifest extra step<br/>semantic manifest and rendered-fragment cache"]
   artifacts["Generated artifacts<br/>HTML pages, assets, -verso-docs.json,<br/>blueprint-manifest.json, blueprint-html-cache.json"]
@@ -220,7 +220,7 @@ that owner.
 | --- | --- | --- | --- |
 | Blueprint labels, node kind, declared dependencies, parent/group, owner, tags, priority, effort, PR URL | Elaboration | `Environment.State.data` and related environment maps | traversal, graph, summary, manifest construction |
 | Group and author declarations | Elaboration | `Environment.State.groups` and `Environment.State.authors` | block rendering, summary, graph/group panels |
-| Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` | block renderers, code panels, manifest entries |
+| Inline Lean and Rust attachments | Elaboration plus traversal | semantic code refs in environment; render-time code-panel indexes in `TraversalIndex.InlineCode` and `TraversalIndex.RustInlineCode` | block renderers, code panels, manifest entries |
 | External Lean declaration snapshots | Elaboration / declaration snapshot registration | `ExternalRef` records on semantic nodes, enriched with presence/status/source/render data | block renderers, code-summary badges, summary, graph, manifest |
 | Numbering, hrefs, anchors, preview keys | Traversal | `TraverseState` and `TraversalIndex` domains | page rendering, preview manifest, browser triggers |
 | Statement/proof preview source blocks | Traversal | `TraversalIndex.TraversalPreviews` | manifest/cache emission, same-document manual grafts |
