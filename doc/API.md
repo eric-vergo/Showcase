@@ -101,6 +101,10 @@ In practice:
 
 - use the manifest when you need to count nodes, inspect statuses, follow
   dependencies, or build a graph view
+- use `entry.href` to jump to a generated Blueprint occurrence, and read
+  `entry.sourceLocation` when a client needs the source file/range that
+  produced the manifest entry; source location is an explicit result object
+  with `{ ok, location, error }`, not an optional field
 - use the HTML cache when you already know a preview key and want the rendered
   statement/proof/code fragment
 - keep the manifest and cache from the same generated site; keys are shared,
@@ -442,8 +446,25 @@ The generated ESM modules expose these entrypoint groups:
 
 | Module | Exports |
 | --- | --- |
-| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `hydrate`. |
+| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolveLabel`, `resolveDeclaration`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `hydrate`. |
 | `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`. |
+
+ESM clients can use the same semantic resolvers after importing the generated
+preview module:
+
+```javascript
+import { resolveDeclaration, resolveLabel } from "./api/preview.mjs";
+
+const label = await resolveLabel("addition_right_identity", { facet: "statement" });
+const declaration = await resolveDeclaration("Nat.add");
+
+if (label.ok && label.sourceLocation.ok) {
+  console.log(label.href, label.sourceLocation.location.path);
+}
+if (declaration.ok && declaration.sourceLocation.ok) {
+  console.log(declaration.href, declaration.sourceLocation.location.path);
+}
+```
 
 ## Browser Runtime API
 
@@ -511,6 +532,45 @@ window.VersoBlueprint.onRenderReady(async function (api) {
 });
 ```
 
+Use `resolveLabel` when the client starts from a Blueprint block label rather
+than a manifest key. It resolves only block entries, defaults to the statement
+facet, and returns both the generated-page `href` and the manifest
+`sourceLocation` result:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const result = await api.resolveLabel("addition_right_identity", { facet: "statement" });
+  if (!result.ok) return;
+
+  console.log(result.href);
+  if (result.sourceLocation.ok) {
+    console.log(result.sourceLocation.location.path);
+  } else {
+    console.warn(result.sourceLocation.error);
+  }
+});
+```
+
+Use `resolveDeclaration` when the client starts from a Lean declaration name. It
+resolves Lean-declaration manifest entries and returns both the generated
+Blueprint occurrence `href` and the manifest `sourceLocation` result. The
+`href` points to the generated Blueprint preview occurrence; the
+`sourceLocation` points to the Lean source definition:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const result = await api.resolveDeclaration("Nat.add");
+  if (!result.ok) return;
+
+  console.log(result.href);
+  if (result.sourceLocation.ok) {
+    console.log(result.sourceLocation.location.path);
+  } else {
+    console.warn(result.sourceLocation.error);
+  }
+});
+```
+
 After readiness, the same API is available as `window.VersoBlueprint.render`.
 Scripts that are emitted as Blueprint inline assets should still use
 `onRenderReady`: Verso stores inline JavaScript assets as a set, so source-list
@@ -534,6 +594,8 @@ Stable custom-client entrypoints:
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. |
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
+| `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
+| `api.resolveDeclaration(declName)` | Resolve a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. |
 | `api.resolvePreview(key)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |
 | `api.resolveCanonicalPreview(key)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
@@ -549,6 +611,8 @@ the rendered HTML used by the operation. Failed results include a `reason` and
 
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |
+| `resolveLabel(label, options)` | `{ ok: true, label, facet, key, manifestEntry, href, sourceLocation }` | `{ ok: false, label, facet, key, reason, manifestEntry, href, sourceLocation }` |
+| `resolveDeclaration(declName)` | `{ ok: true, declaration, key, manifestEntry, href, sourceLocation }` | `{ ok: false, declaration, key, reason, manifestEntry, href, sourceLocation }` |
 | `resolvePreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html }` | `{ ok: false, key, reason, diagnosticHtml }` |
 | `renderPreviewInto(element, key, options)` | The `resolvePreview` success shape after writing `html` into `element` and hydrating it. | The `resolvePreview` failure shape after writing `diagnosticHtml` into `element`. |
 | `resolveCanonicalPreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html, canonicalHtml, canonicalSourceHref }` | `{ ok: false, key, reason, diagnosticHtml }` |
@@ -557,6 +621,10 @@ the rendered HTML used by the operation. Failed results include a `reason` and
 The most common failure `reason` values are:
 
 - `missing-key`
+- `missing-label`
+- `label-entry-missing`
+- `missing-declaration`
+- `declaration-entry-missing`
 - `manifest-entry-missing`
 - `html-cache-entry-missing`
 - `canonical-href-missing`
@@ -579,11 +647,12 @@ namespace as `window.VersoBlueprint.slides`. That bridge is for the generated
 slide asset; custom preview clients should use the stable render API table
 above unless a slide-specific hook is explicitly documented there.
 
-For semantic queries, use the manifest entry returned by `resolvePreview` or
-`loadManifestEntry`. Do not parse inserted or cached fragments to rediscover
-labels, dependencies, group membership, Lean-code associations, or status
-metadata. The cached fragment is presentation: it may display those facts, but
-the manifest is the data contract.
+For semantic queries, use `resolveLabel`, `resolveDeclaration`, or use the
+manifest entry returned by `resolvePreview` or `loadManifestEntry`. Do not parse
+inserted or cached fragments to rediscover labels, source locations,
+dependencies, group membership, Lean-code associations, or status metadata. The
+cached fragment is presentation: it may display those facts, but the manifest
+is the data contract.
 
 ## Bundled Helper Boundary
 

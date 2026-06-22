@@ -638,6 +638,9 @@ structure Entry where
   displayLabel : Option String := none
   /-- Canonical link target for the rendered informal node. -/
   href : Option String := none
+  /-- Source location lookup result for this manifest entry. -/
+  sourceLocation : Informal.Data.SourceLocationResult :=
+    Informal.Data.SourceLocationResult.unavailable "source location unavailable for this manifest entry"
   /-- Parent/group label for this informal node, if any. -/
   parent : Option Name := none
   /-- Resolved display title for the parent/group, if any. -/
@@ -687,6 +690,7 @@ def Entry.blockData (entry : Entry) : Informal.BlockData := {
   kind := entry.blockKind
   codeData := entry.codeData
   label := entry.label
+  sourceLocation := entry.sourceLocation
   parent := entry.parent
   count := 0
   statementUses := entry.statementUses
@@ -1371,6 +1375,7 @@ def blockEntryOfTraversalPreview
     displayCaption := headingParts?.map (·.caption)
     displayLabel := headingParts?.map (·.label)
     href := blockHref state preview.label preview.facet
+    sourceLocation := preview.sourceLocation
     parent := blockData?.bind (·.parent)
     parentTitle := blockParentTitle? state blockData?
     statementUses := blockData?.map (·.statementUses) |>.getD #[]
@@ -1449,6 +1454,42 @@ private def buildExternalMarkupEntries
       }
   pure entries
 
+private def declarationRangeToLspRange (range : Lean.DeclarationRange) : Lean.Lsp.Range := {
+  start := {
+    line := range.pos.line - 1
+    character := range.charUtf16
+  }
+  «end» := {
+    line := range.endPos.line - 1
+    character := range.endCharUtf16
+  }
+}
+
+private def externalDeclSourceLocation (decl : Informal.Data.ExternalRef) :
+    Informal.Data.SourceLocationResult :=
+  match decl.provenance.sourcePath?, decl.range? with
+  | some path, some range =>
+      Informal.Data.SourceLocationResult.found {
+        path
+        range := declarationRangeToLspRange range
+        href := decl.sourceHref?
+      }
+  | none, none =>
+      Informal.Data.SourceLocationResult.unavailable
+        s!"Lean declaration source path and range unavailable for {decl.canonical}"
+  | none, some _ =>
+      Informal.Data.SourceLocationResult.unavailable
+        s!"Lean declaration source path unavailable for {decl.canonical}"
+  | some _, none =>
+      Informal.Data.SourceLocationResult.unavailable
+        s!"Lean declaration source range unavailable for {decl.canonical}"
+
+private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entry) :
+    Informal.Data.SourceLocationResult :=
+  match entry.source with
+  | .externalDecl decl => externalDeclSourceLocation decl
+  | .inlineBlocks _ sourceLocation => sourceLocation
+
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
@@ -1470,12 +1511,15 @@ private def buildLeanCodeEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
+      let key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
       let manifestEntry : Entry := {
-        key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
+        key
         targetKind := .leanDecl
         label := entry.target
         facet := .statement
         title := Informal.LeanCodePreview.title entry.target
+        href := Informal.TraversalIndex.LeanCodePreviews.hrefFor? state entry.target
+        sourceLocation := leanCodePreviewSourceLocation entry
       }
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }

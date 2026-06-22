@@ -180,6 +180,14 @@ export function loadHtmlCacheEntry(key) {
   return callRuntime("loadHtmlCacheEntry", arguments);
 }
 
+export function resolveLabel(label, options) {
+  return callRuntime("resolveLabel", arguments);
+}
+
+export function resolveDeclaration(declName) {
+  return callRuntime("resolveDeclaration", arguments);
+}
+
 export function resolvePreview(key) {
   return callRuntime("resolvePreview", arguments);
 }
@@ -225,6 +233,8 @@ const previewApi = {
   normalizeGraphData,
   previewKey,
   statementPreviewKey,
+  resolveLabel,
+  resolveDeclaration,
   resolvePreview,
   renderPreviewInto,
   resolveCanonicalPreview,

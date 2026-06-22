@@ -408,6 +408,104 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
+    def test_preview_runtime_resolves_labels_and_declarations(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Preview-Relationships/")
+
+        previews = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const labelStatement = await api.resolveLabel("preview_facets");
+                const labelProof = await api.resolveLabel("preview_facets", { facet: "proof" });
+                const missingLabel = await api.resolveLabel("missing_preview_runtime_label");
+                const declaration = await api.resolveDeclaration("Nat.add");
+                const missingDeclaration = await api.resolveDeclaration("Missing.Declaration.For.Runtime");
+                return {
+                    labelStatement: {
+                        ok: labelStatement.ok,
+                        reason: labelStatement.reason,
+                        key: labelStatement.key,
+                        label: labelStatement.label,
+                        facet: labelStatement.facet,
+                        href: labelStatement.href,
+                        sourceLocation: labelStatement.sourceLocation
+                    },
+                    labelProof: {
+                        ok: labelProof.ok,
+                        reason: labelProof.reason,
+                        key: labelProof.key,
+                        label: labelProof.label,
+                        facet: labelProof.facet,
+                        href: labelProof.href,
+                        sourceLocation: labelProof.sourceLocation
+                    },
+                    missingLabel: {
+                        ok: missingLabel.ok,
+                        reason: missingLabel.reason,
+                        key: missingLabel.key,
+                        sourceLocation: missingLabel.sourceLocation
+                    },
+                    declaration: {
+                        ok: declaration.ok,
+                        reason: declaration.reason,
+                        declaration: declaration.declaration,
+                        key: declaration.key,
+                        href: declaration.href,
+                        targetKind: declaration.manifestEntry ? declaration.manifestEntry.targetKind : null,
+                        sourceLocation: declaration.sourceLocation
+                    },
+                    missingDeclaration: {
+                        ok: missingDeclaration.ok,
+                        reason: missingDeclaration.reason,
+                        declaration: missingDeclaration.declaration,
+                        key: missingDeclaration.key,
+                        sourceLocation: missingDeclaration.sourceLocation
+                    }
+                };
+                """
+            )
+        )
+
+        assert previews["labelStatement"]["ok"]
+        assert previews["labelStatement"]["reason"] == ""
+        assert previews["labelStatement"]["key"] == "preview_facets--statement"
+        assert previews["labelStatement"]["label"] == "preview_facets"
+        assert previews["labelStatement"]["facet"] == "statement"
+        assert previews["labelStatement"]["href"].endswith("preview_facets--statement")
+        assert previews["labelStatement"]["sourceLocation"]["ok"] is True
+        assert "PreviewRelationships.lean" in previews["labelStatement"]["sourceLocation"]["location"]["path"]
+        assert previews["labelProof"]["ok"]
+        assert previews["labelProof"]["reason"] == ""
+        assert previews["labelProof"]["key"] == "preview_facets--proof"
+        assert previews["labelProof"]["label"] == "preview_facets"
+        assert previews["labelProof"]["facet"] == "proof"
+        assert previews["labelProof"]["href"].endswith("preview_facets--proof")
+        assert previews["labelProof"]["sourceLocation"]["ok"] is True
+        assert previews["missingLabel"]["ok"] is False
+        assert previews["missingLabel"]["reason"] == "label-entry-missing"
+        assert previews["missingLabel"]["key"] == "missing_preview_runtime_label--statement"
+        assert previews["missingLabel"]["sourceLocation"]["ok"] is False
+        assert "label entry missing" in previews["missingLabel"]["sourceLocation"]["error"]
+        assert previews["declaration"]["ok"]
+        assert previews["declaration"]["reason"] == ""
+        assert previews["declaration"]["declaration"] == "Nat.add"
+        assert previews["declaration"]["key"] == "Informal.LeanCodePreview.Nat.add"
+        assert previews["declaration"]["targetKind"] == "leanDecl"
+        assert previews["declaration"]["href"].startswith("Core-Previews/")
+        assert "#--informal-preview-" in previews["declaration"]["href"]
+        assert previews["declaration"]["sourceLocation"]["ok"] is True
+        assert "Init/Prelude.lean" in previews["declaration"]["sourceLocation"]["location"]["path"]
+        assert previews["missingDeclaration"]["ok"] is False
+        assert previews["missingDeclaration"]["reason"] == "declaration-entry-missing"
+        assert previews["missingDeclaration"]["declaration"] == "Missing.Declaration.For.Runtime"
+        assert previews["missingDeclaration"]["key"] == (
+            "Informal.LeanCodePreview.Missing.Declaration.For.Runtime"
+        )
+        assert previews["missingDeclaration"]["sourceLocation"]["ok"] is False
+        assert "declaration entry missing" in previews["missingDeclaration"]["sourceLocation"]["error"]
+
+        assert_no_runtime_errors(errors)
+
     def test_standalone_render_client_uses_public_render_api(
         self, server: str, page: Page
     ):

@@ -439,6 +439,116 @@
     return previewKey(label, "statement");
   }
 
+  function declarationPreviewKey(declName) {
+    const trimmedDecl = typeof declName === "string" ? declName.trim() : "";
+    if (!trimmedDecl) return "";
+    if (trimmedDecl.startsWith("Informal.LeanCodePreview.")) return trimmedDecl;
+    return "Informal.LeanCodePreview." + trimmedDecl;
+  }
+
+  const previewLookupReasons = Object.freeze({
+    missingLabel: "missing-label",
+    labelEntryMissing: "label-entry-missing",
+    missingDeclaration: "missing-declaration",
+    declarationEntryMissing: "declaration-entry-missing"
+  });
+
+  const sourceLocationMessages = Object.freeze({
+    unavailable: "source location unavailable",
+    labelMissing: "label missing",
+    labelEntryMissing: "label entry missing",
+    declarationMissing: "declaration missing",
+    declarationEntryMissing: "declaration entry missing"
+  });
+
+  function sourceLocationUnavailable(message) {
+    return {
+      ok: false,
+      location: null,
+      error: typeof message === "string" && message ? message : sourceLocationMessages.unavailable
+    };
+  }
+
+  function manifestEntryHref(entry) {
+    return entry && typeof entry.href === "string" ? entry.href : "";
+  }
+
+  function manifestEntrySourceLocation(entry) {
+    return entry && entry.sourceLocation
+      ? entry.sourceLocation
+      : sourceLocationUnavailable(sourceLocationMessages.unavailable);
+  }
+
+  function labelLookupOptions(options) {
+    let rawFacet = null;
+    if (typeof options === "string") {
+      rawFacet = options;
+    } else if (options && typeof options === "object" && !Array.isArray(options)) {
+      rawFacet = options.facet;
+    }
+    const explicitFacet = typeof rawFacet === "string" && rawFacet.trim().length > 0;
+    return {
+      facet: explicitFacet ? rawFacet.trim() : "statement",
+      explicitFacet: explicitFacet
+    };
+  }
+
+  function isBlockEntryForLabel(entry, label) {
+    return !!(
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      entry.targetKind === "block" &&
+      entry.label === label
+    );
+  }
+
+  function findBlockManifestEntryByLabel(manifestMap, label, options) {
+    if (!(manifestMap instanceof Map)) return null;
+    const lookup = labelLookupOptions(options);
+    const key = previewKey(label, lookup.facet);
+    const exact = manifestMap.get(key);
+    if (isBlockEntryForLabel(exact, label)) {
+      return exact;
+    }
+    let first = null;
+    let statement = null;
+    for (const entry of manifestMap.values()) {
+      if (!isBlockEntryForLabel(entry, label)) continue;
+      if (!first) first = entry;
+      if (entry.facet === lookup.facet) return entry;
+      if (entry.facet === "statement" && !statement) statement = entry;
+    }
+    if (lookup.explicitFacet) return null;
+    return statement || first;
+  }
+
+  function isLeanDeclEntry(entry) {
+    return !!(
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      entry.targetKind === "leanDecl"
+    );
+  }
+
+  function findLeanDeclManifestEntry(manifestMap, declName) {
+    if (!(manifestMap instanceof Map)) return null;
+    const trimmedDecl = typeof declName === "string" ? declName.trim() : "";
+    const key = declarationPreviewKey(trimmedDecl);
+    const exact = manifestMap.get(key);
+    if (isLeanDeclEntry(exact)) {
+      return exact;
+    }
+    for (const entry of manifestMap.values()) {
+      if (!isLeanDeclEntry(entry)) continue;
+      if (entry.label === trimmedDecl || entry.key === key) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
   // Preview resolution joins semantic manifest entries with opaque body fragments.
   //
   // The HTML cache is presentation data. Runtime code may insert and hydrate
@@ -463,6 +573,90 @@
 
   async function loadBlueprintHtmlCacheEntry(previewKey) {
     return loadBlueprintStoreEntry(blueprintHtmlCacheStore, previewKey);
+  }
+
+  async function resolveBlueprintLabel(label, options) {
+    const normalizedLabel = typeof label === "string" ? label.trim() : "";
+    const lookup = labelLookupOptions(options);
+    const key = previewKey(normalizedLabel, lookup.facet);
+    if (!normalizedLabel) {
+      return {
+        ok: false,
+        label: "",
+        facet: lookup.facet,
+        key: "",
+        reason: previewLookupReasons.missingLabel,
+        manifestEntry: null,
+        href: "",
+        sourceLocation: sourceLocationUnavailable(sourceLocationMessages.labelMissing)
+      };
+    }
+    const manifestMap = await loadBlueprintManifest();
+    const manifestEntry = findBlockManifestEntryByLabel(manifestMap, normalizedLabel, options);
+    if (!manifestEntry) {
+      return {
+        ok: false,
+        label: normalizedLabel,
+        facet: lookup.facet,
+        key: key,
+        reason: previewLookupReasons.labelEntryMissing,
+        manifestEntry: null,
+        href: "",
+        sourceLocation: sourceLocationUnavailable(sourceLocationMessages.labelEntryMissing)
+      };
+    }
+    const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
+    const resolvedFacet = typeof manifestEntry.facet === "string" ? manifestEntry.facet : lookup.facet;
+    return {
+      ok: true,
+      label: normalizedLabel,
+      facet: resolvedFacet,
+      key: resolvedKey,
+      reason: "",
+      manifestEntry: manifestEntry,
+      href: manifestEntryHref(manifestEntry),
+      sourceLocation: manifestEntrySourceLocation(manifestEntry)
+    };
+  }
+
+  async function resolveBlueprintDeclaration(declName) {
+    const normalizedDecl = typeof declName === "string" ? declName.trim() : "";
+    const key = declarationPreviewKey(normalizedDecl);
+    if (!normalizedDecl) {
+      return {
+        ok: false,
+        declaration: "",
+        key: "",
+        reason: previewLookupReasons.missingDeclaration,
+        manifestEntry: null,
+        href: "",
+        sourceLocation: sourceLocationUnavailable(sourceLocationMessages.declarationMissing)
+      };
+    }
+    const manifestMap = await loadBlueprintManifest();
+    const manifestEntry = findLeanDeclManifestEntry(manifestMap, normalizedDecl);
+    if (!manifestEntry) {
+      return {
+        ok: false,
+        declaration: normalizedDecl,
+        key: key,
+        reason: previewLookupReasons.declarationEntryMissing,
+        manifestEntry: null,
+        href: "",
+        sourceLocation: sourceLocationUnavailable(sourceLocationMessages.declarationEntryMissing)
+      };
+    }
+    const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
+    const declaration = typeof manifestEntry.label === "string" ? manifestEntry.label : normalizedDecl;
+    return {
+      ok: true,
+      declaration: declaration,
+      key: resolvedKey,
+      reason: "",
+      manifestEntry: manifestEntry,
+      href: manifestEntryHref(manifestEntry),
+      sourceLocation: manifestEntrySourceLocation(manifestEntry)
+    };
   }
 
   async function resolveBlueprintPreview(previewKey) {
@@ -2113,6 +2307,8 @@
     previewApiModuleUrl: previewApiModuleUrl,
     previewKey: previewKey,
     statementPreviewKey: statementPreviewKey,
+    resolveLabel: resolveBlueprintLabel,
+    resolveDeclaration: resolveBlueprintDeclaration,
     resolvePreview: resolveBlueprintPreview,
     resolveCanonicalPreview: resolveCanonicalBlueprintPreview
   };
@@ -2166,6 +2362,8 @@
     previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
+    resolveLabel: previewDataApi.resolveLabel,
+    resolveDeclaration: previewDataApi.resolveDeclaration,
     resolvePreview: previewDataApi.resolvePreview,
     renderPreviewInto: previewRenderApi.renderPreviewInto,
     resolveCanonicalPreview: previewDataApi.resolveCanonicalPreview,
