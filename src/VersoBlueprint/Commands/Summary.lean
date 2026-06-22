@@ -368,15 +368,6 @@ private def metadataEntryItem (state : Environment.State) (label : Name) (node :
     leanObjects := nodeLeanObjects node
   }
 
-private def collectMetadataEntries (state : Environment.State) (entries : Array (Name × Data.Node))
-    (keep : Data.Node → Bool) : List MetadataEntryItem :=
-  let items := entries.foldl (init := #[]) fun acc (label, node) =>
-    if keep node then
-      acc.push (metadataEntryItem state label node)
-    else
-      acc
-  (sortMetadataEntryItems items).toList
-
 private def priorityItem? (state : Environment.State) (external : Informal.Graph.ExternalCodeStatus)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
     (label : Name) (node : Data.Node) : Option PriorityItem :=
@@ -426,9 +417,418 @@ private def metadataPresentationOfMetadataEntryItem (item : MetadataEntryItem) :
   tags := item.tags.toArray
 }
 
+private def metadataIsQuickWin (priority effort : Option String) : Bool :=
+  priority == some "high" && effort == some "small"
+
+private def priorityItemIsQuickWin (item : PriorityItem) : Bool :=
+  metadataIsQuickWin item.priority item.effort
+
+private def nodeIsQuickWin (node : Data.Node) (actionable : Bool) : Bool :=
+  actionable && metadataIsQuickWin node.priority node.effort
+
 private def addParentTheoremLikeItem (groups : NameMap (List IndexItem)) (parent : Name) (item : IndexItem) :
     NameMap (List IndexItem) :=
   groups.insert parent (item :: groups.getD parent [])
+
+private structure SummaryBuildContext where
+  state : Environment.State
+  entries : Array (Name × Data.Node)
+  parentChildren : NameMap (Array Name)
+  groupHeaders : NameMap String
+  external : Informal.Graph.ExternalCodeStatus
+  usageMap : NameMap UsageCounts
+  reverseMap : NameMap (Array Name)
+
+private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildContext :=
+  let entries := state.data.toArray
+  let parentChildren := state.data.parentChildren
+  let external : Informal.Graph.ExternalCodeStatus := {}
+  let (usageMap, reverseMap) := buildUsageMaps entries
+  {
+    state
+    entries
+    parentChildren
+    groupHeaders := state.groups
+    external
+    usageMap
+    reverseMap
+  }
+
+private def SummaryBuildContext.downstreamUses (ctx : SummaryBuildContext) (label : Name) : Nat :=
+  downstreamUseCount ctx.reverseMap (ctx.reverseMap.getD label #[]).toList
+
+private def SummaryBuildContext.priorityEntry? (ctx : SummaryBuildContext)
+    (label : Name) (node : Data.Node) : Option PriorityItem :=
+  priorityItem? ctx.state ctx.external ctx.usageMap ctx.reverseMap label node
+
+private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (children : Array Name) :
+    Array (Name × Data.Node) :=
+  children.foldl (init := #[]) fun acc child =>
+    match ctx.state.data.get? child with
+    | some node => acc.push (child, node)
+    | none => acc
+
+private structure MetadataAudit where
+  linkedPrs : Array MetadataEntryItem := #[]
+  missingOwners : Array MetadataEntryItem := #[]
+  missingEffort : Array MetadataEntryItem := #[]
+  untaggedEntries : Array MetadataEntryItem := #[]
+
+private def MetadataAudit.addEntry (audit : MetadataAudit)
+    (state : Environment.State) (label : Name) (node : Data.Node) : MetadataAudit :=
+  let item := metadataEntryItem state label node
+  let audit :=
+    if node.prUrl.isSome then
+      { audit with linkedPrs := audit.linkedPrs.push item }
+    else
+      audit
+  let audit :=
+    if node.owner.isNone then
+      { audit with missingOwners := audit.missingOwners.push item }
+    else
+      audit
+  let audit :=
+    if node.effort.isNone then
+      { audit with missingEffort := audit.missingEffort.push item }
+    else
+      audit
+  if node.tags.isEmpty then
+    { audit with untaggedEntries := audit.untaggedEntries.push item }
+  else
+    audit
+
+private def collectMetadataAudit (ctx : SummaryBuildContext) : MetadataAudit :=
+  ctx.entries.foldl (init := ({} : MetadataAudit)) fun audit (label, node) =>
+    audit.addEntry ctx.state label node
+
+private def MetadataAudit.sortedLinkedPrs (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.linkedPrs).toList
+
+private def MetadataAudit.sortedMissingOwners (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.missingOwners).toList
+
+private def MetadataAudit.sortedMissingEffort (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.missingEffort).toList
+
+private def MetadataAudit.sortedUntaggedEntries (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.untaggedEntries).toList
+
+private def Summary.bumpNodeKindStatus (summary : Summary)
+    (kind : Data.NodeKind) (flags : EntryStatusFlags) : Summary :=
+  match kind with
+  | Data.NodeKind.definition =>
+    { summary with
+      definitions := summary.definitions + 1
+      definitionStatus := bumpEntryStatus summary.definitionStatus flags
+    }
+  | Data.NodeKind.proposition =>
+    { summary with
+      propositions := summary.propositions + 1
+      propositionStatus := bumpEntryStatus summary.propositionStatus flags
+    }
+  | Data.NodeKind.lemma =>
+    { summary with
+      lemmas := summary.lemmas + 1
+      lemmaStatus := bumpEntryStatus summary.lemmaStatus flags
+    }
+  | Data.NodeKind.theorem =>
+    { summary with
+      theorems := summary.theorems + 1
+      theoremStatus := bumpEntryStatus summary.theoremStatus flags
+    }
+  | Data.NodeKind.corollary =>
+    { summary with
+      corollaries := summary.corollaries + 1
+      corollaryStatus := bumpEntryStatus summary.corollaryStatus flags
+    }
+
+private def Summary.bumpAxiomStatus (summary : Summary) (flags : EntryStatusFlags) : Summary :=
+  if flags.hasAxiomLike then
+    { summary with
+      axioms := summary.axioms + 1
+      axiomStatus := bumpEntryStatus summary.axiomStatus flags
+    }
+  else
+    summary
+
+private def collectSummaryOverview (ctx : SummaryBuildContext) : Summary :=
+  ctx.entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
+    let hasStatement := node.statement.isSome
+    let hasProof := node.proof.isSome
+    let hasCode := Informal.Graph.nodeHasAssociatedCode node
+    let statusFlags := entryStatusFlags ctx.state ctx.external node
+    let leanSummary := nodeLeanSummary label node
+    let pendingInformalEntries : List PendingInformalItem :=
+      if hasCode && ((node.kind.isTheoremLike && !hasProof) || !hasStatement) then
+        mkIndexItem label node.kind leanSummary.leanObjects :: acc.pendingInformalEntries
+      else
+        acc.pendingInformalEntries
+    let definitionIndex : List IndexItem :=
+      if node.kind == Data.NodeKind.definition then
+        mkIndexItem label node.kind leanSummary.leanObjects :: acc.definitionIndex
+      else
+        acc.definitionIndex
+    let theoremLikeIndex : List IndexItem :=
+      if node.kind.isTheoremLike then
+        mkIndexItem label node.kind leanSummary.leanObjects :: acc.theoremLikeIndex
+      else
+        acc.theoremLikeIndex
+    let axiomIndex : List IndexItem :=
+      if statusFlags.hasAxiomLike then
+        mkIndexItem label node.kind leanSummary.leanObjects :: acc.axiomIndex
+      else
+        acc.axiomIndex
+    let acc := { acc with
+      totalEntries := acc.totalEntries + 1
+      leanOnlyEntries := acc.leanOnlyEntries + (if hasCode && !hasStatement then 1 else 0)
+      informalOnlyEntries := acc.informalOnlyEntries + (if hasStatement && !hasCode then 1 else 0)
+      totalStatus := bumpEntryStatus acc.totalStatus statusFlags
+      pendingInformalEntries
+      leanDecls := acc.leanDecls + leanSummary.leanDecls
+      sorries := acc.sorries + leanSummary.sorries
+      sorryDetails := leanSummary.sorryDetails ++ acc.sorryDetails
+      missingLeanDecls := leanSummary.missingLeanDecls ++ acc.missingLeanDecls
+      renderFailures := leanSummary.renderFailures ++ acc.renderFailures
+      definitionIndex
+      theoremLikeIndex
+      axiomIndex
+    }
+    acc.bumpNodeKindStatus node.kind statusFlags
+    |>.bumpAxiomStatus statusFlags
+
+private def collectTheoremLikeByParent (ctx : SummaryBuildContext) : List ParentTheoremGroup :=
+  let grouped := ctx.entries.foldl (init := ({} : NameMap (List IndexItem))) fun acc (label, node) =>
+    if node.kind.isTheoremLike then
+      let leanObjects := nodeLeanObjects node
+      match node.parent with
+      | some parent =>
+        let item : IndexItem := mkIndexItem label node.kind leanObjects
+        addParentTheoremLikeItem acc parent item
+      | none => acc
+    else
+      acc
+  grouped.toArray.toList.foldr (init := []) fun (parent, items) acc =>
+    if (ctx.parentChildren.getD parent #[]).size <= 1 then
+      acc
+    else
+      let header := ctx.groupHeaders.getD parent parent.toString
+      { parent, header, entries := items.reverse } :: acc
+
+private def collectPriorityItems (ctx : SummaryBuildContext) : List PriorityItem :=
+  let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
+    match ctx.priorityEntry? label node with
+    | none => acc
+    | some item => acc.push item
+  (sortPriorityItems items).toList
+
+private def usageItem? (ctx : SummaryBuildContext) (label : Name) (node : Data.Node) : Option UsageItem :=
+  let usage := ctx.usageMap.getD label {}
+  if usage.directUses == 0 then
+    none
+  else
+    some {
+      label
+      kind := toString node.kind
+      statementUses := usage.statementUses
+      proofUses := usage.proofUses
+      directUses := usage.directUses
+      downstreamUses := ctx.downstreamUses label
+      leanObjects := nodeLeanObjects node
+    }
+
+private def collectUsageItems (ctx : SummaryBuildContext) : List UsageItem :=
+  let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
+    match usageItem? ctx label node with
+    | none => acc
+    | some item => acc.push item
+  (sortUsageItems items).toList
+
+private structure GroupHealthCounts where
+  totalEntries : Nat := 0
+  closedEntries : Nat := 0
+  localOnlyEntries : Nat := 0
+  readyEntries : Nat := 0
+  blockedEntries : Nat := 0
+  incompleteLeanEntries : Nat := 0
+  unlockScore : Nat := 0
+
+private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
+    (ctx : SummaryBuildContext) (child : Name) (node : Data.Node) : GroupHealthCounts :=
+  let statusFlags := entryStatusFlags ctx.state ctx.external node
+  let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state child node
+  let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
+  let readyNow :=
+    !Informal.Graph.nodeLocalFormalized ctx.external node &&
+      (actionableStage? node statementStatus proofStatus).isSome
+  let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
+  let incompleteLeanNow :=
+    Informal.Graph.nodeHasAssociatedCode node &&
+      (Informal.Graph.nodeHasSorries ctx.external node ||
+        Informal.Graph.nodeHasMissingExternalDecls ctx.external node)
+  {
+    totalEntries := counts.totalEntries + 1
+    closedEntries := counts.closedEntries + (if statusFlags.completed then 1 else 0)
+    localOnlyEntries := counts.localOnlyEntries + (if statusFlags.completedDepsNo then 1 else 0)
+    readyEntries := counts.readyEntries + (if readyNow then 1 else 0)
+    blockedEntries := counts.blockedEntries + (if blockedNow then 1 else 0)
+    incompleteLeanEntries := counts.incompleteLeanEntries + (if incompleteLeanNow then 1 else 0)
+    unlockScore := counts.unlockScore + ctx.downstreamUses child
+  }
+
+private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthItem :=
+  let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
+    if children.size <= 1 then
+      acc
+    else
+      let childEntries := ctx.childEntries children
+      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, node) =>
+        counts.addEntry ctx child node
+      let nextPriority? :=
+        let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
+          match ctx.priorityEntry? child node with
+          | none => acc
+          | some item => acc.push item
+        let sorted := sortPriorityItems candidates
+        if h : 0 < sorted.size then
+          some sorted[0]
+        else
+          none
+      acc.push {
+        parent
+        header := ctx.groupHeaders.getD parent parent.toString
+        totalEntries := counts.totalEntries
+        closedEntries := counts.closedEntries
+        localOnlyEntries := counts.localOnlyEntries
+        readyEntries := counts.readyEntries
+        blockedEntries := counts.blockedEntries
+        incompleteLeanEntries := counts.incompleteLeanEntries
+        unlockScore := counts.unlockScore
+        nextPriority?
+      }
+  (sortGroupHealthItems items).toList
+
+private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
+  ctx.entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
+    let hasStatement := node.statement.isSome
+    let hasCode := Informal.Graph.nodeHasAssociatedCode node
+    let statusFlags := entryStatusFlags ctx.state ctx.external node
+    let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
+    let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
+    if hasStatement && !hasCode then
+      { acc with informalOnly := acc.informalOnly + 1 }
+    else if statusFlags.completed then
+      { acc with fullyClosed := acc.fullyClosed + 1 }
+    else if statusFlags.completedDepsNo then
+      { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
+    else if (actionableStage? node statementStatus proofStatus).isSome then
+      { acc with readyToFormalize := acc.readyToFormalize + 1 }
+    else
+      { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }
+
+private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List DependencyLoadItem :=
+  let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
+    let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
+    let proofDeps := Informal.Graph.eraseDups (Informal.Graph.proofDeps node)
+    let totalDeps := (Informal.Graph.eraseDups (statementDeps ++ proofDeps)).size
+    if totalDeps == 0 then
+      acc
+    else
+      let usage := ctx.usageMap.getD label {}
+      acc.push {
+        label
+        kind := toString node.kind
+        statementDeps := statementDeps.size
+        proofDeps := proofDeps.size
+        totalDeps
+        directUses := usage.directUses
+        downstreamUses := ctx.downstreamUses label
+        leanObjects := nodeLeanObjects node
+      }
+  (sortDependencyLoadItems items).toList
+
+private def collectIndexItems (ctx : SummaryBuildContext) (keep : Name → Data.Node → Bool) :
+    List IndexItem :=
+  ctx.entries.foldl (init := []) fun acc (label, node) =>
+    if keep label node then
+      mkIndexItem label node.kind (nodeLeanObjects node) :: acc
+    else
+      acc
+  |>.reverse
+
+private structure ProofDebtCounts where
+  affectedEntries : Nat := 0
+  incompleteDecls : Nat := 0
+  missingDecls : Nat := 0
+
+private def ProofDebtCounts.addNode (counts : ProofDebtCounts)
+    (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : ProofDebtCounts :=
+  let incompleteDeclCount := nodeIncompleteLeanDeclCount external node
+  let missingDeclCount := nodeMissingLeanDeclCount external node
+  let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
+  {
+    affectedEntries := counts.affectedEntries + (if hasDebt then 1 else 0)
+    incompleteDecls := counts.incompleteDecls + incompleteDeclCount
+    missingDecls := counts.missingDecls + missingDeclCount
+  }
+
+private def ProofDebtCounts.totalDebt (counts : ProofDebtCounts) : Nat :=
+  counts.incompleteDecls + counts.missingDecls
+
+private def collectProofDebtHotspots (ctx : SummaryBuildContext) : List DebtHotspotItem :=
+  let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
+    let counts :=
+      children.foldl (init := ({} : ProofDebtCounts)) fun counts child =>
+        match ctx.state.data.get? child with
+        | none => counts
+        | some node => counts.addNode ctx.external node
+    let totalDebt := counts.totalDebt
+    if totalDebt == 0 then
+      acc
+    else
+      acc.push {
+        parent
+        header := ctx.groupHeaders.getD parent parent.toString
+        affectedEntries := counts.affectedEntries
+        incompleteDecls := counts.incompleteDecls
+        missingDecls := counts.missingDecls
+        totalDebt
+      }
+  (sortDebtHotspotItems items).toList
+
+private def collectOwnerRollups (ctx : SummaryBuildContext) : List OwnerRollupItem :=
+  let rollups := ctx.entries.foldl (init := ({} : NameMap OwnerRollupItem)) fun acc (label, node) =>
+    match node.owner with
+    | none => acc
+    | some owner =>
+      let actionable := (ctx.priorityEntry? label node).isSome
+      let quickWin := nodeIsQuickWin node actionable
+      let linkedPr := node.prUrl.isSome
+      let displayName := (ownerDisplayName ctx.state node).getD owner.toString
+      let cur := acc.getD owner { owner, displayName }
+      acc.insert owner {
+        cur with
+          totalEntries := cur.totalEntries + 1
+          actionableEntries := cur.actionableEntries + (if actionable then 1 else 0)
+          quickWins := cur.quickWins + (if quickWin then 1 else 0)
+          linkedPrs := cur.linkedPrs + (if linkedPr then 1 else 0)
+      }
+  (sortOwnerRollupItems (rollups.toArray.map fun pair => pair.2)).toList
+
+private def collectTagRollups (ctx : SummaryBuildContext) : List TagRollupItem :=
+  let rollups := ctx.entries.foldl (init := ({} : Std.HashMap String TagRollupItem)) fun acc (label, node) =>
+    let actionable := (ctx.priorityEntry? label node).isSome
+    let quickWin := nodeIsQuickWin node actionable
+    let linkedPr := node.prUrl.isSome
+    node.tags.foldl (init := acc) fun acc tag =>
+      let cur := acc.getD tag { tag }
+      acc.insert tag {
+        cur with
+          totalEntries := cur.totalEntries + 1
+          actionableEntries := cur.actionableEntries + (if actionable then 1 else 0)
+          quickWins := cur.quickWins + (if quickWin then 1 else 0)
+          linkedPrs := cur.linkedPrs + (if linkedPr then 1 else 0)
+      }
+  (sortTagRollupItems (rollups.toArray.map fun pair => pair.2)).toList
 
 def buildSummary : CoreM Summary := do
   reportImportedConflicts
@@ -438,324 +838,31 @@ def buildSummary : CoreM Summary := do
       verso.blueprint.summary.debugDiagnostics.defValue
   let env ← getEnv
   let state := informalExt.getState env
-  let entries := state.data.toArray
-  let parentChildren := state.data.parentChildren
-  let groupHeaders := state.groups
-  let external : Informal.Graph.ExternalCodeStatus := {}
-  let (usageMap, reverseMap) := buildUsageMaps entries
-  let summary := entries.foldl (init := ({} : Summary)) fun acc (label, node) =>
-      let hasStatement := node.statement.isSome
-      let hasProof := node.proof.isSome
-      let hasCode := Informal.Graph.nodeHasAssociatedCode node
-      let statusFlags := entryStatusFlags state external node
-      let leanSummary := nodeLeanSummary label node
-      let pendingInformalEntries : List PendingInformalItem :=
-        if hasCode && ((node.kind.isTheoremLike && !hasProof) || !hasStatement) then
-          mkIndexItem label node.kind leanSummary.leanObjects :: acc.pendingInformalEntries
-        else
-          acc.pendingInformalEntries
-      let definitionIndex : List IndexItem :=
-        if node.kind == Data.NodeKind.definition then
-          mkIndexItem label node.kind leanSummary.leanObjects :: acc.definitionIndex
-        else
-          acc.definitionIndex
-      let theoremLikeIndex : List IndexItem :=
-        if node.kind.isTheoremLike then
-          mkIndexItem label node.kind leanSummary.leanObjects :: acc.theoremLikeIndex
-        else
-          acc.theoremLikeIndex
-      let axiomIndex : List IndexItem :=
-        if statusFlags.hasAxiomLike then
-          mkIndexItem label node.kind leanSummary.leanObjects :: acc.axiomIndex
-        else
-          acc.axiomIndex
-      let acc := { acc with
-        totalEntries := acc.totalEntries + 1
-        leanOnlyEntries := acc.leanOnlyEntries + (if hasCode && !hasStatement then 1 else 0)
-        informalOnlyEntries := acc.informalOnlyEntries + (if hasStatement && !hasCode then 1 else 0)
-        totalStatus := bumpEntryStatus acc.totalStatus statusFlags
-        pendingInformalEntries
-        leanDecls := acc.leanDecls + leanSummary.leanDecls
-        sorries := acc.sorries + leanSummary.sorries
-        sorryDetails := leanSummary.sorryDetails ++ acc.sorryDetails
-        missingLeanDecls := leanSummary.missingLeanDecls ++ acc.missingLeanDecls
-        renderFailures := leanSummary.renderFailures ++ acc.renderFailures
-        definitionIndex
-        theoremLikeIndex
-        axiomIndex
-      }
-      let acc :=
-        match node.kind with
-        | Data.NodeKind.definition =>
-          { acc with
-            definitions := acc.definitions + 1
-            definitionStatus := bumpEntryStatus acc.definitionStatus statusFlags
-          }
-        | Data.NodeKind.proposition =>
-          { acc with
-            propositions := acc.propositions + 1
-            propositionStatus := bumpEntryStatus acc.propositionStatus statusFlags
-          }
-        | Data.NodeKind.lemma =>
-          { acc with
-            lemmas := acc.lemmas + 1
-            lemmaStatus := bumpEntryStatus acc.lemmaStatus statusFlags
-          }
-        | Data.NodeKind.theorem =>
-          { acc with
-            theorems := acc.theorems + 1
-            theoremStatus := bumpEntryStatus acc.theoremStatus statusFlags
-          }
-        | Data.NodeKind.corollary =>
-          { acc with
-            corollaries := acc.corollaries + 1
-            corollaryStatus := bumpEntryStatus acc.corollaryStatus statusFlags
-          }
-      if statusFlags.hasAxiomLike then
-        { acc with
-          axioms := acc.axioms + 1
-          axiomStatus := bumpEntryStatus acc.axiomStatus statusFlags
-        }
-      else
-        acc
-  let theoremLikeByParent : List ParentTheoremGroup :=
-    let grouped := entries.foldl (init := ({} : NameMap (List IndexItem))) fun acc (label, node) =>
-      if node.kind.isTheoremLike then
-        let leanObjects := nodeLeanObjects node
-        match node.parent with
-        | some parent =>
-          let item : IndexItem := mkIndexItem label node.kind leanObjects
-          addParentTheoremLikeItem acc parent item
-        | none => acc
-      else
-        acc
-    grouped.toArray.toList.foldr (init := []) fun (parent, items) acc =>
-      if (parentChildren.getD parent #[]).size <= 1 then
-        acc
-      else
-        let header := groupHeaders.getD parent parent.toString
-        { parent, header, entries := items.reverse } :: acc
-  let topPriorities : List PriorityItem :=
-    let items := entries.foldl (init := #[]) fun acc (label, node) =>
-      match priorityItem? state external usageMap reverseMap label node with
-      | none => acc
-      | some item => acc.push item
-    (sortPriorityItems items).toList
-  let mostUsed : List UsageItem :=
-    let items := entries.foldl (init := #[]) fun acc (label, node) =>
-      let usage := usageMap.getD label {}
-      if usage.directUses == 0 then
-        acc
-      else
-        let downstreamUses := downstreamUseCount reverseMap (reverseMap.getD label #[]).toList
-        acc.push {
-          label
-          kind := toString node.kind
-          statementUses := usage.statementUses
-          proofUses := usage.proofUses
-          directUses := usage.directUses
-          downstreamUses
-          leanObjects := nodeLeanObjects node
-        }
-    (sortUsageItems items).toList
-  let groupHealth : List GroupHealthItem :=
-    let items := parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
-      if children.size <= 1 then
-        acc
-      else
-        let childEntries := children.foldl (init := #[]) fun acc child =>
-          match state.data.get? child with
-          | some node => acc.push (child, node)
-          | none => acc
-        let (totalEntries, closedEntries, localOnlyEntries, readyEntries, blockedEntries, incompleteLeanEntries, unlockScore) :=
-          childEntries.foldl (init := (0, 0, 0, 0, 0, 0, 0)) fun (totalEntries, closedEntries, localOnlyEntries, readyEntries, blockedEntries, incompleteLeanEntries, unlockScore) (child, node) =>
-            let statusFlags := entryStatusFlags state external node
-            let statementStatus := Informal.Graph.statementStatus external state child node
-            let proofStatus := Informal.Graph.proofStatus external state child node
-            let readyNow :=
-              !Informal.Graph.nodeLocalFormalized external node &&
-                (actionableStage? node statementStatus proofStatus).isSome
-            let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
-            let incompleteLeanNow :=
-              Informal.Graph.nodeHasAssociatedCode node &&
-                (Informal.Graph.nodeHasSorries external node || Informal.Graph.nodeHasMissingExternalDecls external node)
-            let unlockScore := unlockScore + downstreamUseCount reverseMap (reverseMap.getD child #[]).toList
-            (
-              totalEntries + 1,
-              closedEntries + (if statusFlags.completed then 1 else 0),
-              localOnlyEntries + (if statusFlags.completedDepsNo then 1 else 0),
-              readyEntries + (if readyNow then 1 else 0),
-              blockedEntries + (if blockedNow then 1 else 0),
-              incompleteLeanEntries + (if incompleteLeanNow then 1 else 0),
-              unlockScore
-            )
-        let nextPriority? :=
-          let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
-            match priorityItem? state external usageMap reverseMap child node with
-            | none => acc
-            | some item => acc.push item
-          let sorted := sortPriorityItems candidates
-          if h : 0 < sorted.size then
-            some sorted[0]
-          else
-            none
-        acc.push {
-          parent
-          header := groupHeaders.getD parent parent.toString
-          totalEntries
-          closedEntries
-          localOnlyEntries
-          readyEntries
-          blockedEntries
-          incompleteLeanEntries
-          unlockScore
-          nextPriority?
-        }
-    (sortGroupHealthItems items).toList
-  let coverageSplit :=
-    entries.foldl (init := ({} : CoverageSplit)) fun acc (label, node) =>
-      let hasStatement := node.statement.isSome
-      let hasCode := Informal.Graph.nodeHasAssociatedCode node
-      let statusFlags := entryStatusFlags state external node
-      let statementStatus := Informal.Graph.statementStatus external state label node
-      let proofStatus := Informal.Graph.proofStatus external state label node
-      if hasStatement && !hasCode then
-        { acc with informalOnly := acc.informalOnly + 1 }
-      else if statusFlags.completed then
-        { acc with fullyClosed := acc.fullyClosed + 1 }
-      else if statusFlags.completedDepsNo then
-        { acc with formalizedWithoutAncestors := acc.formalizedWithoutAncestors + 1 }
-      else if (actionableStage? node statementStatus proofStatus).isSome then
-        { acc with readyToFormalize := acc.readyToFormalize + 1 }
-      else
-        { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }
-  let heaviestPrerequisites : List DependencyLoadItem :=
-    let items := entries.foldl (init := #[]) fun acc (label, node) =>
-      let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
-      let proofDeps := Informal.Graph.eraseDups (Informal.Graph.proofDeps node)
-      let totalDeps := (Informal.Graph.eraseDups (statementDeps ++ proofDeps)).size
-      if totalDeps == 0 then
-        acc
-      else
-        let usage := usageMap.getD label {}
-        let downstreamUses := downstreamUseCount reverseMap (reverseMap.getD label #[]).toList
-        acc.push {
-          label
-          kind := toString node.kind
-          statementDeps := statementDeps.size
-          proofDeps := proofDeps.size
-          totalDeps
-          directUses := usage.directUses
-          downstreamUses
-          leanObjects := nodeLeanObjects node
-        }
-    (sortDependencyLoadItems items).toList
-  let noPrerequisites : List IndexItem :=
-    entries.foldl (init := []) fun acc (label, node) =>
-      let totalDeps := (Informal.Graph.eraseDups (Informal.Graph.allDeps node)).size
-      if totalDeps == 0 then
-        mkIndexItem label node.kind (nodeLeanObjects node) :: acc
-      else
-        acc
-    |>.reverse
-  let noDependents : List IndexItem :=
-    entries.foldl (init := []) fun acc (label, node) =>
-      let usage := usageMap.getD label {}
-      if usage.directUses == 0 then
-        mkIndexItem label node.kind (nodeLeanObjects node) :: acc
-      else
-        acc
-    |>.reverse
-  let proofDebtHotspots : List DebtHotspotItem :=
-    let items := parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
-      let (affectedEntries, incompleteDecls, missingDecls) :=
-        children.foldl (init := (0, 0, 0)) fun (affectedEntries, incompleteDecls, missingDecls) child =>
-          match state.data.get? child with
-          | none => (affectedEntries, incompleteDecls, missingDecls)
-          | some node =>
-            let incompleteDeclCount := nodeIncompleteLeanDeclCount external node
-            let missingDeclCount := nodeMissingLeanDeclCount external node
-            let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
-            (
-              affectedEntries + (if hasDebt then 1 else 0),
-              incompleteDecls + incompleteDeclCount,
-              missingDecls + missingDeclCount
-            )
-      let totalDebt := incompleteDecls + missingDecls
-      if totalDebt == 0 then
-        acc
-      else
-        acc.push {
-          parent
-          header := groupHeaders.getD parent parent.toString
-          affectedEntries
-          incompleteDecls
-          missingDecls
-          totalDebt
-        }
-    (sortDebtHotspotItems items).toList
-  let quickWins : List PriorityItem :=
-    topPriorities.filter fun item => item.priority == some "high" && item.effort == some "small"
-  let ownerRollups : List OwnerRollupItem :=
-    let rollups := entries.foldl (init := ({} : NameMap OwnerRollupItem)) fun acc (label, node) =>
-      match node.owner with
-      | none => acc
-      | some owner =>
-        let actionable := (priorityItem? state external usageMap reverseMap label node).isSome
-        let quickWin := actionable && node.priority == some "high" && node.effort == some "small"
-        let linkedPr := node.prUrl.isSome
-        let displayName := (ownerDisplayName state node).getD owner.toString
-        let cur := acc.getD owner { owner, displayName }
-        acc.insert owner {
-          cur with
-            totalEntries := cur.totalEntries + 1
-            actionableEntries := cur.actionableEntries + (if actionable then 1 else 0)
-            quickWins := cur.quickWins + (if quickWin then 1 else 0)
-            linkedPrs := cur.linkedPrs + (if linkedPr then 1 else 0)
-        }
-    (sortOwnerRollupItems (rollups.toArray.map fun pair => pair.2)).toList
-  let tagRollups : List TagRollupItem :=
-    let rollups := entries.foldl (init := ({} : Std.HashMap String TagRollupItem)) fun acc (label, node) =>
-      let actionable := (priorityItem? state external usageMap reverseMap label node).isSome
-      let quickWin := actionable && node.priority == some "high" && node.effort == some "small"
-      let linkedPr := node.prUrl.isSome
-      node.tags.foldl (init := acc) fun acc tag =>
-        let cur := acc.getD tag { tag }
-        acc.insert tag {
-          cur with
-            totalEntries := cur.totalEntries + 1
-            actionableEntries := cur.actionableEntries + (if actionable then 1 else 0)
-            quickWins := cur.quickWins + (if quickWin then 1 else 0)
-            linkedPrs := cur.linkedPrs + (if linkedPr then 1 else 0)
-        }
-    (sortTagRollupItems (rollups.toArray.map fun pair => pair.2)).toList
-  let linkedPrs : List MetadataEntryItem :=
-    collectMetadataEntries state entries fun node => node.prUrl.isSome
-  let missingOwners : List MetadataEntryItem :=
-    collectMetadataEntries state entries fun node => node.owner.isNone
-  let missingEffort : List MetadataEntryItem :=
-    collectMetadataEntries state entries fun node => node.effort.isNone
-  let untaggedEntries : List MetadataEntryItem :=
-    collectMetadataEntries state entries fun node => node.tags.isEmpty
+  let ctx := mkSummaryBuildContext state
+  let summary := collectSummaryOverview ctx
+  let topPriorities := collectPriorityItems ctx
+  let metadataAudit := collectMetadataAudit ctx
   return {
     summary with
-      showDebugDiagnostics,
-      theoremLikeByParent,
-      topPriorities,
-      mostUsed,
-      groupHealth,
-      coverageSplit,
-      heaviestPrerequisites,
-      noPrerequisites,
-      noDependents,
-      proofDebtHotspots,
-      quickWins,
-      ownerRollups,
-      tagRollups,
-      linkedPrs,
-      missingOwners,
-      missingEffort,
-      untaggedEntries
+      showDebugDiagnostics := showDebugDiagnostics
+      theoremLikeByParent := collectTheoremLikeByParent ctx
+      topPriorities := topPriorities
+      mostUsed := collectUsageItems ctx
+      groupHealth := collectGroupHealth ctx
+      coverageSplit := collectCoverageSplit ctx
+      heaviestPrerequisites := collectDependencyLoadItems ctx
+      noPrerequisites := collectIndexItems ctx fun _ node =>
+        (Informal.Graph.eraseDups (Informal.Graph.allDeps node)).size == 0
+      noDependents := collectIndexItems ctx fun label _ =>
+        (ctx.usageMap.getD label {}).directUses == 0
+      proofDebtHotspots := collectProofDebtHotspots ctx
+      quickWins := topPriorities.filter priorityItemIsQuickWin
+      ownerRollups := collectOwnerRollups ctx
+      tagRollups := collectTagRollups ctx
+      linkedPrs := metadataAudit.sortedLinkedPrs
+      missingOwners := metadataAudit.sortedMissingOwners
+      missingEffort := metadataAudit.sortedMissingEffort
+      untaggedEntries := metadataAudit.sortedUntaggedEntries
   }
 
 private def Summary.previewLabels (data : Summary) : Array Name :=
@@ -996,7 +1103,10 @@ private def summaryCappedDetailsList (title : String) (rows : Array Output.Html)
 private def summaryOptionalCappedDetailsList (visible : Bool) (title : String)
     (rows : Array Output.Html) (noun : String) (className : String := "bp_summary_subsection")
     (open? : Bool := false) : Output.Html :=
-  summaryOptionalDetailsList visible title (summaryCapRows rows noun) className open?
+  if visible then
+    summaryCappedDetailsList title rows noun className open?
+  else
+    .empty
 
 private def summaryItemTop (head : Output.Html) (meta? : Option Output.Html) : Output.Html :=
   let metaNode :=
@@ -1287,13 +1397,28 @@ private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
 
 -- Keep the large summary renderer in small top-level pieces; compiling it as
 -- one generated `block_extension` descriptor is disproportionately expensive.
-private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
+private def SummaryRows.withOverviewRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
   let sorryRows ← data.sorryDetails.toArray.mapM ctx.sorryRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
-  let renderFailureRows := data.renderFailures.toArray.map ctx.renderFailureRow
   let topPriorityRows := data.topPriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
+  let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
+  let blockerRows := missingRows ++ sorryRows
+  pure {
+    rows with
+    pendingInformalRows
+    sorryRows
+    missingRows
+    topPriorityRows
+    quickWinRows
+    blockerCount
+    blockerRows
+  }
+
+private def SummaryRows.withDependencyRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let statementUsedItems :=
     sortUsageItemsByAxis
       (data.mostUsed.toArray.filter fun item => item.statementUses > 0)
@@ -1318,52 +1443,75 @@ private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : Sum
         "statement uses"
         item.proofUses
         item.statementUses
+  let groupHealthRows := data.groupHealth.toArray.map ctx.groupHealthRow
+  {
+    rows with
+    statementUsedItems
+    proofUsedItems
+    statementUsedRows
+    proofUsedRows
+    groupHealthRows
+  }
+
+private def SummaryRows.withStructureRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let heaviestPrerequisiteRows := data.heaviestPrerequisites.toArray.map ctx.dependencyLoadRow
   let noPrerequisiteRows := ctx.leanRows data.noPrerequisites
   let noDependentRows := ctx.leanRows data.noDependents
   let proofDebtHotspotRows := data.proofDebtHotspots.toArray.map summaryProofDebtHotspotRow
+  {
+    rows with
+    heaviestPrerequisiteRows
+    noPrerequisiteRows
+    noDependentRows
+    proofDebtHotspotRows
+  }
+
+private def SummaryRows.withMetadataRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let ownerRollupRows := data.ownerRollups.toArray.map summaryOwnerRollupRow
   let tagRollupRows := data.tagRollups.toArray.map summaryTagRollupRow
   let linkedPrRows := ctx.metadataEntryRows data.linkedPrs "Entry already linked to a review PR."
   let missingOwnerRows := ctx.metadataEntryRows data.missingOwners "Missing owner metadata."
   let missingEffortRows := ctx.metadataEntryRows data.missingEffort "Missing effort metadata."
   let untaggedRows := ctx.metadataEntryRows data.untaggedEntries "Missing tag metadata."
-  let groupHealthRows := data.groupHealth.toArray.map ctx.groupHealthRow
+  {
+    rows with
+    ownerRollupRows
+    tagRollupRows
+    linkedPrRows
+    missingOwnerRows
+    missingEffortRows
+    untaggedRows
+  }
+
+private def SummaryRows.withIndexRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let definitionRows := ctx.leanRows data.definitionIndex
   let theoremLikeRows := ctx.leanRows data.theoremLikeIndex
   let axiomRows := ctx.leanRows data.axiomIndex
   let theoremLikeByParentRows := data.theoremLikeByParent.toArray.map ctx.theoremLikeParentGroup
-  let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
-  let blockerRows := missingRows ++ sorryRows
-  pure {
-    pendingInformalRows,
-    sorryRows,
-    missingRows,
-    renderFailureRows,
-    topPriorityRows,
-    quickWinRows,
-    statementUsedItems,
-    proofUsedItems,
-    statementUsedRows,
-    proofUsedRows,
-    heaviestPrerequisiteRows,
-    noPrerequisiteRows,
-    noDependentRows,
-    proofDebtHotspotRows,
-    ownerRollupRows,
-    tagRollupRows,
-    linkedPrRows,
-    missingOwnerRows,
-    missingEffortRows,
-    untaggedRows,
-    groupHealthRows,
-    definitionRows,
-    theoremLikeRows,
-    axiomRows,
-    theoremLikeByParentRows,
-    blockerCount,
-    blockerRows
+  {
+    rows with
+    definitionRows
+    theoremLikeRows
+    axiomRows
+    theoremLikeByParentRows
   }
+
+private def SummaryRows.withDiagnosticsRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
+  let renderFailureRows := data.renderFailures.toArray.map ctx.renderFailureRow
+  { rows with renderFailureRows }
+
+private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
+  let rows ← ({} : SummaryRows).withOverviewRows ctx data
+  let rows := rows.withDependencyRows ctx data
+  let rows := rows.withMetadataRows ctx data
+  let rows := rows.withDiagnosticsRows ctx data
+  let rows := rows.withStructureRows ctx data
+  let rows := rows.withIndexRows ctx data
+  pure rows
 
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showBlockers := rows.blockerCount > 0
