@@ -724,6 +724,22 @@ That page uses dependency data, metadata, and Lean status to present:
 - next ready work and project triage information
 - grouped rollups by parent, owner, and tags
 
+Some summary sections use deliberately practical project-management terms:
+
+- **Actionable** entries are not locally formalized yet, and their statement or
+  proof status says there is work that can start now.
+- **Quick wins** are actionable entries marked with high priority and small
+  effort metadata.
+- **Direct uses** count immediate statement or proof dependency edges into an
+  entry. **Downstream unlocks** count entries that depend on it transitively,
+  with cycles ignored.
+- **Group health** rolls progress, blockers, Lean gaps, and unlock counts up by
+  parent or group, and points at the next ready child when one exists.
+- **Proof debt** groups incomplete or missing Lean declaration snapshots by
+  parent or group.
+- **Metadata audit** lists entries that have PR links and entries missing owner,
+  effort, or tag metadata.
+
 Maintainer-oriented diagnostics such as external declaration render failures are
 available through an explicit summary debug option so they do not appear in the
 default end-user view.
