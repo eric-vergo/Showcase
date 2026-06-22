@@ -552,6 +552,16 @@ labels, dependencies, group membership, Lean-code associations, or status
 metadata. The cached fragment is presentation: it may display those facts, but
 the manifest is the data contract.
 
+Custom component frameworks should keep the same split. A React, audit, or
+dashboard client owns its component tree, selection state, filters, and wrapper
+markup, but it should treat Blueprint data as manifest/cache records loaded
+through the render API. Components should pass preview keys to
+`resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, or
+`renderCanonicalPreviewInto`, then render user-interface controls around the
+returned manifest entry. They should not scrape generated Blueprint DOM, call
+private bundled helpers, or couple component state to the current shape of
+`preview-runtime.js`.
+
 ## Bundled Helper Boundary
 
 Bundled-feature helper APIs are intentionally narrower than the stable API.
