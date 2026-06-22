@@ -19,9 +19,9 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
     pure (
       hasSubstr out ">Overview</summary>" &&
       hasSubstr out "Dependency insights" &&
-      hasSubstr out "Actionable priorities</span><span class=\"bp_summary_value\">12</span>" &&
-      hasSubstr out "Statement-used entries</span><span class=\"bp_summary_value\">12</span>" &&
-      hasSubstr out "Proof-used entries</span><span class=\"bp_summary_value\">2</span>" &&
+      hasSummaryCardValue out "Actionable priorities" "12" &&
+      hasSummaryCardValue out "Statement-used entries" "12" &&
+      hasSummaryCardValue out "Proof-used entries" "2" &&
       hasSubstr out "Ready next (12)" &&
       hasSubstr out "Show all 2 more priorities" &&
       hasSubstr out "Most used in statements (12)" &&
@@ -36,11 +36,11 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "Tag rollups (" &&
       hasSubstr out "Linked PRs (2)" &&
       hasSubstr out "Metadata audit" &&
-      hasSubstr out "Missing owner</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSummaryCardValue out "Missing owner" "14" &&
       hasSubstr out "Missing owner (14)" &&
-      hasSubstr out "Missing effort</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSummaryCardValue out "Missing effort" "14" &&
       hasSubstr out "Missing effort (14)" &&
-      hasSubstr out "Untagged</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSummaryCardValue out "Untagged" "14" &&
       hasSubstr out "Untagged (14)" &&
       hasSubstr out "Alice Example" &&
       hasSubstr out "Bob Example" &&
@@ -52,15 +52,15 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "No dependents (" &&
       !hasSubstr out "Proof debt hotspots (0)" &&
       hasSubstr out "Next:" &&
-      hasSubstr out "total: 14" &&
-      hasSubstr out "closed: 0" &&
-      hasSubstr out "local-only: 0" &&
-      hasSubstr out "ready: 13" &&
-      hasSubstr out "blocked: 1" &&
-      hasSubstr out "incomplete Lean: 0" &&
-      hasSubstr out "unlock score: 14" &&
-      hasSubstr out "priority: high" &&
-      hasSubstr out "priority: low" &&
+      hasSummaryMetricBadge out "total" "14" &&
+      hasSummaryMetricBadge out "closed" "0" &&
+      hasSummaryMetricBadge out "local-only" "0" &&
+      hasSummaryMetricBadge out "ready" "13" &&
+      hasSummaryMetricBadge out "blocked" "1" &&
+      hasSummaryMetricBadge out "incomplete Lean" "0" &&
+      hasSummaryMetricBadge out "unlock score" "14" &&
+      hasSummaryMetricBadge out "priority" "high" &&
+      hasSummaryMetricBadge out "priority" "low" &&
       !hasSubstr out "Axiom-like Index (0)" &&
       !hasSubstr out "Proof debt hotspots (0)" &&
       appearsBefore out "def:triage.12" "def:triage.01" &&

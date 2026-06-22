@@ -1124,7 +1124,10 @@ private def summaryCappedDetailsList (title : String) (rows : Array Output.Html)
 private def summaryOptionalCappedDetailsList (visible : Bool) (title : String)
     (rows : Array Output.Html) (noun : String) (className : String := "bp_summary_subsection")
     (open? : Bool := false) : Output.Html :=
-  summaryOptionalDetailsList visible title (summaryCapRows rows noun) className open?
+  if visible then
+    summaryCappedDetailsList title rows noun className open?
+  else
+    .empty
 
 private def summaryItemTop (head : Output.Html) (meta? : Option Output.Html) : Output.Html :=
   let metaNode :=
