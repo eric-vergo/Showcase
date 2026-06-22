@@ -420,6 +420,26 @@ The workflow implies a few constraints for renderers:
   surface's local UI state, or call hydrators; it should not infer Blueprint
   relation topology, ownership, status, or code associations from HTML markup.
 
+  The next split should preserve the current public API while moving private
+  helpers behind files that match their responsibility:
+
+  | Boundary | Current responsibility | Split target |
+  | --- | --- | --- |
+  | API readiness | Install `window.VersoBlueprint`, queue `onRenderReady` callbacks, and expose the stable render API. | small bootstrap module loaded before bundled clients |
+  | Preview data access | Resolve `-verso-data` URLs, load manifest/cache JSON, keep load status, and normalize preview keys. | data/cache module |
+  | Fragment rendering | Resolve manifest/cache pairs, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers. | render module |
+  | Hydration registry | Run math rendering and feature hydrators after custom insertion. | hydration module |
+  | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | descriptor module |
+  | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | surface module, eventually closest to a component primitive |
+  | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | lifecycle module used by surfaces |
+  | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | debug module compiled into the bundled runtime |
+
+  A first split should be internal-only: generated pages should still load the
+  same bundled asset and custom clients should still start from
+  `onRenderReady`. Once the internal boundaries are stable, the ESM preview API
+  can re-export selected stable functions for framework clients without exposing
+  Blueprint-owned DOM or lifecycle details.
+
 - **Keep readiness and API guards source-level.**
   Feature JavaScript must start through `window.VersoBlueprint.onRenderReady`;
   direct reads from `window.VersoBlueprint.render` are limited to the runtime
