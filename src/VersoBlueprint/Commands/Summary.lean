@@ -1420,13 +1420,28 @@ private def SummaryHtmlContext.theoremLikeParentGroup (ctx : SummaryHtmlContext)
 
 -- Keep the large summary renderer in small top-level pieces; compiling it as
 -- one generated `block_extension` descriptor is disproportionately expensive.
-private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
+private def SummaryRows.withOverviewRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
   let sorryRows ← data.sorryDetails.toArray.mapM ctx.sorryRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
-  let renderFailureRows := data.renderFailures.toArray.map ctx.renderFailureRow
   let topPriorityRows := data.topPriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
+  let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
+  let blockerRows := missingRows ++ sorryRows
+  pure {
+    rows with
+    pendingInformalRows
+    sorryRows
+    missingRows
+    topPriorityRows
+    quickWinRows
+    blockerCount
+    blockerRows
+  }
+
+private def SummaryRows.withDependencyRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let (statementUsedItems, statementUsedRows) :=
     ctx.usageRowsForAxis
       data.mostUsed.toArray
@@ -1443,52 +1458,75 @@ private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : Sum
       "statement uses"
       (fun item => item.proofUses)
       (fun item => item.statementUses)
+  let groupHealthRows := data.groupHealth.toArray.map ctx.groupHealthRow
+  {
+    rows with
+    statementUsedItems
+    proofUsedItems
+    statementUsedRows
+    proofUsedRows
+    groupHealthRows
+  }
+
+private def SummaryRows.withStructureRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let heaviestPrerequisiteRows := data.heaviestPrerequisites.toArray.map ctx.dependencyLoadRow
   let noPrerequisiteRows := ctx.leanRows data.noPrerequisites
   let noDependentRows := ctx.leanRows data.noDependents
   let proofDebtHotspotRows := data.proofDebtHotspots.toArray.map summaryProofDebtHotspotRow
+  {
+    rows with
+    heaviestPrerequisiteRows
+    noPrerequisiteRows
+    noDependentRows
+    proofDebtHotspotRows
+  }
+
+private def SummaryRows.withMetadataRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let ownerRollupRows := data.ownerRollups.toArray.map summaryOwnerRollupRow
   let tagRollupRows := data.tagRollups.toArray.map summaryTagRollupRow
   let linkedPrRows := ctx.metadataEntryRows data.linkedPrs "Entry already linked to a review PR."
   let missingOwnerRows := ctx.metadataEntryRows data.missingOwners "Missing owner metadata."
   let missingEffortRows := ctx.metadataEntryRows data.missingEffort "Missing effort metadata."
   let untaggedRows := ctx.metadataEntryRows data.untaggedEntries "Missing tag metadata."
-  let groupHealthRows := data.groupHealth.toArray.map ctx.groupHealthRow
+  {
+    rows with
+    ownerRollupRows
+    tagRollupRows
+    linkedPrRows
+    missingOwnerRows
+    missingEffortRows
+    untaggedRows
+  }
+
+private def SummaryRows.withIndexRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
   let definitionRows := ctx.leanRows data.definitionIndex
   let theoremLikeRows := ctx.leanRows data.theoremLikeIndex
   let axiomRows := ctx.leanRows data.axiomIndex
   let theoremLikeByParentRows := data.theoremLikeByParent.toArray.map ctx.theoremLikeParentGroup
-  let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
-  let blockerRows := missingRows ++ sorryRows
-  pure {
-    pendingInformalRows,
-    sorryRows,
-    missingRows,
-    renderFailureRows,
-    topPriorityRows,
-    quickWinRows,
-    statementUsedItems,
-    proofUsedItems,
-    statementUsedRows,
-    proofUsedRows,
-    heaviestPrerequisiteRows,
-    noPrerequisiteRows,
-    noDependentRows,
-    proofDebtHotspotRows,
-    ownerRollupRows,
-    tagRollupRows,
-    linkedPrRows,
-    missingOwnerRows,
-    missingEffortRows,
-    untaggedRows,
-    groupHealthRows,
-    definitionRows,
-    theoremLikeRows,
-    axiomRows,
-    theoremLikeByParentRows,
-    blockerCount,
-    blockerRows
+  {
+    rows with
+    definitionRows
+    theoremLikeRows
+    axiomRows
+    theoremLikeByParentRows
   }
+
+private def SummaryRows.withDiagnosticsRows
+    (rows : SummaryRows) (ctx : SummaryHtmlContext) (data : Summary) : SummaryRows :=
+  let renderFailureRows := data.renderFailures.toArray.map ctx.renderFailureRow
+  { rows with renderFailureRows }
+
+private def SummaryRows.render (ctx : SummaryHtmlContext) (data : Summary) : SummaryHtmlM SummaryRows := do
+  let rows ← ({} : SummaryRows).withOverviewRows ctx data
+  let rows := rows.withDependencyRows ctx data
+  let rows := rows.withMetadataRows ctx data
+  let rows := rows.withDiagnosticsRows ctx data
+  let rows := rows.withStructureRows ctx data
+  let rows := rows.withIndexRows ctx data
+  pure rows
 
 private def summaryOverviewSection (data : Summary) (rows : SummaryRows) : Output.Html :=
   let showBlockers := rows.blockerCount > 0

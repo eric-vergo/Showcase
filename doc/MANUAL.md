@@ -724,6 +724,18 @@ That page uses dependency data, metadata, and Lean status to present:
 - next ready work and project triage information
 - grouped rollups by parent, owner, and tags
 
+For routine project work, read the summary from top to bottom:
+
+1. Start with **Current blockers**. Missing external declarations and incomplete
+   Lean declarations usually explain why apparently small tasks are not ready.
+2. Use **Ready next** for work that can start now and already unlocks downstream
+   entries.
+3. Check **Quick wins** when you want small high-priority tasks.
+4. Use **Dependency insights** and **Structure and coverage** when planning a
+   larger batch of work or reviewing the shape of a Blueprint.
+5. Use **Metadata audit** to keep ownership, effort, tags, and linked PRs useful
+   for collaborators.
+
 Some summary sections use deliberately practical project-management terms:
 
 - **Actionable** entries are not locally formalized yet, and their statement or
