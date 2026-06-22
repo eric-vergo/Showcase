@@ -11,6 +11,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.Environment
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.LabelNameParsing
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -47,9 +48,9 @@ open Verso Doc Elab Genre Manual in
 block_extension Block.groupMetadata (groupData : GroupBlockData) where
   data := toJson groupData
   traverse _id data _contents := do
-    let .ok groupData := fromJson? (α := GroupBlockData) data
-      | Verso.reportError "Malformed data in Block.groupMetadata.traverse"
-        return none
+    let some groupData ← ExtensionDecode.decode? (α := GroupBlockData) data
+        (fun _ => "Malformed data in Block.groupMetadata.traverse")
+      | return none
     modify fun st =>
       Informal.TraversalIndex.Groups.saveData st groupData.label (toJson groupData)
     return none
@@ -58,9 +59,9 @@ block_extension Block.groupMetadata (groupData : GroupBlockData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _ _ _ data _ => do
-      let .ok _ := fromJson? (α := GroupBlockData) data
-        | Verso.reportError "Malformed data in Block.groupMetadata.toHtml"
-          pure .empty
+      let some _ ← ExtensionDecode.decode? (α := GroupBlockData) data
+          (fun _ => "Malformed data in Block.groupMetadata.toHtml")
+        | pure .empty
       pure .empty
 
 private def collapseWhitespace (s : String) : String :=

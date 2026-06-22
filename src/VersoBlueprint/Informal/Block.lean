@@ -26,6 +26,7 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -61,11 +62,11 @@ block_extension Block.informal (data : BlockData) where
   data := toJson data
   traverse id data _contents := do
     -- XXX: (maybe) lift the Except into the main monad error thread
-    match fromJson? (α := BlockData) data with
-    | .error err =>
-      Verso.reportError s!"Malformed data ({err}): {data}"
+    match ← ExtensionDecode.decode? (α := BlockData) data
+        (fun err => s!"Malformed data ({err}): {data}") with
+    | none =>
       pure none
-    | .ok blockData =>
+    | some blockData =>
       let blockData := blockData.withTraversalNumberingContext (← read)
       registerTraversedBlockAssets id blockData _contents
       saveTraversedBlockData id blockData
@@ -77,11 +78,11 @@ block_extension Block.informal (data : BlockData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      match fromJson? (α := BlockData) data with
-      | .error err =>
-        Verso.reportError s!"Malformed data ({err}): {data}"
+      match ← ExtensionDecode.decode? (α := BlockData) data
+          (fun err => s!"Malformed data ({err}): {data}") with
+      | none =>
         pure .empty
-      | .ok data =>
+      | some data =>
         let s ← HtmlT.state
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
