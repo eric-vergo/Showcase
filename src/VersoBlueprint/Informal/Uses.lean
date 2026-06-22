@@ -13,6 +13,7 @@ import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.LabelArg
 import VersoBlueprint.Informal.UseConfig
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Profiling
@@ -118,9 +119,9 @@ private def wrapUseLinkPreview (node : Verso.Output.Html)
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data
   traverse _id data _contents := do
-    let .ok _ := fromJson? (α := InlineData) data
-      | Verso.reportError s!"Malformed data in Inline.informal traversal: {data}"
-        pure none
+    let some _ ← ExtensionDecode.decode? (α := InlineData) data
+        (fun _ => s!"Malformed data in Inline.informal traversal: {data}")
+      | pure none
     pure none
   extraCss := usesAssetBundle.css
   extraJs := usesAssetBundle.js
@@ -128,9 +129,9 @@ inline_extension Inline.informal (data : InlineData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun goI _id data inlines => do
-      let .ok { label, block } := fromJson? (α := InlineData) data
-        | Verso.reportError "Malformed data in Inline.informal traversal"
-          pure .empty
+      let some { label, block } ← ExtensionDecode.decode? (α := InlineData) data
+          (fun _ => "Malformed data in Inline.informal traversal")
+        | pure .empty
       let st ← HtmlT.state
       let storedBlock? := resolveStoredBlockData? st label
       let resolvedBlock : Option BlockData :=

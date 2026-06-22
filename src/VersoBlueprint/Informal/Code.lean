@@ -17,6 +17,7 @@ import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.Lean
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -56,9 +57,9 @@ private partial def previewCodeBlocks
 block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
-    let .ok cdata := fromJson? (α := InlineCodeData) data
-      | Verso.reportError s!"Malformed data: {data}"
-        pure none
+    let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
+        (fun _ => s!"Malformed data: {data}")
+      | pure none
     let label := cdata.label
     if let .some _d := Informal.TraversalIndex.InlineCode.object? (← get) label then
       pure none
@@ -95,9 +96,10 @@ block_extension Block.informalCode (data : InlineCodeData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB id data blocks => do
-      let .ok { label, definedDefs, definedTheorems, statementUses := _, proofUses := _, foldCodeBlock, foldProofs } := fromJson? (α := InlineCodeData) data
-        | Verso.reportError s!"Malformed data: {data}"
-          pure .empty
+      let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
+          (fun _ => s!"Malformed data: {data}")
+        | pure .empty
+      let { label, definedDefs, definedTheorems, statementUses := _, proofUses := _, foldCodeBlock, foldProofs } := cdata
       let s ← HtmlT.state
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id
@@ -272,9 +274,9 @@ private def externalMarkupSourceHtml (summary raw : String) : Verso.Output.Html 
 block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
   traverse id data _contents := do
-    let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
-      | Verso.reportError s!"Malformed external markup data: {data}"
-        pure none
+    let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
+        (fun _ => s!"Malformed external markup data: {data}")
+      | pure none
     let existingData := (Informal.TraversalIndex.ExternalMarkup.data? (← get) cdata.label).getD {
       label := cdata.label
     }
@@ -298,9 +300,9 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   toHtml :=
     open Verso.Doc.Html in
     some <| fun _goI _goB _id data _blocks => do
-      let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
-        | Verso.reportError s!"Malformed external markup data: {data}"
-          pure .empty
+      let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
+          (fun _ => s!"Malformed external markup data: {data}")
+        | pure .empty
       let summary := externalMarkupSummary cdata.markup.language cdata.markup.slot cdata.markup.location
       pure <|
         match cdata.display with
