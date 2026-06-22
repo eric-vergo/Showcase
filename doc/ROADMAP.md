@@ -59,9 +59,21 @@ Work:
 6. remove remaining browser timing workarounds only after targeted browser tests
    prove the replacement path; panel lifecycle workarounds should stay behind
    runtime helpers rather than feature-local listeners
-7. keep shaping bundled JavaScript helpers around component-like surfaces
-   before a future React implementation, so data/cache lookup, content
-   rendering, local UI state, and lifecycle binding remain separate concerns
+7. split the large preview runtime only along the component-like boundaries now
+   encoded in its API tiers: data/cache lookup, fragment rendering and
+   hydration, template descriptors, preview surface state, lifecycle binding,
+   and readiness/debug hooks. The first split should keep the same emitted
+   bundled asset and public `onRenderReady` API, then move private helpers in
+   this order:
+   - readiness/bootstrap and render API installation
+   - manifest/cache URL resolution, loading, status, and preview-key helpers
+   - fragment and canonical-node resolution plus diagnostic rendering
+   - hydration registry and math/feature hydrator dispatch
+   - template descriptor binding for Lean-emitted preview triggers
+   - preview surface state, slots, and content updates
+   - lifecycle binding for trigger events, dismissal, pointer checks,
+     repositioning, and keep-open checks
+   - debug hooks used by tests and local inspection
 
 ### Data Model and Status Semantics
 

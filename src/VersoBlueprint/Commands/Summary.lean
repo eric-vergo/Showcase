@@ -19,6 +19,7 @@ import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.MetadataView
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
@@ -1706,9 +1707,12 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
 
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls IO)) :=
   fun _goI _goB _id json _blocks => do
-    let .ok data := fromJson? (α := Summary) json
-      | Verso.reportError "Malformed data in Block.summary.toHtml"
-        pure .empty
+    let some data ←
+        Informal.ExtensionDecode.decode?
+          (α := Summary)
+          json
+          (fun err => s!"Malformed data in Block.summary.toHtml ({err})")
+      | pure .empty
     let s ← HtmlT.state
     let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
       match Informal.PreviewSource.traversalSelection? s label with
