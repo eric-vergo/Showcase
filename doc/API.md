@@ -106,6 +106,27 @@ In practice:
 - keep the manifest and cache from the same generated site; keys are shared,
   but the rendered HTML is not a portable semantic source
 
+Lean-side clients that need common manifest queries should use the helper
+methods on `Informal.PreviewManifest.File` rather than reimplementing filters:
+`blockStatementEntries`, `findBlockEntriesByLabel`, `findPrimaryBlockEntry?`,
+`ownerValues`, `tagValues`, and `workQueueEntries`. Entry-level helpers
+`Entry.matchesText` and `Entry.matchesCode` provide the same search predicates
+used by the `lake exe vbp query` interface.
+
+```lean
+import VersoBlueprint.PreviewManifest
+
+def primaryNodeTitle?
+    (manifest : Informal.PreviewManifest.File)
+    (label : String) : Option String :=
+  (manifest.findPrimaryBlockEntry? label).map (·.title)
+
+def workQueueLabels
+    (manifest : Informal.PreviewManifest.File) : Array String :=
+  manifest.workQueueEntries.map fun entry =>
+    Informal.PreviewManifest.labelString entry.label
+```
+
 Three common workflows consume that same model:
 
 1. A Manual page can graft a node from the same document while traversal state
@@ -285,8 +306,10 @@ def renderAuditNode
 ```
 
 Use `PreviewManifest.File.findEntry?` and
-`PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. Code
-panels can reuse `HtmlCache.File.codeHtmlBodies`.
+`PreviewManifest.HtmlCache.File.findHtml?` when you need direct lookup. For
+client-facing node lists, prefer `PreviewManifest.File.blockStatementEntries`
+and `findPrimaryBlockEntry?` so label/facet selection matches the generated
+`vbp` query API. Code panels can reuse `HtmlCache.File.codeHtmlBodies`.
 
 `renderNodeFromManifestCache` has three diagnostic branches that custom
 interfaces can keep or override with `ManifestRenderConfig.renderMissingNode`:

@@ -11,6 +11,7 @@ import VersoBlueprint.Data
 import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.PreviewRender
+import VersoBlueprint.TraversalIndex
 
 namespace Informal.LeanCodePreview
 
@@ -84,3 +85,28 @@ def renderHtmlWithState
   return (← renderWithState entry impls state (logError := logError)).html
 
 end Informal.LeanCodePreview
+
+namespace Informal.TraversalIndex.LeanCodePreviews
+
+/-- Decode one Lean-code preview entry while retaining malformed-entry diagnostics. -/
+def decodedEntry? (state : Verso.Genre.Manual.TraverseState) (previewKey : String) :
+    Option (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.LeanCodePreview.Entry)) := do
+  let obj ← object? state previewKey
+  pure <| Informal.TraversalIndex.decodeObjectData obj
+
+/-- Decode one Lean-code preview entry, returning `none` when the entry is missing or malformed. -/
+def entry? (state : Verso.Genre.Manual.TraverseState) (previewKey : String) :
+    Option Informal.LeanCodePreview.Entry := do
+  let decoded ← decodedEntry? state previewKey
+  match decoded with
+  | .error _ => none
+  | .ok stored => some stored.data
+
+/-- Decode every Lean-code preview store entry, preserving per-entry decode errors. -/
+def entries (state : Verso.Genre.Manual.TraverseState) :
+    Array (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.LeanCodePreview.Entry)) :=
+  Informal.TraversalIndex.decodeStoreEntries state domainName
+
+end Informal.TraversalIndex.LeanCodePreviews

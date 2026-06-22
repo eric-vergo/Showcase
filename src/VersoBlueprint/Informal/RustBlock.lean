@@ -29,13 +29,13 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
     let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
       | Verso.reportError s!"Malformed Rust data: {data}"
         pure none
-    if let some _ := (← get).getDomainObject? Informal.Rust.informalRustCodeDomain cdata.label.toString then
+    if let some _ := Informal.TraversalIndex.RustInlineCode.object? (← get) cdata.label then
       pure none
     else
       let path ← (·.path) <$> read
       let _ ← Verso.Genre.Manual.externalTag id path s!"--informal-rust-code-{cdata.label}"
-      modify fun s => s.saveDomainObject Informal.Rust.informalRustCodeDomain cdata.label.toString id
-      modify fun s => s.saveDomainObjectData Informal.Rust.informalRustCodeDomain cdata.label.toString (toJson cdata)
+      modify fun s => Informal.TraversalIndex.RustInlineCode.saveId s cdata.label id
+      modify fun s => Informal.TraversalIndex.RustInlineCode.saveData s cdata.label cdata
       pure none
   toTeX := none
   extraCss := rustBlockAssetBundle.css

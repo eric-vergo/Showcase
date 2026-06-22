@@ -39,24 +39,24 @@ private structure GroupRenderInfo where
   declared : Bool := false
 
 /-- Traversal-backed render context shared by group and dependency header panels. -/
-structure RenderContext where
+structure RelationContext where
   state : Verso.Genre.Manual.TraverseState
   storedBlocks : Array BlockData
 
 /-- Collect the traversal data needed to render related-block panels. -/
-def RenderContext.ofState (state : Verso.Genre.Manual.TraverseState) : RenderContext := {
+def RelationContext.ofState (state : Verso.Genre.Manual.TraverseState) : RelationContext := {
   state
   storedBlocks := collectStoredBlocks state
 }
 
-private def blockSummaryTitle (ctx : RenderContext) (data : BlockData) : String :=
+private def blockSummaryTitle (ctx : RelationContext) (data : BlockData) : String :=
   data.displayTitle ctx.state
 
-private def storedBlockByLabel? (ctx : RenderContext) (label : Data.Label) : Option BlockData :=
+private def storedBlockByLabel? (ctx : RelationContext) (label : Data.Label) : Option BlockData :=
   ctx.storedBlocks.find? (·.label == label)
 
 private def groupRenderInfo?
-    (ctx : RenderContext) (data : BlockData) : Option GroupRenderInfo := do
+    (ctx : RelationContext) (data : BlockData) : Option GroupRenderInfo := do
   let parent ← data.parent
   match resolveStoredGroupData? ctx.state parent with
   | some groupData => some { label := parent, title := groupData.header, declared := true }
@@ -260,7 +260,7 @@ private def addUsedByEntry
     acc.push <| mergeUsedByEntry { source } useRef isProof
 
 private def collectUsedByEntries
-    (ctx : RenderContext) (target : Data.Label) : Array UsedByEntry :=
+    (ctx : RelationContext) (target : Data.Label) : Array UsedByEntry :=
   sortUsedByEntries <| ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target then
       acc
@@ -282,7 +282,7 @@ private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProo
   }
 
 private def addUsesEntry
-    (ctx : RenderContext) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
+    (ctx : RelationContext) (acc : Array UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     Array UsesEntry :=
   if acc.any (·.label == useRef.label) then
     acc.map fun entry =>
@@ -304,7 +304,7 @@ private def usesEntryLess (a b : UsesEntry) : Bool :=
   | none, none => a.label.toString < b.label.toString
 
 private def collectUsesEntries
-    (ctx : RenderContext) (data : BlockData) : Array UsesEntry :=
+    (ctx : RelationContext) (data : BlockData) : Array UsesEntry :=
   let source := (storedBlockByLabel? ctx data.label).getD data
   let isProof :=
     match data.kind with
@@ -317,7 +317,7 @@ private def collectUsesEntries
   |>.qsort usesEntryLess
 
 private def collectGroupEntries
-    (ctx : RenderContext) (target : BlockData) (group : GroupRenderInfo) :
+    (ctx : RelationContext) (target : BlockData) (group : GroupRenderInfo) :
     Array BlockData :=
   ctx.storedBlocks.foldl (init := #[]) fun acc source =>
     if source.label == target.label then
@@ -364,23 +364,25 @@ private def useIntentBadgeClass : Data.UseIntent → String
   | .auxiliary => relationScopedBadgeClass "intent" "auxiliary"
   | .technical => relationScopedBadgeClass "intent" "technical"
 
+/-- Statement-axis badge used by normal and manifest-backed relation panels. -/
+def statementAxisBadge : Output.Html :=
+  relationBadge
+    (relationAxisBadgeClass "statement")
+    "Declared in the statement"
+    "statement"
+
+/-- Proof-axis badge used by normal and manifest-backed relation panels. -/
+def proofAxisBadge : Output.Html :=
+  relationBadge
+    (relationAxisBadgeClass "proof")
+    "Declared in the proof"
+    "proof"
+
 private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
   let statementBadge : Array Output.Html :=
-    if inStatement then
-      #[relationBadge
-          (relationAxisBadgeClass "statement")
-          "Declared in the statement"
-          "statement"]
-    else
-      #[]
+    if inStatement then #[statementAxisBadge] else #[]
   let proofBadge : Array Output.Html :=
-    if inProof then
-      #[relationBadge
-          (relationAxisBadgeClass "proof")
-          "Declared in the proof"
-          "proof"]
-    else
-      #[]
+    if inProof then #[proofAxisBadge] else #[]
   .seq (statementBadge ++ proofBadge)
 
 private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
@@ -403,7 +405,7 @@ private def renderUseMetadataBadges
 
 private def mkBlockEntry {m}
     [Monad m]
-    (ctx : RenderContext)
+    (ctx : RelationContext)
     (source : BlockData) (previewId : String)
     (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
@@ -421,7 +423,7 @@ private def mkBlockEntry {m}
 
 private def mkLabelEntry {m}
     [Monad m]
-    (ctx : RenderContext)
+    (ctx : RelationContext)
     (label : Data.Label) (previewId : String)
     (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
@@ -560,7 +562,7 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
 /-- Render the reverse-dependency header extra for a statement block. -/
 def renderUsedByExtra {m}
     [Monad m]
-    (ctx : RenderContext)
+    (ctx : RelationContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   match data.kind with
@@ -579,7 +581,7 @@ def renderUsedByExtra {m}
 /-- Render the forward-dependency header extra for a statement or proof block. -/
 def renderUsesExtra {m}
     [Monad m]
-    (ctx : RenderContext)
+    (ctx : RelationContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
   let entries := collectUsesEntries ctx data
@@ -602,7 +604,7 @@ def renderUsesExtra {m}
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
     [Monad m]
-    (ctx : RenderContext)
+    (ctx : RelationContext)
     (data : BlockData) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m (Option Output.Html) := do
   match data.kind, groupRenderInfo? ctx data with

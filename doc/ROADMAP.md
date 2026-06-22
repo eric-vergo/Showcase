@@ -41,9 +41,10 @@ Current shape:
 
 Work:
 
-1. keep one-label preview callers behind `PreviewSource`; the shared
-   `Selection` API now owns statement/proof fallback, selected facet, and
-   preview lookup keys for traversal-time and environment-time callers
+1. keep one-label preview callers, traversal preview enumeration, and finished
+   manifest entry queries behind shared helpers; `PreviewSource` owns
+   statement/proof fallback, traversal store helpers own whole-domain decoding,
+   and `PreviewManifest.File` owns client-facing manifest filters and label lookup
 2. merge the traversal preview cache and widget `elabStx` preview path behind a
    phase-safe representation
 3. define one canonical API for preview labels and titles; avoid mixing raw

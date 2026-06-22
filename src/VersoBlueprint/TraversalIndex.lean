@@ -12,6 +12,7 @@ import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
+import VersoBlueprint.Rust
 
 /-!
 Typed accessors for Blueprint's traversal-time stores.
@@ -55,6 +56,39 @@ structure StoreSpec where
   /-- One-line purpose for human readers. -/
   summary : String
 deriving Repr
+
+/-- Failed traversal-domain object decode with caller-facing diagnostic context. -/
+structure DecodeError where
+  canonicalName : String
+  message : String
+deriving Inhabited, Repr
+
+/-- Decoded traversal-domain object paired with its canonical storage key. -/
+structure StoredEntry (α : Type) where
+  canonicalName : String
+  data : α
+deriving Inhabited, Repr
+
+/-- Decode one Verso traversal-domain object while preserving its canonical key for diagnostics. -/
+def decodeObjectData [FromJson α] (obj : Verso.Multi.Object) :
+    Except DecodeError (StoredEntry α) :=
+  match fromJson? (α := α) obj.data with
+  | .error err =>
+      .error { canonicalName := obj.canonicalName, message := err }
+  | .ok data =>
+      .ok { canonicalName := obj.canonicalName, data }
+
+/-- Decode every object in a traversal domain without discarding malformed entries. -/
+def decodeDomainEntries [FromJson α] (domain : Verso.Multi.Domain) :
+    Array (Except DecodeError (StoredEntry α)) :=
+  domain.objects.toArray.map fun (_key, obj) => decodeObjectData obj
+
+/-- Decode every object in a named traversal store, returning an empty array when absent. -/
+def decodeStoreEntries [FromJson α] (state : TraverseState) (domainName : Name) :
+    Array (Except DecodeError (StoredEntry α)) :=
+  match state.domains.get? domainName with
+  | none => #[]
+  | some domain => decodeDomainEntries domain
 
 private def objectData? [FromJson α]
     (state : TraverseState) (domain : Name) (canonicalName : String) : Option α := do
@@ -112,6 +146,11 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
+/-- Decode every informal-node store entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.StoredBlockData)) :=
+  decodeStoreEntries state domainName
+
 end Nodes
 
 namespace InlineCode
@@ -132,6 +171,9 @@ def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :
 def data? (state : TraverseState) (label : Name) : Option Informal.InlineCodeData :=
   objectData? state domainName label.toString
 
+def href? (state : TraverseState) (label : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName label.toString
+
 def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
   saveObjectId state domainName label.toString id
 
@@ -139,6 +181,36 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
   saveObjectData state domainName label.toString data
 
 end InlineCode
+
+namespace RustInlineCode
+
+def spec : StoreSpec := {
+  name := Informal.Rust.informalRustCodeDomain
+  kind := .internalIndex
+  key := "informal label"
+  value := "Rust.InlineCodeData plus code-panel anchor ids and folding settings"
+  summary := "Traversal-local index for Blueprint Rust code-panel sources keyed by informal label."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName label.toString
+
+def data? (state : TraverseState) (label : Name) : Option Informal.Rust.InlineCodeData :=
+  objectData? state domainName label.toString
+
+def href? (state : TraverseState) (label : Name) : Option String :=
+  Resolve.resolveDomainHref? state domainName label.toString
+
+def saveId (state : TraverseState) (label : Name) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName label.toString id
+
+def saveData (state : TraverseState) (label : Name) (data : Informal.Rust.InlineCodeData) :
+    TraverseState :=
+  saveObjectData state domainName label.toString (toJson data)
+
+end RustInlineCode
 
 namespace ExternalMarkup
 
@@ -166,6 +238,11 @@ def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseStat
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
+
+/-- Decode every external-markup store entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.Data.ExternalMarkupData)) :=
+  decodeStoreEntries state domainName
 
 end ExternalMarkup
 
@@ -218,15 +295,13 @@ def saveData (state : TraverseState) (key : String) (data : Informal.Graph.Graph
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
 
+/-- Decode every cached graph entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry Informal.Graph.GraphData)) :=
+  decodeStoreEntries state domainName
+
 def allData (state : TraverseState) : Array Informal.Graph.GraphData :=
-  match domain? state with
-  | none => #[]
-  | some domain =>
-    domain.objects.foldl (init := #[]) fun acc _key obj =>
-      match fromJson? (α := Informal.Graph.GraphData) obj.data with
-      | .ok data => acc.push data
-      | .error _ => acc
-    |>.qsort (fun a b => a.key < b.key)
+  entries state |>.filterMap (·.toOption.map (·.data)) |>.qsort (fun a b => a.key < b.key)
 
 end Graphs
 
@@ -267,6 +342,11 @@ def saveData (state : TraverseState) (previewKey : String) (data : Json) : Trave
 
 def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
   state.domains.get? domainName
+
+/-- Decode every statement/proof traversal-preview entry, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry PreviewCache.Entry)) :=
+  decodeStoreEntries state domainName
 
 end TraversalPreviews
 
@@ -415,6 +495,7 @@ compare against one source location instead of rediscovering each domain name.
 def allSpecs : Array StoreSpec := #[
   Nodes.spec,
   InlineCode.spec,
+  RustInlineCode.spec,
   ExternalMarkup.spec,
   Groups.spec,
   Graphs.spec,

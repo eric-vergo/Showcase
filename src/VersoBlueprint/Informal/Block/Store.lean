@@ -182,13 +182,10 @@ private def sortStoredBlocks (entries : Array BlockData) : Array BlockData :=
 
 /-- Collect every informal block stored in the traversal index, in traversal order. -/
 def collectStoredBlocks (state : TraverseState) : Array BlockData :=
-  match Informal.TraversalIndex.Nodes.domain? state with
-  | none => #[]
-  | some domain =>
-    sortStoredBlocks <| domain.objects.foldl (init := #[]) fun acc _canonical obj =>
-      match Informal.TraversalIndex.Nodes.storedObjectData? obj with
-      | some block => acc.push block.toBlockData
-      | none => acc
+  sortStoredBlocks <|
+    Informal.TraversalIndex.Nodes.entries state |>.filterMap fun
+      | .ok stored => some stored.data.toBlockData
+      | .error _ => none
 
 /-- Overlay stored numbering onto render-time block data. -/
 private def BlockData.withStoredNumbering

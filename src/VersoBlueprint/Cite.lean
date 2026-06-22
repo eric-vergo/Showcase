@@ -616,6 +616,28 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
 
 end Informal.Cite
 
+namespace Informal.TraversalIndex.CitationPreviews
+
+/-- Decode every citation-preview store entry, preserving per-entry decode errors. -/
+def entries (state : Verso.Genre.Manual.TraverseState) :
+    Array (Except Informal.TraversalIndex.DecodeError
+      (Informal.TraversalIndex.StoredEntry Informal.Cite.CitationPreviewData)) :=
+  Informal.TraversalIndex.decodeStoreEntries state domainName
+
+end Informal.TraversalIndex.CitationPreviews
+
+namespace Informal.TraversalIndex.CitationUsages
+
+/-- Decode citation-use backlinks for one bibliography label. -/
+def data? (state : Verso.Genre.Manual.TraverseState) (label : String) :
+    Option Informal.Cite.CitationUsageData := do
+  let obj ← object? state label
+  match Informal.TraversalIndex.decodeObjectData obj with
+  | .error _ => none
+  | .ok stored => some stored.data
+
+end Informal.TraversalIndex.CitationUsages
+
 namespace Informal
 
 open Verso.Genre.Manual.Bibliography

@@ -84,15 +84,9 @@ block_extension Block.informal (data : BlockData) where
         let s ← HtmlT.state
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
-        let relatedPanelContext := RelatedPanel.RenderContext.ofState s
+        let relatedPanelContext := RelatedPanel.RelationContext.ofState s
         let attrs := s.htmlId id
-        let codeHref : Option String :=
-          match Informal.TraversalIndex.InlineCode.object? s data.label with
-          | some obj =>
-            match obj.ids.toArray[0]? with
-            | some codeId => s.externalTags[codeId]? |>.map (·.relativeLink)
-            | none => none
-          | none => none
+        let codeHref := Informal.TraversalIndex.InlineCode.href? s data.label
         let codeData? : Option InlineCodeData ←
           pure <| Informal.TraversalIndex.InlineCode.data? s data.label
         let codeHint? :=
