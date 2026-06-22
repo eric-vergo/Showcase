@@ -13,6 +13,7 @@ import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Graft.Node
 import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Slides.Node
 
 set_option doc.verso true
@@ -155,11 +156,13 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConf
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI goB _id data _blocks => do
-      match fromJson? (α := Informal.Graft.BlueprintNodeConfig) data with
-      | .error err =>
-          Verso.reportError s!"Malformed Blueprint graft node data ({err}): {data}"
-          pure .empty
-      | .ok cfg => renderManualGraftNode goB cfg
+      let some cfg ←
+          Informal.ExtensionDecode.decode?
+            (α := Informal.Graft.BlueprintNodeConfig)
+            data
+            (fun err => s!"Malformed Blueprint graft node data ({err}): {data}")
+        | pure .empty
+      renderManualGraftNode goB cfg
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideConfig) where
@@ -173,11 +176,13 @@ block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideC
     open Verso.Output.Html in
     some <| fun _goI goB _id data blocks => do
       let cfg ←
-        match fromJson? (α := Informal.Graft.SideBySideConfig) data with
-        | .error err =>
-            Verso.reportError s!"Malformed Blueprint graft side-by-side data ({err}): {data}"
-            pure {}
-        | .ok cfg => pure cfg
+        match ←
+            Informal.ExtensionDecode.decode?
+              (α := Informal.Graft.SideBySideConfig)
+              data
+              (fun err => s!"Malformed Blueprint graft side-by-side data ({err}): {data}") with
+        | some cfg => pure cfg
+        | Option.none => pure {}
       let content ← blocks.mapM goB
       pure <| Html.tag "div" cfg.attrs (Html.seq content)
 

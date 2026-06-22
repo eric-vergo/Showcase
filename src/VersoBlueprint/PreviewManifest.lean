@@ -31,6 +31,16 @@ open Lean Elab Command Term Meta
 open Verso Doc
 open Verso.Genre Manual
 
+private def readJsonFileAs [FromJson α] (path : System.FilePath) (description : String) :
+    IO α := do
+  let json ←
+    match Json.parse (← IO.FS.readFile path) with
+    | .ok json => pure json
+    | .error err => throw <| IO.userError s!"could not parse {description} {path}: {err}"
+  match fromJson? (α := α) json with
+  | .ok value => pure value
+  | .error err => throw <| IO.userError s!"could not decode {description} {path}: {err}"
+
 private def buildMetadataCss : String := r##"
 .bp_build_metadata {
   display: flex;
@@ -856,13 +866,7 @@ def File.codeHtmlBodies (file : File) (entry : _root_.Informal.PreviewManifest.E
   file.index.codeHtmlBodies entry
 
 def readFile (path : System.FilePath) : IO File := do
-  let json ←
-    match Json.parse (← IO.FS.readFile path) with
-    | .ok json => pure json
-    | .error err => throw <| IO.userError s!"could not parse Blueprint HTML cache {path}: {err}"
-  match fromJson? (α := File) json with
-  | .ok file => pure file
-  | .error err => throw <| IO.userError s!"could not decode Blueprint HTML cache {path}: {err}"
+  readJsonFileAs path "Blueprint HTML cache"
 
 end HtmlCache
 
@@ -979,13 +983,7 @@ def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
   entry.leanCodePreviewKeys.filterMap index.findEntry?
 
 def readFile (path : System.FilePath) : IO File := do
-  let json ←
-    match Json.parse (← IO.FS.readFile path) with
-    | .ok json => pure json
-    | .error err => throw <| IO.userError s!"could not parse Blueprint manifest {path}: {err}"
-  match fromJson? (α := File) json with
-  | .ok file => pure file
-  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+  readJsonFileAs path "Blueprint manifest"
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}

@@ -124,12 +124,8 @@ def domainName : Name := spec.name
 def object? (state : TraverseState) (label : Name) : Option Verso.Multi.Object :=
   state.getDomainObject? domainName label.toString
 
-def storedObjectData? (obj : Verso.Multi.Object) : Option Informal.StoredBlockData :=
-  (fromJson? (α := Informal.StoredBlockData) obj.data).toOption
-
-def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData := do
-  let obj ← object? state label
-  storedObjectData? obj
+def storedData? (state : TraverseState) (label : Name) : Option Informal.StoredBlockData :=
+  objectData? state domainName label.toString
 
 def data? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
   (storedData? state label).map (·.toBlockData)
