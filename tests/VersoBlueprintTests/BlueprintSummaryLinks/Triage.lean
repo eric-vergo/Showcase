@@ -36,9 +36,12 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "Tag rollups (" &&
       hasSubstr out "Linked PRs (2)" &&
       hasSubstr out "Metadata audit" &&
-      hasSubstr out "Missing owner (" &&
-      hasSubstr out "Missing effort (" &&
-      hasSubstr out "Untagged (" &&
+      hasSubstr out "Missing owner</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSubstr out "Missing owner (14)" &&
+      hasSubstr out "Missing effort</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSubstr out "Missing effort (14)" &&
+      hasSubstr out "Untagged</span><span class=\"bp_summary_value\">14</span>" &&
+      hasSubstr out "Untagged (14)" &&
       hasSubstr out "Alice Example" &&
       hasSubstr out "Bob Example" &&
       hasSubstr out "https://example.com/pr/12" &&
@@ -49,6 +52,13 @@ open Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared
       hasSubstr out "No dependents (" &&
       !hasSubstr out "Proof debt hotspots (0)" &&
       hasSubstr out "Next:" &&
+      hasSubstr out "total: 14" &&
+      hasSubstr out "closed: 0" &&
+      hasSubstr out "local-only: 0" &&
+      hasSubstr out "ready: 13" &&
+      hasSubstr out "blocked: 1" &&
+      hasSubstr out "incomplete Lean: 0" &&
+      hasSubstr out "unlock score: 14" &&
       hasSubstr out "priority: high" &&
       hasSubstr out "priority: low" &&
       !hasSubstr out "Axiom-like Index (0)" &&

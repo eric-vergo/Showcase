@@ -753,31 +753,42 @@ private def collectIndexItems (ctx : SummaryBuildContext) (keep : Name → Data.
       acc
   |>.reverse
 
+private structure ProofDebtCounts where
+  affectedEntries : Nat := 0
+  incompleteDecls : Nat := 0
+  missingDecls : Nat := 0
+
+private def ProofDebtCounts.addNode (counts : ProofDebtCounts)
+    (external : Informal.Graph.ExternalCodeStatus) (node : Data.Node) : ProofDebtCounts :=
+  let incompleteDeclCount := nodeIncompleteLeanDeclCount external node
+  let missingDeclCount := nodeMissingLeanDeclCount external node
+  let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
+  {
+    affectedEntries := counts.affectedEntries + (if hasDebt then 1 else 0)
+    incompleteDecls := counts.incompleteDecls + incompleteDeclCount
+    missingDecls := counts.missingDecls + missingDeclCount
+  }
+
+private def ProofDebtCounts.totalDebt (counts : ProofDebtCounts) : Nat :=
+  counts.incompleteDecls + counts.missingDecls
+
 private def collectProofDebtHotspots (ctx : SummaryBuildContext) : List DebtHotspotItem :=
   let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
-    let (affectedEntries, incompleteDecls, missingDecls) :=
-      children.foldl (init := (0, 0, 0)) fun (affectedEntries, incompleteDecls, missingDecls) child =>
+    let counts :=
+      children.foldl (init := ({} : ProofDebtCounts)) fun counts child =>
         match ctx.state.data.get? child with
-        | none => (affectedEntries, incompleteDecls, missingDecls)
-        | some node =>
-          let incompleteDeclCount := nodeIncompleteLeanDeclCount ctx.external node
-          let missingDeclCount := nodeMissingLeanDeclCount ctx.external node
-          let hasDebt := incompleteDeclCount > 0 || missingDeclCount > 0
-          (
-            affectedEntries + (if hasDebt then 1 else 0),
-            incompleteDecls + incompleteDeclCount,
-            missingDecls + missingDeclCount
-          )
-    let totalDebt := incompleteDecls + missingDecls
+        | none => counts
+        | some node => counts.addNode ctx.external node
+    let totalDebt := counts.totalDebt
     if totalDebt == 0 then
       acc
     else
       acc.push {
         parent
         header := ctx.groupHeaders.getD parent parent.toString
-        affectedEntries
-        incompleteDecls
-        missingDecls
+        affectedEntries := counts.affectedEntries
+        incompleteDecls := counts.incompleteDecls
+        missingDecls := counts.missingDecls
         totalDebt
       }
   (sortDebtHotspotItems items).toList

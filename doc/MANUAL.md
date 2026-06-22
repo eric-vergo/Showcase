@@ -1084,8 +1084,11 @@ prefixes with document-order block counts.
     `{module}`, `{line}`, `{column}`, `{endLine}`, and `{endColumn}`
 - `verso.blueprint.summary.debugDiagnostics`
   - default: `false`
-  - adds maintainer diagnostics such as external declaration render failures to
-    `blueprint_summary`
+  - keeps maintainer diagnostics hidden from `blueprint_summary` by default
+  - set to `true` when debugging Blueprint rendering or external Lean
+    declaration integration; the summary then includes diagnostics such as
+    external declarations that resolved and checked but could not be rendered as
+    HTML
 - `verso.blueprint.graph.defaultDirection`
   - default: `TB`
   - sets the fallback graph direction for `blueprint_graph` when
