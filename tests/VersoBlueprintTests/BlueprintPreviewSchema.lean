@@ -34,6 +34,9 @@ open Informal.PreviewManifest
       let leanCodePreviewKeysDesc? := do
         let leanCodePreviewKeysJson ← entryProps.get? "leanCodePreviewKeys"
         leanCodePreviewKeysJson.getObjValAs? String "description" |>.toOption
+      let sourceLocationDesc? := do
+        let sourceLocationJson ← entryProps.get? "sourceLocation"
+        sourceLocationJson.getObjValAs? String "description" |>.toOption
       let kindDesc? := do
         let kindJson ← entryProps.get? "kind"
         kindJson.getObjValAs? String "description" |>.toOption
@@ -58,6 +61,7 @@ open Informal.PreviewManifest
         entryProps.contains "displayCaption" &&
         entryProps.contains "displayLabel" &&
         entryProps.contains "href" &&
+        entryProps.contains "sourceLocation" &&
         entryProps.contains "parent" &&
         entryProps.contains "parentTitle" &&
         entryProps.contains "statementUses" &&
@@ -85,6 +89,7 @@ open Informal.PreviewManifest
         proofUsesDesc? == some "Structured proof use metadata, preserving origin and intent tags." &&
         displayCaptionDesc? == some "Structured heading caption for renderers that need to lay out the title." &&
         leanCodePreviewKeysDesc? == some "Rendered-fragment cache keys for Lean declaration previews associated with this entry." &&
+        sourceLocationDesc? == some "Source location lookup result for this manifest entry." &&
         kindDesc? == some "Kind (definition, proposition, lemma, theorem, corollary)." &&
         !schemaText.contains "Lean `Name`" &&
         entryKindText.contains "externalMarkup" &&
@@ -98,6 +103,8 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.ExternalMarkup" &&
         defs.contains "Informal.Data.ExternalMarkupLanguage" &&
         defs.contains "Informal.Data.ExternalMarkupLocation" &&
+        defs.contains "Informal.Data.SourceLocation" &&
+        defs.contains "Informal.Data.SourceLocationResult" &&
         defs.contains "Lean.Lsp.Range" &&
         defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&

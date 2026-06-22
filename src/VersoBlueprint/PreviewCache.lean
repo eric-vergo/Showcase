@@ -53,13 +53,18 @@ structure Entry where
   label : Name
   facet : Facet
   blocks : Array (Verso.Doc.Block Verso.Genre.Manual) := #[]
+  /-- Source location result for the source that produced this preview facet. -/
+  sourceLocation : Informal.Data.SourceLocationResult :=
+    Informal.Data.SourceLocationResult.unavailable "preview source location unavailable"
   /-- HTML-cache keys for associated Lean declaration previews. -/
   leanCodePreviewKeys : Array String := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 def Entry.ofBlocks (label : Name) (facet : Facet)
     (blocks : Array (Verso.Doc.Block Verso.Genre.Manual))
+    (sourceLocation : Informal.Data.SourceLocationResult :=
+      Informal.Data.SourceLocationResult.unavailable "preview source location unavailable")
     (leanCodePreviewKeys : Array String := #[]) : Entry :=
-  { label, facet, blocks, leanCodePreviewKeys }
+  { label, facet, blocks, sourceLocation, leanCodePreviewKeys }
 
 end Informal.PreviewCache

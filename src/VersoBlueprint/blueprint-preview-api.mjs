@@ -82,6 +82,14 @@ export function loadHtmlCacheEntry(key) {
   return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadHtmlCacheEntry", arguments);
 }
 
+export function resolveLabel(label, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveLabel", arguments);
+}
+
+export function resolveDeclaration(declName, options) {
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveDeclaration", arguments);
+}
+
 export function resolvePreview(key) {
   return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolvePreview", arguments);
 }
@@ -132,6 +140,8 @@ const previewApi = {
   normalizeGraphData,
   previewKey,
   statementPreviewKey,
+  resolveLabel,
+  resolveDeclaration,
   resolvePreview,
   renderPreviewInto,
   resolveCanonicalPreview,

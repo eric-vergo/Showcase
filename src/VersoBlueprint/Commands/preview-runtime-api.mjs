@@ -96,6 +96,10 @@ export function createPreviewRuntimeApi(options) {
     previewApiModuleUrl: dataApi.previewApiModuleUrl,
     previewKey: dataApi.previewKey,
     statementPreviewKey: dataApi.statementPreviewKey,
+    resolveLabel: function (label, options) { return dataApi.resolveLabel(label, options); },
+    resolveDeclaration: function (declName, options) {
+      return dataApi.resolveDeclaration(declName, options);
+    },
     resolvePreview: function (previewKey, options) {
       return resolveBlueprintPreview(
         previewKey,
@@ -191,6 +195,8 @@ export function createPreviewRuntimeApi(options) {
     previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
+    resolveLabel: previewDataApi.resolveLabel,
+    resolveDeclaration: previewDataApi.resolveDeclaration,
     resolvePreview: previewDataApi.resolvePreview,
     renderPreviewInto: previewRenderApi.renderPreviewInto,
     resolveCanonicalPreview: previewDataApi.resolveCanonicalPreview,
