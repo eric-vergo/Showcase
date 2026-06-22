@@ -13,6 +13,7 @@ import VersoBlueprint.Graph
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.HtmlId
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
@@ -86,11 +87,12 @@ block_extension Block.graph (graphData : GraphBlockData) where
   -- localContentItem _ _ _ := none
   data := toJson graphData
   traverse id data _contents := do
-      match fromJson? (α := GraphBlockData) data with
-      | .ok graphData =>
+      match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+          (fun _ => "Malformed data in Block.graph.traverse") with
+      | some graphData =>
         modify fun state => Informal.GraphApi.saveData state id graphData.semanticGraphData
-      | .error _ =>
-        Verso.reportError "Malformed data in Block.graph.traverse"
+      | Option.none =>
+        pure ()
       return none
   toTeX := none
   toHtml :=
@@ -98,11 +100,10 @@ block_extension Block.graph (graphData : GraphBlockData) where
     open Verso.Output.Html in
     some <| fun _goI _goB id data _blocks => do
       let graphData : GraphBlockData ←
-        match fromJson? (α := GraphBlockData) data with
-        | .ok gd => pure gd
-        | .error err =>
-          Verso.reportError s!"Malformed data in Block.graph.toHtml ({err})"
-          pure { semanticGraphData := {}, options := {} }
+        match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
+            (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
+        | some graphData => pure graphData
+        | Option.none => pure { semanticGraphData := {}, options := {} }
       let s ← HtmlT.state
       let publicGraphData := Informal.GraphApi.finalDataForBlock s id graphData.semanticGraphData
       let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)

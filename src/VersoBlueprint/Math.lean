@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoManual
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.MathLint
 import VersoBlueprint.Macros
 
@@ -77,9 +78,9 @@ private def mathHtmlAssets (texPrelude : String) : HtmlAssets :=
 inline_extension Inline.bpMath (data : BpMathData) where
   data := toJson data
   traverse _id data _contents := do
-    let .ok { texPrelude, .. } := fromJson? (α := BpMathData) data
-      | Verso.reportError s!"Malformed blueprint math payload during traversal: {data}"
-        pure none
+    let some { texPrelude, .. } ← Informal.ExtensionDecode.decode? (α := BpMathData) data
+        (fun _ => s!"Malformed blueprint math payload during traversal: {data}")
+      | pure none
     modify fun st =>
       st.modifyHtmlAssets fun assets =>
         assets.combine (mathHtmlAssets texPrelude)
@@ -87,18 +88,18 @@ inline_extension Inline.bpMath (data : BpMathData) where
   toTeX :=
     open Verso.Output.TeX in
     some <| fun _go _id data _contents => do
-      let .ok { mode, source, .. } := fromJson? (α := BpMathData) data
-        | Verso.reportError s!"Malformed blueprint math payload: {data}"
-          pure .empty
+      let some { mode, source, .. } ← Informal.ExtensionDecode.decode? (α := BpMathData) data
+          (fun _ => s!"Malformed blueprint math payload: {data}")
+        | pure .empty
       pure <| match mode with
         | .inline => .raw s!"${source}$"
         | .display => .raw s!"\\[{source}\\]"
   toHtml :=
     open Verso.Doc.Html in
     some <| fun _goI _id data _contents => do
-      let .ok { mode, source, texPrelude } := fromJson? (α := BpMathData) data
-        | Verso.reportError s!"Malformed blueprint math payload: {data}"
-          pure .empty
+      let some { mode, source, texPrelude } ← Informal.ExtensionDecode.decode? (α := BpMathData) data
+          (fun _ => s!"Malformed blueprint math payload: {data}")
+        | pure .empty
       let attrs :=
         if texPrelude.isEmpty then
           #[("class", mathClasses mode)]
