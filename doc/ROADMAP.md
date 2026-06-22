@@ -62,7 +62,18 @@ Work:
 7. split the large preview runtime only along the component-like boundaries now
    encoded in its API tiers: data/cache lookup, fragment rendering and
    hydration, template descriptors, preview surface state, lifecycle binding,
-   and readiness/debug hooks
+   and readiness/debug hooks. The first split should keep the same emitted
+   bundled asset and public `onRenderReady` API, then move private helpers in
+   this order:
+   - readiness/bootstrap and render API installation
+   - manifest/cache URL resolution, loading, status, and preview-key helpers
+   - fragment and canonical-node resolution plus diagnostic rendering
+   - hydration registry and math/feature hydrator dispatch
+   - template descriptor binding for Lean-emitted preview triggers
+   - preview surface state, slots, and content updates
+   - lifecycle binding for trigger events, dismissal, pointer checks,
+     repositioning, and keep-open checks
+   - debug hooks used by tests and local inspection
 
 ### Data Model and Status Semantics
 
