@@ -110,87 +110,76 @@ private def explicitPriorityRank (priority? : Option String) : Nat :=
   | some "low" => 2
   | _ => 3
 
+private def byNatAsc (left right : Nat) (tie : Bool) : Bool :=
+  left < right || (left == right && tie)
+
+private def byNatDesc (left right : Nat) (tie : Bool) : Bool :=
+  left > right || (left == right && tie)
+
+private def byStringAsc (left right : String) : Bool :=
+  left < right
+
+private def byNameStringAsc (left right : Name) : Bool :=
+  left.toString < right.toString
+
 private def sortPriorityItems (items : Array PriorityItem) : Array PriorityItem :=
   items.qsort fun a b =>
-    explicitPriorityRank a.priority < explicitPriorityRank b.priority ||
-      (explicitPriorityRank a.priority == explicitPriorityRank b.priority &&
-        (a.downstreamUses > b.downstreamUses ||
-      (a.downstreamUses == b.downstreamUses &&
-        (a.directUses > b.directUses ||
-          (a.directUses == b.directUses &&
-            (priorityStageRank a.stage < priorityStageRank b.stage ||
-              (priorityStageRank a.stage == priorityStageRank b.stage &&
-                a.label.toString < b.label.toString)))))))
+    byNatAsc (explicitPriorityRank a.priority) (explicitPriorityRank b.priority) <|
+      byNatDesc a.downstreamUses b.downstreamUses <|
+        byNatDesc a.directUses b.directUses <|
+          byNatAsc (priorityStageRank a.stage) (priorityStageRank b.stage) <|
+            byNameStringAsc a.label b.label
 
 private def sortUsageItems (items : Array UsageItem) : Array UsageItem :=
   items.qsort fun a b =>
-    a.directUses > b.directUses ||
-      (a.directUses == b.directUses &&
-        (a.downstreamUses > b.downstreamUses ||
-          (a.downstreamUses == b.downstreamUses &&
-            a.label.toString < b.label.toString)))
+    byNatDesc a.directUses b.directUses <|
+      byNatDesc a.downstreamUses b.downstreamUses <|
+        byNameStringAsc a.label b.label
 
 private def sortUsageItemsByAxis (items : Array UsageItem) (axisUses : UsageItem → Nat) : Array UsageItem :=
   items.qsort fun a b =>
-    axisUses a > axisUses b ||
-      (axisUses a == axisUses b &&
-        (a.downstreamUses > b.downstreamUses ||
-          (a.downstreamUses == b.downstreamUses &&
-            (a.directUses > b.directUses ||
-              (a.directUses == b.directUses &&
-                a.label.toString < b.label.toString)))))
+    byNatDesc (axisUses a) (axisUses b) <|
+      byNatDesc a.downstreamUses b.downstreamUses <|
+        byNatDesc a.directUses b.directUses <|
+          byNameStringAsc a.label b.label
 
 private def sortDependencyLoadItems (items : Array DependencyLoadItem) : Array DependencyLoadItem :=
   items.qsort fun a b =>
-    a.totalDeps > b.totalDeps ||
-      (a.totalDeps == b.totalDeps &&
-        (a.proofDeps > b.proofDeps ||
-          (a.proofDeps == b.proofDeps &&
-            (a.statementDeps > b.statementDeps ||
-              (a.statementDeps == b.statementDeps &&
-                a.label.toString < b.label.toString)))))
+    byNatDesc a.totalDeps b.totalDeps <|
+      byNatDesc a.proofDeps b.proofDeps <|
+        byNatDesc a.statementDeps b.statementDeps <|
+          byNameStringAsc a.label b.label
 
 private def sortDebtHotspotItems (items : Array DebtHotspotItem) : Array DebtHotspotItem :=
   items.qsort fun a b =>
-    a.totalDebt > b.totalDebt ||
-      (a.totalDebt == b.totalDebt &&
-        (a.affectedEntries > b.affectedEntries ||
-          (a.affectedEntries == b.affectedEntries &&
-            a.header < b.header)))
+    byNatDesc a.totalDebt b.totalDebt <|
+      byNatDesc a.affectedEntries b.affectedEntries <|
+        byStringAsc a.header b.header
 
 private def sortGroupHealthItems (items : Array GroupHealthItem) : Array GroupHealthItem :=
   items.qsort fun a b =>
-    a.readyEntries > b.readyEntries ||
-      (a.readyEntries == b.readyEntries &&
-        (a.unlockScore > b.unlockScore ||
-          (a.unlockScore == b.unlockScore &&
-            (a.totalEntries > b.totalEntries ||
-              (a.totalEntries == b.totalEntries &&
-                a.header < b.header)))))
+    byNatDesc a.readyEntries b.readyEntries <|
+      byNatDesc a.unlockScore b.unlockScore <|
+        byNatDesc a.totalEntries b.totalEntries <|
+          byStringAsc a.header b.header
 
 private def sortOwnerRollupItems (items : Array OwnerRollupItem) : Array OwnerRollupItem :=
   items.qsort fun a b =>
-    a.actionableEntries > b.actionableEntries ||
-      (a.actionableEntries == b.actionableEntries &&
-        (a.quickWins > b.quickWins ||
-          (a.quickWins == b.quickWins &&
-            (a.totalEntries > b.totalEntries ||
-              (a.totalEntries == b.totalEntries &&
-                a.displayName < b.displayName)))))
+    byNatDesc a.actionableEntries b.actionableEntries <|
+      byNatDesc a.quickWins b.quickWins <|
+        byNatDesc a.totalEntries b.totalEntries <|
+          byStringAsc a.displayName b.displayName
 
 private def sortTagRollupItems (items : Array TagRollupItem) : Array TagRollupItem :=
   items.qsort fun a b =>
-    a.actionableEntries > b.actionableEntries ||
-      (a.actionableEntries == b.actionableEntries &&
-        (a.quickWins > b.quickWins ||
-          (a.quickWins == b.quickWins &&
-            (a.totalEntries > b.totalEntries ||
-              (a.totalEntries == b.totalEntries &&
-                a.tag < b.tag)))))
+    byNatDesc a.actionableEntries b.actionableEntries <|
+      byNatDesc a.quickWins b.quickWins <|
+        byNatDesc a.totalEntries b.totalEntries <|
+          byStringAsc a.tag b.tag
 
 private def sortMetadataEntryItems (items : Array MetadataEntryItem) : Array MetadataEntryItem :=
   items.qsort fun a b =>
-    a.label.toString < b.label.toString
+    byNameStringAsc a.label b.label
 
 private def triageVisibleLimit : Nat := 10
 
