@@ -23,6 +23,12 @@ def appearsBefore (s lhs rhs : String) : Bool :=
   | _ :: tail => hasSubstr (String.intercalate lhs tail) rhs
   | [] => false
 
+def hasSummaryCardValue (s label value : String) : Bool :=
+  hasSubstr s s!"{label}</span><span class=\"bp_summary_value\">{value}</span>"
+
+def hasSummaryMetricBadge (s label value : String) : Bool :=
+  hasSubstr s s!"{label}: {value}"
+
 private partial def collectBlocks (part : Doc.Part Genre.Manual) : Array (Doc.Block Genre.Manual) :=
   let childBlocks := part.subParts.foldl (init := #[]) fun acc child =>
     acc ++ collectBlocks child
