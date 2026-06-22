@@ -368,15 +368,6 @@ private def metadataEntryItem (state : Environment.State) (label : Name) (node :
     leanObjects := nodeLeanObjects node
   }
 
-private def collectMetadataEntries (state : Environment.State) (entries : Array (Name × Data.Node))
-    (keep : Data.Node → Bool) : List MetadataEntryItem :=
-  let items := entries.foldl (init := #[]) fun acc (label, node) =>
-    if keep node then
-      acc.push (metadataEntryItem state label node)
-    else
-      acc
-  (sortMetadataEntryItems items).toList
-
 private def priorityItem? (state : Environment.State) (external : Informal.Graph.ExternalCodeStatus)
     (usageMap : NameMap UsageCounts) (reverseMap : NameMap (Array Name))
     (label : Name) (node : Data.Node) : Option PriorityItem :=
@@ -476,6 +467,51 @@ private def SummaryBuildContext.childEntries (ctx : SummaryBuildContext) (childr
     match ctx.state.data.get? child with
     | some node => acc.push (child, node)
     | none => acc
+
+private structure MetadataAudit where
+  linkedPrs : Array MetadataEntryItem := #[]
+  missingOwners : Array MetadataEntryItem := #[]
+  missingEffort : Array MetadataEntryItem := #[]
+  untaggedEntries : Array MetadataEntryItem := #[]
+
+private def MetadataAudit.addEntry (audit : MetadataAudit)
+    (state : Environment.State) (label : Name) (node : Data.Node) : MetadataAudit :=
+  let item := metadataEntryItem state label node
+  let audit :=
+    if node.prUrl.isSome then
+      { audit with linkedPrs := audit.linkedPrs.push item }
+    else
+      audit
+  let audit :=
+    if node.owner.isNone then
+      { audit with missingOwners := audit.missingOwners.push item }
+    else
+      audit
+  let audit :=
+    if node.effort.isNone then
+      { audit with missingEffort := audit.missingEffort.push item }
+    else
+      audit
+  if node.tags.isEmpty then
+    { audit with untaggedEntries := audit.untaggedEntries.push item }
+  else
+    audit
+
+private def collectMetadataAudit (ctx : SummaryBuildContext) : MetadataAudit :=
+  ctx.entries.foldl (init := ({} : MetadataAudit)) fun audit (label, node) =>
+    audit.addEntry ctx.state label node
+
+private def MetadataAudit.sortedLinkedPrs (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.linkedPrs).toList
+
+private def MetadataAudit.sortedMissingOwners (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.missingOwners).toList
+
+private def MetadataAudit.sortedMissingEffort (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.missingEffort).toList
+
+private def MetadataAudit.sortedUntaggedEntries (audit : MetadataAudit) : List MetadataEntryItem :=
+  (sortMetadataEntryItems audit.untaggedEntries).toList
 
 private def Summary.bumpNodeKindStatus (summary : Summary)
     (kind : Data.NodeKind) (flags : EntryStatusFlags) : Summary :=
@@ -607,35 +643,46 @@ private def collectUsageItems (ctx : SummaryBuildContext) : List UsageItem :=
     | some item => acc.push item
   (sortUsageItems items).toList
 
+private structure GroupHealthCounts where
+  totalEntries : Nat := 0
+  closedEntries : Nat := 0
+  localOnlyEntries : Nat := 0
+  readyEntries : Nat := 0
+  blockedEntries : Nat := 0
+  incompleteLeanEntries : Nat := 0
+  unlockScore : Nat := 0
+
+private def GroupHealthCounts.addEntry (counts : GroupHealthCounts)
+    (ctx : SummaryBuildContext) (child : Name) (node : Data.Node) : GroupHealthCounts :=
+  let statusFlags := entryStatusFlags ctx.state ctx.external node
+  let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state child node
+  let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
+  let readyNow :=
+    !Informal.Graph.nodeLocalFormalized ctx.external node &&
+      (actionableStage? node statementStatus proofStatus).isSome
+  let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
+  let incompleteLeanNow :=
+    Informal.Graph.nodeHasAssociatedCode node &&
+      (Informal.Graph.nodeHasSorries ctx.external node ||
+        Informal.Graph.nodeHasMissingExternalDecls ctx.external node)
+  {
+    totalEntries := counts.totalEntries + 1
+    closedEntries := counts.closedEntries + (if statusFlags.completed then 1 else 0)
+    localOnlyEntries := counts.localOnlyEntries + (if statusFlags.completedDepsNo then 1 else 0)
+    readyEntries := counts.readyEntries + (if readyNow then 1 else 0)
+    blockedEntries := counts.blockedEntries + (if blockedNow then 1 else 0)
+    incompleteLeanEntries := counts.incompleteLeanEntries + (if incompleteLeanNow then 1 else 0)
+    unlockScore := counts.unlockScore + ctx.downstreamUses child
+  }
+
 private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthItem :=
   let items := ctx.parentChildren.toArray.foldl (init := #[]) fun acc (parent, children) =>
     if children.size <= 1 then
       acc
     else
       let childEntries := ctx.childEntries children
-      let (totalEntries, closedEntries, localOnlyEntries, readyEntries, blockedEntries, incompleteLeanEntries, unlockScore) :=
-        childEntries.foldl (init := (0, 0, 0, 0, 0, 0, 0)) fun (totalEntries, closedEntries, localOnlyEntries, readyEntries, blockedEntries, incompleteLeanEntries, unlockScore) (child, node) =>
-          let statusFlags := entryStatusFlags ctx.state ctx.external node
-          let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state child node
-          let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state child node
-          let readyNow :=
-            !Informal.Graph.nodeLocalFormalized ctx.external node &&
-              (actionableStage? node statementStatus proofStatus).isSome
-          let blockedNow := !statusFlags.completed && !statusFlags.completedDepsNo && !readyNow
-          let incompleteLeanNow :=
-            Informal.Graph.nodeHasAssociatedCode node &&
-              (Informal.Graph.nodeHasSorries ctx.external node ||
-                Informal.Graph.nodeHasMissingExternalDecls ctx.external node)
-          let unlockScore := unlockScore + ctx.downstreamUses child
-          (
-            totalEntries + 1,
-            closedEntries + (if statusFlags.completed then 1 else 0),
-            localOnlyEntries + (if statusFlags.completedDepsNo then 1 else 0),
-            readyEntries + (if readyNow then 1 else 0),
-            blockedEntries + (if blockedNow then 1 else 0),
-            incompleteLeanEntries + (if incompleteLeanNow then 1 else 0),
-            unlockScore
-          )
+      let counts := childEntries.foldl (init := ({} : GroupHealthCounts)) fun counts (child, node) =>
+        counts.addEntry ctx child node
       let nextPriority? :=
         let candidates := childEntries.foldl (init := #[]) fun acc (child, node) =>
           match ctx.priorityEntry? child node with
@@ -649,13 +696,13 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
       acc.push {
         parent
         header := ctx.groupHeaders.getD parent parent.toString
-        totalEntries
-        closedEntries
-        localOnlyEntries
-        readyEntries
-        blockedEntries
-        incompleteLeanEntries
-        unlockScore
+        totalEntries := counts.totalEntries
+        closedEntries := counts.closedEntries
+        localOnlyEntries := counts.localOnlyEntries
+        readyEntries := counts.readyEntries
+        blockedEntries := counts.blockedEntries
+        incompleteLeanEntries := counts.incompleteLeanEntries
+        unlockScore := counts.unlockScore
         nextPriority?
       }
   (sortGroupHealthItems items).toList
@@ -783,6 +830,7 @@ def buildSummary : CoreM Summary := do
   let ctx := mkSummaryBuildContext state
   let summary := collectSummaryOverview ctx
   let topPriorities := collectPriorityItems ctx
+  let metadataAudit := collectMetadataAudit ctx
   return {
     summary with
       showDebugDiagnostics := showDebugDiagnostics
@@ -800,10 +848,10 @@ def buildSummary : CoreM Summary := do
       quickWins := topPriorities.filter priorityItemIsQuickWin
       ownerRollups := collectOwnerRollups ctx
       tagRollups := collectTagRollups ctx
-      linkedPrs := collectMetadataEntries ctx.state ctx.entries fun node => node.prUrl.isSome
-      missingOwners := collectMetadataEntries ctx.state ctx.entries fun node => node.owner.isNone
-      missingEffort := collectMetadataEntries ctx.state ctx.entries fun node => node.effort.isNone
-      untaggedEntries := collectMetadataEntries ctx.state ctx.entries fun node => node.tags.isEmpty
+      linkedPrs := metadataAudit.sortedLinkedPrs
+      missingOwners := metadataAudit.sortedMissingOwners
+      missingEffort := metadataAudit.sortedMissingEffort
+      untaggedEntries := metadataAudit.sortedUntaggedEntries
   }
 
 private def Summary.previewLabels (data : Summary) : Array Name :=
