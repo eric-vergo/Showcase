@@ -10,6 +10,7 @@ import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Code
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Informal.RustPanel
 import VersoBlueprint.TraversalIndex
@@ -26,9 +27,9 @@ def rustBlockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) where
   data := toJson data
   traverse id data _contents := do
-    let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
-      | Verso.reportError s!"Malformed Rust data: {data}"
-        pure none
+    let some cdata ← ExtensionDecode.decode? (α := Informal.Rust.InlineCodeData) data
+        (fun _ => s!"Malformed Rust data: {data}")
+      | pure none
     if let some _ := Informal.TraversalIndex.RustInlineCode.object? (← get) cdata.label then
       pure none
     else
@@ -44,9 +45,9 @@ block_extension Block.informalRustCode (data : Informal.Rust.InlineCodeData) whe
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun _goI _goB id data _blocks => do
-      let .ok cdata := fromJson? (α := Informal.Rust.InlineCodeData) data
-        | Verso.reportError s!"Malformed Rust code data: {data}"
-          pure .empty
+      let some cdata ← ExtensionDecode.decode? (α := Informal.Rust.InlineCodeData) data
+          (fun _ => s!"Malformed Rust code data: {data}")
+        | pure .empty
       let s ← HtmlT.state
       let ctxt ← HtmlT.context
       let attrs := s.htmlId id

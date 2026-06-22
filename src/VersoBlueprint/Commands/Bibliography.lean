@@ -9,6 +9,7 @@ import Verso
 import VersoManual
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -36,9 +37,9 @@ open Verso Doc Elab Genre Manual in
 block_extension Block.bibliography (biblio : BibliographyData) where
   data := toJson biblio
   traverse id data _contents := do
-    let .ok biblio := fromJson? (α := BibliographyData) data
-      | Verso.reportError "Malformed data in Block.bibliography.traverse"
-        return none
+    let some biblio ← Informal.ExtensionDecode.decode? (α := BibliographyData) data
+        (fun _ => "Malformed data in Block.bibliography.traverse")
+      | return none
     let path ← (·.path) <$> read
     let _ ← Verso.Genre.Manual.externalTag id path s!"--bp-bibliography"
     for entry in biblio.entries do
@@ -50,9 +51,9 @@ block_extension Block.bibliography (biblio : BibliographyData) where
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun goI _goB _id data _blocks => do
-      let .ok data := fromJson? (α := BibliographyData) data
-        | Verso.reportError "Malformed data in Block.bibliography.toHtml"
-          pure .empty
+      let some data ← Informal.ExtensionDecode.decode? (α := BibliographyData) data
+          (fun _ => "Malformed data in Block.bibliography.toHtml")
+        | pure .empty
       let st ← HtmlT.state
       let entries := data.entries.toArray.qsort (fun a b => a.citation.sortKey < b.citation.sortKey)
       let rows ← entries.mapM fun entry => do

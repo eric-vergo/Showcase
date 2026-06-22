@@ -10,6 +10,7 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Data
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -479,9 +480,9 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     (kind : Option CitePartKind := none) (index : Option String := none) where
   data := toJson ({ citations, style, kind, index } : CiteInlineData)
   traverse id data _contents := do
-    let .ok cfg := fromJson? (α := CiteInlineData) data
-      | Verso.reportError "Malformed data in Inline.bpCite.traverse"
-        return none
+    let some cfg ← Informal.ExtensionDecode.decode? (α := CiteInlineData) data
+        (fun _ => "Malformed data in Inline.bpCite.traverse")
+      | return none
     let ctxt ← read
     let path := ctxt.path
     let tagBase :=
@@ -521,9 +522,9 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
   toTeX :=
     open Verso.Output.TeX in
     some <| fun go _id data content => do
-      let .ok cfg := fromJson? (α := CiteInlineData) data
-        | Verso.reportError "Malformed data in Inline.bpCite.toTeX"
-          pure .empty
+      let some cfg ← Informal.ExtensionDecode.decode? (α := CiteInlineData) data
+          (fun _ => "Malformed data in Inline.bpCite.toTeX")
+        | pure .empty
       let pieces := cfg.citations.map (fun item => pieceText cfg.style item.citation)
       let body := String.intercalate "; " pieces
       let loc? := locatorText cfg.kind cfg.index
@@ -553,9 +554,9 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     open Verso.Doc.Html in
     open Verso.Output.Html in
     some <| fun goI id data content => do
-      let .ok cfg := fromJson? (α := CiteInlineData) data
-        | Verso.reportError "Malformed data in Inline.bpCite.toHtml"
-          pure .empty
+      let some cfg ← Informal.ExtensionDecode.decode? (α := CiteInlineData) data
+          (fun _ => "Malformed data in Inline.bpCite.toHtml")
+        | pure .empty
       let st ← HtmlT.state
       let inPreviewRender ← Informal.HoverRender.inInlinePreviewRender
       let citeAnchorId? := st.externalTags[id]? |>.map (·.htmlId.toString)
