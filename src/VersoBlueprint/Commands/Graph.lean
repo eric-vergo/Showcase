@@ -77,7 +77,11 @@ def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : Str
 -- Updated when the runtime asset changes; current runtime leaves block placement to CSS
 -- and relies on graphviz auto-fit plus flow-aware canvas sizing for initial placement
 -- plus user-controlled resize persistence and cheap height resets.
-def loadD3Dot := withPreviewClientReadyJs (include_str "graph.js")
+private def graphRuntimeCoreJs : String := include_str "graph-runtime-core.js"
+
+private def graphRuntimeJs : String := include_str "graph.js"
+
+def loadD3Dot := withPreviewClientReadyJs (graphRuntimeCoreJs ++ "\n" ++ graphRuntimeJs)
 
 def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss]) (jsAfter := [loadD3Dot])

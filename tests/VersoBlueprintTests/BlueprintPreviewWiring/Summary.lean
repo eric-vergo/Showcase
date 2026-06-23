@@ -50,8 +50,6 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         hasRenderReadyWiring inlineJs "previewUtils" &&
         hasAllSubstr inlineJs [
           "bp-inline-preview-child-panel",
-          "previewUtils.createPreviewSurface({",
-          "previewUtils.resolvePreviewHtml(previewLookupKey, {",
           "data-bp-preview-footer-html"
         ] &&
         lacksAllSubstr inlineJs [

@@ -1,5 +1,4 @@
 import {
-  dataUrl as graphDataUrl,
   getGraphData,
   getGraphVariants,
   graphsFromManifest,
@@ -7,6 +6,7 @@ import {
   loadManifestGraphs,
   normalizeGraphData
 } from "./blueprint-graph-api.mjs";
+import "./blueprint-preview-core.js";
 
 export {
   getGraphData,
@@ -17,7 +17,12 @@ export {
   normalizeGraphData
 };
 
-export const version = 1;
+const previewCore =
+  typeof globalThis !== "undefined" && globalThis.VersoBlueprintPreviewCore
+    ? globalThis.VersoBlueprintPreviewCore
+    : {};
+
+export const version = previewCore.version || 1;
 
 function currentHref() {
   return typeof window !== "undefined" && window.location ? window.location.href : "";
@@ -78,7 +83,7 @@ export function dataUrl(filename, baseUrl = currentHref()) {
   if (api && typeof api.dataUrl === "function" && baseUrl === currentHref()) {
     return api.dataUrl(filename);
   }
-  return graphDataUrl(filename, baseUrl);
+  return previewCore.dataUrl(filename, baseUrl);
 }
 
 export function manifestUrl(baseUrl = currentHref()) {
@@ -86,7 +91,7 @@ export function manifestUrl(baseUrl = currentHref()) {
   if (api && typeof api.manifestUrl === "function" && baseUrl === currentHref()) {
     return api.manifestUrl();
   }
-  return dataUrl("blueprint-manifest.json", baseUrl);
+  return previewCore.manifestUrl(baseUrl);
 }
 
 export function htmlCacheUrl(baseUrl = currentHref()) {
@@ -94,7 +99,7 @@ export function htmlCacheUrl(baseUrl = currentHref()) {
   if (api && typeof api.htmlCacheUrl === "function" && baseUrl === currentHref()) {
     return api.htmlCacheUrl();
   }
-  return dataUrl("blueprint-html-cache.json", baseUrl);
+  return previewCore.htmlCacheUrl(baseUrl);
 }
 
 export function graphApiModuleUrl(baseUrl = currentHref()) {
@@ -102,7 +107,7 @@ export function graphApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.graphApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.graphApiModuleUrl();
   }
-  return dataUrl("api/graph.mjs", baseUrl);
+  return previewCore.graphApiModuleUrl(baseUrl);
 }
 
 export function previewApiModuleUrl(baseUrl = currentHref()) {
@@ -110,18 +115,15 @@ export function previewApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.previewApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.previewApiModuleUrl();
   }
-  return dataUrl("api/preview.mjs", baseUrl);
+  return previewCore.previewApiModuleUrl(baseUrl);
 }
 
 export function previewKey(label, facet) {
-  const trimmedLabel = typeof label === "string" ? label.trim() : "";
-  if (!trimmedLabel) return "";
-  const trimmedFacet = typeof facet === "string" && facet.trim() ? facet.trim() : "statement";
-  return trimmedLabel + "--" + trimmedFacet;
+  return previewCore.previewKey(label, facet);
 }
 
 export function statementPreviewKey(label) {
-  return previewKey(label, "statement");
+  return previewCore.statementPreviewKey(label);
 }
 
 function fallbackStatus(url) {
