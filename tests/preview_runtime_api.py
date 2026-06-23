@@ -7,6 +7,13 @@ import re
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
 RUNTIME_BOOTSTRAP_JS = {
+    Path("Commands/preview-runtime-base.js"),
+    Path("Commands/preview-runtime-data.js"),
+    Path("Commands/preview-runtime-render.js"),
+    Path("Commands/preview-runtime-hydration.js"),
+    Path("Commands/preview-runtime-lifecycle.js"),
+    Path("Commands/preview-runtime-surface.js"),
+    Path("Commands/preview-runtime-template.js"),
     Path("Commands/preview-runtime.js"),
     Path("Commands/preview-ready.js"),
 }
@@ -82,7 +89,7 @@ def runtime_api_methods(name: str) -> list[str]:
 
 
 def documented_stable_api_methods(source: str) -> set[str]:
-    start_marker = "Stable custom-client entrypoints:"
+    start_marker = "### Stable Custom-Client API"
     end_marker = "Blueprint's bundled graph"
     start = source.index(start_marker) + len(start_marker)
     end = source.index(end_marker, start)

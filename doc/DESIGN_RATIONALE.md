@@ -62,7 +62,27 @@ Command modules are split by concern:
 - generic command CSS and shared preview/runtime asset injection in
   `VersoBlueprint/Commands/Common.lean`
 - the target-details opener in `VersoBlueprint/Commands/open-target-details.js`
-- the shared browser render API in `VersoBlueprint/Commands/preview-runtime.js`
+- shared graph-data browser helpers in `VersoBlueprint/blueprint-graph-core.js`
+- shared preview URL/key browser helpers in
+  `VersoBlueprint/blueprint-preview-core.js`
+- the private preview base/debug helpers in
+  `VersoBlueprint/Commands/preview-runtime-base.js`
+- the private preview-data/cache runtime helpers in
+  `VersoBlueprint/Commands/preview-runtime-data.js`
+- the private preview render helpers in
+  `VersoBlueprint/Commands/preview-runtime-render.js`
+- the private preview hydration helpers in
+  `VersoBlueprint/Commands/preview-runtime-hydration.js`
+- the private preview lifecycle helpers in
+  `VersoBlueprint/Commands/preview-runtime-lifecycle.js`
+- the private preview surface helpers in
+  `VersoBlueprint/Commands/preview-runtime-surface.js`
+- the private template-preview descriptor binder in
+  `VersoBlueprint/Commands/preview-runtime-template.js`
+- the shared browser API/bootstrap body in
+  `VersoBlueprint/Commands/preview-runtime.js`
+- the private graph runtime helpers in
+  `VersoBlueprint/Commands/graph-runtime-core.js`
 - the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
 - descriptor-driven summary and code-summary preview binding in the shared
   preview runtime
@@ -94,10 +114,20 @@ Shared preview and rendering helpers live in `VersoBlueprint/Lib/`, notably:
 
 Shared and feature-specific browser assets stay with their owning commands:
 
+- `Commands/preview-runtime-data.js`
+- `Commands/preview-runtime-base.js`
+- `Commands/preview-runtime-render.js`
+- `Commands/preview-runtime-hydration.js`
+- `Commands/preview-runtime-lifecycle.js`
+- `Commands/preview-runtime-surface.js`
+- `Commands/preview-runtime-template.js`
 - `Commands/preview-runtime.js`
 - `Commands/inline-preview.js`
 - `Commands/open-target-details.js`
+- `Commands/graph-runtime-core.js`
 - `Commands/graph.js`
+- `blueprint-graph-core.js`
+- `blueprint-preview-core.js`
 - `Informal/Block/relation-panel.js`
 
 Per-command CSS overlays stay with their commands:
@@ -328,7 +358,7 @@ hydration.
 | Statement metadata panel for owner, effort, priority, tags, and PR link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
 | Header-extra slot ordering and wrapper classes | `Informal.Block.Render.renderHeaderExtras` | group, uses, used-by, code, and custom extras in normal and manifest-backed nodes | single layout owner |
 | Relation panel/chip markup and relation-row badges | `Informal.RelatedPanel.renderPanel`, with shared axis-badge fragments from `Informal.RelatedPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | single Lean owner for panel markup and statement/proof badge vocabulary |
-| Relation panel browser activation, selection state, and loading/error messages | `Informal/Block/relation-panel.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` and `renderPreviewIntoSurface` | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single JS owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and manifest/cache lookup plus stale-request replacement go through the runtime helper |
+| Relation panel browser activation, selection state, and loading/error messages | `Informal/Block/relation-panel.js` configured with `Commands/preview-runtime-surface.js` `createPreviewSurface` and `renderPreviewIntoSurface` | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single JS owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and manifest/cache lookup plus stale-request replacement go through the runtime helper |
 | Code-summary trigger, template, and preview panel shell | `Informal.HoverRender.templatePreviewRoot`, configured by `Informal.CodeSummary.renderCodeSummaryPreview` | heading code badges and code-panel indicators | shared wrapper helper, code-summary-specific selectors |
 | Declaration-level Lean status labels, classes, and symbols | `Informal.Data.ProvedStatus.presentation` | code-summary declaration rows, summary detail rows, heading status marks, heading code-entry icons, external-code rows/footers, rendered external declaration header badges | single presentation owner for declaration status; renderers still own their surrounding HTML |
 | Code-summary semantics, declaration rows, status marks, and indicators | `Informal.CodeSummary` using `ProvedStatus.presentation` for declaration-status vocabulary | node heading code extra and code-panel summary indicator | single code-summary owner; declaration status presentation is delegated to `ProvedStatus` |
@@ -336,13 +366,15 @@ hydration.
 | External declaration rows and rendered declaration body strategy | `Informal.ExternalCode.renderExternalDeclRowsWith` | external-code panels and HTML-cache-backed Lean-code previews | shared row/status/footer owner with page-hover and self-contained body strategies |
 | Manifest/cache-backed block shell assembly | `Informal.PreviewManifest.BlockRender.renderWithRenderedContent` | Slides, grafts, and custom generated consumers | single manifest-backed assembly owner; callers only supply config and content |
 | Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
-| Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime.js` `resolvePreview`, `resolvePreviewHtml`, `renderPreviewInto`, and `renderPreviewIntoSurface` | graph, summary, relation panels, inline previews, custom browser clients | single JS data/cache owner; bundled feature scripts use the narrower helper that matches how much local panel behavior they own |
-| Browser canonical generated-node insertion | `Commands/preview-runtime.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
-| Browser preview panel behavior | `Commands/preview-runtime.js` `createPreviewSurface`, descriptor-driven template binding, `hidePreviewSurfaces`, and panel helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
-| Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
-| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with `Commands/preview-runtime.js` `createPreviewSurface` | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
-| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; preview panel slots, trigger lifetimes, Escape close, and resize/scroll binding use surfaces; popover binding uses the shared runtime popover helper |
-| Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime.js` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
+| Browser generated-data URLs and preview keys | `blueprint-preview-core.js` shared by the bundled runtime and `api/preview.mjs` | browser runtime, ESM preview clients, custom generated pages | single JS owner for generated-data URL construction and preview-key formatting; runtime stores and ESM helpers delegate to it instead of reimplementing the same string rules |
+| Browser graph JSON discovery and graph manifest loading | `blueprint-graph-core.js` shared by the bundled runtime and `api/graph.mjs` | graph command runtime, graph dashboards, custom browser clients | single JS owner for graph-data normalization and graph JSON/script discovery; compatibility globals are exports, not the bundled runtime's internal data path |
+| Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime-data.js` for data/cache loading plus `Commands/preview-runtime-render.js` `resolvePreview` and `renderPreviewInto`, with `Commands/preview-runtime-surface.js` `resolvePreviewHtml` and `renderPreviewIntoSurface` adapting those helpers for bundled surfaces | graph, summary, relation panels, inline previews, custom browser clients | single JS data/cache store owner; the data chunk delegates URL/key primitives to preview core and graph data to graph core, while the render chunk joins those entries with rendered fragments |
+| Browser canonical generated-node insertion | `Commands/preview-runtime-render.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
+| Browser preview panel behavior | `Commands/preview-runtime-surface.js` `createPreviewSurface`, `hidePreviewSurfaces`, and panel helpers plus `Commands/preview-runtime-lifecycle.js` trigger/dismiss/reposition helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
+| Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime-surface.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
+| Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with explicit host policies plus `Commands/preview-runtime-surface.js` `createPreviewSurface` and lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; graph/relation host behavior is data in the inline script, while panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
+| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph-runtime-core.js` for graph runtime utilities plus `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; normalization, canvas sizing, script loading, state slots, and graph-specific positioning are shared by the graph runtime core, while graph rendering and UI event orchestration stay in the graph feature script |
+| Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime-template.js` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
 
 When adding node UI, use this checklist before introducing a renderer or
 browser helper:
@@ -411,34 +443,48 @@ The workflow implies a few constraints for renderers:
   until the argument shape is clearer.
 
 - **Split JavaScript by responsibility, not feature semantics.**
-  The current preview runtime is still bundled as one asset, but its internal
-  responsibilities are the boundaries for any future split: preview-data access,
-  fragment rendering and hydration, template binding, panel/surface content,
-  panel lifecycle, debug/hydration hooks, and API readiness. These groups are
-  deliberately close to future component boundaries. A split module may load
-  files, join entries by preview key, insert opaque fragments, own a preview
-  surface's local UI state, or call hydrators; it should not infer Blueprint
-  relation topology, ownership, status, or code associations from HTML markup.
+  The current preview runtime is still emitted as one bundled asset. Its source
+  is now split across private source chunks: `blueprint-preview-core.js` owns
+  generated-data URL helpers and preview-key construction shared by bundled
+  pages and `api/preview.mjs`; `preview-runtime-data.js` owns manifest/cache
+  decoding and loading, load-status readers, entry lookup, and graph-core
+  delegation;
+  `preview-runtime-render.js` owns manifest/cache joins, rendered-fragment
+  insertion, and canonical-node loading; `preview-runtime-hydration.js` owns
+  fragment hydration, math rendering, and feature hydrator dispatch;
+  `preview-runtime-lifecycle.js` owns trigger, dismissal, popover, and
+  reposition lifetimes; `preview-runtime-surface.js` owns panel slots, content
+  updates, and diagnostic markup; `preview-runtime-template.js` owns rendered
+  descriptor binding; `preview-runtime-base.js` owns tiny shared utilities and
+  debug hooks; and `preview-runtime.js` owns API installation. These groups are
+  deliberately close to future component boundaries. A split source file may
+  load files, join entries by preview key, insert opaque fragments, own a
+  preview surface's local UI state, or call hydrators; it should not infer
+  Blueprint relation topology, ownership, status, or code associations from
+  HTML markup.
 
-  The next split should preserve the current public API while moving private
+  Future splits should preserve the current public API while moving private
   helpers behind files that match their responsibility:
 
   | Boundary | Current responsibility | Split target |
   | --- | --- | --- |
-  | API readiness | Install `window.VersoBlueprint`, queue `onRenderReady` callbacks, and expose the stable render API. | small bootstrap module loaded before bundled clients |
-  | Preview data access | Resolve `-verso-data` URLs, load manifest/cache JSON, keep load status, and normalize preview keys. | data/cache module |
-  | Fragment rendering | Resolve manifest/cache pairs, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers. | render module |
-  | Hydration registry | Run math rendering and feature hydrators after custom insertion. | hydration module |
-  | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | descriptor module |
-  | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | surface module, eventually closest to a component primitive |
-  | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | lifecycle module used by surfaces |
-  | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | debug module compiled into the bundled runtime |
+  | API readiness | Install `window.VersoBlueprint`, queue `onRenderReady` callbacks, and expose the stable render API. | `Commands/preview-runtime.js` source chunk inside the bundled runtime |
+  | Preview URL/key primitives | Resolve `-verso-data` URLs and normalize preview keys for both bundled and ESM clients. | `blueprint-preview-core.js` shared implementation file |
+  | Preview data access | Load manifest/cache JSON, keep load status, delegate graph data to graph core, and look up entries. | `Commands/preview-runtime-data.js` source chunk inside the bundled runtime |
+  | Fragment rendering | Resolve manifest/cache pairs, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers. | `Commands/preview-runtime-render.js` source chunk inside the bundled runtime |
+  | Hydration registry | Run math rendering and feature hydrators after custom insertion. | `Commands/preview-runtime-hydration.js` source chunk inside the bundled runtime |
+  | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | `Commands/preview-runtime-template.js` source chunk inside the bundled runtime |
+  | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | `Commands/preview-runtime-surface.js` source chunk inside the bundled runtime |
+  | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | `Commands/preview-runtime-lifecycle.js` source chunk inside the bundled runtime |
+  | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | `Commands/preview-runtime-base.js` source chunk inside the bundled runtime |
+  | Graph runtime utilities | Normalize graph options, size graph canvases, keep graph block state, load scripts, and position graph-specific panels. | `Commands/graph-runtime-core.js` private graph runtime chunk |
 
-  A first split should be internal-only: generated pages should still load the
-  same bundled asset and custom clients should still start from
-  `onRenderReady`. Once the internal boundaries are stable, the ESM preview API
-  can re-export selected stable functions for framework clients without exposing
-  Blueprint-owned DOM or lifecycle details.
+  Splits should remain internal-only until a separate public module boundary is
+  intentional: generated pages should still load the same bundled asset and
+  custom clients should still start from `onRenderReady`. Once the internal
+  boundaries are stable, the ESM preview API can re-export selected stable
+  functions for framework clients without exposing Blueprint-owned DOM or
+  lifecycle details.
 
 - **Keep readiness and API guards source-level.**
   Feature JavaScript must start through `window.VersoBlueprint.onRenderReady`;
@@ -612,9 +658,16 @@ rather than page-local template bodies:
    `-verso-docs.json`. It also emits informal-block relationship topology,
    including uses, reverse uses, and group panel entries, while traversal state
    is still available.
-3. `Commands/Common.lean` owns the browser-side preview runtime:
-   rendered-fragment loading, missing-fragment diagnostics, hydration, math
-   rendering, and anchored panel behavior.
+3. `Commands/Common.lean` owns browser-side preview runtime assembly. It emits
+   one bundled asset from the graph core and the `preview-runtime-*.js` chunks:
+   the data chunk owns manifest/cache URLs, loading, status, and key
+   normalization; the render chunk owns rendered-fragment insertion,
+   missing-fragment diagnostics, and canonical-node fetching; the hydration
+   chunk owns inserted-fragment hydration and math rendering; the lifecycle
+   chunk owns trigger, dismissal, popover, and reposition lifetimes; the
+   surface chunk owns panel slots and content updates; the template chunk owns
+   descriptor-driven binding; the base chunk owns debug and tiny shared helpers;
+   and the API chunk owns render API installation.
 4. Feature-owned JS such as `Commands/Summary.lean` summary preview wiring or
    `Informal/Block/Assets.lean` code-summary preview wiring binds the generic
    runtime to concrete surfaces.
@@ -696,6 +749,8 @@ features to drift apart if each one hand-rolls its own browser logic. The
 shared browser-side runtime therefore owns reusable operations such as:
 
 - template collection and decoding
+- manifest/cache URL resolution, loading, status readers, and preview-key
+  normalization
 - math rendering for inserted preview bodies
 - anchored-panel positioning
 - close-button policy
@@ -706,8 +761,11 @@ panels, graph panels, and other Blueprint surfaces.
 
 That runtime boundary is now explicit:
 
-- `Commands/Common.lean` owns the generic preview runtime and reusable browser
-  primitives
+- `Commands/Common.lean` owns bundled-runtime assembly; the
+  `preview-runtime-*.js` chunks split generated-data/cache access,
+  rendering/canonical insertion, hydration, lifecycle binding, surface helpers,
+  descriptor binding, shared base helpers, and API installation while still
+  emitting one runtime asset
 - feature-specific browser behavior stays with the owning feature when the code
   is not meaningfully shared; for example, informal-block preview handlers now
   live in `Informal/Block/Assets.lean`

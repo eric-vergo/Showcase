@@ -551,6 +551,8 @@ def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
 
 def graphCoreModuleFilename : String := "blueprint-graph-core.js"
 
+def previewCoreModuleFilename : String := "blueprint-preview-core.js"
+
 def previewApiModuleFilename : String := "blueprint-preview-api.mjs"
 
 def apiModuleDirname : String := "api"
@@ -565,6 +567,8 @@ def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModule
 
 -- Keep this module rebuilt when the standalone browser ESM APIs change.
 private def graphCoreModuleJs : String := include_str "blueprint-graph-core.js"
+
+private def previewCoreModuleJs : String := include_str "blueprint-preview-core.js"
 
 private def graphApiModuleJs : String := include_str "blueprint-graph-api.mjs"
 
@@ -1660,6 +1664,7 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleJs
+  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleJs
   IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleJs
   IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleJs
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasJs

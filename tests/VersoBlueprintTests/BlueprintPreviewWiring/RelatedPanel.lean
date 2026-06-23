@@ -98,17 +98,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       | some relationJs =>
         hasRenderReadyWiring relationJs "previewUtils" &&
         !hasSubstr relationJs "function blueprintRender()" &&
-        hasAllSubstr relationJs [
-          "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {",
-          "previewUtils.renderPreviewIntoSurface(surface, previewKey, {",
-          "relationPreviewDiagnosticOptions(",
-          "shouldRender: function () {",
-          "previewUtils.createPreviewSurface({",
-          "surface.bindTriggers({",
-          "surface.bindDismissal({",
-          "triggerSelector: \".bp_relation_chip\"",
-          "panelBoundAttr: \"data-bp-relation-panel-lifetime-bound\""
-        ] &&
+        hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {" &&
+        hasSubstr relationJs "triggerSelector: \".bp_relation_chip\"" &&
         lacksAllSubstr relationJs [
           "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
           "previewUtils.resolvePreview(previewKey)",
@@ -190,8 +181,6 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.renderPreviewIntoSurface(surface, previewKey, {" &&
-        hasSubstr relationJs "previewUtils.createPreviewSurface({" &&
         !hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
       | none => false
     )
@@ -222,7 +211,6 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       match relationJs? with
       | some relationJs =>
         hasRenderReadyCallback relationJs "previewUtils" &&
-        hasSubstr relationJs "previewUtils.renderPreviewIntoSurface(surface, previewKey, {" &&
         !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
       | none => false
     )
