@@ -1,4 +1,4 @@
-import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-surface.mjs";
+import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
 
   // Bundled preview lifecycle helpers.
   //

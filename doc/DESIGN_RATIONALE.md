@@ -82,7 +82,7 @@ Command modules are split by concern:
 - the shared browser API/bootstrap body in
   `VersoBlueprint/Commands/preview-runtime.js`
 - the private graph runtime helpers in
-  `VersoBlueprint/Commands/graph-runtime-core.js`
+  `VersoBlueprint/Commands/graph-runtime-core.mjs`
 - the inline-hover preview client in `VersoBlueprint/Commands/inline-preview.js`
 - descriptor-driven summary and code-summary preview binding in the shared
   preview runtime
@@ -124,7 +124,7 @@ Shared and feature-specific browser assets stay with their owning commands:
 - `Commands/preview-runtime.js`
 - `Commands/inline-preview.js`
 - `Commands/open-target-details.js`
-- `Commands/graph-runtime-core.js`
+- `Commands/graph-runtime-core.mjs`
 - `Commands/graph.js`
 - `blueprint-graph-core.mjs`
 - `blueprint-preview-core.mjs`
@@ -373,7 +373,7 @@ hydration.
 | Browser preview panel behavior | `Commands/preview-runtime-surface.mjs` `createPreviewSurface`, `hidePreviewSurfaces`, and panel helpers plus `Commands/preview-runtime-lifecycle.mjs` trigger/dismiss/reposition helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single ESM-shaped behavior helper embedded into the current bundled runtime as a classic-script fragment; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
 | Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime-surface.mjs` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single ESM-shaped panel/message/surface construction helper embedded into the current bundled runtime as a classic-script fragment; feature scripts pass classes/slots/text |
 | Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with explicit host policies plus `Commands/preview-runtime-surface.mjs` `createPreviewSurface` and lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; graph/relation host behavior is data in the inline script, while panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
-| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph-runtime-core.js` for graph runtime utilities plus `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; normalization, canvas sizing, script loading, state slots, and graph-specific positioning are shared by the graph runtime core, while graph rendering and UI event orchestration stay in the graph feature script |
+| Browser graph preview, group-hover, popover, dismiss, and reposition behavior | `Commands/graph-runtime-core.mjs` for graph runtime utilities plus `Commands/graph.js` configured with runtime surfaces and popover helpers | graph command output | feature-owned graph state; normalization, canvas sizing, script loading, state slots, and graph-specific positioning are shared by the graph runtime core, while graph rendering and UI event orchestration stay in the graph feature script |
 | Browser summary and code-summary preview binders | `Informal.HoverRender.templatePreviewDescriptorAttrs` emitted by Lean and auto-bound by `Commands/preview-runtime-template.mjs` | summary page labels and code-summary triggers in Manual pages, grafted nodes, and Slides | selector configuration is data on the rendered root; no per-feature JS binder owns this path |
 
 When adding node UI, use this checklist before introducing a renderer or
@@ -478,7 +478,7 @@ The workflow implies a few constraints for renderers:
   | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | `Commands/preview-runtime-surface.mjs` ESM-shaped source chunk embedded into the bundled runtime as a classic-script fragment |
   | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | `Commands/preview-runtime-lifecycle.mjs` ESM-shaped source chunk embedded into the bundled runtime as a classic-script fragment |
   | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | `Commands/preview-runtime-base.mjs` source chunk embedded into the bundled runtime as a classic-script fragment |
-  | Graph runtime utilities | Normalize graph options, size graph canvases, keep graph block state, load scripts, and position graph-specific panels. | `Commands/graph-runtime-core.js` private graph runtime chunk |
+  | Graph runtime utilities | Normalize graph options, size graph canvases, keep graph block state, load scripts, and position graph-specific panels. | `Commands/graph-runtime-core.mjs` private graph runtime chunk embedded through a generated classic-script adapter |
 
   Splits should remain internal-only until a separate public module boundary is
   intentional: generated pages should still load the same bundled asset and

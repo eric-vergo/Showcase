@@ -258,6 +258,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function bindDismissHandlers(options)", lifecycle)
         self.assertIn("function bindPreviewTriggers(options)", lifecycle)
         self.assertIn("function bindAnchoredPopover(options)", lifecycle)
+        self.assertIn('from "./preview-runtime-base.mjs";', lifecycle)
+        self.assertNotIn('from "./preview-runtime-surface.mjs";', lifecycle)
         self.assertIn("export const previewRuntimeLifecycle = {", lifecycle)
         self.assertIn("function createPreviewSurface(options)", surface)
         self.assertIn("async function renderPreviewIntoSurface(surface, previewKey, options)", surface)
@@ -381,7 +383,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("const trimmedLabel = typeof label", runtime_data)
 
     def test_graph_runtime_helpers_live_in_private_graph_chunk(self) -> None:
-        graph_core = (BLUEPRINT_SRC / "Commands" / "graph-runtime-core.js").read_text(
+        graph_core = (BLUEPRINT_SRC / "Commands" / "graph-runtime-core.mjs").read_text(
             encoding="utf-8"
         )
         graph_runtime = (BLUEPRINT_SRC / "Commands" / "graph.js").read_text(
@@ -391,7 +393,11 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('include_str "graph-runtime-core.js"', graph_lean)
+        self.assertIn('include_str "graph-runtime-core.mjs"', graph_lean)
+        self.assertIn("esmModuleToClassicScript graphRuntimeCoreModuleMjs", graph_lean)
+        self.assertIn("export const graphRuntimeCore = {", graph_core)
+        self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_core)
+        self.assertIn("globalScope.VersoBlueprintGraphRuntimeCore = existingCore", graph_lean)
         for helper in GRAPH_RUNTIME_CORE_HELPERS:
             self.assertIn(f"function {helper}", graph_core)
             self.assertNotIn(f"function {helper}", graph_runtime)

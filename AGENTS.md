@@ -131,8 +131,8 @@
   `preview-runtime-render.mjs`, `preview-runtime-hydration.mjs`,
   `preview-runtime-lifecycle.mjs`, `preview-runtime-surface.mjs`,
   `preview-runtime-template.mjs`, `preview-runtime.js`, `inline-preview.js`,
-  `graph.css`, `graph-runtime-core.js`, `graph.js`, `summary.css`, `summary-preview.js`,
-  `bibliography.css`, `code-summary-preview.js`, `relation-panel.js`,
+  `graph.css`, `graph-runtime-core.mjs`, `graph.js`, `summary.css`,
+  `bibliography.css`, `relation-panel.js`,
   `blueprint-slides.css`, `blueprint-slides.js`, and `static-web/math.js` before build
   steps run, remove those owner modules' cached build outputs, and then run a
   targeted root `lake build` for those owner modules. This keeps downstream

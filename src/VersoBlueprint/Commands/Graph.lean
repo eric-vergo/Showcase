@@ -73,11 +73,22 @@ def graphCss := include_str "graph.css"
 def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : String :=
   s!"{Informal.HtmlId.prefixed "bp-graph" (toString id)}{suffix}"
 
+private def graphRuntimeCoreModuleMjs : String := include_str "graph-runtime-core.mjs"
+
 -- Keep this binding in Lean so asset updates flow through the command module rebuild.
 -- Updated when the runtime asset changes; current runtime leaves block placement to CSS
 -- and relies on graphviz auto-fit plus flow-aware canvas sizing for initial placement
 -- plus user-controlled resize persistence and cheap height resets.
-private def graphRuntimeCoreJs : String := include_str "graph-runtime-core.js"
+private def graphRuntimeCoreJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript graphRuntimeCoreModuleMjs r##"
+const existingCore =
+  globalScope.VersoBlueprintGraphRuntimeCore &&
+    typeof globalScope.VersoBlueprintGraphRuntimeCore === "object"
+    ? globalScope.VersoBlueprintGraphRuntimeCore
+    : {};
+Object.assign(existingCore, graphRuntimeCore);
+globalScope.VersoBlueprintGraphRuntimeCore = existingCore;
+"##
 
 private def graphRuntimeJs : String := include_str "graph.js"
 

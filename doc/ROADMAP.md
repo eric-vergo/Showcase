@@ -95,7 +95,8 @@ Work:
      bundled runtime as a classic-script fragment)
    - graph runtime utilities such as option normalization, canvas sizing,
      graph block state, script loading, and graph-specific panel positioning
-     (landed as `Commands/graph-runtime-core.js`)
+     (landed as `Commands/graph-runtime-core.mjs`, embedded into current
+     Verso page assets through a generated classic-script adapter)
 
 ### Data Model and Status Semantics
 

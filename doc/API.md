@@ -603,9 +603,10 @@ modules:
 | `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 | `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 
-The graph command also has a private `graph-runtime-core.js` chunk. It owns
+The graph command also has a private `graph-runtime-core.mjs` chunk. It owns
 graph-runtime utilities such as graph option normalization, canvas sizing,
-graph block state, script loading, and graph-specific panel positioning.
+graph block state, script loading, and graph-specific panel positioning. It is
+embedded into current Verso pages through a generated classic-script adapter.
 `graph.js` owns graph rendering orchestration, variant selection, and graph UI
 event binding.
 
