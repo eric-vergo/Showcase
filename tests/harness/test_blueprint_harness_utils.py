@@ -23,6 +23,14 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/open-target-details.js",
             "src/VersoBlueprint/Commands/preview-ready.js",
             "src/VersoBlueprint/blueprint-graph-core.js",
+            "src/VersoBlueprint/blueprint-preview-core.js",
+            "src/VersoBlueprint/Commands/preview-runtime-base.js",
+            "src/VersoBlueprint/Commands/preview-runtime-data.js",
+            "src/VersoBlueprint/Commands/preview-runtime-render.js",
+            "src/VersoBlueprint/Commands/preview-runtime-hydration.js",
+            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.js",
+            "src/VersoBlueprint/Commands/preview-runtime-surface.js",
+            "src/VersoBlueprint/Commands/preview-runtime-template.js",
             "src/VersoBlueprint/Commands/preview-runtime.js",
             "src/VersoBlueprint/Commands/inline-preview.js",
         ):
@@ -35,15 +43,34 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 EMBEDDED_ASSET_OWNER_PATHS,
             )
 
-    def test_graph_core_js_is_owned_by_preview_manifest_module(self) -> None:
-        self.assertIn(
-            (
-                "src/VersoBlueprint/blueprint-graph-core.js",
-                "src/VersoBlueprint/PreviewManifest.lean",
-                "VersoBlueprint.PreviewManifest",
-            ),
-            EMBEDDED_ASSET_OWNER_PATHS,
-        )
+    def test_standalone_api_core_js_assets_are_owned_by_preview_manifest_module(self) -> None:
+        for asset in (
+            "src/VersoBlueprint/blueprint-graph-core.js",
+            "src/VersoBlueprint/blueprint-preview-core.js",
+        ):
+            self.assertIn(
+                (
+                    asset,
+                    "src/VersoBlueprint/PreviewManifest.lean",
+                    "VersoBlueprint.PreviewManifest",
+                ),
+                EMBEDDED_ASSET_OWNER_PATHS,
+            )
+
+    def test_graph_js_assets_are_owned_by_graph_module(self) -> None:
+        for asset in (
+            "src/VersoBlueprint/Commands/graph.css",
+            "src/VersoBlueprint/Commands/graph-runtime-core.js",
+            "src/VersoBlueprint/Commands/graph.js",
+        ):
+            self.assertIn(
+                (
+                    asset,
+                    "src/VersoBlueprint/Commands/Graph.lean",
+                    "VersoBlueprint.Commands.Graph",
+                ),
+                EMBEDDED_ASSET_OWNER_PATHS,
+            )
 
     def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
         for asset, owner, target in (

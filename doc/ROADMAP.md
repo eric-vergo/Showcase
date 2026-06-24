@@ -59,21 +59,35 @@ Work:
 6. remove remaining browser timing workarounds only after targeted browser tests
    prove the replacement path; panel lifecycle workarounds should stay behind
    runtime helpers rather than feature-local listeners
-7. split the large preview runtime only along the component-like boundaries now
+7. continue splitting the large preview runtime only along the component-like boundaries now
    encoded in its API tiers: data/cache lookup, fragment rendering and
    hydration, template descriptors, preview surface state, lifecycle binding,
-   and readiness/debug hooks. The first split should keep the same emitted
-   bundled asset and public `onRenderReady` API, then move private helpers in
-   this order:
+   and readiness/debug hooks. Each split should keep the same emitted bundled
+   asset and public `onRenderReady` API, then move private helpers in this order:
    - readiness/bootstrap and render API installation
-   - manifest/cache URL resolution, loading, status, and preview-key helpers
+     (landed as the current `Commands/preview-runtime.js` API chunk)
+   - manifest/cache loading, status, and entry lookup
+     (landed as `Commands/preview-runtime-data.js`)
+   - generated-data URL and preview-key primitives shared by bundled runtime
+     and ESM clients
+     (landed as `blueprint-preview-core.js`, with runtime stores still in
+     `Commands/preview-runtime-data.js`)
    - fragment and canonical-node resolution plus diagnostic rendering
+     (landed as `Commands/preview-runtime-render.js`)
    - hydration registry and math/feature hydrator dispatch
+     (landed as `Commands/preview-runtime-hydration.js`)
    - template descriptor binding for Lean-emitted preview triggers
+     (landed as `Commands/preview-runtime-template.js`)
    - preview surface state, slots, and content updates
+     (landed as `Commands/preview-runtime-surface.js`)
    - lifecycle binding for trigger events, dismissal, pointer checks,
      repositioning, and keep-open checks
+     (landed as `Commands/preview-runtime-lifecycle.js`)
    - debug hooks used by tests and local inspection
+     (landed as `Commands/preview-runtime-base.js`)
+   - graph runtime utilities such as option normalization, canvas sizing,
+     graph block state, script loading, and graph-specific panel positioning
+     (landed as `Commands/graph-runtime-core.js`)
 
 ### Data Model and Status Semantics
 
