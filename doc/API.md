@@ -619,7 +619,7 @@ The current private source chunks are:
 | Chunk | Private responsibility |
 | --- | --- |
 | `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-data.js` | Manifest/cache loading, graph-core delegation, status readers, and store lookups. |
+| `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-render.js` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
 | `preview-runtime-hydration.js` | Math rendering, fragment hydration, and feature hydrator dispatch. |
 | `preview-runtime-lifecycle.js` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |

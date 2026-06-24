@@ -197,7 +197,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         base = (BLUEPRINT_SRC / "Commands" / "preview-runtime-base.mjs").read_text(
             encoding="utf-8"
         )
-        data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+        data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs").read_text(
             encoding="utf-8"
         )
         render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.js").read_text(
@@ -220,7 +220,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         )
 
         self.assertIn('include_str "preview-runtime-base.mjs"', common)
-        self.assertIn('include_str "preview-runtime-data.js"', common)
+        self.assertIn('include_str "preview-runtime-data.mjs"', common)
         self.assertIn('include_str "preview-runtime-render.js"', common)
         self.assertIn('include_str "preview-runtime-hydration.js"', common)
         self.assertIn('include_str "preview-runtime-lifecycle.js"', common)
@@ -242,7 +242,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function loadBlueprintStore(store)", data)
         self.assertIn("function previewKey(label, facet)", data)
         self.assertNotIn("function blueprintGraphApi()", data)
-        self.assertIn("function callBlueprintGraphCore(name, args, fallback)", data)
+        self.assertNotIn("function callBlueprintGraphCore(name, args, fallback)", data)
+        self.assertIn("function callRuntimeGraphCore(name, args, fallback)", common)
+        self.assertIn("export const previewRuntimeData = {", data)
         self.assertIn("function readBlueprintManifestStatus()", data)
         self.assertIn("async function resolveBlueprintPreview(previewKey)", render)
         self.assertIn("function renderHtmlInto(target, html, options)", render)
@@ -324,7 +326,10 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_graph_helpers_are_owned_by_graph_core(self) -> None:
         core = (BLUEPRINT_SRC / "blueprint-graph-core.mjs").read_text(encoding="utf-8")
         graph_esm = (BLUEPRINT_SRC / "blueprint-graph-api.mjs").read_text(encoding="utf-8")
-        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs").read_text(
+            encoding="utf-8"
+        )
+        common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
         runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
@@ -332,7 +337,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         )
 
         self.assertIn('from "./blueprint-graph-core.mjs";', graph_esm)
-        self.assertIn("callBlueprintGraphCore", runtime_data)
+        self.assertIn('from "../blueprint-graph-core.mjs";', runtime_data)
+        self.assertIn("callRuntimeGraphCore", common)
+        self.assertNotIn("callBlueprintGraphCore", runtime_data)
         self.assertNotIn("callBlueprintGraphApi", runtime_data)
         self.assertNotIn("window.bpGraphApi", runtime_data)
         for helper in GRAPH_CORE_HELPERS:
@@ -347,7 +354,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         preview_esm = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(
             encoding="utf-8"
         )
-        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs").read_text(
             encoding="utf-8"
         )
         preview_manifest = (BLUEPRINT_SRC / "PreviewManifest.lean").read_text(
@@ -355,6 +362,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         )
 
         self.assertIn('from "./blueprint-preview-core.mjs";', preview_esm)
+        self.assertIn('from "../blueprint-preview-core.mjs";', runtime_data)
         self.assertIn('include_str "blueprint-preview-core.mjs"', preview_manifest)
         self.assertIn("IO.FS.writeFile (dataDir / previewCoreModuleFilename)", preview_manifest)
         for helper in PREVIEW_CORE_HELPERS:
