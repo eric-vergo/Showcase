@@ -19,8 +19,8 @@ class EmbeddedAssetOwner:
 EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-base.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-data.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-render.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
@@ -30,8 +30,10 @@ EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-template.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/inline-preview.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.js", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
-    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.js", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
+    EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph-runtime-core.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
@@ -154,7 +156,7 @@ def discover_embedded_asset_owners(package_root: Path) -> tuple[EmbeddedAssetOwn
         target = _target_from_source(package_root, owner)
         for include_path in INCLUDE_STR_RE.findall(source):
             asset = (owner.parent / include_path).resolve()
-            if asset.suffix not in {".css", ".js"}:
+            if asset.suffix not in {".css", ".js", ".mjs"}:
                 continue
             discovered.append(
                 EmbeddedAssetOwner(

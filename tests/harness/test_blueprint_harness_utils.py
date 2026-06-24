@@ -28,12 +28,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             set(discover_embedded_asset_owners(package_root)),
         )
 
-    def test_common_js_assets_are_owned_by_common_module(self) -> None:
+    def test_common_browser_assets_are_owned_by_common_module(self) -> None:
         for asset in (
             "src/VersoBlueprint/Commands/open-target-details.js",
             "src/VersoBlueprint/Commands/preview-ready.js",
-            "src/VersoBlueprint/blueprint-graph-core.js",
-            "src/VersoBlueprint/blueprint-preview-core.js",
+            "src/VersoBlueprint/blueprint-graph-core.mjs",
+            "src/VersoBlueprint/blueprint-preview-core.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-base.js",
             "src/VersoBlueprint/Commands/preview-runtime-data.js",
             "src/VersoBlueprint/Commands/preview-runtime-render.js",
@@ -53,10 +53,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 EMBEDDED_ASSET_OWNERS,
             )
 
-    def test_standalone_api_core_js_assets_are_owned_by_preview_manifest_module(self) -> None:
+    def test_standalone_api_assets_are_owned_by_preview_manifest_module(self) -> None:
         for asset in (
-            "src/VersoBlueprint/blueprint-graph-core.js",
-            "src/VersoBlueprint/blueprint-preview-core.js",
+            "src/VersoBlueprint/blueprint-graph-core.mjs",
+            "src/VersoBlueprint/blueprint-preview-core.mjs",
+            "src/VersoBlueprint/blueprint-graph-api.mjs",
+            "src/VersoBlueprint/blueprint-preview-api.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(

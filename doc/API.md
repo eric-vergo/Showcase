@@ -351,7 +351,7 @@ Generated sites also emit root implementation modules,
 `-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
 those implementations from stable, shorter import paths. The generated data
 directory also contains internal support files used by those modules, such as
-`blueprint-graph-core.js` and `blueprint-preview-core.js`; those support files
+`blueprint-graph-core.mjs` and `blueprint-preview-core.mjs`; those support files
 are not public import paths. New clients should use the `-verso-data/api/`
 paths.
 
@@ -632,8 +632,8 @@ modules:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `blueprint-graph-core.js` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`. |
-| `blueprint-preview-core.js` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`. |
+| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
+| `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 
 The graph command also has a private `graph-runtime-core.js` chunk. It owns
 graph-runtime utilities such as graph option normalization, canvas sizing,

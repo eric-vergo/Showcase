@@ -70,8 +70,9 @@ Work:
      (landed as `Commands/preview-runtime-data.js`)
    - generated-data URL and preview-key primitives shared by bundled runtime
      and ESM clients
-     (landed as `blueprint-preview-core.js`, with runtime stores still in
-     `Commands/preview-runtime-data.js`)
+     (landed as `blueprint-preview-core.mjs`, embedded into current Verso
+     page assets through a generated classic-script adapter; runtime stores
+     still live in `Commands/preview-runtime-data.js`)
    - fragment and canonical-node resolution plus diagnostic rendering
      (landed as `Commands/preview-runtime-render.js`)
    - hydration registry and math/feature hydrator dispatch
