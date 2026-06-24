@@ -38,9 +38,9 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.js",
-            "src/VersoBlueprint/Commands/preview-runtime-surface.js",
-            "src/VersoBlueprint/Commands/preview-runtime-template.js",
+            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
             "src/VersoBlueprint/Commands/preview-runtime.js",
             "src/VersoBlueprint/Commands/inline-preview.js",
         ):

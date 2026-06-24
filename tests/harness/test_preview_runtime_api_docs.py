@@ -207,13 +207,13 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.mjs"
         ).read_text(encoding="utf-8")
         lifecycle = (
-            BLUEPRINT_SRC / "Commands" / "preview-runtime-lifecycle.js"
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-lifecycle.mjs"
         ).read_text(encoding="utf-8")
-        surface = (BLUEPRINT_SRC / "Commands" / "preview-runtime-surface.js").read_text(
+        surface = (BLUEPRINT_SRC / "Commands" / "preview-runtime-surface.mjs").read_text(
             encoding="utf-8"
         )
         template = (
-            BLUEPRINT_SRC / "Commands" / "preview-runtime-template.js"
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-template.mjs"
         ).read_text(encoding="utf-8")
         api = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
             encoding="utf-8"
@@ -223,9 +223,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn('include_str "preview-runtime-data.mjs"', common)
         self.assertIn('include_str "preview-runtime-render.mjs"', common)
         self.assertIn('include_str "preview-runtime-hydration.mjs"', common)
-        self.assertIn('include_str "preview-runtime-lifecycle.js"', common)
-        self.assertIn('include_str "preview-runtime-surface.js"', common)
-        self.assertIn('include_str "preview-runtime-template.js"', common)
+        self.assertIn('include_str "preview-runtime-lifecycle.mjs"', common)
+        self.assertIn('include_str "preview-runtime-surface.mjs"', common)
+        self.assertIn('include_str "preview-runtime-template.mjs"', common)
         self.assertIn('include_str "../blueprint-preview-core.mjs"', common)
         self.assertIn("previewRuntimeBaseJs", common)
         self.assertIn("previewRuntimeDataJs", common)
@@ -258,11 +258,14 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function bindDismissHandlers(options)", lifecycle)
         self.assertIn("function bindPreviewTriggers(options)", lifecycle)
         self.assertIn("function bindAnchoredPopover(options)", lifecycle)
+        self.assertIn("export const previewRuntimeLifecycle = {", lifecycle)
         self.assertIn("function createPreviewSurface(options)", surface)
         self.assertIn("async function renderPreviewIntoSurface(surface, previewKey, options)", surface)
         self.assertIn("function previewMessageHtml(options)", surface)
+        self.assertIn("export const previewRuntimeSurface = {", surface)
         self.assertIn("function bindTemplatePreview(options)", template)
         self.assertIn("function bindTemplatePreviewDescriptor(root)", template)
+        self.assertIn("export const previewRuntimeTemplate = {", template)
         self.assertIn(
             "setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors)",
             template,

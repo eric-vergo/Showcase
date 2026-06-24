@@ -311,11 +311,20 @@ private def previewRuntimeHydrationModuleMjs : String := include_str "preview-ru
 private def previewRuntimeHydrationJs : String :=
   Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeHydrationModuleMjs
 
-private def previewRuntimeLifecycleJs : String := include_str "preview-runtime-lifecycle.js"
+private def previewRuntimeLifecycleModuleMjs : String := include_str "preview-runtime-lifecycle.mjs"
 
-private def previewRuntimeSurfaceJs : String := include_str "preview-runtime-surface.js"
+private def previewRuntimeLifecycleJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeLifecycleModuleMjs
 
-private def previewRuntimeTemplateJs : String := include_str "preview-runtime-template.js"
+private def previewRuntimeSurfaceModuleMjs : String := include_str "preview-runtime-surface.mjs"
+
+private def previewRuntimeSurfaceJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeSurfaceModuleMjs
+
+private def previewRuntimeTemplateModuleMjs : String := include_str "preview-runtime-template.mjs"
+
+private def previewRuntimeTemplateJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeTemplateModuleMjs
 
 private def previewRuntimeApiJs : String := include_str "preview-runtime.js"
 
