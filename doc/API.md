@@ -576,17 +576,17 @@ private bundled helpers, or couple component state to the current shape of
 
 ### Private Runtime Chunks
 
-The `preview-runtime*.js` files under `src/VersoBlueprint/Commands/` are
-private source chunks used to build the generated runtime asset. They are not
-client import targets and do not change the public browser API. Generated pages
-and custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
+The `preview-runtime*` files under `src/VersoBlueprint/Commands/` are private
+source chunks used to build the generated runtime asset. They are not client
+import targets and do not change the public browser API. Generated pages and
+custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
 `window.VersoBlueprint.render`, or `api/preview.mjs`.
 
 The current private source chunks are:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `preview-runtime-base.js` | Small shared helpers, template collection, HTML escaping, and debug hooks. |
+| `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-data.js` | Manifest/cache loading, graph-core delegation, status readers, and store lookups. |
 | `preview-runtime-render.js` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
 | `preview-runtime-hydration.js` | Math rendering, fragment hydration, and feature hydrator dispatch. |

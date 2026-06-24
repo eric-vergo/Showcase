@@ -1,6 +1,6 @@
   // Runtime-local diagnostics and page-local template capture.
 
-  function previewDebugEnabled() {
+  export function previewDebugEnabled() {
     try {
       return window.localStorage.getItem("bp-debug-preview") === "1";
     } catch (_err) {
@@ -8,7 +8,7 @@
     }
   }
 
-  function previewDebugLabel(node) {
+  export function previewDebugLabel(node) {
     if (!(node instanceof Element)) return String(node);
     const parts = [node.tagName.toLowerCase()];
     const cls = (node.getAttribute("class") || "").trim();
@@ -22,14 +22,14 @@
     return parts.join(" ");
   }
 
-  function previewDebug(eventName, payload) {
+  export function previewDebug(eventName, payload) {
     if (!previewDebugEnabled()) return;
     try {
       console.log("[bp-preview]", eventName, payload || {});
     } catch (_err) {}
   }
 
-  function collectPreviewTemplates(root, selector, keyAttr) {
+  export function collectPreviewTemplates(root, selector, keyAttr) {
     const map = new Map();
     if (!(root instanceof Element || root instanceof Document)) return map;
     if (typeof selector !== "string" || selector.length === 0) return map;
@@ -59,7 +59,7 @@
     return map;
   }
 
-  function readHtml(entry) {
+  export function readHtml(entry) {
     if (typeof entry === "string") {
       return entry;
     }
@@ -69,7 +69,7 @@
     return "";
   }
 
-  function escapeHtml(text) {
+  export function escapeHtml(text) {
     return String(text || "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
@@ -77,3 +77,12 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
   }
+
+  export const previewRuntimeBase = {
+    previewDebugEnabled,
+    previewDebugLabel,
+    previewDebug,
+    collectPreviewTemplates,
+    readHtml,
+    escapeHtml
+  };
