@@ -1,5 +1,6 @@
-  // API assembly and readiness synchronization.
+// API assembly and readiness synchronization.
 
+export function installPreviewRuntimeApi() {
   const previewDataApi = {
     dataUrl: blueprintDataUrl,
     manifestUrl: blueprintManifestUrl,
@@ -143,3 +144,12 @@
       reportRenderReadyError(err);
     }
   });
+
+  return renderApi;
+}
+
+export const previewRuntimeApi = {
+  installPreviewRuntimeApi
+};
+
+export default previewRuntimeApi;

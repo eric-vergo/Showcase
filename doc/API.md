@@ -491,7 +491,7 @@ order is not a synchronization guarantee.
 
 Blueprint's bundled preview clients get a small readiness bootstrap before
 their client code so `onRenderReady` is available even when the client asset is
-emitted before `preview-runtime.js`.
+emitted before the preview runtime installs the full render API.
 
 ### Stable Custom-Client API
 
@@ -501,7 +501,7 @@ views, and browser-only examples.
 
 | Entry point | Use |
 | --- | --- |
-| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before `preview-runtime.js`. |
+| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before the preview runtime installs it. |
 | `api.dataUrl(filename)` / `api.manifestUrl()` / `api.htmlCacheUrl()` | Resolve generated `-verso-data/` URLs relative to the current page. |
 | `api.loadManifest()` / `api.loadHtmlCache()` | Load the generated `Map` values keyed by preview key. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
@@ -571,8 +571,8 @@ through the render API. Components should pass preview keys to
 `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, or
 `renderCanonicalPreviewInto`, then render user-interface controls around the
 returned manifest entry. They should not scrape generated Blueprint DOM, call
-private bundled helpers, or couple component state to the current shape of
-`preview-runtime.js`.
+private bundled helpers, or couple component state to the current shape of the
+generated preview runtime.
 
 ### Private Runtime Chunks
 
@@ -593,7 +593,7 @@ The current private source chunks are:
 | `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime.js` | Stable render API assembly and `onRenderReady` installation. |
+| `preview-runtime-api.mjs` | Stable render API assembly and `onRenderReady` installation; embedded into the current bundled runtime as a classic-script fragment. |
 
 Two adjacent implementation files are shared by bundled pages and generated ESM
 modules:
@@ -649,7 +649,7 @@ cache-resolution helpers.
 External clients should stay on the stable custom-client API above.
 
 Inline-preview nesting is configured by private host policies in
-`inline-preview.js`. Today those policies recognize relation panels, graph
+`inline-preview.mjs`. Today those policies recognize relation panels, graph
 preview panels, and graph group-hover panels, then choose anchored hover
 behavior for nested previews inside those hosts. New bundled panel types should
 add an explicit host policy instead of adding more ad hoc ancestor checks.

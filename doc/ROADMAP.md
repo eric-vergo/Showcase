@@ -65,7 +65,7 @@ Work:
    and readiness/debug hooks. Each split should keep the same emitted bundled
    asset and public `onRenderReady` API, then move private helpers in this order:
    - readiness/bootstrap and render API installation
-     (landed as the current `Commands/preview-runtime.js` API chunk)
+     (landed as the current `Commands/preview-runtime-api.mjs` API chunk)
    - manifest/cache loading, status, and entry lookup
      (landed as `Commands/preview-runtime-data.mjs`, embedded into the current
      bundled runtime as a classic-script fragment)
