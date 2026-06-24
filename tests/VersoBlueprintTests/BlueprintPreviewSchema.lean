@@ -49,6 +49,7 @@ open Informal.PreviewManifest
         !fileProps.contains "version" &&
         !fileProps.contains "traverseState" &&
         fileProps.contains "previews" &&
+        fileProps.contains "sourceDocuments" &&
         entryProps.contains "key" &&
         entryProps.contains "targetKind" &&
         entryProps.contains "label" &&
@@ -71,6 +72,8 @@ open Informal.PreviewManifest
         entryProps.contains "leanCodePreviewKeys" &&
         entryProps.contains "codeData" &&
         entryProps.contains "externalMarkup" &&
+        entryProps.contains "sources" &&
+        !entryProps.contains "source" &&
         !entryProps.contains "blocks" &&
         !entryProps.contains "leanCode" &&
         entryProps.contains "uses" &&
@@ -98,6 +101,13 @@ open Informal.PreviewManifest
         defs.contains "Informal.Data.ExternalMarkup" &&
         defs.contains "Informal.Data.ExternalMarkupLanguage" &&
         defs.contains "Informal.Data.ExternalMarkupLocation" &&
+        defs.contains "Informal.Source.Document" &&
+        defs.contains "Informal.Source.DocumentKind" &&
+        defs.contains "Informal.Source.Ref" &&
+        defs.contains "Informal.Source.Span" &&
+        defs.contains "Informal.Source.TextRange" &&
+        defs.contains "Informal.Source.PdfSpan" &&
+        defs.contains "Informal.Source.PdfBox" &&
         defs.contains "Lean.Lsp.Range" &&
         defs.contains "Lean.Lsp.Position" &&
         defs.contains "Informal.Data.NodeKind" &&

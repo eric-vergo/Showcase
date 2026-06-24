@@ -66,6 +66,35 @@ A markup-only witness can introduce a Blueprint node while porting.
 ```
 :::::::
 
+#docs (Manual) sourcedExternalMarkupWitnessDoc "Sourced External Markup Witness" :=
+:::::::
+:::source_document "external-paper"
+%%%
+title := "External Paper"
+kind := .pdf
+pdf := "source/external-paper.pdf"
+%%%
+:::
+
+:::theorem "external.sourced.witness"
+%%%
+source := {
+  document := "external-paper"
+  spans := #[
+    {
+      page := "7"
+      pdf := some { path := "source/external-paper-page-7.pdf" }
+    }
+  ]
+}
+%%%
+:::
+
+```md "external.sourced.witness" (slot := statement)
+Imported Markdown statement with source provenance.
+```
+:::::::
+
 #docs (Manual) externalMarkupMultiLanguageDoc "External Markup Multi-language Slots" :=
 :::::::
 ```tex "external.multi" (slot := statement)
@@ -194,6 +223,13 @@ Summary-only content should stay hidden.
     let witnessKey := Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.witness")
     let some witnessEntry := witnessFiles.manifest.previews.find? (fun entry => entry.key == witnessKey)
       | return false
+    let (_sourcedWitnessOut, sourcedWitnessState) ← renderManualDocHtmlStringAndState extension_impls% sourcedExternalMarkupWitnessDoc
+    let sourcedWitnessFiles ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ()) sourcedWitnessState
+    let sourcedWitnessKey :=
+      Informal.PreviewManifest.externalMarkupEntryKey (Name.mkSimple "external.sourced.witness")
+    let some sourcedWitnessEntry :=
+        sourcedWitnessFiles.manifest.previews.find? (fun entry => entry.key == sourcedWitnessKey)
+      | return false
     pure <|
       hasSubstr traversedTex "\\begin{theorem}" &&
       hasSubstr traversedMd "Imported **Markdown** proof witness." &&
@@ -202,6 +238,12 @@ Summary-only content should stay hidden.
       (match witnessEntry.targetKind with | .externalMarkup => true | _ => false) &&
       witnessEntry.label == Name.mkSimple "external.witness" &&
       witnessEntry.externalMarkup.size == 1 &&
+      sourcedWitnessEntry.targetKind == .externalMarkup &&
+      sourcedWitnessEntry.externalMarkup.size == 1 &&
+      sourcedWitnessEntry.sources.any (fun sourceRef =>
+        sourceRef.document == "external-paper" &&
+          sourceRef.spans.size == 1 &&
+          sourceRef.spans[0]!.page == "7") &&
       (witnessFiles.htmlCache.findHtml? witnessKey).isNone &&
       !hasSubstr externalOut "\\begin{theorem}" &&
       !hasSubstr externalOut "thm:external-markup" &&
