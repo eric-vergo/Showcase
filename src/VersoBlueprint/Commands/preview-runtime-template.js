@@ -176,3 +176,7 @@
     });
     return controllers;
   }
+
+  if (typeof setTemplatePreviewDescriptorBinder === "function") {
+    setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors);
+  }

@@ -75,9 +75,11 @@ Work:
      page assets through a generated classic-script adapter; runtime stores
      still live in `Commands/preview-runtime-data.mjs`)
    - fragment and canonical-node resolution plus diagnostic rendering
-     (landed as `Commands/preview-runtime-render.js`)
+     (landed as `Commands/preview-runtime-render.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - hydration registry and math/feature hydrator dispatch
-     (landed as `Commands/preview-runtime-hydration.js`)
+     (landed as `Commands/preview-runtime-hydration.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - template descriptor binding for Lean-emitted preview triggers
      (landed as `Commands/preview-runtime-template.js`)
    - preview surface state, slots, and content updates

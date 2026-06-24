@@ -301,9 +301,15 @@ private def previewRuntimeDataJs : String :=
     previewRuntimeDataModuleMjs
     previewRuntimeDataClassicPrelude
 
-private def previewRuntimeRenderJs : String := include_str "preview-runtime-render.js"
+private def previewRuntimeRenderModuleMjs : String := include_str "preview-runtime-render.mjs"
 
-private def previewRuntimeHydrationJs : String := include_str "preview-runtime-hydration.js"
+private def previewRuntimeRenderJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeRenderModuleMjs
+
+private def previewRuntimeHydrationModuleMjs : String := include_str "preview-runtime-hydration.mjs"
+
+private def previewRuntimeHydrationJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeHydrationModuleMjs
 
 private def previewRuntimeLifecycleJs : String := include_str "preview-runtime-lifecycle.js"
 

@@ -588,8 +588,8 @@ The current private source chunks are:
 | --- | --- |
 | `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-render.js` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
-| `preview-runtime-hydration.js` | Math rendering, fragment hydration, and feature hydrator dispatch. |
+| `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-lifecycle.js` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
 | `preview-runtime-surface.js` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
 | `preview-runtime-template.js` | Descriptor-driven binding for Lean-emitted template preview roots. |

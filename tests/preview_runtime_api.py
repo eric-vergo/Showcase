@@ -9,8 +9,8 @@ BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
 RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-base.mjs"),
     Path("Commands/preview-runtime-data.mjs"),
-    Path("Commands/preview-runtime-render.js"),
-    Path("Commands/preview-runtime-hydration.js"),
+    Path("Commands/preview-runtime-render.mjs"),
+    Path("Commands/preview-runtime-hydration.mjs"),
     Path("Commands/preview-runtime-lifecycle.js"),
     Path("Commands/preview-runtime-surface.js"),
     Path("Commands/preview-runtime-template.js"),

@@ -70,9 +70,9 @@ Command modules are split by concern:
 - the private preview-data/cache runtime helpers in
   `VersoBlueprint/Commands/preview-runtime-data.mjs`
 - the private preview render helpers in
-  `VersoBlueprint/Commands/preview-runtime-render.js`
+  `VersoBlueprint/Commands/preview-runtime-render.mjs`
 - the private preview hydration helpers in
-  `VersoBlueprint/Commands/preview-runtime-hydration.js`
+  `VersoBlueprint/Commands/preview-runtime-hydration.mjs`
 - the private preview lifecycle helpers in
   `VersoBlueprint/Commands/preview-runtime-lifecycle.js`
 - the private preview surface helpers in
@@ -116,8 +116,8 @@ Shared and feature-specific browser assets stay with their owning commands:
 
 - `Commands/preview-runtime-data.mjs`
 - `Commands/preview-runtime-base.mjs`
-- `Commands/preview-runtime-render.js`
-- `Commands/preview-runtime-hydration.js`
+- `Commands/preview-runtime-render.mjs`
+- `Commands/preview-runtime-hydration.mjs`
 - `Commands/preview-runtime-lifecycle.js`
 - `Commands/preview-runtime-surface.js`
 - `Commands/preview-runtime-template.js`
@@ -368,8 +368,8 @@ hydration.
 | Graft node lookup, diagnostics, and outer graft attrs | `Informal.Graft.renderNodeFromManifestCache` / `renderNodeWithContent` | Manual grafts, Slides grafts, external generated consumers | single graft owner |
 | Browser generated-data URLs and preview keys | `blueprint-preview-core.mjs` shared by the bundled runtime and `api/preview.mjs` | browser runtime, ESM preview clients, custom generated pages | single ESM owner for generated-data URL construction and preview-key formatting; runtime stores and ESM helpers delegate to it instead of reimplementing the same string rules, and current Verso page assets use a generated classic-script adapter |
 | Browser graph JSON discovery and graph manifest loading | `blueprint-graph-core.mjs` shared by the bundled runtime and `api/graph.mjs` | graph command runtime, graph dashboards, custom browser clients | single ESM owner for graph-data normalization and graph JSON/script discovery; compatibility globals are installed by the adapter, not owned by the bundled runtime's internal data path |
-| Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime-data.mjs` for data/cache loading plus `Commands/preview-runtime-render.js` `resolvePreview` and `renderPreviewInto`, with `Commands/preview-runtime-surface.js` `resolvePreviewHtml` and `renderPreviewIntoSurface` adapting those helpers for bundled surfaces | graph, summary, relation panels, inline previews, custom browser clients | single ESM-shaped data/cache store owner embedded into the current bundled runtime as a classic-script fragment; the data chunk delegates URL/key primitives to preview core and graph data to graph core, while the render chunk joins those entries with rendered fragments |
-| Browser canonical generated-node insertion | `Commands/preview-runtime-render.js` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single JS canonical-preview owner |
+| Browser manifest/cache loading and body-fragment insertion | `Commands/preview-runtime-data.mjs` for data/cache loading plus `Commands/preview-runtime-render.mjs` `resolvePreview` and `renderPreviewInto`, with `Commands/preview-runtime-surface.js` `resolvePreviewHtml` and `renderPreviewIntoSurface` adapting those helpers for bundled surfaces | graph, summary, relation panels, inline previews, custom browser clients | ESM-shaped data/cache and render owners embedded into the current bundled runtime as classic-script fragments; the data chunk delegates URL/key primitives to preview core and graph data to graph core, while the render chunk joins those entries with rendered fragments |
+| Browser canonical generated-node insertion | `Commands/preview-runtime-render.mjs` `resolveCanonicalPreview` and `renderCanonicalPreviewInto` | standalone/custom browser clients that want regular Blueprint node visuals | single ESM-shaped canonical-preview owner embedded into the current bundled runtime as a classic-script fragment |
 | Browser preview panel behavior | `Commands/preview-runtime-surface.js` `createPreviewSurface`, `hidePreviewSurfaces`, and panel helpers plus `Commands/preview-runtime-lifecycle.js` trigger/dismiss/reposition helpers | summary, code-summary, inline-preview, relation-panel, Slides, and graph feature scripts | single JS behavior helper; feature scripts pass selectors/defaults through rendered descriptors or feature-specific callbacks instead of owning panel slots, trigger lifetimes, dismissal binding, or close-button wiring |
 | Browser preview-panel DOM creation and runtime diagnostic message markup | `Commands/preview-runtime-surface.js` `createPreviewPanel`, `createPreviewSurface`, and `previewMessageHtml` | inline preview panels, relation-panel runtime errors, and future bundled feature panels that need runtime-created chrome | single JS panel/message/surface construction helper; feature scripts pass classes/slots/text |
 | Browser inline-preview panel behavior, child panel, footer, and nested hover behavior | `Commands/inline-preview.js` configured with explicit host policies plus `Commands/preview-runtime-surface.js` `createPreviewSurface` and lifecycle helpers | inline Lean links, bibliography links, single relation chips, nested previews | feature-owned preview lookup and nested-panel rules; graph/relation host behavior is data in the inline script, while panel slots, header/footer updates, close-button behavior, trigger lifetime, pointer checks, and resize/scroll binding use surfaces |
@@ -450,8 +450,8 @@ The workflow implies a few constraints for renderers:
   decoding and loading, load-status readers, entry lookup, and graph-core
   delegation, and is embedded into the bundled runtime as a classic-script
   fragment;
-  `preview-runtime-render.js` owns manifest/cache joins, rendered-fragment
-  insertion, and canonical-node loading; `preview-runtime-hydration.js` owns
+  `preview-runtime-render.mjs` owns manifest/cache joins, rendered-fragment
+  insertion, and canonical-node loading; `preview-runtime-hydration.mjs` owns
   fragment hydration, math rendering, and feature hydrator dispatch;
   `preview-runtime-lifecycle.js` owns trigger, dismissal, popover, and
   reposition lifetimes; `preview-runtime-surface.js` owns panel slots, content
@@ -472,8 +472,8 @@ The workflow implies a few constraints for renderers:
   | API readiness | Install `window.VersoBlueprint`, queue `onRenderReady` callbacks, and expose the stable render API. | `Commands/preview-runtime.js` source chunk inside the bundled runtime |
   | Preview URL/key primitives | Resolve `-verso-data` URLs and normalize preview keys for both bundled and ESM clients. | `blueprint-preview-core.mjs` shared implementation file, embedded through a generated classic adapter for current Verso output |
   | Preview data access | Load manifest/cache JSON, keep load status, delegate graph data to graph core, and look up entries. | `Commands/preview-runtime-data.mjs` ESM-shaped source chunk embedded into the bundled runtime as a classic-script fragment |
-  | Fragment rendering | Resolve manifest/cache pairs, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers. | `Commands/preview-runtime-render.js` source chunk inside the bundled runtime |
-  | Hydration registry | Run math rendering and feature hydrators after custom insertion. | `Commands/preview-runtime-hydration.js` source chunk inside the bundled runtime |
+  | Fragment rendering | Resolve manifest/cache pairs, produce diagnostics, insert rendered fragments, and fetch canonical node wrappers. | `Commands/preview-runtime-render.mjs` ESM-shaped source chunk embedded into the bundled runtime as a classic-script fragment |
+  | Hydration registry | Run math rendering and feature hydrators after custom insertion. | `Commands/preview-runtime-hydration.mjs` ESM-shaped source chunk embedded into the bundled runtime as a classic-script fragment |
   | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | `Commands/preview-runtime-template.js` source chunk inside the bundled runtime |
   | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | `Commands/preview-runtime-surface.js` source chunk inside the bundled runtime |
   | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | `Commands/preview-runtime-lifecycle.js` source chunk inside the bundled runtime |
