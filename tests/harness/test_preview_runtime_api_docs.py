@@ -226,7 +226,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn('include_str "preview-runtime-lifecycle.js"', common)
         self.assertIn('include_str "preview-runtime-surface.js"', common)
         self.assertIn('include_str "preview-runtime-template.js"', common)
-        self.assertIn('include_str "../blueprint-preview-core.js"', common)
+        self.assertIn('include_str "../blueprint-preview-core.mjs"', common)
         self.assertIn("previewRuntimeBaseJs", common)
         self.assertIn("previewRuntimeDataJs", common)
         self.assertIn("previewRuntimeRenderJs", common)
@@ -321,7 +321,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertEqual([], missing_ready_callbacks)
 
     def test_graph_helpers_are_owned_by_graph_core(self) -> None:
-        core = (BLUEPRINT_SRC / "blueprint-graph-core.js").read_text(encoding="utf-8")
+        core = (BLUEPRINT_SRC / "blueprint-graph-core.mjs").read_text(encoding="utf-8")
         graph_esm = (BLUEPRINT_SRC / "blueprint-graph-api.mjs").read_text(encoding="utf-8")
         runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
             encoding="utf-8"
@@ -330,7 +330,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('import "./blueprint-graph-core.js";', graph_esm)
+        self.assertIn('from "./blueprint-graph-core.mjs";', graph_esm)
         self.assertIn("callBlueprintGraphCore", runtime_data)
         self.assertNotIn("callBlueprintGraphApi", runtime_data)
         self.assertNotIn("window.bpGraphApi", runtime_data)
@@ -342,7 +342,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             self.assertNotIn(f"function {helper}", runtime)
 
     def test_preview_helpers_are_owned_by_preview_core(self) -> None:
-        core = (BLUEPRINT_SRC / "blueprint-preview-core.js").read_text(encoding="utf-8")
+        core = (BLUEPRINT_SRC / "blueprint-preview-core.mjs").read_text(encoding="utf-8")
         preview_esm = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(
             encoding="utf-8"
         )
@@ -353,8 +353,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('import "./blueprint-preview-core.js";', preview_esm)
-        self.assertIn('include_str "blueprint-preview-core.js"', preview_manifest)
+        self.assertIn('from "./blueprint-preview-core.mjs";', preview_esm)
+        self.assertIn('include_str "blueprint-preview-core.mjs"', preview_manifest)
         self.assertIn("IO.FS.writeFile (dataDir / previewCoreModuleFilename)", preview_manifest)
         for helper in PREVIEW_CORE_HELPERS:
             self.assertIn(f"function {helper}", core)

@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean.Data.Options
+import VersoBlueprint.BrowserAsset
 
 namespace Informal.Commands
 
@@ -163,9 +164,29 @@ def previewPanelCss : String := r##"
 -- Keep this module rebuilt when the embedded preview runtime changes.
 -- This module owns the shared Blueprint render API boundary, so adjacent edits
 -- here should land whenever preview runtime assets are intentionally refreshed.
-private def previewGraphCoreJs : String := include_str "../blueprint-graph-core.js"
+private def previewGraphCoreModuleMjs : String := include_str "../blueprint-graph-core.mjs"
 
-private def previewCoreJs : String := include_str "../blueprint-preview-core.js"
+private def previewGraphCoreJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript previewGraphCoreModuleMjs
+    "installGraphCoreGlobal(globalScope);"
+
+private def previewCoreModuleMjs : String := include_str "../blueprint-preview-core.mjs"
+
+private def previewCoreClassicPrelude : String := r##"
+const graphDataUrl = function (filename, baseUrl) {
+  const core = globalScope && globalScope.VersoBlueprintGraphCore;
+  if (core && typeof core.dataUrl === "function") {
+    return core.dataUrl(filename, baseUrl);
+  }
+  const safeFilename = String(filename || "").trim();
+  return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
+};
+"##
+
+private def previewCoreJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScriptWithPrelude previewCoreModuleMjs
+    previewCoreClassicPrelude
+    "installPreviewCoreGlobal(globalScope);"
 
 private def previewRuntimeBaseJs : String := include_str "preview-runtime-base.js"
 

@@ -325,13 +325,14 @@ from `../-verso-data/api/...`. Generated clients that need to resolve the
 module URL from an arbitrary page should use `api.previewApiModuleUrl()` or
 `api.graphApiModuleUrl()`.
 
-The root files `-verso-data/blueprint-preview-api.mjs` and
-`-verso-data/blueprint-graph-api.mjs` are still emitted as compatibility
-targets. The generated data directory also contains implementation support
-files used by those modules, such as `blueprint-graph-core.js` and
-`blueprint-preview-core.js`. Those support files are not public import paths.
-New clients should use the shorter
-`-verso-data/api/` paths.
+Generated sites also emit root implementation modules,
+`-verso-data/blueprint-preview-api.mjs` and
+`-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
+those implementations from stable, shorter import paths. The generated data
+directory also contains internal support files used by those modules, such as
+`blueprint-graph-core.mjs` and `blueprint-preview-core.mjs`; those support files
+are not public import paths. New clients should use the `-verso-data/api/`
+paths.
 
 URL, graph-data, and key helpers in `api/preview.mjs` are available
 immediately. Manifest/cache loading, rendering, and hydration helpers wait for
@@ -599,8 +600,8 @@ modules:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `blueprint-graph-core.js` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`. |
-| `blueprint-preview-core.js` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`. |
+| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
+| `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 
 The graph command also has a private `graph-runtime-core.js` chunk. It owns
 graph-runtime utilities such as graph option normalization, canvas sizing,

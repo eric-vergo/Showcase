@@ -1,23 +1,32 @@
-import "./blueprint-graph-core.js";
+import {
+  dataUrl as coreDataUrl,
+  getGraphData as coreGetGraphData,
+  getGraphVariants as coreGetGraphVariants,
+  graphApiModuleUrl as coreGraphApiModuleUrl,
+  graphCanvasFor as coreGraphCanvasFor,
+  graphFallbackVariants as coreGraphFallbackVariants,
+  graphsFromManifest as coreGraphsFromManifest,
+  loadGraphs as coreLoadGraphs,
+  loadJson as coreLoadJson,
+  loadManifestGraphs as coreLoadManifestGraphs,
+  normalizeGraphData as coreNormalizeGraphData,
+  readGraphJsonScript as coreReadGraphJsonScript,
+  version as coreVersion
+} from "./blueprint-graph-core.mjs";
 
-const graphCore =
-  typeof globalThis !== "undefined" && globalThis.VersoBlueprintGraphCore
-    ? globalThis.VersoBlueprintGraphCore
-    : {};
-
-export const version = graphCore.version || 1;
-export const dataUrl = graphCore.dataUrl;
-export const graphApiModuleUrl = graphCore.graphApiModuleUrl;
-export const graphCanvasFor = graphCore.graphCanvasFor;
-export const readGraphJsonScript = graphCore.readGraphJsonScript;
-export const graphFallbackVariants = graphCore.graphFallbackVariants;
-export const normalizeGraphData = graphCore.normalizeGraphData;
-export const graphsFromManifest = graphCore.graphsFromManifest;
-export const getGraphData = graphCore.getGraphData;
-export const getGraphVariants = graphCore.getGraphVariants;
-export const loadJson = graphCore.loadJson;
-export const loadManifestGraphs = graphCore.loadManifestGraphs;
-export const loadGraphs = graphCore.loadGraphs;
+export const version = coreVersion;
+export const dataUrl = coreDataUrl;
+export const graphApiModuleUrl = coreGraphApiModuleUrl;
+export const graphCanvasFor = coreGraphCanvasFor;
+export const readGraphJsonScript = coreReadGraphJsonScript;
+export const graphFallbackVariants = coreGraphFallbackVariants;
+export const normalizeGraphData = coreNormalizeGraphData;
+export const graphsFromManifest = coreGraphsFromManifest;
+export const getGraphData = coreGetGraphData;
+export const getGraphVariants = coreGetGraphVariants;
+export const loadJson = coreLoadJson;
+export const loadManifestGraphs = coreLoadManifestGraphs;
+export const loadGraphs = coreLoadGraphs;
 
 const graphApi = {
   version,
