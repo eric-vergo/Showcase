@@ -67,12 +67,13 @@ Work:
    - readiness/bootstrap and render API installation
      (landed as the current `Commands/preview-runtime.js` API chunk)
    - manifest/cache loading, status, and entry lookup
-     (landed as `Commands/preview-runtime-data.js`)
+     (landed as `Commands/preview-runtime-data.mjs`, embedded into the current
+     bundled runtime as a classic-script fragment)
    - generated-data URL and preview-key primitives shared by bundled runtime
      and ESM clients
      (landed as `blueprint-preview-core.mjs`, embedded into current Verso
      page assets through a generated classic-script adapter; runtime stores
-     still live in `Commands/preview-runtime-data.js`)
+     still live in `Commands/preview-runtime-data.mjs`)
    - fragment and canonical-node resolution plus diagnostic rendering
      (landed as `Commands/preview-runtime-render.js`)
    - hydration registry and math/feature hydrator dispatch

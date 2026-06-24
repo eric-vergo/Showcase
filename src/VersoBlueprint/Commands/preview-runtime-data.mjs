@@ -1,49 +1,14 @@
+import { dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
+import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants, graphsFromManifest as coreGraphsFromManifest, loadGraphs as coreLoadGraphs, loadManifestGraphs as coreLoadManifestGraphs } from "../blueprint-graph-core.mjs";
+import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
+
   // Generated-data URL helpers and graph-core delegation.
 
-  const blueprintGlobal = typeof globalThis !== "undefined" ? globalThis : window;
-
-  function blueprintPreviewCore() {
-    const core = blueprintGlobal.VersoBlueprintPreviewCore;
-    return core && typeof core === "object" ? core : null;
+  export function blueprintDataUrl(filename) {
+    return coreDataUrl(filename);
   }
 
-  function callBlueprintPreviewCore(name, args, fallback) {
-    const core = blueprintPreviewCore();
-    const method = core && core[name];
-    if (typeof method === "function") {
-      return method.apply(core, args);
-    }
-    if (typeof fallback === "function") {
-      return fallback();
-    }
-    return fallback;
-  }
-
-  function blueprintGraphCore() {
-    const core = blueprintGlobal.VersoBlueprintGraphCore;
-    return core && typeof core === "object" ? core : null;
-  }
-
-  function callBlueprintGraphCore(name, args, fallback) {
-    const core = blueprintGraphCore();
-    const method = core && core[name];
-    if (typeof method === "function") {
-      return method.apply(core, args);
-    }
-    if (typeof fallback === "function") {
-      return fallback();
-    }
-    return fallback;
-  }
-
-  function blueprintDataUrl(filename) {
-    return callBlueprintPreviewCore("dataUrl", [filename], function () {
-      const safeFilename = String(filename || "").trim();
-      return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
-    });
-  }
-
-  function fetchBlueprintJson(url) {
+  export function fetchBlueprintJson(url) {
     return fetch(url).then(function (resp) {
       if (!resp.ok) {
         throw new Error("HTTP " + resp.status + " while loading " + url);
@@ -52,7 +17,7 @@
     });
   }
 
-  function decodeBlueprintKeyedEntries(data, spec) {
+  export function decodeBlueprintKeyedEntries(data, spec) {
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error(spec.objectMessage);
     }
@@ -80,7 +45,7 @@
     return map;
   }
 
-  function decodeBlueprintManifest(data) {
+  export function decodeBlueprintManifest(data) {
     return decodeBlueprintKeyedEntries(data, {
       arrayField: "previews",
       objectMessage: "Blueprint manifest must be an object with a previews array",
@@ -90,7 +55,7 @@
     });
   }
 
-  function decodeBlueprintHtmlCache(data) {
+  export function decodeBlueprintHtmlCache(data) {
     return decodeBlueprintKeyedEntries(data, {
       arrayField: "entries",
       objectMessage: "Blueprint HTML cache must be an object with an entries array",
@@ -108,52 +73,42 @@
     });
   }
 
-  function blueprintManifestUrl() {
-    return callBlueprintPreviewCore("manifestUrl", [], function () {
-      return blueprintDataUrl("blueprint-manifest.json");
-    });
+  export function blueprintManifestUrl() {
+    return coreManifestUrl();
   }
 
-  function graphApiModuleUrl() {
-    return callBlueprintPreviewCore("graphApiModuleUrl", [], function () {
-      return blueprintDataUrl("api/graph.mjs");
-    });
+  export function graphApiModuleUrl() {
+    return coreGraphApiModuleUrl();
   }
 
-  function previewApiModuleUrl() {
-    return callBlueprintPreviewCore("previewApiModuleUrl", [], function () {
-      return blueprintDataUrl("api/preview.mjs");
-    });
+  export function previewApiModuleUrl() {
+    return corePreviewApiModuleUrl();
   }
 
-  function graphDataFromManifest(manifest) {
-    return callBlueprintGraphCore("graphsFromManifest", [manifest], []);
+  export function graphDataFromManifest(manifest) {
+    return coreGraphsFromManifest(manifest);
   }
 
-  function collectGraphData(root) {
-    return callBlueprintGraphCore("getGraphData", [root], null);
+  export function collectGraphData(root) {
+    return coreGetGraphData(root);
   }
 
-  function collectGraphVariants(root) {
-    return callBlueprintGraphCore("getGraphVariants", [root], []);
+  export function collectGraphVariants(root) {
+    return coreGetGraphVariants(root);
   }
 
-  function loadManifestGraphs(url, options) {
+  export function loadManifestGraphs(url, options) {
     const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrl();
-    return callBlueprintGraphCore("loadManifestGraphs", [manifestUrl, options], function () {
-      return Promise.reject(new Error("Blueprint graph API unavailable"));
-    });
+    return coreLoadManifestGraphs(manifestUrl, options);
   }
 
-  function loadBlueprintGraphs(options) {
-    return callBlueprintGraphCore("loadGraphs", [options], function () {
-      return loadManifestGraphs(blueprintManifestUrl(), options);
-    });
+  export function loadBlueprintGraphs(options) {
+    return coreLoadGraphs(options);
   }
 
   // Manifest/cache status, loading, and diagnostics.
 
-  function missingPreviewKeyDiagnosticHtml() {
+  export function missingPreviewKeyDiagnosticHtml() {
     return (
       "<div class=\"bp_html_cache_preview_notice\">" +
       "<p><strong>Preview key missing.</strong></p>" +
@@ -163,13 +118,11 @@
     );
   }
 
-  function blueprintHtmlCacheUrl() {
-    return callBlueprintPreviewCore("htmlCacheUrl", [], function () {
-      return blueprintDataUrl("blueprint-html-cache.json");
-    });
+  export function blueprintHtmlCacheUrl() {
+    return coreHtmlCacheUrl();
   }
 
-  const blueprintManifestStore = {
+  export const blueprintManifestStore = {
     status: null,
     map: null,
     promise: null,
@@ -183,7 +136,7 @@
     missingReadyText: "The site emitted a Blueprint manifest, but this preview key was not present."
   };
 
-  const blueprintHtmlCacheStore = {
+  export const blueprintHtmlCacheStore = {
     status: null,
     map: null,
     promise: null,
@@ -197,7 +150,7 @@
     missingReadyText: "The site emitted a rendered-fragment cache, but this preview key was not present."
   };
 
-  function defaultBlueprintStoreStatus(store) {
+  export function defaultBlueprintStoreStatus(store) {
     return {
       state: "idle",
       attempts: 0,
@@ -207,7 +160,7 @@
     };
   }
 
-  function cloneBlueprintStoreStatus(store, status) {
+  export function cloneBlueprintStoreStatus(store, status) {
     const fallback = defaultBlueprintStoreStatus(store);
     if (!status || typeof status !== "object") return fallback;
     return {
@@ -219,24 +172,24 @@
     };
   }
 
-  function readBlueprintStoreStatus(store) {
+  export function readBlueprintStoreStatus(store) {
     return cloneBlueprintStoreStatus(store, store.status);
   }
 
-  function setBlueprintStoreStatus(store, status) {
+  export function setBlueprintStoreStatus(store, status) {
     store.status = status;
     return status;
   }
 
-  function readBlueprintManifestStatus() {
+  export function readBlueprintManifestStatus() {
     return readBlueprintStoreStatus(blueprintManifestStore);
   }
 
-  function readBlueprintHtmlCacheStatus() {
+  export function readBlueprintHtmlCacheStatus() {
     return readBlueprintStoreStatus(blueprintHtmlCacheStore);
   }
 
-  function blueprintStoreDiagnosticHtml(store, previewKey) {
+  export function blueprintStoreDiagnosticHtml(store, previewKey) {
     const status = readBlueprintStoreStatus(store);
     const trimmedKey = typeof previewKey === "string" ? previewKey.trim() : "";
     const keyHtml = trimmedKey ? "<code>" + escapeHtml(trimmedKey) + "</code>" : "this preview";
@@ -266,22 +219,22 @@
     return "";
   }
 
-  function blueprintManifestDiagnosticHtml(previewKey) {
+  export function blueprintManifestDiagnosticHtml(previewKey) {
     return blueprintStoreDiagnosticHtml(blueprintManifestStore, previewKey);
   }
 
-  function blueprintHtmlCacheDiagnosticHtml(previewKey) {
+  export function blueprintHtmlCacheDiagnosticHtml(previewKey) {
     return blueprintStoreDiagnosticHtml(blueprintHtmlCacheStore, previewKey);
   }
 
-  function fetchBlueprintStoreData(store) {
+  export function fetchBlueprintStoreData(store) {
     const jsonUrl = store.url();
     return fetchBlueprintJson(jsonUrl).then(function (data) {
       return { data: data, url: jsonUrl };
     });
   }
 
-  function loadBlueprintStore(store) {
+  export function loadBlueprintStore(store) {
     const existing = store.map;
     if (existing instanceof Map) {
       return Promise.resolve(existing);
@@ -351,32 +304,30 @@
     return promise;
   }
 
-  function loadBlueprintManifest() {
+  export function loadBlueprintManifest() {
     return loadBlueprintStore(blueprintManifestStore);
   }
 
-  function loadBlueprintHtmlCache() {
+  export function loadBlueprintHtmlCache() {
     return loadBlueprintStore(blueprintHtmlCacheStore);
   }
 
-  function readBlueprintStoreEntry(store, previewKey) {
+  export function readBlueprintStoreEntry(store, previewKey) {
     if (typeof previewKey !== "string" || previewKey.length === 0) return null;
     const map = store.map;
     if (!(map instanceof Map)) return null;
     return map.get(previewKey) || null;
   }
 
-  function previewKey(label, facet) {
-    return callBlueprintPreviewCore("previewKey", [label, facet], "");
+  export function previewKey(label, facet) {
+    return corePreviewKey(label, facet);
   }
 
-  function statementPreviewKey(label) {
-    return callBlueprintPreviewCore("statementPreviewKey", [label], function () {
-      return previewKey(label, "statement");
-    });
+  export function statementPreviewKey(label) {
+    return coreStatementPreviewKey(label);
   }
 
-  async function loadBlueprintStoreEntry(store, previewKey) {
+  export async function loadBlueprintStoreEntry(store, previewKey) {
     const exact = readBlueprintStoreEntry(store, previewKey);
     if (exact) return exact;
     const entryMap = await loadBlueprintStore(store);
@@ -387,10 +338,51 @@
     return null;
   }
 
-  async function loadBlueprintManifestEntry(previewKey) {
+  export async function loadBlueprintManifestEntry(previewKey) {
     return loadBlueprintStoreEntry(blueprintManifestStore, previewKey);
   }
 
-  async function loadBlueprintHtmlCacheEntry(previewKey) {
+  export async function loadBlueprintHtmlCacheEntry(previewKey) {
     return loadBlueprintStoreEntry(blueprintHtmlCacheStore, previewKey);
   }
+
+  export const previewRuntimeData = {
+    blueprintDataUrl,
+    fetchBlueprintJson,
+    decodeBlueprintKeyedEntries,
+    decodeBlueprintManifest,
+    decodeBlueprintHtmlCache,
+    blueprintManifestUrl,
+    graphApiModuleUrl,
+    previewApiModuleUrl,
+    graphDataFromManifest,
+    collectGraphData,
+    collectGraphVariants,
+    loadManifestGraphs,
+    loadBlueprintGraphs,
+    missingPreviewKeyDiagnosticHtml,
+    blueprintHtmlCacheUrl,
+    blueprintManifestStore,
+    blueprintHtmlCacheStore,
+    defaultBlueprintStoreStatus,
+    cloneBlueprintStoreStatus,
+    readBlueprintStoreStatus,
+    setBlueprintStoreStatus,
+    readBlueprintManifestStatus,
+    readBlueprintHtmlCacheStatus,
+    blueprintStoreDiagnosticHtml,
+    blueprintManifestDiagnosticHtml,
+    blueprintHtmlCacheDiagnosticHtml,
+    fetchBlueprintStoreData,
+    loadBlueprintStore,
+    loadBlueprintManifest,
+    loadBlueprintHtmlCache,
+    readBlueprintStoreEntry,
+    previewKey,
+    statementPreviewKey,
+    loadBlueprintStoreEntry,
+    loadBlueprintManifestEntry,
+    loadBlueprintHtmlCacheEntry
+  };
+
+export default previewRuntimeData;

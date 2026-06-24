@@ -193,7 +193,113 @@ private def previewRuntimeBaseModuleMjs : String := include_str "preview-runtime
 private def previewRuntimeBaseJs : String :=
   Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeBaseModuleMjs
 
-private def previewRuntimeDataJs : String := include_str "preview-runtime-data.js"
+private def previewRuntimeDataModuleMjs : String := include_str "preview-runtime-data.mjs"
+
+private def previewRuntimeDataClassicPrelude : String := r##"
+const previewRuntimeDataGlobal = typeof globalThis !== "undefined" ? globalThis : window;
+
+function callRuntimePreviewCore(name, args, fallback) {
+  const core =
+    previewRuntimeDataGlobal.VersoBlueprintPreviewCore &&
+      typeof previewRuntimeDataGlobal.VersoBlueprintPreviewCore === "object"
+      ? previewRuntimeDataGlobal.VersoBlueprintPreviewCore
+      : null;
+  const method = core && core[name];
+  if (typeof method === "function") {
+    return method.apply(core, args);
+  }
+  if (typeof fallback === "function") {
+    return fallback();
+  }
+  return fallback;
+}
+
+function callRuntimeGraphCore(name, args, fallback) {
+  const core =
+    previewRuntimeDataGlobal.VersoBlueprintGraphCore &&
+      typeof previewRuntimeDataGlobal.VersoBlueprintGraphCore === "object"
+      ? previewRuntimeDataGlobal.VersoBlueprintGraphCore
+      : null;
+  const method = core && core[name];
+  if (typeof method === "function") {
+    return method.apply(core, args);
+  }
+  if (typeof fallback === "function") {
+    return fallback();
+  }
+  return fallback;
+}
+
+const coreDataUrl = function (filename, baseUrl) {
+  return callRuntimePreviewCore("dataUrl", [filename, baseUrl], function () {
+    const safeFilename = String(filename || "").trim();
+    return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
+  });
+};
+
+const coreManifestUrl = function (baseUrl) {
+  return callRuntimePreviewCore("manifestUrl", [baseUrl], function () {
+    return coreDataUrl("blueprint-manifest.json", baseUrl);
+  });
+};
+
+const coreHtmlCacheUrl = function (baseUrl) {
+  return callRuntimePreviewCore("htmlCacheUrl", [baseUrl], function () {
+    return coreDataUrl("blueprint-html-cache.json", baseUrl);
+  });
+};
+
+const coreGraphApiModuleUrl = function (baseUrl) {
+  return callRuntimePreviewCore("graphApiModuleUrl", [baseUrl], function () {
+    return coreDataUrl("api/graph.mjs", baseUrl);
+  });
+};
+
+const corePreviewApiModuleUrl = function (baseUrl) {
+  return callRuntimePreviewCore("previewApiModuleUrl", [baseUrl], function () {
+    return coreDataUrl("api/preview.mjs", baseUrl);
+  });
+};
+
+const corePreviewKey = function (label, facet) {
+  return callRuntimePreviewCore("previewKey", [label, facet], "");
+};
+
+const coreStatementPreviewKey = function (label) {
+  return callRuntimePreviewCore("statementPreviewKey", [label], function () {
+    return corePreviewKey(label, "statement");
+  });
+};
+
+const coreGraphsFromManifest = function (manifest) {
+  return callRuntimeGraphCore("graphsFromManifest", [manifest], []);
+};
+
+const coreGetGraphData = function (root) {
+  return callRuntimeGraphCore("getGraphData", [root], null);
+};
+
+const coreGetGraphVariants = function (root) {
+  return callRuntimeGraphCore("getGraphVariants", [root], []);
+};
+
+const coreLoadManifestGraphs = function (url, options) {
+  return callRuntimeGraphCore("loadManifestGraphs", [url, options], function () {
+    return Promise.reject(new Error("Blueprint graph API unavailable"));
+  });
+};
+
+const coreLoadGraphs = function (options) {
+  return callRuntimeGraphCore("loadGraphs", [options], function () {
+    return coreLoadManifestGraphs(coreManifestUrl(), options);
+  });
+};
+"##
+
+private def previewRuntimeDataJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragmentWithPrelude
+    previewRuntimeDataModuleMjs
+    previewRuntimeDataClassicPrelude
 
 private def previewRuntimeRenderJs : String := include_str "preview-runtime-render.js"
 
