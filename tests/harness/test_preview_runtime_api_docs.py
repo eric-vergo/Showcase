@@ -200,11 +200,11 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs").read_text(
             encoding="utf-8"
         )
-        render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.js").read_text(
+        render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.mjs").read_text(
             encoding="utf-8"
         )
         hydration = (
-            BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.js"
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.mjs"
         ).read_text(encoding="utf-8")
         lifecycle = (
             BLUEPRINT_SRC / "Commands" / "preview-runtime-lifecycle.js"
@@ -221,8 +221,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertIn('include_str "preview-runtime-base.mjs"', common)
         self.assertIn('include_str "preview-runtime-data.mjs"', common)
-        self.assertIn('include_str "preview-runtime-render.js"', common)
-        self.assertIn('include_str "preview-runtime-hydration.js"', common)
+        self.assertIn('include_str "preview-runtime-render.mjs"', common)
+        self.assertIn('include_str "preview-runtime-hydration.mjs"', common)
         self.assertIn('include_str "preview-runtime-lifecycle.js"', common)
         self.assertIn('include_str "preview-runtime-surface.js"', common)
         self.assertIn('include_str "preview-runtime-template.js"', common)
@@ -249,9 +249,12 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("async function resolveBlueprintPreview(previewKey)", render)
         self.assertIn("function renderHtmlInto(target, html, options)", render)
         self.assertIn("async function resolveCanonicalBlueprintPreview(previewKey)", render)
+        self.assertIn("export const previewRuntimeRender = {", render)
         self.assertIn("function hydrateRenderedPreview(root, options)", hydration)
         self.assertIn("function renderBlueprintMath(root)", hydration)
         self.assertIn("function registerPreviewHydrator(name, fn)", hydration)
+        self.assertIn("function setTemplatePreviewDescriptorBinder(fn)", hydration)
+        self.assertIn("export const previewRuntimeHydration = {", hydration)
         self.assertIn("function bindDismissHandlers(options)", lifecycle)
         self.assertIn("function bindPreviewTriggers(options)", lifecycle)
         self.assertIn("function bindAnchoredPopover(options)", lifecycle)
@@ -260,6 +263,10 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function previewMessageHtml(options)", surface)
         self.assertIn("function bindTemplatePreview(options)", template)
         self.assertIn("function bindTemplatePreviewDescriptor(root)", template)
+        self.assertIn(
+            "setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors)",
+            template,
+        )
         self.assertIn("const stableCustomClientApi = {", api)
         self.assertIn("function onRenderReady(fn)", api)
         for helper in (

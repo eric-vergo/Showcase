@@ -1,14 +1,21 @@
   // Runtime-local registries. Keep these private and expose behavior through
   // the render API instead of growing new window globals.
-  const previewHydrators = new Map();
+  export const previewHydrators = new Map();
+  let bindTemplatePreviewDescriptorsImpl = function (_root) { return []; };
 
   // Hydration extension points and math rendering.
 
-  function hydrateRenderedPreview(root, options) {
+  export function setTemplatePreviewDescriptorBinder(fn) {
+    bindTemplatePreviewDescriptorsImpl = typeof fn === "function"
+      ? fn
+      : function (_root) { return []; };
+  }
+
+  export function hydrateRenderedPreview(root, options) {
     const opts = options && typeof options === "object" ? options : {};
     if (!(root instanceof Element || root instanceof Document)) return false;
     if (opts.hydrate !== false) {
-      bindTemplatePreviewDescriptors(root);
+      bindTemplatePreviewDescriptorsImpl(root);
       runPreviewHydrators(root);
     }
     if (opts.renderMath !== false) {
@@ -17,7 +24,7 @@
     return true;
   }
 
-  function renderBlueprintMath(root) {
+  export function renderBlueprintMath(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
     if (typeof katex !== "object" || typeof katex.render !== "function") return;
     const resolvePrelude = function (m) {
@@ -50,13 +57,13 @@
     renderAll(".bp_math.display", true);
   }
 
-  function registerPreviewHydrator(name, fn) {
+  export function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
     if (typeof fn !== "function") return;
     previewHydrators.set(name, fn);
   }
 
-  function runPreviewHydrators(root) {
+  export function runPreviewHydrators(root) {
     if (!(root instanceof Element || root instanceof Document)) return;
     previewHydrators.forEach(function (fn) {
       if (typeof fn !== "function") return;
@@ -65,3 +72,14 @@
       } catch (_err) {}
     });
   }
+
+  export const previewRuntimeHydration = {
+    previewHydrators,
+    setTemplatePreviewDescriptorBinder,
+    hydrateRenderedPreview,
+    renderBlueprintMath,
+    registerPreviewHydrator,
+    runPreviewHydrators
+  };
+
+export default previewRuntimeHydration;
