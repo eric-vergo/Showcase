@@ -45,11 +45,11 @@ relation-panel, inline-preview, and slide scripts can share runtime mechanics.
 They are not a custom-client contract unless they are promoted into the stable
 tables below.
 
-Compatibility globals such as `window.bpGraphApi` remain available for
-graph-specific clients, but new browser code should prefer the generated ESM
-modules or `window.VersoBlueprint.onRenderReady`. Blueprint's own bundled
-feature scripts should also go through the render API instead of reading
-compatibility globals directly.
+Compatibility globals such as `window.bpGraphApi` are transitional bridges for
+current generated pages, not stable client APIs. New browser code should prefer
+the generated ESM modules or `window.VersoBlueprint.onRenderReady`.
+Blueprint's own bundled feature scripts should also go through the render API
+instead of reading compatibility globals directly.
 
 ## Choosing an API
 

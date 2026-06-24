@@ -37,6 +37,20 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 #guard_msgs in
 #eval
   let source :=
+    "  import { x } from \"./source.mjs\";\n" ++
+    "  export default value;\n" ++
+    "export const value = 2;"
+  let fragment :=
+    Informal.BrowserAsset.esmModuleToClassicFragment source
+  fragment.contains "const value = 2;" &&
+    !fragment.contains "import {" &&
+    !fragment.contains "export default" &&
+    !fragment.contains "export const"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let source :=
     "import { x } from \"./source.mjs\";\n" ++
     "export function run() { return x; }"
   let script :=

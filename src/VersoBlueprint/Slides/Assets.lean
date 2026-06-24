@@ -23,7 +23,11 @@ private def slideNodeCss : String := include_str "blueprint-slides.css"
 Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
 while generating the slide deck.
 -/
-private def slideNodeHydrationJs : String := include_str "blueprint-slides.js"
+private def slideNodeHydrationModuleMjs : String := include_str "blueprint-slides.mjs"
+
+private def slideNodeHydrationJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript slideNodeHydrationModuleMjs
+    "installBlueprintSlides();"
 
 def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   { css :=

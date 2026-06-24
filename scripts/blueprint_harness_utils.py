@@ -39,9 +39,9 @@ EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Informal/Block/relation-panel.js", "src/VersoBlueprint/Informal/Block/Assets.lean", "VersoBlueprint.Informal.Block.Assets"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Informal/Block/relation-panel.mjs", "src/VersoBlueprint/Informal/Block/Assets.lean", "VersoBlueprint.Informal.Block.Assets"),
     EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.css", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.js", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Slides/blueprint-slides.mjs", "src/VersoBlueprint/Slides/Assets.lean", "VersoBlueprint.Slides.Assets"),
     EmbeddedAssetOwner("static-web/math.js", "src/VersoBlueprint/Macros.lean", "VersoBlueprint.Macros"),
 )
 

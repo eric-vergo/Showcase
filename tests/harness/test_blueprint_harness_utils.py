@@ -87,7 +87,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
         for asset, owner, target in (
             (
-                "src/VersoBlueprint/Informal/Block/relation-panel.js",
+                "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
                 "src/VersoBlueprint/Informal/Block/Assets.lean",
                 "VersoBlueprint.Informal.Block.Assets",
             ),
@@ -337,7 +337,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             css = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.css"
-            js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.js"
+            js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.mjs"
             owner = root / "src" / "VersoBlueprint" / "Slides" / "Assets.lean"
             cached_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Slides" / "Assets.olean"
             cached_ir = root / ".lake" / "build" / "ir" / "VersoBlueprint" / "Slides" / "Assets.c"

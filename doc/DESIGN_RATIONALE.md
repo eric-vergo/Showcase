@@ -95,7 +95,7 @@ Informal-block support is now split across smaller modules instead of one large
 - `Informal/Block/Assets.lean`:
   block-specific CSS and browser JS bundle wiring; the block-owned preview
   handlers live in adjacent JS assets
-- `Informal/Block/relation-panel.js`:
+- `Informal/Block/relation-panel.mjs`:
   relation-panel preview binding (`uses`, `used by`, and group panels)
 - `Informal/Block/Store.lean`:
   stored-block lookup, merge, and numbering-resolution helpers used during
@@ -128,7 +128,7 @@ Shared and feature-specific browser assets stay with their owning commands:
 - `Commands/graph.js`
 - `blueprint-graph-core.mjs`
 - `blueprint-preview-core.mjs`
-- `Informal/Block/relation-panel.js`
+- `Informal/Block/relation-panel.mjs`
 
 Per-command CSS overlays stay with their commands:
 
@@ -358,7 +358,7 @@ hydration.
 | Statement metadata panel for owner, effort, priority, tags, and PR link | `Informal.Block.Render.renderStatementMetadataPanel` fed by `MetadataPresentation` | normal Manual blocks and manifest/cache-backed nodes | single node owner; summary renders separate badge views from the same metadata model |
 | Header-extra slot ordering and wrapper classes | `Informal.Block.Render.renderHeaderExtras` | group, uses, used-by, code, and custom extras in normal and manifest-backed nodes | single layout owner |
 | Relation panel/chip markup and relation-row badges | `Informal.RelatedPanel.renderPanel`, with shared axis-badge fragments from `Informal.RelatedPanel` | normal Manual nodes and manifest/cache-backed nodes through `PreviewManifest.BlockRender` | single Lean owner for panel markup and statement/proof badge vocabulary |
-| Relation panel browser activation, selection state, and loading/error messages | `Informal/Block/relation-panel.js` configured with `Commands/preview-runtime-surface.mjs` `createPreviewSurface` and `renderPreviewIntoSurface` | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single JS owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and manifest/cache lookup plus stale-request replacement go through the runtime helper |
+| Relation panel browser activation, selection state, and loading/error messages | `Informal/Block/relation-panel.mjs` configured with `Commands/preview-runtime-surface.mjs` `createPreviewSurface` and `renderPreviewIntoSurface` | relation panels emitted by normal, grafted, Slides, and custom generated nodes | single module-shaped owner for feature behavior; panel slots plus trigger/dismiss lifetime are shared through the surface, and manifest/cache lookup plus stale-request replacement go through the runtime helper |
 | Code-summary trigger, template, and preview panel shell | `Informal.HoverRender.templatePreviewRoot`, configured by `Informal.CodeSummary.renderCodeSummaryPreview` | heading code badges and code-panel indicators | shared wrapper helper, code-summary-specific selectors |
 | Declaration-level Lean status labels, classes, and symbols | `Informal.Data.ProvedStatus.presentation` | code-summary declaration rows, summary detail rows, heading status marks, heading code-entry icons, external-code rows/footers, rendered external declaration header badges | single presentation owner for declaration status; renderers still own their surrounding HTML |
 | Code-summary semantics, declaration rows, status marks, and indicators | `Informal.CodeSummary` using `ProvedStatus.presentation` for declaration-status vocabulary | node heading code extra and code-panel summary indicator | single code-summary owner; declaration status presentation is delegated to `ProvedStatus` |
