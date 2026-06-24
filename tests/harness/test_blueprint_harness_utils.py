@@ -30,8 +30,8 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
 
     def test_common_browser_assets_are_owned_by_common_module(self) -> None:
         for asset in (
-            "src/VersoBlueprint/Commands/open-target-details.js",
-            "src/VersoBlueprint/Commands/preview-ready.js",
+            "src/VersoBlueprint/Commands/open-target-details.mjs",
+            "src/VersoBlueprint/Commands/preview-ready.mjs",
             "src/VersoBlueprint/blueprint-graph-core.mjs",
             "src/VersoBlueprint/blueprint-preview-core.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
@@ -73,7 +73,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
         for asset in (
             "src/VersoBlueprint/Commands/graph.css",
             "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
-            "src/VersoBlueprint/Commands/graph.js",
+            "src/VersoBlueprint/Commands/graph.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(

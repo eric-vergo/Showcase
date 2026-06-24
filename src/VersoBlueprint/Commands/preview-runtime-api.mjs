@@ -101,13 +101,6 @@ export function installPreviewRuntimeApi() {
     bundledFeatureRenderHelpers
   );
 
-  if (!window.bpGraphApi || typeof window.bpGraphApi !== "object") {
-    window.bpGraphApi = {};
-  }
-  if (typeof window.bpGraphApi.graphApiModuleUrl !== "function") {
-    window.bpGraphApi.graphApiModuleUrl = previewDataApi.graphApiModuleUrl;
-  }
-
   function reportRenderReadyError(err) {
     window.setTimeout(function () {
       throw err;

@@ -310,12 +310,13 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 
     def test_graph_runtime_uses_structured_variants_only(self) -> None:
-        runtime = (BLUEPRINT_SRC / "Commands" / "graph.js").read_text(
+        runtime = (BLUEPRINT_SRC / "Commands" / "graph.mjs").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("readPublicGraphVariants(previewUtils, graphBlock)", runtime)
         self.assertIn("previewUtils.getGraphVariants(root)", runtime)
+        self.assertIn("export function startGraphRuntime(previewUtils)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)
 
     def test_feature_js_uses_render_ready_instead_of_direct_runtime_reads(self) -> None:
@@ -390,7 +391,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         graph_core = (BLUEPRINT_SRC / "Commands" / "graph-runtime-core.mjs").read_text(
             encoding="utf-8"
         )
-        graph_runtime = (BLUEPRINT_SRC / "Commands" / "graph.js").read_text(
+        graph_runtime = (BLUEPRINT_SRC / "Commands" / "graph.mjs").read_text(
             encoding="utf-8"
         )
         graph_lean = (BLUEPRINT_SRC / "Commands" / "Graph.lean").read_text(
@@ -399,13 +400,16 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertIn('include_str "graph-runtime-core.mjs"', graph_lean)
         self.assertIn("esmModuleToClassicScript graphRuntimeCoreModuleMjs", graph_lean)
+        self.assertIn("include_str \"graph.mjs\"", graph_lean)
+        self.assertIn("startGraphRuntime(previewUtils)", graph_lean)
         self.assertIn("export const graphRuntimeCore = {", graph_core)
         self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_core)
         self.assertIn("globalScope.VersoBlueprintGraphRuntimeCore = existingCore", graph_lean)
+        self.assertIn('from "./graph-runtime-core.mjs";', graph_runtime)
         for helper in GRAPH_RUNTIME_CORE_HELPERS:
             self.assertIn(f"function {helper}", graph_core)
             self.assertNotIn(f"function {helper}", graph_runtime)
-        self.assertIn("VersoBlueprintGraphRuntimeCore", graph_runtime)
+        self.assertNotIn("VersoBlueprintGraphRuntimeCore", graph_runtime)
 
 
 if __name__ == "__main__":
