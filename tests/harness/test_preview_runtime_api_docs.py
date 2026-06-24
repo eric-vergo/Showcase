@@ -296,12 +296,13 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("manifestEntry.href", design)
 
     def test_slide_runtime_uses_verso_blueprint_namespace(self) -> None:
-        runtime = (BLUEPRINT_SRC / "Slides" / "blueprint-slides.js").read_text(
+        runtime = (BLUEPRINT_SRC / "Slides" / "blueprint-slides.mjs").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("namespace.slides = slideRuntime", runtime)
         self.assertIn("slideRuntime.hydrate = hydrateWhenReady", runtime)
+        self.assertIn("export function installBlueprintSlides()", runtime)
         self.assertNotIn("window.bpSlideNodeRuntime", runtime)
         self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 

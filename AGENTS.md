@@ -132,8 +132,8 @@
   `preview-runtime-lifecycle.mjs`, `preview-runtime-surface.mjs`,
   `preview-runtime-template.mjs`, `preview-runtime.js`, `inline-preview.js`,
   `graph.css`, `graph-runtime-core.mjs`, `graph.js`, `summary.css`,
-  `bibliography.css`, `relation-panel.js`,
-  `blueprint-slides.css`, `blueprint-slides.js`, and `static-web/math.js` before build
+  `bibliography.css`, `relation-panel.mjs`,
+  `blueprint-slides.css`, `blueprint-slides.mjs`, and `static-web/math.js` before build
   steps run, remove those owner modules' cached build outputs, and then run a
   targeted root `lake build` for those owner modules. This keeps downstream
   generator projects from silently serving stale embedded assets when only the

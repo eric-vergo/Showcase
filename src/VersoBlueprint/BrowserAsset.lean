@@ -13,10 +13,11 @@ modules and uses the helper only while Verso lacks first-class module-script
 assets.
 -/
 private def dropEsmOnlyLine (line : String) : Bool :=
-  line.startsWith "import " ||
-  line.startsWith "export {" ||
-    line.startsWith "export default " ||
-    line.startsWith "export * "
+  let trimmed := line.trimAsciiStart
+  trimmed.startsWith "import " ||
+  trimmed.startsWith "export {" ||
+    trimmed.startsWith "export default " ||
+    trimmed.startsWith "export * "
 
 private def withoutEsmOnlyLines (source : String) : String :=
   String.intercalate "\n" <| (source.splitOn "\n").filter fun line =>

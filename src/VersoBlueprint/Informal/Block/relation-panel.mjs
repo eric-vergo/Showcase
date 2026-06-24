@@ -1,5 +1,4 @@
-(function () {
-  function relationPreviewDiagnosticOptions(detail) {
+  export function relationPreviewDiagnosticOptions(detail) {
     return {
       rootClass: "bp_relation_preview_message",
       titleClass: "bp_relation_preview_message_title",
@@ -10,7 +9,7 @@
     };
   }
 
-  function bindRelationPanel(previewUtils, panel) {
+  export function bindRelationPanel(previewUtils, panel) {
     if (!(panel instanceof Element)) return;
     if (panel.getAttribute("data-bp-bound") === "1") return;
     panel.setAttribute("data-bp-bound", "1");
@@ -173,14 +172,14 @@
     }
   }
 
-  function bindAllRelationPanels(previewUtils, root) {
+  export function bindAllRelationPanels(previewUtils, root) {
     if (!(root instanceof Element || root instanceof Document)) return;
     root.querySelectorAll(".bp_relation_panel").forEach(function (panel) {
       bindRelationPanel(previewUtils, panel);
     });
   }
 
-  window.VersoBlueprint.onRenderReady(function (previewUtils) {
+  export function startRelationPanels(previewUtils) {
     previewUtils.registerPreviewHydrator("relationPanel", function (root) {
       bindAllRelationPanels(previewUtils, root);
     });
@@ -191,5 +190,13 @@
     } else {
       bindAllRelationPanels(previewUtils, document);
     }
-  });
-})();
+  }
+
+  export const relationPanelRuntime = {
+    relationPreviewDiagnosticOptions,
+    bindRelationPanel,
+    bindAllRelationPanels,
+    startRelationPanels
+  };
+
+export default relationPanelRuntime;
