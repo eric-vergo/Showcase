@@ -188,7 +188,10 @@ private def previewCoreJs : String :=
     previewCoreClassicPrelude
     "installPreviewCoreGlobal(globalScope);"
 
-private def previewRuntimeBaseJs : String := include_str "preview-runtime-base.js"
+private def previewRuntimeBaseModuleMjs : String := include_str "preview-runtime-base.mjs"
+
+private def previewRuntimeBaseJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeBaseModuleMjs
 
 private def previewRuntimeDataJs : String := include_str "preview-runtime-data.js"
 

@@ -194,7 +194,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
-        base = (BLUEPRINT_SRC / "Commands" / "preview-runtime-base.js").read_text(
+        base = (BLUEPRINT_SRC / "Commands" / "preview-runtime-base.mjs").read_text(
             encoding="utf-8"
         )
         data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
@@ -219,7 +219,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('include_str "preview-runtime-base.js"', common)
+        self.assertIn('include_str "preview-runtime-base.mjs"', common)
         self.assertIn('include_str "preview-runtime-data.js"', common)
         self.assertIn('include_str "preview-runtime-render.js"', common)
         self.assertIn('include_str "preview-runtime-hydration.js"', common)
@@ -238,6 +238,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function collectPreviewTemplates(root, selector, keyAttr)", base)
         self.assertIn("function readHtml(entry)", base)
         self.assertIn("function escapeHtml(text)", base)
+        self.assertIn("export const previewRuntimeBase = {", base)
         self.assertIn("function loadBlueprintStore(store)", data)
         self.assertIn("function previewKey(label, facet)", data)
         self.assertNotIn("function blueprintGraphApi()", data)

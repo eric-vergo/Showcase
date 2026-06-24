@@ -66,7 +66,7 @@ Command modules are split by concern:
 - shared preview URL/key browser helpers in
   `VersoBlueprint/blueprint-preview-core.mjs`
 - the private preview base/debug helpers in
-  `VersoBlueprint/Commands/preview-runtime-base.js`
+  `VersoBlueprint/Commands/preview-runtime-base.mjs`
 - the private preview-data/cache runtime helpers in
   `VersoBlueprint/Commands/preview-runtime-data.js`
 - the private preview render helpers in
@@ -115,7 +115,7 @@ Shared preview and rendering helpers live in `VersoBlueprint/Lib/`, notably:
 Shared and feature-specific browser assets stay with their owning commands:
 
 - `Commands/preview-runtime-data.js`
-- `Commands/preview-runtime-base.js`
+- `Commands/preview-runtime-base.mjs`
 - `Commands/preview-runtime-render.js`
 - `Commands/preview-runtime-hydration.js`
 - `Commands/preview-runtime-lifecycle.js`
@@ -455,7 +455,7 @@ The workflow implies a few constraints for renderers:
   `preview-runtime-lifecycle.js` owns trigger, dismissal, popover, and
   reposition lifetimes; `preview-runtime-surface.js` owns panel slots, content
   updates, and diagnostic markup; `preview-runtime-template.js` owns rendered
-  descriptor binding; `preview-runtime-base.js` owns tiny shared utilities and
+  descriptor binding; `preview-runtime-base.mjs` owns tiny shared utilities and
   debug hooks; and `preview-runtime.js` owns API installation. These groups are
   deliberately close to future component boundaries. A split source file may
   load files, join entries by preview key, insert opaque fragments, own a
@@ -476,7 +476,7 @@ The workflow implies a few constraints for renderers:
   | Template binding | Convert rendered descriptor attributes into runtime preview triggers. | `Commands/preview-runtime-template.js` source chunk inside the bundled runtime |
   | Preview surfaces | Own panel slots, body updates, local state, and surface-level callbacks. | `Commands/preview-runtime-surface.js` source chunk inside the bundled runtime |
   | Lifecycle binding | Handle trigger events, dismissal, resize/scroll repositioning, pointer checks, and keep-open checks. | `Commands/preview-runtime-lifecycle.js` source chunk inside the bundled runtime |
-  | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | `Commands/preview-runtime-base.js` source chunk inside the bundled runtime |
+  | Debug hooks | Expose diagnostics needed by browser tests and local inspection without becoming a public data path. | `Commands/preview-runtime-base.mjs` source chunk embedded into the bundled runtime as a classic-script fragment |
   | Graph runtime utilities | Normalize graph options, size graph canvases, keep graph block state, load scripts, and position graph-specific panels. | `Commands/graph-runtime-core.js` private graph runtime chunk |
 
   Splits should remain internal-only until a separate public module boundary is
@@ -659,7 +659,7 @@ rather than page-local template bodies:
    including uses, reverse uses, and group panel entries, while traversal state
    is still available.
 3. `Commands/Common.lean` owns browser-side preview runtime assembly. It emits
-   one bundled asset from the graph core and the `preview-runtime-*.js` chunks:
+   one bundled asset from the graph core and the `preview-runtime*` chunks:
    the data chunk owns manifest/cache URLs, loading, status, and key
    normalization; the render chunk owns rendered-fragment insertion,
    missing-fragment diagnostics, and canonical-node fetching; the hydration
@@ -762,7 +762,7 @@ panels, graph panels, and other Blueprint surfaces.
 That runtime boundary is now explicit:
 
 - `Commands/Common.lean` owns bundled-runtime assembly; the
-  `preview-runtime-*.js` chunks split generated-data/cache access,
+  `preview-runtime*` chunks split generated-data/cache access,
   rendering/canonical insertion, hydration, lifecycle binding, surface helpers,
   descriptor binding, shared base helpers, and API installation while still
   emitting one runtime asset

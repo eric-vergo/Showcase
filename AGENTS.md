@@ -127,7 +127,7 @@
 - Harnessed artifact-generation flows now proactively refresh the owner-module
   mtimes for embedded package assets such as `open-target-details.js`,
   `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
-  `preview-runtime-base.js`, `preview-runtime-data.js`,
+  `preview-runtime-base.mjs`, `preview-runtime-data.js`,
   `preview-runtime-render.js`, `preview-runtime-hydration.js`,
   `preview-runtime-lifecycle.js`, `preview-runtime-surface.js`,
   `preview-runtime-template.js`, `preview-runtime.js`, `inline-preview.js`,

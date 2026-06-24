@@ -85,7 +85,8 @@ Work:
      repositioning, and keep-open checks
      (landed as `Commands/preview-runtime-lifecycle.js`)
    - debug hooks used by tests and local inspection
-     (landed as `Commands/preview-runtime-base.js`)
+     (landed as `Commands/preview-runtime-base.mjs`, embedded into the current
+     bundled runtime as a classic-script fragment)
    - graph runtime utilities such as option normalization, canvas sizing,
      graph block state, script loading, and graph-specific panel positioning
      (landed as `Commands/graph-runtime-core.js`)
