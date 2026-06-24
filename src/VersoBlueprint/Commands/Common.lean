@@ -326,7 +326,11 @@ private def previewRuntimeTemplateModuleMjs : String := include_str "preview-run
 private def previewRuntimeTemplateJs : String :=
   Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeTemplateModuleMjs
 
-private def previewRuntimeApiJs : String := include_str "preview-runtime.js"
+private def previewRuntimeApiModuleMjs : String := include_str "preview-runtime-api.mjs"
+
+private def previewRuntimeApiJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeApiModuleMjs ++
+    "\ninstallPreviewRuntimeApi();"
 
 private def previewRuntimeJs : String :=
   "(function () {\n" ++
@@ -549,7 +553,15 @@ def withPreviewClientReadyJs (js : String) : String :=
   previewClientReadyJs ++ "\n" ++ js
 
 -- Keep this module rebuilt when the embedded inline preview runtime changes.
-def inlineLinkPreviewJs : String := withPreviewClientReadyJs (include_str "inline-preview.js")
+private def inlinePreviewModuleMjs : String := include_str "inline-preview.mjs"
+
+def inlineLinkPreviewJs : String :=
+  withPreviewClientReadyJs <|
+    Informal.BrowserAsset.esmModuleToClassicScript inlinePreviewModuleMjs r##"
+window.VersoBlueprint.onRenderReady(function (previewUtils) {
+  startInlinePreview(previewUtils);
+});
+"##
 
 /--
 Logical Blueprint browser assets before choosing a physical output mode.

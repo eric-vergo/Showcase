@@ -130,7 +130,7 @@
   `preview-runtime-base.mjs`, `preview-runtime-data.mjs`,
   `preview-runtime-render.mjs`, `preview-runtime-hydration.mjs`,
   `preview-runtime-lifecycle.mjs`, `preview-runtime-surface.mjs`,
-  `preview-runtime-template.mjs`, `preview-runtime.js`, `inline-preview.js`,
+  `preview-runtime-template.mjs`, `preview-runtime-api.mjs`, `inline-preview.mjs`,
   `graph.css`, `graph-runtime-core.mjs`, `graph.js`, `summary.css`,
   `bibliography.css`, `relation-panel.mjs`,
   `blueprint-slides.css`, `blueprint-slides.mjs`, and `static-web/math.js` before build

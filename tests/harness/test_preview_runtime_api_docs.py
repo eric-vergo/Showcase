@@ -215,7 +215,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         template = (
             BLUEPRINT_SRC / "Commands" / "preview-runtime-template.mjs"
         ).read_text(encoding="utf-8")
-        api = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
+        api = (BLUEPRINT_SRC / "Commands" / "preview-runtime-api.mjs").read_text(
             encoding="utf-8"
         )
 
@@ -226,6 +226,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn('include_str "preview-runtime-lifecycle.mjs"', common)
         self.assertIn('include_str "preview-runtime-surface.mjs"', common)
         self.assertIn('include_str "preview-runtime-template.mjs"', common)
+        self.assertIn('include_str "preview-runtime-api.mjs"', common)
         self.assertIn('include_str "../blueprint-preview-core.mjs"', common)
         self.assertIn("previewRuntimeBaseJs", common)
         self.assertIn("previewRuntimeDataJs", common)
@@ -235,6 +236,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("previewRuntimeSurfaceJs", common)
         self.assertIn("previewRuntimeTemplateJs", common)
         self.assertIn("previewRuntimeApiJs", common)
+        self.assertIn("installPreviewRuntimeApi();", common)
         self.assertIn("function collectPreviewTemplates(root, selector, keyAttr)", base)
         self.assertIn("function readHtml(entry)", base)
         self.assertIn("function escapeHtml(text)", base)
@@ -273,6 +275,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             template,
         )
         self.assertIn("const stableCustomClientApi = {", api)
+        self.assertIn("export function installPreviewRuntimeApi()", api)
         self.assertIn("function onRenderReady(fn)", api)
         for helper in (
             "function loadBlueprintStore(store)",
@@ -345,7 +348,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
-        runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
+        runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime-api.mjs").read_text(
             encoding="utf-8"
         )
 

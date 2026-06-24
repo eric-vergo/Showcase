@@ -41,8 +41,8 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime.js",
-            "src/VersoBlueprint/Commands/inline-preview.js",
+            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
+            "src/VersoBlueprint/Commands/inline-preview.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(
