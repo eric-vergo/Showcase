@@ -81,12 +81,15 @@ Work:
      (landed as `Commands/preview-runtime-hydration.mjs`, embedded into the
      current bundled runtime as a classic-script fragment)
    - template descriptor binding for Lean-emitted preview triggers
-     (landed as `Commands/preview-runtime-template.js`)
+     (landed as `Commands/preview-runtime-template.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - preview surface state, slots, and content updates
-     (landed as `Commands/preview-runtime-surface.js`)
+     (landed as `Commands/preview-runtime-surface.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - lifecycle binding for trigger events, dismissal, pointer checks,
      repositioning, and keep-open checks
-     (landed as `Commands/preview-runtime-lifecycle.js`)
+     (landed as `Commands/preview-runtime-lifecycle.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - debug hooks used by tests and local inspection
      (landed as `Commands/preview-runtime-base.mjs`, embedded into the current
      bundled runtime as a classic-script fragment)

@@ -622,9 +622,9 @@ The current private source chunks are:
 | `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-lifecycle.js` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
-| `preview-runtime-surface.js` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
-| `preview-runtime-template.js` | Descriptor-driven binding for Lean-emitted template preview roots. |
+| `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots; embedded into the current bundled runtime as a classic-script fragment. |
 | `preview-runtime.js` | Stable render API assembly and `onRenderReady` installation. |
 
 Two adjacent implementation files are shared by bundled pages and generated ESM
