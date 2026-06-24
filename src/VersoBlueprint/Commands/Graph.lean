@@ -90,7 +90,25 @@ Object.assign(existingCore, graphRuntimeCore);
 globalScope.VersoBlueprintGraphRuntimeCore = existingCore;
 "##
 
-private def graphRuntimeJs : String := include_str "graph.js"
+private def graphRuntimeModuleMjs : String := include_str "graph.mjs"
+
+private def graphRuntimeClassicPrelude : String := r##"
+const graphRuntimeCoreModule =
+  globalScope.VersoBlueprintGraphRuntimeCore &&
+    typeof globalScope.VersoBlueprintGraphRuntimeCore === "object"
+    ? globalScope.VersoBlueprintGraphRuntimeCore
+    : {};
+"##
+
+private def graphRuntimeJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScriptWithPrelude
+    graphRuntimeModuleMjs
+    graphRuntimeClassicPrelude
+    r##"
+window.VersoBlueprint.onRenderReady(function (previewUtils) {
+  startGraphRuntime(previewUtils);
+});
+"##
 
 def loadD3Dot := withPreviewClientReadyJs (graphRuntimeCoreJs ++ "\n" ++ graphRuntimeJs)
 

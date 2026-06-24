@@ -193,15 +193,6 @@ export function installGraphCoreGlobal(globalScope = defaultGlobalScope()) {
   Object.assign(existingCore, graphCore);
   globalScope.VersoBlueprintGraphCore = existingCore;
 
-  const windowObj = globalScope && globalScope.window;
-  if (windowObj && typeof windowObj === "object") {
-    const existingGlobalApi =
-      windowObj.bpGraphApi && typeof windowObj.bpGraphApi === "object"
-        ? windowObj.bpGraphApi
-        : {};
-    Object.assign(existingGlobalApi, existingCore);
-    windowObj.bpGraphApi = existingGlobalApi;
-  }
   return existingCore;
 }
 

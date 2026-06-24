@@ -349,7 +349,11 @@ def previewHoverUtilsJs : String :=
   previewGraphCoreJs ++ "\n" ++ previewCoreJs ++ "\n" ++ previewRuntimeJs
 
 -- Keep this module rebuilt when the preview client readiness shim changes.
-def previewClientReadyJs : String := include_str "preview-ready.js"
+private def previewClientReadyModuleMjs : String := include_str "preview-ready.mjs"
+
+def previewClientReadyJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript previewClientReadyModuleMjs
+    "installPreviewClientReady(globalScope);"
 
 def previewHeaderCss : String := r##"
 .bp_preview_header_heading {
@@ -547,7 +551,11 @@ def inlinePreviewCss : String := r##"
 "##
 
 -- Keep this module rebuilt when target-opening runtime changes.
-def openTargetDetailsJs : String := include_str "open-target-details.js"
+private def openTargetDetailsModuleMjs : String := include_str "open-target-details.mjs"
+
+def openTargetDetailsJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript openTargetDetailsModuleMjs
+    "installOpenTargetDetails(globalScope);"
 
 def withPreviewClientReadyJs (js : String) : String :=
   previewClientReadyJs ++ "\n" ++ js

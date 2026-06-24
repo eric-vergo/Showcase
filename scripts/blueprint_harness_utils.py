@@ -17,8 +17,8 @@ class EmbeddedAssetOwner:
 
 
 EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-ready.js", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/open-target-details.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-ready.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-core.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-core.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/preview-runtime-base.mjs", "src/VersoBlueprint/Commands/Common.lean", "VersoBlueprint.Commands.Common"),
@@ -36,7 +36,7 @@ EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph-runtime-core.mjs", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.mjs", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
     EmbeddedAssetOwner("src/VersoBlueprint/Informal/Block/relation-panel.mjs", "src/VersoBlueprint/Informal/Block/Assets.lean", "VersoBlueprint.Informal.Block.Assets"),

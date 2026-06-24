@@ -97,6 +97,10 @@ Work:
      graph block state, script loading, and graph-specific panel positioning
      (landed as `Commands/graph-runtime-core.mjs`, embedded into current
      Verso page assets through a generated classic-script adapter)
+   - graph rendering orchestration, variant selection, and graph UI event
+     binding
+     (landed as `Commands/graph.mjs`, embedded into current Verso page assets
+     through a generated classic-script adapter)
 
 ### Data Model and Status Semantics
 

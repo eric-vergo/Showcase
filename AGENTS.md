@@ -125,13 +125,13 @@
   own tests plus ephemeral checkout validations, not the preferred end-user
   interface.
 - Harnessed artifact-generation flows now proactively refresh the owner-module
-  mtimes for embedded package assets such as `open-target-details.js`,
-  `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
+  mtimes for embedded package assets such as `open-target-details.mjs`,
+  `preview-ready.mjs`, `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
   `preview-runtime-base.mjs`, `preview-runtime-data.mjs`,
   `preview-runtime-render.mjs`, `preview-runtime-hydration.mjs`,
   `preview-runtime-lifecycle.mjs`, `preview-runtime-surface.mjs`,
   `preview-runtime-template.mjs`, `preview-runtime-api.mjs`, `inline-preview.mjs`,
-  `graph.css`, `graph-runtime-core.mjs`, `graph.js`, `summary.css`,
+  `graph.css`, `graph-runtime-core.mjs`, `graph.mjs`, `summary.css`,
   `bibliography.css`, `relation-panel.mjs`,
   `blueprint-slides.css`, `blueprint-slides.mjs`, and `static-web/math.js` before build
   steps run, remove those owner modules' cached build outputs, and then run a

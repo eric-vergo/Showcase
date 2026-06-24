@@ -32,11 +32,11 @@ relation-panel, inline-preview, and slide scripts can share runtime mechanics.
 They are not a custom-client contract unless they are promoted into the stable
 tables below.
 
-Compatibility globals such as `window.bpGraphApi` are transitional bridges for
-current generated pages, not stable client APIs. New browser code should prefer
-the generated ESM modules or `window.VersoBlueprint.onRenderReady`.
-Blueprint's own bundled feature scripts should also go through the render API
-instead of reading compatibility globals directly.
+Browser clients should use the generated ESM modules or
+`window.VersoBlueprint.onRenderReady`. Blueprint's own bundled feature scripts
+use the same render API instead of reading page globals directly; private
+classic-script adapters exist only to support the current Verso asset-loading
+mode.
 
 ## Choosing an API
 
@@ -582,6 +582,13 @@ import targets and do not change the public browser API. Generated pages and
 custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
 `window.VersoBlueprint.render`, or `api/preview.mjs`.
 
+Blueprint's browser source files are ESM-shaped modules. Current Verso output
+still receives classic scripts because Verso does not yet provide the asset
+loading mode Blueprint wants for these generated pages. The `BrowserAsset`
+adapter layer is therefore an output shim, not a second source API: new browser
+logic should be written as ESM source and installed through one explicit
+entrypoint when the current classic-script output needs it.
+
 The current private source chunks are:
 
 | Chunk | Private responsibility |
@@ -603,12 +610,12 @@ modules:
 | `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 | `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 
-The graph command also has a private `graph-runtime-core.mjs` chunk. It owns
-graph-runtime utilities such as graph option normalization, canvas sizing,
-graph block state, script loading, and graph-specific panel positioning. It is
-embedded into current Verso pages through a generated classic-script adapter.
-`graph.js` owns graph rendering orchestration, variant selection, and graph UI
-event binding.
+The graph command also has private `graph-runtime-core.mjs` and `graph.mjs`
+chunks. The core chunk owns graph option normalization, canvas sizing, graph
+block state, script loading, and graph-specific panel positioning. `graph.mjs`
+owns graph rendering orchestration, variant selection, and graph UI event
+binding. Current Verso pages embed both through generated classic-script
+adapters; custom clients should use `api/graph.mjs` or the render API instead.
 
 ## Bundled Helper Boundary
 
