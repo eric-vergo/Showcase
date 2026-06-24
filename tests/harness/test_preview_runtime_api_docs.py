@@ -68,6 +68,31 @@ GRAPH_CORE_IMPLEMENTATION_HELPERS = {
     "getGraphVariants",
     "loadJson",
 }
+PREVIEW_CORE_HELPERS = {
+    "dataUrl",
+    "manifestUrl",
+    "htmlCacheUrl",
+    "graphApiModuleUrl",
+    "previewApiModuleUrl",
+    "previewKey",
+    "statementPreviewKey",
+}
+GRAPH_RUNTIME_CORE_HELPERS = {
+    "debounce",
+    "normalizeGraphOptions",
+    "graphPackAttr",
+    "graphOptionsKey",
+    "readPreviewBehaviorDefaults",
+    "layoutGraphCanvas",
+    "load",
+    "graphNodeLabel",
+    "graphNodeId",
+    "ensureGraphBlockState",
+    "rememberGraphLayoutMeasurements",
+    "resizeRenderedGraphToCanvas",
+    "resetGraphvizForVariant",
+    "makeGroupPanelPositioner",
+}
 
 
 class PreviewRuntimeApiDocsTests(unittest.TestCase):
@@ -153,14 +178,96 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         runtime = blueprint_js_source()
 
         for marker in (
-            "Generated-data URL helpers and graph delegation.",
+            "Runtime-local diagnostics and page-local template capture.",
+            "Generated-data URL helpers and graph-core delegation.",
             "Manifest/cache status, loading, and diagnostics.",
             "Preview resolution joins semantic manifest entries with opaque body fragments.",
             "Canonical generated-node rendering.",
-            "Bundled preview surface and lifecycle helpers.",
+            "Bundled preview lifecycle helpers.",
+            "Bundled preview surface, panel, and content helpers.",
+            "Template preview binding adapts the shared helpers to concrete surfaces.",
             "API assembly and readiness synchronization.",
         ):
             self.assertIn(marker, runtime)
+
+    def test_preview_runtime_helpers_live_in_private_chunks(self) -> None:
+        common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
+            encoding="utf-8"
+        )
+        base = (BLUEPRINT_SRC / "Commands" / "preview-runtime-base.js").read_text(
+            encoding="utf-8"
+        )
+        data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+            encoding="utf-8"
+        )
+        render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.js").read_text(
+            encoding="utf-8"
+        )
+        hydration = (
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.js"
+        ).read_text(encoding="utf-8")
+        lifecycle = (
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-lifecycle.js"
+        ).read_text(encoding="utf-8")
+        surface = (BLUEPRINT_SRC / "Commands" / "preview-runtime-surface.js").read_text(
+            encoding="utf-8"
+        )
+        template = (
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-template.js"
+        ).read_text(encoding="utf-8")
+        api = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('include_str "preview-runtime-base.js"', common)
+        self.assertIn('include_str "preview-runtime-data.js"', common)
+        self.assertIn('include_str "preview-runtime-render.js"', common)
+        self.assertIn('include_str "preview-runtime-hydration.js"', common)
+        self.assertIn('include_str "preview-runtime-lifecycle.js"', common)
+        self.assertIn('include_str "preview-runtime-surface.js"', common)
+        self.assertIn('include_str "preview-runtime-template.js"', common)
+        self.assertIn('include_str "../blueprint-preview-core.js"', common)
+        self.assertIn("previewRuntimeBaseJs", common)
+        self.assertIn("previewRuntimeDataJs", common)
+        self.assertIn("previewRuntimeRenderJs", common)
+        self.assertIn("previewRuntimeHydrationJs", common)
+        self.assertIn("previewRuntimeLifecycleJs", common)
+        self.assertIn("previewRuntimeSurfaceJs", common)
+        self.assertIn("previewRuntimeTemplateJs", common)
+        self.assertIn("previewRuntimeApiJs", common)
+        self.assertIn("function collectPreviewTemplates(root, selector, keyAttr)", base)
+        self.assertIn("function readHtml(entry)", base)
+        self.assertIn("function escapeHtml(text)", base)
+        self.assertIn("function loadBlueprintStore(store)", data)
+        self.assertIn("function previewKey(label, facet)", data)
+        self.assertNotIn("function blueprintGraphApi()", data)
+        self.assertIn("function callBlueprintGraphCore(name, args, fallback)", data)
+        self.assertIn("function readBlueprintManifestStatus()", data)
+        self.assertIn("async function resolveBlueprintPreview(previewKey)", render)
+        self.assertIn("function renderHtmlInto(target, html, options)", render)
+        self.assertIn("async function resolveCanonicalBlueprintPreview(previewKey)", render)
+        self.assertIn("function hydrateRenderedPreview(root, options)", hydration)
+        self.assertIn("function renderBlueprintMath(root)", hydration)
+        self.assertIn("function registerPreviewHydrator(name, fn)", hydration)
+        self.assertIn("function bindDismissHandlers(options)", lifecycle)
+        self.assertIn("function bindPreviewTriggers(options)", lifecycle)
+        self.assertIn("function bindAnchoredPopover(options)", lifecycle)
+        self.assertIn("function createPreviewSurface(options)", surface)
+        self.assertIn("async function renderPreviewIntoSurface(surface, previewKey, options)", surface)
+        self.assertIn("function previewMessageHtml(options)", surface)
+        self.assertIn("function bindTemplatePreview(options)", template)
+        self.assertIn("function bindTemplatePreviewDescriptor(root)", template)
+        self.assertIn("const stableCustomClientApi = {", api)
+        self.assertIn("function onRenderReady(fn)", api)
+        for helper in (
+            "function loadBlueprintStore(store)",
+            "function previewKey(label, facet)",
+            "async function resolveBlueprintPreview(previewKey)",
+            "function renderBlueprintMath(root)",
+            "function createPreviewSurface(options)",
+            "function bindTemplatePreview(options)",
+        ):
+            self.assertNotIn(helper, api)
 
     def test_design_rationale_explains_html_cache_boundary(self) -> None:
         design = DESIGN_RATIONALE.read_text(encoding="utf-8")
@@ -216,17 +323,60 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_graph_helpers_are_owned_by_graph_core(self) -> None:
         core = (BLUEPRINT_SRC / "blueprint-graph-core.js").read_text(encoding="utf-8")
         graph_esm = (BLUEPRINT_SRC / "blueprint-graph-api.mjs").read_text(encoding="utf-8")
+        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+            encoding="utf-8"
+        )
         runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime.js").read_text(
             encoding="utf-8"
         )
 
         self.assertIn('import "./blueprint-graph-core.js";', graph_esm)
-        self.assertIn("callBlueprintGraphApi", runtime)
+        self.assertIn("callBlueprintGraphCore", runtime_data)
+        self.assertNotIn("callBlueprintGraphApi", runtime_data)
+        self.assertNotIn("window.bpGraphApi", runtime_data)
         for helper in GRAPH_CORE_HELPERS:
             self.assertIn(f"function {helper}", core)
             self.assertNotIn(f"function {helper}", graph_esm)
         for helper in GRAPH_CORE_IMPLEMENTATION_HELPERS:
+            self.assertNotIn(f"function {helper}", runtime_data)
             self.assertNotIn(f"function {helper}", runtime)
+
+    def test_preview_helpers_are_owned_by_preview_core(self) -> None:
+        core = (BLUEPRINT_SRC / "blueprint-preview-core.js").read_text(encoding="utf-8")
+        preview_esm = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(
+            encoding="utf-8"
+        )
+        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.js").read_text(
+            encoding="utf-8"
+        )
+        preview_manifest = (BLUEPRINT_SRC / "PreviewManifest.lean").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('import "./blueprint-preview-core.js";', preview_esm)
+        self.assertIn('include_str "blueprint-preview-core.js"', preview_manifest)
+        self.assertIn("IO.FS.writeFile (dataDir / previewCoreModuleFilename)", preview_manifest)
+        for helper in PREVIEW_CORE_HELPERS:
+            self.assertIn(f"function {helper}", core)
+        self.assertNotIn("const trimmedLabel = typeof label", preview_esm)
+        self.assertNotIn("const trimmedLabel = typeof label", runtime_data)
+
+    def test_graph_runtime_helpers_live_in_private_graph_chunk(self) -> None:
+        graph_core = (BLUEPRINT_SRC / "Commands" / "graph-runtime-core.js").read_text(
+            encoding="utf-8"
+        )
+        graph_runtime = (BLUEPRINT_SRC / "Commands" / "graph.js").read_text(
+            encoding="utf-8"
+        )
+        graph_lean = (BLUEPRINT_SRC / "Commands" / "Graph.lean").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('include_str "graph-runtime-core.js"', graph_lean)
+        for helper in GRAPH_RUNTIME_CORE_HELPERS:
+            self.assertIn(f"function {helper}", graph_core)
+            self.assertNotIn(f"function {helper}", graph_runtime)
+        self.assertIn("VersoBlueprintGraphRuntimeCore", graph_runtime)
 
 
 if __name__ == "__main__":

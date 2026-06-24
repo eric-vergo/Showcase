@@ -48,6 +48,46 @@
     });
   }
 
+  function defaultInlinePreviewHostPolicies(makeBehavior) {
+    return [
+      {
+        selector: ".bp_relation_panel",
+        kind: "relation",
+        behavior: makeBehavior("hover", "anchored")
+      },
+      {
+        selector: ".bp_graph_preview",
+        kind: "graph",
+        behavior: makeBehavior("hover", "anchored")
+      },
+      {
+        selector: ".bp_group_hover_preview",
+        kind: "graph-group",
+        behavior: makeBehavior("hover", "anchored")
+      }
+    ];
+  }
+
+  function readInlinePreviewHost(trigger, panel, hostPolicies) {
+    if (!(trigger instanceof Element)) return null;
+    if (panel.contains(trigger)) return null;
+    const policies = Array.isArray(hostPolicies) ? hostPolicies : [];
+    for (let i = 0; i < policies.length; i += 1) {
+      const policy = policies[i];
+      if (!policy || typeof policy.selector !== "string") continue;
+      const host = trigger.closest(policy.selector);
+      if (!(host instanceof Element)) continue;
+      return {
+        element: host,
+        kind: typeof policy.kind === "string" && policy.kind ? policy.kind : "generic",
+        behavior: policy.behavior && typeof policy.behavior === "object"
+          ? policy.behavior
+          : { mode: "hover", placement: "anchored" }
+      };
+    }
+    return null;
+  }
+
   function bindInlinePreview(previewUtils) {
     if (!(document.body instanceof Element)) return;
     if (document.body.getAttribute("data-bp-inline-preview-bound") === "1") return;
@@ -60,6 +100,8 @@
     function makeBehavior(mode, placement) {
       return { mode: mode, placement: placement };
     }
+
+    const inlineHostPolicies = defaultInlinePreviewHostPolicies(makeBehavior);
 
     const mainSurface = previewUtils.createPreviewSurface({
       panel: getPanel(previewUtils, "bp-inline-preview-panel", ""),
@@ -122,26 +164,6 @@
 
     function cancelChildHide() {
       if (childLifecycle) childLifecycle.cancelHide();
-    }
-
-    function readInlinePreviewHost(trigger) {
-      if (!(trigger instanceof Element)) return null;
-      const host = trigger.closest(".bp_relation_panel, .bp_graph_preview, .bp_group_hover_preview");
-      if (!(host instanceof Element)) return null;
-      if (panel.contains(host)) return null;
-      let kind = "generic";
-      if (host.matches(".bp_relation_panel")) {
-        kind = "relation";
-      } else if (host.matches(".bp_graph_preview")) {
-        kind = "graph";
-      } else if (host.matches(".bp_group_hover_preview")) {
-        kind = "graph-group";
-      }
-      return {
-        element: host,
-        kind: kind,
-        behavior: makeBehavior("hover", "anchored")
-      };
     }
 
     function positionDockedPanel(hostInfo) {
@@ -279,7 +301,9 @@
       const heading = (trigger.getAttribute("data-bp-preview-title") || key).trim() || key;
       activePreviewKey = key;
       const inPanel = panel.contains(trigger);
-      const hostInfo = inPanel ? activeHost : readInlinePreviewHost(trigger);
+      const hostInfo = inPanel
+        ? activeHost
+        : readInlinePreviewHost(trigger, panel, inlineHostPolicies);
       applyBehavior(hostInfo ? hostInfo.behavior : makeBehavior("hover", "anchored"), hostInfo);
       updatingPanel = inPanel;
       previewDebug("inline.show", {

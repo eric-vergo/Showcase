@@ -165,8 +165,39 @@ def previewPanelCss : String := r##"
 -- here should land whenever preview runtime assets are intentionally refreshed.
 private def previewGraphCoreJs : String := include_str "../blueprint-graph-core.js"
 
+private def previewCoreJs : String := include_str "../blueprint-preview-core.js"
+
+private def previewRuntimeBaseJs : String := include_str "preview-runtime-base.js"
+
+private def previewRuntimeDataJs : String := include_str "preview-runtime-data.js"
+
+private def previewRuntimeRenderJs : String := include_str "preview-runtime-render.js"
+
+private def previewRuntimeHydrationJs : String := include_str "preview-runtime-hydration.js"
+
+private def previewRuntimeLifecycleJs : String := include_str "preview-runtime-lifecycle.js"
+
+private def previewRuntimeSurfaceJs : String := include_str "preview-runtime-surface.js"
+
+private def previewRuntimeTemplateJs : String := include_str "preview-runtime-template.js"
+
+private def previewRuntimeApiJs : String := include_str "preview-runtime.js"
+
+private def previewRuntimeJs : String :=
+  "(function () {\n" ++
+  "  if (window.VersoBlueprint && window.VersoBlueprint.render) return;\n\n" ++
+  previewRuntimeBaseJs ++ "\n" ++
+  previewRuntimeDataJs ++ "\n" ++
+  previewRuntimeRenderJs ++ "\n" ++
+  previewRuntimeHydrationJs ++ "\n" ++
+  previewRuntimeLifecycleJs ++ "\n" ++
+  previewRuntimeSurfaceJs ++ "\n" ++
+  previewRuntimeTemplateJs ++ "\n" ++
+  previewRuntimeApiJs ++ "\n" ++
+  "})();"
+
 def previewHoverUtilsJs : String :=
-  previewGraphCoreJs ++ "\n" ++ include_str "preview-runtime.js"
+  previewGraphCoreJs ++ "\n" ++ previewCoreJs ++ "\n" ++ previewRuntimeJs
 
 -- Keep this module rebuilt when the preview client readiness shim changes.
 def previewClientReadyJs : String := include_str "preview-ready.js"
