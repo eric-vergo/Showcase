@@ -72,7 +72,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_graph_js_assets_are_owned_by_graph_module(self) -> None:
         for asset in (
             "src/VersoBlueprint/Commands/graph.css",
-            "src/VersoBlueprint/Commands/graph-runtime-core.js",
+            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
             "src/VersoBlueprint/Commands/graph.js",
         ):
             self.assertIn(

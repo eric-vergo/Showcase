@@ -1,8 +1,8 @@
-import { collectPreviewTemplates, readHtml } from "./preview-runtime-base.mjs";
+import { collectPreviewTemplates, readElementOption, readFunctionOption, readHtml, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
 import { blueprintHtmlCacheDiagnosticHtml } from "./preview-runtime-data.mjs";
 import { resolveBlueprintPreview } from "./preview-runtime-render.mjs";
 import { setTemplatePreviewDescriptorBinder } from "./preview-runtime-hydration.mjs";
-import { createPreviewSurface, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-surface.mjs";
+import { createPreviewSurface } from "./preview-runtime-surface.mjs";
 
   // Template preview binding adapts the shared helpers to concrete surfaces.
 

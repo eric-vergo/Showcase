@@ -35,7 +35,7 @@ EMBEDDED_ASSET_OWNERS: tuple[EmbeddedAssetOwner, ...] = (
     EmbeddedAssetOwner("src/VersoBlueprint/blueprint-graph-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/blueprint-preview-api.mjs", "src/VersoBlueprint/PreviewManifest.lean", "VersoBlueprint.PreviewManifest"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.css", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
-    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph-runtime-core.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
+    EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph-runtime-core.mjs", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/graph.js", "src/VersoBlueprint/Commands/Graph.lean", "VersoBlueprint.Commands.Graph"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/summary.css", "src/VersoBlueprint/Commands/Summary.lean", "VersoBlueprint.Commands.Summary"),
     EmbeddedAssetOwner("src/VersoBlueprint/Commands/bibliography.css", "src/VersoBlueprint/Commands/Bibliography.lean", "VersoBlueprint.Commands.Bibliography"),
