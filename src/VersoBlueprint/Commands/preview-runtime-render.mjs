@@ -1,3 +1,7 @@
+import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
+import { blueprintHtmlCacheDiagnosticHtml, blueprintManifestDiagnosticHtml, loadBlueprintHtmlCacheEntry, loadBlueprintManifestEntry, missingPreviewKeyDiagnosticHtml } from "./preview-runtime-data.mjs";
+import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
+
   // Preview resolution joins semantic manifest entries with opaque body fragments.
   //
   // The HTML cache is presentation data. Runtime code may insert and hydrate
@@ -5,7 +9,7 @@
   // future client needs another fact, add it to the manifest instead of parsing
   // cached HTML.
 
-  async function resolveBlueprintPreview(previewKey) {
+  export async function resolveBlueprintPreview(previewKey) {
     const key = typeof previewKey === "string" ? previewKey.trim() : "";
     if (!key) {
       return {
@@ -60,7 +64,7 @@
 
   // Rendered-fragment insertion.
 
-  function renderHtmlInto(target, html, options) {
+  export function renderHtmlInto(target, html, options) {
     if (!(target instanceof Element)) return false;
     const safeHtml = typeof html === "string" ? html : "";
     if (safeHtml.length === 0) {
@@ -72,7 +76,7 @@
     return true;
   }
 
-  async function renderBlueprintPreviewInto(target, previewKey, options) {
+  export async function renderBlueprintPreviewInto(target, previewKey, options) {
     if (!(target instanceof Element)) {
       throw new Error("renderBlueprintPreviewInto target must be a DOM Element");
     }
@@ -82,8 +86,9 @@
     renderHtmlInto(target, html, opts);
     return result;
   }
-  const canonicalPreviewDocuments = new Map();
-  const canonicalPreviewHtmlByKey = new Map();
+
+  export const canonicalPreviewDocuments = new Map();
+  export const canonicalPreviewHtmlByKey = new Map();
 
   // Canonical generated-node rendering.
   //
@@ -93,17 +98,17 @@
   // cache, follow the manifest href, clone the canonical node, and rebase its
   // links for insertion into the current page.
 
-  function urlWithoutHash(url) {
+  export function urlWithoutHash(url) {
     const clone = new URL(url.href);
     clone.hash = "";
     return clone.href;
   }
 
-  function currentDocumentUrlWithoutHash() {
+  export function currentDocumentUrlWithoutHash() {
     return urlWithoutHash(new URL(window.location.href));
   }
 
-  function canonicalPreviewUrl(entry) {
+  export function canonicalPreviewUrl(entry) {
     if (!entry || typeof entry !== "object" || typeof entry.href !== "string") return null;
     const href = entry.href.trim();
     if (!href) return null;
@@ -114,7 +119,7 @@
     }
   }
 
-  function canonicalPreviewId(url, result) {
+  export function canonicalPreviewId(url, result) {
     if (url && typeof url.hash === "string" && url.hash.length > 1) {
       const raw = url.hash.slice(1);
       try {
@@ -129,7 +134,7 @@
     return "";
   }
 
-  function canonicalPreviewDiagnosticHtml(title, detail, previewKey) {
+  export function canonicalPreviewDiagnosticHtml(title, detail, previewKey) {
     const keyHtml = previewKey ? "<p>Requested preview: <code>" + escapeHtml(previewKey) + "</code></p>" : "";
     return (
       "<div class=\"bp_html_cache_preview_notice\">" +
@@ -140,7 +145,7 @@
     );
   }
 
-  function canonicalPreviewResult(result, fields) {
+  export function canonicalPreviewResult(result, fields) {
     return Object.assign(
       {},
       result || {},
@@ -152,7 +157,7 @@
     );
   }
 
-  async function loadCanonicalPreviewDocument(url) {
+  export async function loadCanonicalPreviewDocument(url) {
     const pageUrl = urlWithoutHash(url);
     if (pageUrl === currentDocumentUrlWithoutHash()) {
       return document;
@@ -173,7 +178,7 @@
     return promise;
   }
 
-  function rebaseUrlAttribute(node, attrName, baseUrl) {
+  export function rebaseUrlAttribute(node, attrName, baseUrl) {
     const value = node.getAttribute(attrName);
     if (typeof value !== "string" || !value.trim()) return;
     const trimmed = value.trim();
@@ -189,7 +194,7 @@
     } catch (_err) {}
   }
 
-  function forEachMatchingElement(root, selector, callback) {
+  export function forEachMatchingElement(root, selector, callback) {
     if (!(root instanceof Element)) return;
     if (root.matches(selector)) callback(root);
     root.querySelectorAll(selector).forEach(function (node) {
@@ -197,7 +202,7 @@
     });
   }
 
-  function canonicalPreviewDocumentBaseUrl(doc, sourceUrl) {
+  export function canonicalPreviewDocumentBaseUrl(doc, sourceUrl) {
     const pageUrl = urlWithoutHash(sourceUrl);
     const base = doc instanceof Document ? doc.querySelector("base[href]") : null;
     const href = base instanceof Element ? (base.getAttribute("href") || "").trim() : "";
@@ -209,7 +214,7 @@
     return pageUrl;
   }
 
-  function rebaseCanonicalPreviewLinks(root, baseUrl) {
+  export function rebaseCanonicalPreviewLinks(root, baseUrl) {
     forEachMatchingElement(root, "[href]", function (node) {
       rebaseUrlAttribute(node, "href", baseUrl);
     });
@@ -221,7 +226,7 @@
     });
   }
 
-  async function resolveCanonicalBlueprintPreview(previewKey) {
+  export async function resolveCanonicalBlueprintPreview(previewKey) {
     const result = await resolveBlueprintPreview(previewKey);
     if (!result.ok) {
       return canonicalPreviewResult(result);
@@ -288,7 +293,7 @@
     }
   }
 
-  async function renderCanonicalBlueprintPreviewInto(target, previewKey, options) {
+  export async function renderCanonicalBlueprintPreviewInto(target, previewKey, options) {
     if (!(target instanceof Element)) {
       throw new Error("renderCanonicalBlueprintPreviewInto target must be a DOM Element");
     }
@@ -300,3 +305,26 @@
     renderHtmlInto(target, html, opts);
     return result;
   }
+
+  export const previewRuntimeRender = {
+    resolveBlueprintPreview,
+    renderHtmlInto,
+    renderBlueprintPreviewInto,
+    canonicalPreviewDocuments,
+    canonicalPreviewHtmlByKey,
+    urlWithoutHash,
+    currentDocumentUrlWithoutHash,
+    canonicalPreviewUrl,
+    canonicalPreviewId,
+    canonicalPreviewDiagnosticHtml,
+    canonicalPreviewResult,
+    loadCanonicalPreviewDocument,
+    rebaseUrlAttribute,
+    forEachMatchingElement,
+    canonicalPreviewDocumentBaseUrl,
+    rebaseCanonicalPreviewLinks,
+    resolveCanonicalBlueprintPreview,
+    renderCanonicalBlueprintPreviewInto
+  };
+
+export default previewRuntimeRender;

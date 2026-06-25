@@ -6,7 +6,16 @@ import {
   loadManifestGraphs,
   normalizeGraphData
 } from "./blueprint-graph-api.mjs";
-import "./blueprint-preview-core.js";
+import {
+  dataUrl as coreDataUrl,
+  graphApiModuleUrl as coreGraphApiModuleUrl,
+  htmlCacheUrl as coreHtmlCacheUrl,
+  manifestUrl as coreManifestUrl,
+  previewApiModuleUrl as corePreviewApiModuleUrl,
+  previewKey as corePreviewKey,
+  statementPreviewKey as coreStatementPreviewKey,
+  version as coreVersion
+} from "./blueprint-preview-core.mjs";
 
 export {
   getGraphData,
@@ -17,12 +26,7 @@ export {
   normalizeGraphData
 };
 
-const previewCore =
-  typeof globalThis !== "undefined" && globalThis.VersoBlueprintPreviewCore
-    ? globalThis.VersoBlueprintPreviewCore
-    : {};
-
-export const version = previewCore.version || 1;
+export const version = coreVersion;
 
 function currentHref() {
   return typeof window !== "undefined" && window.location ? window.location.href : "";
@@ -83,7 +87,7 @@ export function dataUrl(filename, baseUrl = currentHref()) {
   if (api && typeof api.dataUrl === "function" && baseUrl === currentHref()) {
     return api.dataUrl(filename);
   }
-  return previewCore.dataUrl(filename, baseUrl);
+  return coreDataUrl(filename, baseUrl);
 }
 
 export function manifestUrl(baseUrl = currentHref()) {
@@ -91,7 +95,7 @@ export function manifestUrl(baseUrl = currentHref()) {
   if (api && typeof api.manifestUrl === "function" && baseUrl === currentHref()) {
     return api.manifestUrl();
   }
-  return previewCore.manifestUrl(baseUrl);
+  return coreManifestUrl(baseUrl);
 }
 
 export function htmlCacheUrl(baseUrl = currentHref()) {
@@ -99,7 +103,7 @@ export function htmlCacheUrl(baseUrl = currentHref()) {
   if (api && typeof api.htmlCacheUrl === "function" && baseUrl === currentHref()) {
     return api.htmlCacheUrl();
   }
-  return previewCore.htmlCacheUrl(baseUrl);
+  return coreHtmlCacheUrl(baseUrl);
 }
 
 export function graphApiModuleUrl(baseUrl = currentHref()) {
@@ -107,7 +111,7 @@ export function graphApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.graphApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.graphApiModuleUrl();
   }
-  return previewCore.graphApiModuleUrl(baseUrl);
+  return coreGraphApiModuleUrl(baseUrl);
 }
 
 export function previewApiModuleUrl(baseUrl = currentHref()) {
@@ -115,15 +119,15 @@ export function previewApiModuleUrl(baseUrl = currentHref()) {
   if (api && typeof api.previewApiModuleUrl === "function" && baseUrl === currentHref()) {
     return api.previewApiModuleUrl();
   }
-  return previewCore.previewApiModuleUrl(baseUrl);
+  return corePreviewApiModuleUrl(baseUrl);
 }
 
 export function previewKey(label, facet) {
-  return previewCore.previewKey(label, facet);
+  return corePreviewKey(label, facet);
 }
 
 export function statementPreviewKey(label) {
-  return previewCore.statementPreviewKey(label);
+  return coreStatementPreviewKey(label);
 }
 
 function fallbackStatus(url) {

@@ -125,15 +125,15 @@
   own tests plus ephemeral checkout validations, not the preferred end-user
   interface.
 - Harnessed artifact-generation flows now proactively refresh the owner-module
-  mtimes for embedded package assets such as `open-target-details.js`,
-  `blueprint-graph-core.js`, `blueprint-preview-core.js`,
-  `preview-runtime-base.js`, `preview-runtime-data.js`,
-  `preview-runtime-render.js`, `preview-runtime-hydration.js`,
-  `preview-runtime-lifecycle.js`, `preview-runtime-surface.js`,
-  `preview-runtime-template.js`, `preview-runtime.js`, `inline-preview.js`,
-  `graph.css`, `graph-runtime-core.js`, `graph.js`, `summary.css`, `summary-preview.js`,
-  `bibliography.css`, `code-summary-preview.js`, `relation-panel.js`,
-  `blueprint-slides.css`, `blueprint-slides.js`, and `static-web/math.js` before build
+  mtimes for embedded package assets such as `open-target-details.mjs`,
+  `preview-ready.mjs`, `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
+  `preview-runtime-base.mjs`, `preview-runtime-data.mjs`,
+  `preview-runtime-render.mjs`, `preview-runtime-hydration.mjs`,
+  `preview-runtime-lifecycle.mjs`, `preview-runtime-surface.mjs`,
+  `preview-runtime-template.mjs`, `preview-runtime-api.mjs`, `inline-preview.mjs`,
+  `graph.css`, `graph-runtime-core.mjs`, `graph.mjs`, `summary.css`,
+  `bibliography.css`, `relation-panel.mjs`,
+  `blueprint-slides.css`, `blueprint-slides.mjs`, and `static-web/math.js` before build
   steps run, remove those owner modules' cached build outputs, and then run a
   targeted root `lake build` for those owner modules. This keeps downstream
   generator projects from silently serving stale embedded assets when only the

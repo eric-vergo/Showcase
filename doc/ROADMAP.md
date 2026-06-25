@@ -65,29 +65,42 @@ Work:
    and readiness/debug hooks. Each split should keep the same emitted bundled
    asset and public `onRenderReady` API, then move private helpers in this order:
    - readiness/bootstrap and render API installation
-     (landed as the current `Commands/preview-runtime.js` API chunk)
+     (landed as the current `Commands/preview-runtime-api.mjs` API chunk)
    - manifest/cache loading, status, and entry lookup
-     (landed as `Commands/preview-runtime-data.js`)
+     (landed as `Commands/preview-runtime-data.mjs`, embedded into the current
+     bundled runtime as a classic-script fragment)
    - generated-data URL and preview-key primitives shared by bundled runtime
      and ESM clients
-     (landed as `blueprint-preview-core.js`, with runtime stores still in
-     `Commands/preview-runtime-data.js`)
+     (landed as `blueprint-preview-core.mjs`, embedded into current Verso
+     page assets through a generated classic-script adapter; runtime stores
+     still live in `Commands/preview-runtime-data.mjs`)
    - fragment and canonical-node resolution plus diagnostic rendering
-     (landed as `Commands/preview-runtime-render.js`)
+     (landed as `Commands/preview-runtime-render.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - hydration registry and math/feature hydrator dispatch
-     (landed as `Commands/preview-runtime-hydration.js`)
+     (landed as `Commands/preview-runtime-hydration.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - template descriptor binding for Lean-emitted preview triggers
-     (landed as `Commands/preview-runtime-template.js`)
+     (landed as `Commands/preview-runtime-template.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - preview surface state, slots, and content updates
-     (landed as `Commands/preview-runtime-surface.js`)
+     (landed as `Commands/preview-runtime-surface.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - lifecycle binding for trigger events, dismissal, pointer checks,
      repositioning, and keep-open checks
-     (landed as `Commands/preview-runtime-lifecycle.js`)
+     (landed as `Commands/preview-runtime-lifecycle.mjs`, embedded into the
+     current bundled runtime as a classic-script fragment)
    - debug hooks used by tests and local inspection
-     (landed as `Commands/preview-runtime-base.js`)
+     (landed as `Commands/preview-runtime-base.mjs`, embedded into the current
+     bundled runtime as a classic-script fragment)
    - graph runtime utilities such as option normalization, canvas sizing,
      graph block state, script loading, and graph-specific panel positioning
-     (landed as `Commands/graph-runtime-core.js`)
+     (landed as `Commands/graph-runtime-core.mjs`, embedded into current
+     Verso page assets through a generated classic-script adapter)
+   - graph rendering orchestration, variant selection, and graph UI event
+     binding
+     (landed as `Commands/graph.mjs`, embedded into current Verso page assets
+     through a generated classic-script adapter)
 
 ### Data Model and Status Semantics
 

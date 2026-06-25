@@ -1,6 +1,12 @@
+import { collectPreviewTemplates, readElementOption, readFunctionOption, readHtml, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
+import { blueprintHtmlCacheDiagnosticHtml } from "./preview-runtime-data.mjs";
+import { resolveBlueprintPreview } from "./preview-runtime-render.mjs";
+import { setTemplatePreviewDescriptorBinder } from "./preview-runtime-hydration.mjs";
+import { createPreviewSurface } from "./preview-runtime-surface.mjs";
+
   // Template preview binding adapts the shared helpers to concrete surfaces.
 
-  function bindTemplatePreview(options) {
+  export function bindTemplatePreview(options) {
     const opts = options && typeof options === "object" ? options : {};
     const root = readRootOption(opts, "root", document);
     const previewRoot = readRootOption(opts, "previewRoot", root);
@@ -115,13 +121,13 @@
     };
   }
 
-  function readTemplateDescriptorString(root, name, fallback) {
+  export function readTemplateDescriptorString(root, name, fallback) {
     if (!(root instanceof Element)) return fallback;
     const value = (root.getAttribute("data-bp-template-preview-" + name) || "").trim();
     return value.length > 0 ? value : fallback;
   }
 
-  function bindTemplatePreviewDescriptor(root) {
+  export function bindTemplatePreviewDescriptor(root) {
     if (!(root instanceof Element)) return null;
     if (root.getAttribute("data-bp-template-preview-bound") === "1") return null;
 
@@ -162,7 +168,7 @@
     return controller;
   }
 
-  function bindTemplatePreviewDescriptors(root) {
+  export function bindTemplatePreviewDescriptors(root) {
     const scope = root instanceof Element || root instanceof Document ? root : document;
     const selector = "[data-bp-template-preview-root]";
     const controllers = [];
@@ -176,3 +182,16 @@
     });
     return controllers;
   }
+
+  if (typeof setTemplatePreviewDescriptorBinder === "function") {
+    setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors);
+  }
+
+  export const previewRuntimeTemplate = {
+    bindTemplatePreview,
+    readTemplateDescriptorString,
+    bindTemplatePreviewDescriptor,
+    bindTemplatePreviewDescriptors
+  };
+
+export default previewRuntimeTemplate;

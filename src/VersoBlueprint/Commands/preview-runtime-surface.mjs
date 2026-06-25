@@ -1,74 +1,19 @@
+import { escapeHtml, normalizePanelBehavior, normalizePreviewMode, normalizePreviewPlacement, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readStringOption } from "./preview-runtime-base.mjs";
+import { renderHtmlInto, resolveBlueprintPreview } from "./preview-runtime-render.mjs";
+import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewTriggers, positionAnchoredPanel, readAnchorRect, shouldKeepOpen } from "./preview-runtime-lifecycle.mjs";
+
   // Bundled preview surface, panel, and content helpers.
   //
   // These helpers own panel slots, behavior state, content updates,
   // and runtime diagnostic markup for bundled clients.
 
-  function normalizePreviewMode(rawMode, fallback) {
-    const defaultMode = fallback === "hover" || fallback === "pinned" ? fallback : "hover";
-    const mode = String(rawMode || "").trim().toLowerCase();
-    if (mode === "hover") return "hover";
-    if (mode === "pinned") return "pinned";
-    return defaultMode;
-  }
-
-  function normalizePreviewPlacement(rawPlacement, fallback) {
-    const defaultPlacement =
-      fallback === "anchored" || fallback === "docked" ? fallback : "anchored";
-    const placement = String(rawPlacement || "").trim().toLowerCase();
-    if (placement === "anchored") return "anchored";
-    if (placement === "docked") return "docked";
-    return defaultPlacement;
-  }
-
-  function readPanelBehavior(panel, defaults) {
-    const defaultMode = normalizePreviewMode(defaults && defaults.mode, "hover");
-    const defaultPlacement = normalizePreviewPlacement(defaults && defaults.placement, "anchored");
-    if (!(panel instanceof Element)) {
-      return {
-        mode: defaultMode,
-        placement: defaultPlacement,
-        isPinned: defaultMode === "pinned",
-        isHover: defaultMode === "hover",
-        isAnchored: defaultPlacement === "anchored",
-        isDocked: defaultPlacement === "docked"
-      };
-    }
-    const rawMode = (panel.getAttribute("data-bp-preview-mode") || "").trim();
-    const rawPlacement = (panel.getAttribute("data-bp-preview-placement") || "").trim();
-    const mode = normalizePreviewMode(rawMode, defaultMode);
-    const placement = normalizePreviewPlacement(rawPlacement, defaultPlacement);
-    return {
-      mode: mode,
-      placement: placement,
-      isPinned: mode === "pinned",
-      isHover: mode === "hover",
-      isAnchored: placement === "anchored",
-      isDocked: placement === "docked"
-    };
-  }
-
-  function normalizePanelBehavior(panel, defaults, nextBehavior) {
-    const fallback = readPanelBehavior(panel, defaults);
-    if (!nextBehavior || typeof nextBehavior !== "object") return fallback;
-    const mode = normalizePreviewMode(nextBehavior.mode, fallback.mode);
-    const placement = normalizePreviewPlacement(nextBehavior.placement, fallback.placement);
-    return {
-      mode: mode,
-      placement: placement,
-      isPinned: mode === "pinned",
-      isHover: mode === "hover",
-      isAnchored: placement === "anchored",
-      isDocked: placement === "docked"
-    };
-  }
-
-  function resetPanelPosition(panel) {
+  export function resetPanelPosition(panel) {
     if (!(panel instanceof Element)) return;
     panel.style.left = "";
     panel.style.top = "";
   }
 
-  function hidePreviewSurfaces(root) {
+  export function hidePreviewSurfaces(root) {
     const scope = root instanceof Element || root instanceof Document ? root : document;
     const selector = "#bp-inline-preview-panel, #bp-inline-preview-child-panel, .bp_preview_panel";
     const hidePanel = function (panel) {
@@ -82,7 +27,7 @@
     scope.querySelectorAll(selector).forEach(hidePanel);
   }
 
-  function configureCloseButton(closeButton, onClose, behavior) {
+  export function configureCloseButton(closeButton, onClose, behavior) {
     if (!(closeButton instanceof Element)) return;
     const pinned = !!(behavior && behavior.isPinned);
     closeButton.hidden = !pinned;
@@ -93,7 +38,7 @@
     bindCloseOnce(closeButton, onClose);
   }
 
-  function pointerWithinPanel(panel, ev) {
+  export function pointerWithinPanel(panel, ev) {
     if (!(panel instanceof Element)) return false;
     if (!ev || !Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY)) return false;
     const rect = panel.getBoundingClientRect();
@@ -105,14 +50,14 @@
     );
   }
 
-  function readPanelSlot(panel, selector) {
+  export function readPanelSlot(panel, selector) {
     if (!(panel instanceof Element)) return null;
     if (typeof selector !== "string" || selector.length === 0) return null;
     const node = panel.querySelector(selector);
     return node instanceof Element ? node : null;
   }
 
-  function readPreviewSurfaceSlots(panel, options) {
+  export function readPreviewSurfaceSlots(panel, options) {
     const opts = options && typeof options === "object" ? options : {};
     return {
       panel: panel instanceof Element ? panel : null,
@@ -124,7 +69,7 @@
     };
   }
 
-  function createPreviewSurface(options) {
+  export function createPreviewSurface(options) {
     const opts = options && typeof options === "object" ? options : {};
     const panel = readElementOption(opts, "panel", null);
     if (!(panel instanceof Element)) return null;
@@ -347,7 +292,7 @@
     return surface;
   }
 
-  async function renderPreviewIntoSurface(surface, previewKey, options) {
+  export async function renderPreviewIntoSurface(surface, previewKey, options) {
     if (!surface || typeof surface.replaceBody !== "function") {
       throw new Error("renderPreviewIntoSurface surface must be a preview surface");
     }
@@ -417,7 +362,7 @@
     }
   }
 
-  async function resolvePreviewHtml(previewKey, options) {
+  export async function resolvePreviewHtml(previewKey, options) {
     const opts = options && typeof options === "object" ? options : {};
     const fallbackHtml = readStringOption(opts, "fallbackHtml", "");
     try {
@@ -446,45 +391,7 @@
     }
   }
 
-  // Option readers.
-
-  function readStringOption(options, name, fallback) {
-    return options && typeof options[name] === "string" && options[name].length > 0
-      ? options[name]
-      : fallback;
-  }
-
-  function readObjectOption(options, name, fallback) {
-    return options && options[name] && typeof options[name] === "object"
-      ? options[name]
-      : fallback;
-  }
-
-  function readNumberOption(options, name, fallback) {
-    return options && Number.isFinite(options[name])
-      ? options[name]
-      : fallback;
-  }
-
-  function readFunctionOption(options, name, fallback) {
-    return options && typeof options[name] === "function"
-      ? options[name]
-      : fallback;
-  }
-
-  function readElementOption(options, name, fallback) {
-    return options && options[name] instanceof Element
-      ? options[name]
-      : fallback;
-  }
-
-  function readRootOption(options, name, fallback) {
-    return options && (options[name] instanceof Element || options[name] instanceof Document)
-      ? options[name]
-      : fallback;
-  }
-
-  function createPreviewPanel(options) {
+  export function createPreviewPanel(options) {
     const opts = options && typeof options === "object" ? options : {};
     const panel = document.createElement("aside");
     const id = readStringOption(opts, "id", "");
@@ -552,7 +459,7 @@
     return panel;
   }
 
-  function previewMessageHtml(options) {
+  export function previewMessageHtml(options) {
     const opts = options && typeof options === "object" ? options : {};
     const rootClass = readStringOption(opts, "rootClass", "bp_preview_message");
     const titleClass = readStringOption(opts, "titleClass", "bp_preview_message_title");
@@ -577,7 +484,7 @@
     return html;
   }
 
-  function setPreviewHeaderLink(labelNode, sourceNode) {
+  export function setPreviewHeaderLink(labelNode, sourceNode) {
     if (!(labelNode instanceof Element)) return;
     const label =
       sourceNode instanceof Element
@@ -601,3 +508,20 @@
       labelNode.hidden = true;
     }
   }
+
+  export const previewRuntimeSurface = {
+    resetPanelPosition,
+    hidePreviewSurfaces,
+    configureCloseButton,
+    pointerWithinPanel,
+    readPanelSlot,
+    readPreviewSurfaceSlots,
+    createPreviewSurface,
+    renderPreviewIntoSurface,
+    resolvePreviewHtml,
+    createPreviewPanel,
+    previewMessageHtml,
+    setPreviewHeaderLink
+  };
+
+export default previewRuntimeSurface;

@@ -1,6 +1,6 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-06-05
+Last reviewed: 2026-06-24
 
 This file is the repository's local "Verso upstream backlog": a queue of
 changes that would be better solved in upstream `verso`, Lake, or Lean once the
@@ -66,7 +66,24 @@ pull requests unless that upstream write action is explicitly requested.
 
 ## Runtime Assets and Browser Rendering
 
-- [ ] Add a Verso Slides `Block.ofHtml` constructor.
+- [ ] Add first-class structured runtime assets, including ESM module scripts.
+  - current Blueprint workaround:
+    Blueprint package assets are embedded through package-owned Lean modules and
+    emitted through Verso's current ordered classic-script/style loading path,
+    so ESM-shaped runtime code still needs Blueprint-local wrappers and
+    generated compatibility shims
+  - desired upstream behavior:
+    downstream packages should be able to declare emitted runtime assets with
+    stable output URLs, explicit asset kinds such as stylesheet, classic script,
+    and `type="module"` script, and dependency/order metadata that lets ESM
+    entrypoints import package-owned modules without string-concatenated
+    bundles
+  - removable Blueprint code:
+    ad hoc `include_str` asset assembly, `extraJs` compatibility wrappers, and
+    local owner-module invalidation rules whose only job is keeping embedded
+    browser assets fresh
+
+- [ ] Expose Verso Slides hooks for quiet rendering and initial hover state.
   - current Blueprint workaround:
     `VersoBlueprint.Slides.slidesMainWithBlueprintPreviews` supplies a local
     `GenreHtml Slides IO` instance so slide graft blocks elaborated through

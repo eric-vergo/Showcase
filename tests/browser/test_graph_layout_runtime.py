@@ -138,11 +138,9 @@ class TestGraphLayoutRuntime:
                 """
                 const block = document.querySelector(".bp_graph_fullwidth");
                 const pageGraph = api.getGraphData(block);
-                const globalPageGraph = window.bpGraphApi.getGraphData(block);
                 const manifestGraphs = await api.loadGraphs();
                 const manifestGraph = manifestGraphs.find((graph) => graph.key === pageGraph.key) || null;
                 const variants = api.getGraphVariants(block);
-                const globalVariants = window.bpGraphApi.getGraphVariants(block);
                 const graphModuleUrl = new URL("../-verso-data/api/graph.mjs", window.location.href).href;
                 const graphModule = await import(graphModuleUrl);
                 const esmPageGraph = graphModule.getGraphData(block);
@@ -153,8 +151,7 @@ class TestGraphLayoutRuntime:
                     ? manifestGraph.nodes.find((node) => node.label === "used_target") || null
                     : null;
                 return {
-                    apiVersion: window.bpGraphApi.version,
-                    sameGlobalKey: !!globalPageGraph && globalPageGraph.key === pageGraph.key,
+                    hasLegacyGlobal: typeof window.bpGraphApi !== "undefined",
                     sameEsmPageKey: !!esmPageGraph && esmPageGraph.key === pageGraph.key,
                     pageKey: pageGraph.key,
                     manifestGraphs: manifestGraphs.length,
@@ -167,7 +164,6 @@ class TestGraphLayoutRuntime:
                     manifestEdges: manifestGraph ? manifestGraph.edges.length : 0,
                     manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
                     variantKeys: variants.map((variant) => variant.key),
-                    globalVariantKeys: globalVariants.map((variant) => variant.key),
                     esmVariantKeys: esmVariants.map((variant) => variant.key),
                     sampleTitle: sample ? sample.title : "",
                     sampleHref: sample ? sample.href : "",
@@ -178,8 +174,7 @@ class TestGraphLayoutRuntime:
             )
         )
 
-        assert graph_data["apiVersion"] == 1
-        assert graph_data["sameGlobalKey"]
+        assert graph_data["hasLegacyGlobal"] is False
         assert graph_data["sameEsmPageKey"]
         assert graph_data["pageKey"].startswith("graph:#<")
         assert graph_data["manifestGraphs"] == 1
@@ -192,7 +187,6 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestEdges"] == graph_data["pageEdges"]
         assert graph_data["manifestGroups"] == graph_data["pageGroups"]
         assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
-        assert set(graph_data["variantKeys"]) == set(graph_data["globalVariantKeys"])
         assert set(graph_data["variantKeys"]) == set(graph_data["esmVariantKeys"])
         assert graph_data["sampleTitle"].startswith("Definition")
         assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"

@@ -7,20 +7,24 @@ import re
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
 RUNTIME_BOOTSTRAP_JS = {
-    Path("Commands/preview-runtime-base.js"),
-    Path("Commands/preview-runtime-data.js"),
-    Path("Commands/preview-runtime-render.js"),
-    Path("Commands/preview-runtime-hydration.js"),
-    Path("Commands/preview-runtime-lifecycle.js"),
-    Path("Commands/preview-runtime-surface.js"),
-    Path("Commands/preview-runtime-template.js"),
-    Path("Commands/preview-runtime.js"),
-    Path("Commands/preview-ready.js"),
+    Path("Commands/preview-runtime-base.mjs"),
+    Path("Commands/preview-runtime-data.mjs"),
+    Path("Commands/preview-runtime-render.mjs"),
+    Path("Commands/preview-runtime-hydration.mjs"),
+    Path("Commands/preview-runtime-lifecycle.mjs"),
+    Path("Commands/preview-runtime-surface.mjs"),
+    Path("Commands/preview-runtime-template.mjs"),
+    Path("Commands/preview-runtime-api.mjs"),
+    Path("Commands/preview-ready.mjs"),
+    Path("blueprint-graph-api.mjs"),
+    Path("blueprint-graph-core.mjs"),
+    Path("blueprint-preview-api.mjs"),
+    Path("blueprint-preview-core.mjs"),
 }
 
 
 def blueprint_js_files() -> list[Path]:
-    return sorted(BLUEPRINT_SRC.rglob("*.js"))
+    return sorted([*BLUEPRINT_SRC.rglob("*.js"), *BLUEPRINT_SRC.rglob("*.mjs")])
 
 
 def blueprint_js_source() -> str:

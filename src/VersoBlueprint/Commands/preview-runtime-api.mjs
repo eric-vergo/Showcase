@@ -1,5 +1,6 @@
-  // API assembly and readiness synchronization.
+// API assembly and readiness synchronization.
 
+export function installPreviewRuntimeApi() {
   const previewDataApi = {
     dataUrl: blueprintDataUrl,
     manifestUrl: blueprintManifestUrl,
@@ -100,13 +101,6 @@
     bundledFeatureRenderHelpers
   );
 
-  if (!window.bpGraphApi || typeof window.bpGraphApi !== "object") {
-    window.bpGraphApi = {};
-  }
-  if (typeof window.bpGraphApi.graphApiModuleUrl !== "function") {
-    window.bpGraphApi.graphApiModuleUrl = previewDataApi.graphApiModuleUrl;
-  }
-
   function reportRenderReadyError(err) {
     window.setTimeout(function () {
       throw err;
@@ -143,3 +137,12 @@
       reportRenderReadyError(err);
     }
   });
+
+  return renderApi;
+}
+
+export const previewRuntimeApi = {
+  installPreviewRuntimeApi
+};
+
+export default previewRuntimeApi;
