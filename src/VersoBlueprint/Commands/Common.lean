@@ -196,9 +196,6 @@ private def previewCoreJs : String :=
 
 private def previewRuntimeBaseModuleMjs : String := include_str "preview-runtime-base.mjs"
 
-private def previewRuntimeBaseJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeBaseModuleMjs
-
 private def previewRuntimeDataModuleMjs : String := include_str "preview-runtime-data.mjs"
 
 private def previewRuntimeDataClassicPrelude : String := r##"
@@ -301,53 +298,35 @@ const coreLoadGraphs = function (options) {
 };
 "##
 
-private def previewRuntimeDataJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragmentWithPrelude
-    previewRuntimeDataModuleMjs
-    previewRuntimeDataClassicPrelude
-
 private def previewRuntimeRenderModuleMjs : String := include_str "preview-runtime-render.mjs"
-
-private def previewRuntimeRenderJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeRenderModuleMjs
 
 private def previewRuntimeHydrationModuleMjs : String := include_str "preview-runtime-hydration.mjs"
 
-private def previewRuntimeHydrationJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeHydrationModuleMjs
-
 private def previewRuntimeLifecycleModuleMjs : String := include_str "preview-runtime-lifecycle.mjs"
-
-private def previewRuntimeLifecycleJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeLifecycleModuleMjs
 
 private def previewRuntimeSurfaceModuleMjs : String := include_str "preview-runtime-surface.mjs"
 
-private def previewRuntimeSurfaceJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeSurfaceModuleMjs
-
 private def previewRuntimeTemplateModuleMjs : String := include_str "preview-runtime-template.mjs"
-
-private def previewRuntimeTemplateJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeTemplateModuleMjs
 
 private def previewRuntimeApiModuleMjs : String := include_str "preview-runtime-api.mjs"
 
-private def previewRuntimeApiJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeApiModuleMjs ++
-    "\ninstallPreviewRuntimeApi();"
+private def previewRuntimeFragments : List String :=
+  [ Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeBaseModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragmentWithPrelude
+      previewRuntimeDataModuleMjs
+      previewRuntimeDataClassicPrelude,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeRenderModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeHydrationModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeLifecycleModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeSurfaceModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeTemplateModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeApiModuleMjs ++
+      "\ninstallPreviewRuntimeApi();" ]
 
 private def previewRuntimeJs : String :=
   "(function () {\n" ++
   "  if (window.VersoBlueprint && window.VersoBlueprint.render) return;\n\n" ++
-  previewRuntimeBaseJs ++ "\n" ++
-  previewRuntimeDataJs ++ "\n" ++
-  previewRuntimeRenderJs ++ "\n" ++
-  previewRuntimeHydrationJs ++ "\n" ++
-  previewRuntimeLifecycleJs ++ "\n" ++
-  previewRuntimeSurfaceJs ++ "\n" ++
-  previewRuntimeTemplateJs ++ "\n" ++
-  previewRuntimeApiJs ++ "\n" ++
+  String.intercalate "\n" previewRuntimeFragments ++ "\n" ++
   "})();"
 
 def previewHoverUtilsJs : String :=
