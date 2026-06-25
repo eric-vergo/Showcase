@@ -142,11 +142,7 @@ structure AuthorInfo where
   displayName : String
   url : Option String := none
   imageUrl : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote AuthorInfo where
-  quote info := mkCApp ``AuthorInfo.mk #[quote info.displayName, quote info.url, quote info.imageUrl]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 inductive NodeKind where
   | definition
@@ -154,7 +150,7 @@ inductive NodeKind where
   | lemma
   | theorem
   | corollary
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 instance : ToString NodeKind where
   toString
@@ -171,34 +167,13 @@ def NodeKind.isTheoremLike : NodeKind → Bool
 inductive InProgressKind where
   | statement (kind : NodeKind)
   | proof
-deriving Inhabited, Repr, ToJson, FromJson
-
-open Syntax in
-instance : Quote NodeKind where
-  quote
-    | .definition => mkCApp ``NodeKind.definition #[]
-    | .proposition => mkCApp ``NodeKind.proposition #[]
-    | .lemma => mkCApp ``NodeKind.lemma #[]
-    | .theorem => mkCApp ``NodeKind.theorem #[]
-    | .corollary => mkCApp ``NodeKind.corollary #[]
-
-open Syntax in
-instance : Quote InProgressKind where
-  quote
-    | .statement kind => mkCApp ``InProgressKind.statement #[quote kind]
-    | .proof => mkCApp ``InProgressKind.proof #[]
+deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /-- Where an incompleteness marker appears in a declaration. -/
 inductive SorryWhere where
   | statement
   | proof
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote SorryWhere where
-  quote
-    | .statement => mkCApp ``SorryWhere.statement #[]
-    | .proof => mkCApp ``SorryWhere.proof #[]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
 Structured metadata for one incomplete location in a declaration.
@@ -207,11 +182,7 @@ Structured metadata for one incomplete location in a declaration.
 structure SorryInfo where
   location : SorryWhere
   refs? : Option Nat := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote SorryInfo where
-  quote s := mkCApp ``SorryInfo.mk #[quote s.location, quote s.refs?]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /--
 Formalization/proof status for a declaration.
@@ -222,15 +193,7 @@ inductive ProvedStatus where
   | missing
   | axiomLike
   | containsSorry (info : Array SorryInfo)
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote ProvedStatus where
-  quote
-    | .proved => mkCApp ``ProvedStatus.proved #[]
-    | .missing => mkCApp ``ProvedStatus.missing #[]
-    | .axiomLike => mkCApp ``ProvedStatus.axiomLike #[]
-    | .containsSorry info => mkCApp ``ProvedStatus.containsSorry #[quote info]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 /-- Information about a code block, including Lean-level analysis -/
 structure LiterateDef where
@@ -388,29 +351,13 @@ deriving Repr, Inhabited, ToJson, FromJson
 inductive ExternalOrigin where
   | directiveLean
   | blueprintAttr
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote ExternalOrigin where
-  quote
-    | .directiveLean => mkCApp ``ExternalOrigin.directiveLean #[]
-    | .blueprintAttr => mkCApp ``ExternalOrigin.blueprintAttr #[]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 inductive ExternalDeclProvenance where
   | inWorkspace (moduleName : Name) (sourcePath : String)
   | outWorkspace (moduleName : Name) (sourcePath? : Option String := none)
   | unknown
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote ExternalDeclProvenance where
-  quote
-    | .inWorkspace moduleName sourcePath =>
-      mkCApp ``ExternalDeclProvenance.inWorkspace #[quote moduleName, quote sourcePath]
-    | .outWorkspace moduleName sourcePath? =>
-      mkCApp ``ExternalDeclProvenance.outWorkspace #[quote moduleName, quote sourcePath?]
-    | .unknown =>
-      mkCApp ``ExternalDeclProvenance.unknown #[]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def ExternalDeclProvenance.moduleName? : ExternalDeclProvenance → Option Name
   | .inWorkspace moduleName _ => some moduleName
@@ -430,15 +377,7 @@ def ExternalDeclProvenance.label : ExternalDeclProvenance → String
 inductive ExternalDeclLookupError where
   | notPresentAtRegistration
   | notFoundInEnvironment
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote ExternalDeclLookupError where
-  quote
-    | .notPresentAtRegistration =>
-      mkCApp ``ExternalDeclLookupError.notPresentAtRegistration #[]
-    | .notFoundInEnvironment =>
-      mkCApp ``ExternalDeclLookupError.notFoundInEnvironment #[]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def ExternalDeclLookupError.message : ExternalDeclLookupError → String
   | .notPresentAtRegistration => "name was not present during directive/code-block registration"
@@ -489,34 +428,14 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
-deriving Repr, Inhabited, ToJson, FromJson
-
-open Syntax in
-instance : Quote ExternalRef where
-  quote ref := mkCApp ``ExternalRef.mk
-    #[ quote ref.written
-     , quote ref.canonical
-     , quote ref.origin
-     , quote ref.present
-     , quote ref.provedStatus
-     , quote ref.provenance
-     , quote ref.range?
-     , quote ref.selectionRange?
-     , quote ref.kind
-     , quote ref.sourceHref?
-     , quote ref.render
-     ]
+deriving Repr, Inhabited, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
   { written := name, canonical := name.eraseMacroScopes, origin, kind := .definition }
 
 structure RustInlineCode where
   raw : String
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote RustInlineCode where
-  quote code := mkCApp ``RustInlineCode.mk #[quote code.raw]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 inductive CodeRef where
   /-

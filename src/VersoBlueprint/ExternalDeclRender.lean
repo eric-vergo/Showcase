@@ -19,17 +19,7 @@ abbrev ExternalDeclHtml := Verso.Output.Html
 inductive ExternalDeclRenderError where
   | moduleUnavailable (decl : Name)
   | exception (decl : Name) (message : String)
-  deriving Repr, Inhabited
-
-deriving instance Lean.ToJson for ExternalDeclRenderError
-deriving instance Lean.FromJson for ExternalDeclRenderError
-
-instance : Lean.Quote ExternalDeclRenderError where
-  quote
-    | .moduleUnavailable decl =>
-        Lean.Syntax.mkApp (Lean.mkCIdent ``ExternalDeclRenderError.moduleUnavailable) #[Lean.quote decl]
-    | .exception decl message =>
-        Lean.Syntax.mkApp (Lean.mkCIdent ``ExternalDeclRenderError.exception) #[Lean.quote decl, Lean.quote message]
+  deriving Repr, Inhabited, Lean.ToJson, Lean.FromJson, Lean.Quote
 
 def ExternalDeclRenderError.message : ExternalDeclRenderError → String
   | .moduleUnavailable decl => s!"module unavailable for {decl}"
