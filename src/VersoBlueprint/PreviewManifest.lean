@@ -570,15 +570,15 @@ private def graphCoreModuleMjs : String := include_str "blueprint-graph-core.mjs
 
 private def previewCoreModuleMjs : String := include_str "blueprint-preview-core.mjs"
 
-private def graphApiModuleJs : String := include_str "blueprint-graph-api.mjs"
+private def graphApiModuleMjs : String := include_str "blueprint-graph-api.mjs"
 
-private def previewApiModuleJs : String := include_str "blueprint-preview-api.mjs"
+private def previewApiModuleMjs : String := include_str "blueprint-preview-api.mjs"
 
-private def graphApiModuleAliasJs : String :=
+private def graphApiModuleAliasMjs : String :=
   "export * from \"../" ++ graphApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ graphApiModuleFilename ++ "\";\n"
 
-private def previewApiModuleAliasJs : String :=
+private def previewApiModuleAliasMjs : String :=
   "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ previewApiModuleFilename ++ "\";\n"
 
@@ -1665,10 +1665,10 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
   IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
-  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleJs
-  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleJs
-  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasJs
-  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasJs
+  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
+  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
+  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 

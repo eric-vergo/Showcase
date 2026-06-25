@@ -33,7 +33,7 @@ private def stripEsmExportKeywords (source : String) : String :=
     |>.replace "export class " "class "
 
 /--
-Embed a private ESM source module as a classic-script compatibility adapter.
+Embed a private ESM source module as a classic-script output adapter.
 The returned script installs the module's globals by running `installCall`
 inside an IIFE whose `globalScope` argument is the browser global.
 -/
