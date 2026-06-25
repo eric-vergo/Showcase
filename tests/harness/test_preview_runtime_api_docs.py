@@ -261,6 +261,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("async function renderPreviewIntoSurface(surface, previewKey, options)", surface)
         self.assertIn("function previewMessageHtml(options)", surface)
         self.assertIn("export const previewRuntimeSurface = {", surface)
+        self.assertIn("async function renderBlueprintNodeInto(target, request, options)", render)
+        self.assertIn("function externalMarkupRendererPayload", render)
         self.assertIn("function bindTemplatePreview(options)", template)
         self.assertIn("function bindTemplatePreviewDescriptor(root)", template)
         self.assertIn("export const previewRuntimeTemplate = {", template)
@@ -271,6 +273,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("const stableCustomClientApi = {", api)
         self.assertIn("export function installPreviewRuntimeApi()", api)
         self.assertIn("function onRenderReady(fn)", api)
+        self.assertIn("renderNode: previewRenderApi.renderNode", api)
         for helper in (
             "function loadBlueprintStore(store)",
             "function previewKey(label, facet)",

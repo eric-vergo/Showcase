@@ -1,5 +1,5 @@
 import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
-import { blueprintHtmlCacheDiagnosticHtml, blueprintManifestDiagnosticHtml, loadBlueprintHtmlCacheEntry, loadBlueprintManifestEntry, missingPreviewKeyDiagnosticHtml } from "./preview-runtime-data.mjs";
+import { blueprintHtmlCacheDiagnosticHtml, blueprintManifestDiagnosticHtml, loadBlueprintHtmlCacheEntry, loadBlueprintManifestEntry, missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
 import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
   // Preview resolution joins semantic manifest entries with opaque body fragments.
@@ -87,6 +87,504 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return result;
   }
 
+  // Label-oriented node rendering.
+  //
+  // `renderPreviewInto` renders an exact manifest/cache key. `renderNode`
+  // starts from a Blueprint label, tries the native rendered preview first, and
+  // can fall back to call-scoped external-markup renderers for labels whose
+  // only portable body is TeX or Markdown source.
+
+  export function renderNodeDiagnosticHtml(title, detail, fields) {
+    const data = fields && typeof fields === "object" ? fields : {};
+    const parts = [
+      "<p><strong>" + escapeHtml(title) + "</strong></p>",
+      "<p>" + escapeHtml(detail) + "</p>"
+    ];
+    if (data.label) {
+      parts.push("<p>Requested label: <code>" + escapeHtml(data.label) + "</code></p>");
+    }
+    if (data.key) {
+      parts.push("<p>Requested preview: <code>" + escapeHtml(data.key) + "</code></p>");
+    }
+    if (data.language || data.slot) {
+      const language = data.language || "any";
+      const slot = data.slot || "any";
+      parts.push(
+        "<p>Requested external markup: <code>" +
+          escapeHtml(language) +
+          "</code> / <code>" +
+          escapeHtml(slot) +
+          "</code></p>"
+      );
+    }
+    return "<div class=\"bp_html_cache_preview_notice\">" + parts.join("") + "</div>";
+  }
+
+  export function normalizeRenderNodeRequest(request) {
+    if (typeof request === "string") {
+      return {
+        label: request.trim(),
+        facet: "statement",
+        externalMarkup: null
+      };
+    }
+    const opts = request && typeof request === "object" ? request : {};
+    const label = typeof opts.label === "string" ? opts.label.trim() : "";
+    const facet =
+      typeof opts.facet === "string" && opts.facet.trim()
+        ? opts.facet.trim()
+        : "statement";
+    const externalMarkup =
+      opts.externalMarkup && typeof opts.externalMarkup === "object"
+        ? opts.externalMarkup
+        : (opts.preferredExternalMarkup && typeof opts.preferredExternalMarkup === "object"
+            ? opts.preferredExternalMarkup
+            : null);
+    return {
+      label,
+      facet,
+      externalMarkup
+    };
+  }
+
+  export function renderNodePreviewResult(result, fields) {
+    return Object.assign(
+      {},
+      {
+        renderMode: "",
+        label: "",
+        facet: "",
+        externalMarkup: null,
+        nativePreview: null
+      },
+      result || {},
+      fields || {}
+    );
+  }
+
+  export function externalMarkupEntryKey(label) {
+    const trimmedLabel = typeof label === "string" ? label.trim() : "";
+    return trimmedLabel ? "externalMarkup:" + trimmedLabel : "";
+  }
+
+  export async function loadExternalMarkupNodeEntry(label) {
+    const key = externalMarkupEntryKey(label);
+    if (!key) return null;
+    return loadBlueprintManifestEntry(key);
+  }
+
+  export function normalizeExternalMarkupPreferences(externalMarkup) {
+    if (!externalMarkup || typeof externalMarkup !== "object") return [];
+    if (Array.isArray(externalMarkup)) return externalMarkup;
+    if (Array.isArray(externalMarkup.prefer)) return externalMarkup.prefer;
+    return [externalMarkup];
+  }
+
+  export function normalizeExternalMarkupToken(value) {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+  }
+
+  export function isNativeMarkupPreference(preference) {
+    if (!preference || typeof preference !== "object") return false;
+    const language = normalizeExternalMarkupToken(preference.language);
+    return language === "verso" || language === "native";
+  }
+
+  export function externalMarkupPreferenceDisplay(preference) {
+    return normalizeExternalMarkupToken(preference && preference.display);
+  }
+
+  export function externalMarkupPreferenceCanRender(preference) {
+    return (
+      preference &&
+      typeof preference === "object" &&
+      (typeof preference.render === "function" ||
+        externalMarkupPreferenceDisplay(preference) === "source")
+    );
+  }
+
+  export function externalMarkupMatchesPreference(markup, preference) {
+    if (!markup || typeof markup !== "object") return false;
+    const language = normalizeExternalMarkupToken(preference && preference.language);
+    const slot =
+      preference && typeof preference.slot === "string" ? preference.slot.trim() : "";
+    if (language && normalizeExternalMarkupToken(markup.language) !== language) return false;
+    if (slot && String(markup.slot || "").trim() !== slot) return false;
+    return typeof markup.raw === "string" && markup.raw.length > 0;
+  }
+
+  export function firstExternalMarkupForPreference(entry, preference) {
+    const markups =
+      entry && Array.isArray(entry.externalMarkup) ? entry.externalMarkup : [];
+    return markups.find(function (markup) {
+      return externalMarkupMatchesPreference(markup, preference);
+    }) || null;
+  }
+
+  export function selectExternalMarkup(entry, preferences) {
+    let missingRenderer = null;
+    let missingMarkupPreference = null;
+    for (const preference of preferences) {
+      if (!preference || typeof preference !== "object") continue;
+      if (isNativeMarkupPreference(preference)) continue;
+      const markup = firstExternalMarkupForPreference(entry, preference);
+      if (!markup) {
+        if (!missingMarkupPreference) missingMarkupPreference = preference;
+        continue;
+      }
+      if (externalMarkupPreferenceCanRender(preference)) {
+        return {
+          ok: true,
+          markup,
+          preference
+        };
+      }
+      if (!missingRenderer) {
+        missingRenderer = {
+          ok: false,
+          reason: "external-markup-renderer-missing",
+          markup,
+          preference
+        };
+      }
+    }
+    return missingRenderer || {
+      ok: false,
+      reason: "external-markup-missing",
+      markup: null,
+      preference: missingMarkupPreference
+    };
+  }
+
+  export function renderExternalMarkupSource(target, markup) {
+    const pre = document.createElement("pre");
+    pre.className = "bp_external_markup_source";
+    const code = document.createElement("code");
+    code.textContent = markup && typeof markup.raw === "string" ? markup.raw : "";
+    pre.appendChild(code);
+    target.replaceChildren(pre);
+  }
+
+  export async function renderExternalMarkupSelectionInto(target, selection, payload) {
+    const preference = selection.preference || {};
+    if (externalMarkupPreferenceDisplay(preference) === "source") {
+      renderExternalMarkupSource(target, selection.markup);
+      return;
+    }
+    const renderer = preference.render;
+    if (typeof renderer !== "function") {
+      throw new Error("External markup renderer missing");
+    }
+    target.replaceChildren();
+    const rendered = await renderer(payload, target);
+    if (rendered instanceof Node) {
+      target.replaceChildren(rendered);
+    } else if (typeof rendered === "string") {
+      target.innerHTML = rendered;
+    }
+  }
+
+  export async function callExternalMarkupRenderer(target, selection, payload, options) {
+    await renderExternalMarkupSelectionInto(target, selection, payload);
+    hydrateRenderedPreview(target, options);
+  }
+
+  export function externalMarkupRendererPayload(request, manifestEntry, selection, nativeResult) {
+    const markup = selection.markup || {};
+    return {
+      raw: typeof markup.raw === "string" ? markup.raw : "",
+      language: typeof markup.language === "string" ? markup.language : "",
+      slot: typeof markup.slot === "string" ? markup.slot : "",
+      location: markup.location || null,
+      node: manifestEntry || null,
+      manifestEntry: manifestEntry || null,
+      label: request.label,
+      facet: request.facet,
+      nativePreview: nativeResult || null,
+      externalMarkup: markup
+    };
+  }
+
+  export function blueprintContentTargetForNode(node) {
+    if (!(node instanceof Element)) return null;
+    const direct = Array.from(node.children).find(function (child) {
+      return child instanceof Element && child.classList.contains("bp_content");
+    });
+    if (direct instanceof Element) return direct;
+    return node.querySelector(".bp_content");
+  }
+
+  export async function loadCanonicalPreviewNode(entry, result) {
+    const url = canonicalPreviewUrl(entry);
+    if (!url) {
+      return {
+        ok: false,
+        reason: "canonical-href-missing",
+        detail: "The manifest entry did not include a generated-page link for this preview.",
+        node: null,
+        canonicalHtml: "",
+        canonicalSourceHref: ""
+      };
+    }
+    try {
+      const doc = await loadCanonicalPreviewDocument(url);
+      const id = canonicalPreviewId(url, result);
+      const node = id ? doc.getElementById(id) : null;
+      if (!(node instanceof Element)) {
+        return {
+          ok: false,
+          reason: "canonical-preview-node-missing",
+          detail: "The generated page loaded, but the linked Blueprint node was not present.",
+          node: null,
+          canonicalHtml: "",
+          canonicalSourceHref: url.href
+        };
+      }
+      const clone = node.cloneNode(true);
+      rebaseCanonicalPreviewLinks(clone, canonicalPreviewDocumentBaseUrl(doc, url));
+      resetClonedPreviewBindingState(clone);
+      return {
+        ok: true,
+        reason: "",
+        detail: "",
+        node: clone,
+        canonicalHtml: clone.outerHTML,
+        canonicalSourceHref: url.href
+      };
+    } catch (err) {
+      const message = err && err.message ? err.message : String(err);
+      return {
+        ok: false,
+        reason: "canonical-preview-load-failed",
+        detail: message,
+        node: null,
+        canonicalHtml: "",
+        canonicalSourceHref: url.href
+      };
+    }
+  }
+
+  export async function renderExternalMarkupNodeInto(target, result, selection, payload, options) {
+    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result);
+    if (!loaded.ok) {
+      return {
+        ok: false,
+        reason: loaded.reason === "canonical-preview-load-failed"
+          ? "external-markup-node-shell-load-failed"
+          : "external-markup-node-shell-missing",
+        detail: loaded.detail,
+        node: null,
+        canonicalHtml: "",
+        canonicalSourceHref: loaded.canonicalSourceHref
+      };
+    }
+    const contentTarget = blueprintContentTargetForNode(loaded.node);
+    if (!(contentTarget instanceof Element)) {
+      return {
+        ok: false,
+        reason: "external-markup-node-shell-missing",
+        detail: "The generated Blueprint node shell did not include a content slot.",
+        node: null,
+        canonicalHtml: "",
+        canonicalSourceHref: loaded.canonicalSourceHref
+      };
+    }
+    await renderExternalMarkupSelectionInto(contentTarget, selection, payload);
+    target.replaceChildren(loaded.node);
+    hydrateRenderedPreview(target, options);
+    return {
+      ok: true,
+      reason: "",
+      detail: "",
+      node: loaded.node,
+      canonicalHtml: loaded.node.outerHTML,
+      canonicalSourceHref: loaded.canonicalSourceHref
+    };
+  }
+
+  export async function renderBlueprintNodeInto(target, request, options) {
+    if (!(target instanceof Element)) {
+      throw new Error("renderBlueprintNodeInto target must be a DOM Element");
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    const normalized = normalizeRenderNodeRequest(request);
+    if (!normalized.label) {
+      const result = renderNodePreviewResult({
+        ok: false,
+        key: "",
+        reason: "missing-label",
+        manifestEntry: null,
+        htmlCacheEntry: null,
+        html: "",
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          "Blueprint label missing.",
+          "Provide a Blueprint node label to render.",
+          {}
+        )
+      }, normalized);
+      if (opts.diagnostics !== false) renderHtmlInto(target, result.diagnosticHtml, opts);
+      else target.replaceChildren();
+      return result;
+    }
+
+    const nativeKey = previewKey(normalized.label, normalized.facet);
+    const nativeResult = await resolveBlueprintPreview(nativeKey);
+    if (nativeResult.ok) {
+      const canonicalResult = await resolveCanonicalBlueprintPreview(nativeKey);
+      const result = renderNodePreviewResult(canonicalResult, {
+        renderMode: canonicalResult.ok ? "native" : "diagnostic",
+        label: normalized.label,
+        facet: normalized.facet,
+        nativePreview: nativeResult
+      });
+      const html = result.ok
+        ? result.canonicalHtml
+        : (opts.diagnostics === false ? "" : result.diagnosticHtml);
+      renderHtmlInto(target, html, opts);
+      return result;
+    }
+
+    const preferences = normalizeExternalMarkupPreferences(normalized.externalMarkup);
+    if (preferences.length === 0) {
+      const result = renderNodePreviewResult(nativeResult, {
+        renderMode: "diagnostic",
+        label: normalized.label,
+        facet: normalized.facet,
+        nativePreview: nativeResult
+      });
+      const html = opts.diagnostics === false ? "" : result.diagnosticHtml;
+      renderHtmlInto(target, html, opts);
+      return result;
+    }
+
+    const manifestEntry =
+      nativeResult.manifestEntry || (await loadExternalMarkupNodeEntry(normalized.label));
+    if (!manifestEntry) {
+      const result = renderNodePreviewResult({
+        ok: false,
+        key: nativeKey,
+        reason: "external-markup-entry-missing",
+        manifestEntry: null,
+        htmlCacheEntry: nativeResult.htmlCacheEntry || null,
+        html: "",
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          "External markup entry missing.",
+          "The manifest has no native preview or external-markup entry for this label.",
+          { label: normalized.label, key: nativeKey }
+        )
+      }, {
+        renderMode: "diagnostic",
+        label: normalized.label,
+        facet: normalized.facet,
+        nativePreview: nativeResult
+      });
+      const html = opts.diagnostics === false ? "" : result.diagnosticHtml;
+      renderHtmlInto(target, html, opts);
+      return result;
+    }
+
+    const selection = selectExternalMarkup(manifestEntry, preferences);
+    if (!selection.ok) {
+      const preference = selection.preference || {};
+      const result = renderNodePreviewResult({
+        ok: false,
+        key: manifestEntry.key || nativeKey,
+        reason: selection.reason,
+        manifestEntry,
+        htmlCacheEntry: nativeResult.htmlCacheEntry || null,
+        html: "",
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          selection.reason === "external-markup-renderer-missing"
+            ? "External markup renderer missing."
+            : "External markup missing.",
+          selection.reason === "external-markup-renderer-missing"
+            ? "The requested external markup exists, but this render call did not provide a renderer or source display fallback."
+            : "The manifest entry did not include external markup matching this render call.",
+          {
+            label: normalized.label,
+            key: manifestEntry.key || nativeKey,
+            language: preference.language,
+            slot: preference.slot
+          }
+        )
+      }, {
+        renderMode: "diagnostic",
+        label: normalized.label,
+        facet: normalized.facet,
+        externalMarkup: selection.markup || null,
+        nativePreview: nativeResult
+      });
+      const html = opts.diagnostics === false ? "" : result.diagnosticHtml;
+      renderHtmlInto(target, html, opts);
+      return result;
+    }
+
+    const result = renderNodePreviewResult({
+      ok: true,
+      key: manifestEntry.key || nativeKey,
+      reason: "",
+      manifestEntry,
+      htmlCacheEntry: nativeResult.htmlCacheEntry || null,
+      html: "",
+      diagnosticHtml: ""
+    }, {
+      renderMode: "external-markup",
+      label: normalized.label,
+      facet: normalized.facet,
+      externalMarkup: selection.markup,
+      nativePreview: nativeResult
+    });
+    const payload = externalMarkupRendererPayload(normalized, manifestEntry, selection, nativeResult);
+    try {
+      const rendered = await renderExternalMarkupNodeInto(target, result, selection, payload, opts);
+      if (rendered.ok) {
+        return renderNodePreviewResult(result, {
+          canonicalHtml: rendered.canonicalHtml,
+          canonicalSourceHref: rendered.canonicalSourceHref
+        });
+      }
+      const failed = renderNodePreviewResult(result, {
+        ok: false,
+        reason: rendered.reason,
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          rendered.reason === "external-markup-node-shell-load-failed"
+            ? "External markup node shell unavailable."
+            : "External markup node shell missing.",
+          rendered.detail,
+          {
+            label: normalized.label,
+            key: result.key,
+            language: selection.markup.language,
+            slot: selection.markup.slot
+          }
+        ),
+        canonicalSourceHref: rendered.canonicalSourceHref || ""
+      });
+      const html = opts.diagnostics === false ? "" : failed.diagnosticHtml;
+      renderHtmlInto(target, html, opts);
+      return failed;
+    } catch (err) {
+      const message = err && err.message ? err.message : String(err);
+      const failed = renderNodePreviewResult(result, {
+        ok: false,
+        reason: "external-markup-render-failed",
+        diagnosticHtml: renderNodeDiagnosticHtml(
+          "External markup renderer failed.",
+          message,
+          {
+            label: normalized.label,
+            key: result.key,
+            language: selection.markup.language,
+            slot: selection.markup.slot
+          }
+        )
+      });
+      const html = opts.diagnostics === false ? "" : failed.diagnosticHtml;
+      renderHtmlInto(target, html, opts);
+      return failed;
+    }
+  }
+
   export const canonicalPreviewDocuments = new Map();
   export const canonicalPreviewHtmlByKey = new Map();
 
@@ -102,10 +600,6 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     const clone = new URL(url.href);
     clone.hash = "";
     return clone.href;
-  }
-
-  export function currentDocumentUrlWithoutHash() {
-    return urlWithoutHash(new URL(window.location.href));
   }
 
   export function canonicalPreviewUrl(entry) {
@@ -159,11 +653,10 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
   export async function loadCanonicalPreviewDocument(url) {
     const pageUrl = urlWithoutHash(url);
-    if (pageUrl === currentDocumentUrlWithoutHash()) {
-      return document;
-    }
     const existing = canonicalPreviewDocuments.get(pageUrl);
     if (existing) return existing;
+    // Do not shortcut same-page URLs to `document`: hydration mutates the live
+    // DOM by moving local panels to body and adding binding state.
     const promise = fetch(pageUrl)
       .then(function (resp) {
         if (!resp.ok) {
@@ -226,6 +719,44 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     });
   }
 
+  export const clonedPreviewBindingStateAttributes = Object.freeze([
+    "data-bp-bound",
+    "data-bp-dismiss-bound",
+    "data-bp-popover-bound",
+    "data-bp-panel-reposition-bound",
+    "data-bp-preview-trigger-bound",
+    "data-bp-preview-events-bound",
+    "data-bp-preview-panel-lifetime-bound",
+    "data-bp-template-preview-bound",
+    "data-bp-inline-main-bound",
+    "data-bp-inline-child-bound",
+    "data-bp-inline-panel-reposition-bound",
+    "data-bp-relation-chip-bound",
+    "data-bp-relation-panel-lifetime-bound",
+    "data-bp-relation-dismiss-bound",
+    "data-bp-preview-bound",
+    "data-bp-variant-bound",
+    "data-bp-legend-bound",
+    "data-bp-options-bound",
+    "data-bp-group-hover-bound",
+    "data-bp-graph-panel-dismiss-bound",
+    "data-bp-graph-panel-reposition-bound"
+  ]);
+
+  export function resetClonedPreviewBindingState(root) {
+    if (!(root instanceof Element)) return;
+    const selector = clonedPreviewBindingStateAttributes.map(function (attr) {
+      return "[" + attr + "]";
+    }).join(",");
+    const reset = function (node) {
+      clonedPreviewBindingStateAttributes.forEach(function (attr) {
+        node.removeAttribute(attr);
+      });
+    };
+    reset(root);
+    root.querySelectorAll(selector).forEach(reset);
+  }
+
   export async function resolveCanonicalBlueprintPreview(previewKey) {
     const result = await resolveBlueprintPreview(previewKey);
     if (!result.ok) {
@@ -238,59 +769,34 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         canonicalSourceHref: cached.href
       });
     }
-    const url = canonicalPreviewUrl(result.manifestEntry);
-    if (!url) {
+    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result);
+    if (!loaded.ok) {
+      const title =
+        loaded.reason === "canonical-href-missing"
+          ? "Canonical preview link missing."
+          : loaded.reason === "canonical-preview-node-missing"
+            ? "Canonical preview node missing."
+            : "Canonical preview page unavailable.";
       return canonicalPreviewResult(result, {
         ok: false,
-        reason: "canonical-href-missing",
+        reason: loaded.reason,
+        canonicalSourceHref: loaded.canonicalSourceHref,
         diagnosticHtml: canonicalPreviewDiagnosticHtml(
-          "Canonical preview link missing.",
-          "The manifest entry did not include a generated-page link for this preview.",
+          title,
+          loaded.detail,
           result.key
         )
       });
     }
-
-    try {
-      const doc = await loadCanonicalPreviewDocument(url);
-      const id = canonicalPreviewId(url, result);
-      const node = id ? doc.getElementById(id) : null;
-      if (!(node instanceof Element)) {
-        return canonicalPreviewResult(result, {
-          ok: false,
-          reason: "canonical-preview-node-missing",
-          canonicalSourceHref: url.href,
-          diagnosticHtml: canonicalPreviewDiagnosticHtml(
-            "Canonical preview node missing.",
-            "The generated page loaded, but the linked Blueprint node was not present.",
-            result.key
-          )
-        });
-      }
-      const clone = node.cloneNode(true);
-      rebaseCanonicalPreviewLinks(clone, canonicalPreviewDocumentBaseUrl(doc, url));
-      const canonical = {
-        html: clone.outerHTML,
-        href: url.href
-      };
-      canonicalPreviewHtmlByKey.set(result.key, canonical);
-      return canonicalPreviewResult(result, {
-        canonicalHtml: canonical.html,
-        canonicalSourceHref: canonical.href
-      });
-    } catch (err) {
-      const message = err && err.message ? err.message : String(err);
-      return canonicalPreviewResult(result, {
-        ok: false,
-        reason: "canonical-preview-load-failed",
-        canonicalSourceHref: url.href,
-        diagnosticHtml: canonicalPreviewDiagnosticHtml(
-          "Canonical preview page unavailable.",
-          message,
-          result.key
-        )
-      });
-    }
+    const canonical = {
+      html: loaded.canonicalHtml,
+      href: loaded.canonicalSourceHref
+    };
+    canonicalPreviewHtmlByKey.set(result.key, canonical);
+    return canonicalPreviewResult(result, {
+      canonicalHtml: canonical.html,
+      canonicalSourceHref: canonical.href
+    });
   }
 
   export async function renderCanonicalBlueprintPreviewInto(target, previewKey, options) {
@@ -310,10 +816,30 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     resolveBlueprintPreview,
     renderHtmlInto,
     renderBlueprintPreviewInto,
+    renderNodeDiagnosticHtml,
+    normalizeRenderNodeRequest,
+    renderNodePreviewResult,
+    externalMarkupEntryKey,
+    loadExternalMarkupNodeEntry,
+    normalizeExternalMarkupPreferences,
+    normalizeExternalMarkupToken,
+    isNativeMarkupPreference,
+    externalMarkupPreferenceDisplay,
+    externalMarkupPreferenceCanRender,
+    externalMarkupMatchesPreference,
+    firstExternalMarkupForPreference,
+    selectExternalMarkup,
+    renderExternalMarkupSource,
+    renderExternalMarkupSelectionInto,
+    callExternalMarkupRenderer,
+    externalMarkupRendererPayload,
+    blueprintContentTargetForNode,
+    loadCanonicalPreviewNode,
+    renderExternalMarkupNodeInto,
+    renderBlueprintNodeInto,
     canonicalPreviewDocuments,
     canonicalPreviewHtmlByKey,
     urlWithoutHash,
-    currentDocumentUrlWithoutHash,
     canonicalPreviewUrl,
     canonicalPreviewId,
     canonicalPreviewDiagnosticHtml,
@@ -323,6 +849,8 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     forEachMatchingElement,
     canonicalPreviewDocumentBaseUrl,
     rebaseCanonicalPreviewLinks,
+    clonedPreviewBindingStateAttributes,
+    resetClonedPreviewBindingState,
     resolveCanonicalBlueprintPreview,
     renderCanonicalBlueprintPreviewInto
   };
