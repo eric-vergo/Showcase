@@ -27,6 +27,7 @@ export function installPreviewRuntimeApi() {
   const previewRenderApi = {
     renderPreviewInto: renderBlueprintPreviewInto,
     renderCanonicalPreviewInto: renderCanonicalBlueprintPreviewInto,
+    renderNode: renderBlueprintNodeInto,
     hydrate: hydrateRenderedPreview
   };
 
@@ -77,6 +78,7 @@ export function installPreviewRuntimeApi() {
     renderPreviewInto: previewRenderApi.renderPreviewInto,
     resolveCanonicalPreview: previewDataApi.resolveCanonicalPreview,
     renderCanonicalPreviewInto: previewRenderApi.renderCanonicalPreviewInto,
+    renderNode: previewRenderApi.renderNode,
     hydrate: previewRenderApi.hydrate
   };
 

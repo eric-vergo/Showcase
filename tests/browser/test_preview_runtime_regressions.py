@@ -416,7 +416,7 @@ class TestPreviewRuntimeRegressions:
 
         client = page.locator("#custom-render-client-example").first
         expect(client).to_have_attribute("data-bp-custom-client-status", "ready")
-        expect(client.locator("[data-bp-custom-client-example]")).to_have_count(8)
+        expect(client.locator("[data-bp-custom-client-example]")).to_have_count(10)
         preview_module_card = client.locator("[data-bp-preview-module-example]").first
         expect(preview_module_card).to_have_attribute("data-bp-preview-module-ok", "true")
         expect(preview_module_card).to_have_attribute(
@@ -441,11 +441,11 @@ class TestPreviewRuntimeRegressions:
         expect(graph_card).to_have_attribute("data-bp-graph-module-ok", "true")
         expect(graph_card).to_have_attribute("data-bp-graph-module-count", "1")
         expect(graph_card).to_have_attribute("data-bp-graph-module-key", re.compile(r"^graph:#<"))
-        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "55")
-        expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "13")
-        expect(graph_card).to_have_attribute("data-bp-graph-group-count", "3")
+        expect(graph_card).to_have_attribute("data-bp-graph-node-count", "58")
+        expect(graph_card).to_have_attribute("data-bp-graph-edge-count", "15")
+        expect(graph_card).to_have_attribute("data-bp-graph-group-count", "4")
         expect(graph_card.locator("[data-bp-custom-client-graph-summary]").first).to_contain_text(
-            "Nodes 55"
+            "Nodes 58"
         )
         used_target_link = graph_card.locator('[data-bp-graph-node-label="used_target"]').first
         expect(used_target_link).to_have_text(re.compile(r"Definition"))
@@ -482,6 +482,28 @@ class TestPreviewRuntimeRegressions:
         expect(fragment_body).to_contain_text("Statement facet marker")
         expect(fragment_body).not_to_contain_text("Proof facet marker")
         expect(fragment_body.locator(".bp_wrapper")).to_have_count(0)
+
+        native_node_card = client.locator(
+            '[data-bp-custom-client-body="label-native"]'
+        ).locator("xpath=ancestor::article[1]").first
+        expect(
+            native_node_card.locator("[data-bp-custom-client-title]").first
+        ).to_have_text("Label native preview")
+        expect(native_node_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(native_node_card).to_have_attribute("data-bp-render-mode", "native")
+        expect(native_node_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(native_node_card).to_have_attribute(
+            "data-bp-preview-key", "preview_facets--statement"
+        )
+        native_node_body = native_node_card.locator(
+            '[data-bp-custom-client-body="label-native"]'
+        ).first
+        expect(native_node_body.locator(".bp_wrapper").first).to_have_attribute(
+            "title", "preview_facets"
+        )
+        expect(native_node_body.locator(".bp_heading").first).to_contain_text("Theorem")
+        expect(native_node_body).to_contain_text("Statement facet marker")
+        expect(native_node_body).not_to_contain_text("Proof facet marker")
 
         canonical_statement_card = client.locator(
             '[data-bp-custom-client-body="canonical-statement"]'
@@ -569,6 +591,133 @@ class TestPreviewRuntimeRegressions:
         expect(grouped_statement_body.locator(".bp_extra_slot_used_by")).to_have_count(1)
         expect(grouped_statement_body.locator(".bp_extra_slot_code")).to_have_count(1)
 
+        external_markdown_card = client.locator(
+            '[data-bp-custom-client-body="external-markdown"]'
+        ).locator("xpath=ancestor::article[1]").first
+        expect(
+            external_markdown_card.locator("[data-bp-custom-client-title]").first
+        ).to_have_text("External Markdown fallback")
+        expect(external_markdown_card).to_have_attribute("data-bp-render-ok", "true")
+        expect(external_markdown_card).to_have_attribute("data-bp-render-mode", "external-markup")
+        expect(external_markdown_card).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(external_markdown_card).to_have_attribute(
+            "data-bp-preview-key", "externalMarkup:custom_client_external_markdown_metadata"
+        )
+        expect(external_markdown_card).to_have_attribute(
+            "data-bp-manifest-label", "custom_client_external_markdown_metadata"
+        )
+        expect(external_markdown_card).to_have_attribute("data-bp-manifest-facet", "statement")
+        expect(external_markdown_card).to_have_attribute(
+            "data-bp-external-markup-language", "markdown"
+        )
+        expect(external_markdown_card).to_have_attribute(
+            "data-bp-external-markup-slot", "original"
+        )
+        external_markdown_body = external_markdown_card.locator(
+            '[data-bp-custom-client-body="external-markdown"]'
+        ).first
+        external_wrapper = external_markdown_body.locator(".bp_wrapper").first
+        expect(external_wrapper).to_have_attribute("title", "custom_client_external_markdown_metadata")
+        expect(external_wrapper.locator(".bp_heading").first).to_contain_text("Theorem")
+        expect(external_wrapper.locator(".bp_heading").first).to_contain_text("3.1")
+        expect(external_wrapper.locator(".bp_extra_slot_uses .bp_relation_chip").first).to_have_text(
+            "uses 1"
+        )
+        expect(
+            external_wrapper.locator(".bp_extra_slot_used_by .bp_relation_chip").first
+        ).to_have_text("used by 1")
+        external_uses_trigger = external_wrapper.locator(
+            ".bp_extra_slot_uses .bp_inline_preview_ref"
+        ).first
+        external_uses_trigger.hover()
+        inline_panel = page.locator("#bp-inline-preview-panel")
+        expect(inline_panel).to_be_visible()
+        inline_body = inline_panel.locator(".bp_inline_preview_panel_body")
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Target statement with associated Lean code.')",
+            arg=inline_body.element_handle(),
+        )
+        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+            "used_target"
+        )
+
+        page.mouse.move(0, 0)
+        expect(inline_panel).to_be_hidden(timeout=1000)
+
+        external_used_by_trigger = external_wrapper.locator(
+            ".bp_extra_slot_used_by .bp_inline_preview_ref"
+        ).first
+        external_used_by_trigger.hover()
+        expect(inline_panel).to_be_visible()
+        page.wait_for_function(
+            "(el) => !!el && el.textContent.includes('Consumer node that gives the Markdown fallback target a used-by relation.')",
+            arg=inline_body.element_handle(),
+        )
+        expect(inline_panel.locator(".bp_inline_preview_panel_label")).to_contain_text(
+            "custom_client_external_metadata_consumer"
+        )
+
+        page.mouse.move(0, 0)
+        expect(inline_panel).to_be_hidden(timeout=1000)
+
+        external_code_trigger = external_wrapper.locator(
+            ".bp_extra_slot_code .bp_code_summary_preview_wrap_active"
+        ).first
+        external_code_trigger.hover()
+        code_panel = page.locator(".bp_code_summary_preview_panel:not([hidden])").first
+        expect(code_panel).to_be_visible()
+        expect(code_panel.locator(".bp_code_summary_preview_title")).to_have_text(
+            "custom_client_external_markdown_metadata"
+        )
+        expect(code_panel.locator(".bp_code_summary_preview_body")).to_contain_text(
+            "No associated Lean code or declarations."
+        )
+
+        page.mouse.move(0, 0)
+        expect(code_panel).to_be_hidden(timeout=1000)
+
+        expect(external_wrapper.locator(".bp_extra_slot_code")).to_have_count(1)
+        metadata_panel = external_wrapper.locator(".bp_metadata_panel").first
+        expect(metadata_panel).to_contain_text("Effort")
+        expect(metadata_panel).to_contain_text("small")
+        expect(metadata_panel).to_contain_text("Priority")
+        expect(metadata_panel).to_contain_text("medium")
+        expect(metadata_panel).to_contain_text("Tags")
+        expect(metadata_panel).to_contain_text("external")
+        expect(metadata_panel).to_contain_text("markdown")
+        external_content = external_wrapper.locator(".bp_content").first
+        expect(external_content).to_contain_text("Markdown fallback")
+        expect(external_content.locator("h4").first).to_have_text(
+            "External Markdown with metadata"
+        )
+        expect(external_content).to_contain_text("manifest metadata")
+        expect(external_content).to_contain_text("Source markdown/original")
+
+        standalone = page.locator("#standalone-render-node-markdown-example").first
+        expect(standalone).to_have_attribute("data-bp-render-ok", "true")
+        expect(standalone).to_have_attribute("data-bp-render-mode", "external-markup")
+        expect(standalone).to_have_attribute("data-bp-canonical-preview", "true")
+        expect(standalone).to_have_attribute(
+            "data-bp-preview-key", "externalMarkup:custom_client_external_markdown_metadata"
+        )
+        expect(standalone).to_have_attribute(
+            "data-bp-manifest-label", "custom_client_external_markdown_metadata"
+        )
+        expect(standalone).to_have_attribute("data-bp-external-markup-language", "markdown")
+        standalone_target = standalone.locator("[data-bp-standalone-render-node-target]").first
+        standalone_wrapper = standalone_target.locator(".bp_wrapper").first
+        expect(standalone_wrapper).to_have_attribute(
+            "title", "custom_client_external_markdown_metadata"
+        )
+        expect(standalone_wrapper.locator(".bp_heading").first).to_contain_text("Theorem")
+        expect(standalone_wrapper.locator(".bp_extra_slot_uses .bp_relation_chip").first).to_have_text(
+            "uses 1"
+        )
+        expect(standalone_wrapper.locator(".bp_content h4").first).to_have_text(
+            "External Markdown with metadata"
+        )
+        expect(standalone_wrapper.locator(".bp_content")).to_contain_text("manifest metadata")
+
         broken_custom_links = page.evaluate(
             """
             async () => {
@@ -617,6 +766,174 @@ class TestPreviewRuntimeRegressions:
         missing_body = missing_card.locator('[data-bp-custom-client-body="missing"]').first
         expect(missing_body).to_contain_text("Preview entry missing from manifest")
         expect(missing_body).to_contain_text("missing_custom_client_target--statement")
+
+        assert_no_runtime_errors(errors)
+
+    def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
+        errors = record_runtime_errors(page)
+        page.goto(f"{server}/Custom-Render-Client/")
+
+        diagnostics = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const host = document.createElement("section");
+                document.body.appendChild(host);
+
+                async function run(request) {
+                    host.replaceChildren();
+                    const result = await api.renderNode(host, request);
+                    return {
+                        ok: result.ok,
+                        key: result.key || "",
+                        reason: result.reason || "",
+                        renderMode: result.renderMode || "",
+                        label: result.label || "",
+                        facet: result.facet || "",
+                        manifestLabel:
+                            result.manifestEntry && result.manifestEntry.label
+                                ? result.manifestEntry.label
+                                : "",
+                        externalMarkupLanguage:
+                            result.externalMarkup && result.externalMarkup.language
+                                ? result.externalMarkup.language
+                                : "",
+                        externalMarkupSlot:
+                            result.externalMarkup && result.externalMarkup.slot
+                                ? result.externalMarkup.slot
+                                : "",
+                        text: host.textContent || "",
+                        html: host.innerHTML || ""
+                    };
+                }
+
+                const missingEntry = await run({
+                    label: "missing_custom_client_target",
+                    externalMarkup: {
+                        prefer: [{ display: "source" }]
+                    }
+                });
+
+                const missingMarkup = await run({
+                    label: "custom_client_external_markdown",
+                    externalMarkup: {
+                        prefer: [
+                            {
+                                language: "tex",
+                                slot: "original",
+                                render: function (_payload, target) {
+                                    target.textContent = "unexpected TeX render";
+                                }
+                            }
+                        ]
+                    }
+                });
+
+                const missingRenderer = await run({
+                    label: "custom_client_external_markdown",
+                    externalMarkup: {
+                        prefer: [
+                            {
+                                language: "markdown",
+                                slot: "original"
+                            }
+                        ]
+                    }
+                });
+
+                const rendererFailed = await run({
+                    label: "custom_client_external_markdown_metadata",
+                    externalMarkup: {
+                        prefer: [
+                            {
+                                language: "markdown",
+                                slot: "original",
+                                render: function () {
+                                    throw new Error("markdown renderer exploded");
+                                }
+                            }
+                        ]
+                    }
+                });
+
+                const sourceFallback = await run({
+                    label: "custom_client_external_markdown_metadata",
+                    externalMarkup: {
+                        prefer: [
+                            {
+                                language: "tex",
+                                slot: "original",
+                                render: function (_payload, target) {
+                                    target.textContent = "unexpected TeX render";
+                                }
+                            },
+                            { display: "source" }
+                        ]
+                    }
+                });
+
+                const missingShell = await run({
+                    label: "custom_client_external_markdown",
+                    externalMarkup: {
+                        prefer: [{ display: "source" }]
+                    }
+                });
+
+                return {
+                    missingEntry,
+                    missingMarkup,
+                    missingRenderer,
+                    rendererFailed,
+                    sourceFallback,
+                    missingShell
+                };
+                """
+            )
+        )
+
+        assert diagnostics["missingEntry"]["ok"] is False
+        assert diagnostics["missingEntry"]["reason"] == "external-markup-entry-missing"
+        assert diagnostics["missingEntry"]["renderMode"] == "diagnostic"
+        assert diagnostics["missingEntry"]["label"] == "missing_custom_client_target"
+        assert "External markup entry missing" in diagnostics["missingEntry"]["text"]
+        assert "missing_custom_client_target--statement" in diagnostics["missingEntry"]["text"]
+
+        assert diagnostics["missingMarkup"]["ok"] is False
+        assert diagnostics["missingMarkup"]["reason"] == "external-markup-missing"
+        assert diagnostics["missingMarkup"]["key"] == "externalMarkup:custom_client_external_markdown"
+        assert diagnostics["missingMarkup"]["manifestLabel"] == "custom_client_external_markdown"
+        assert diagnostics["missingMarkup"]["externalMarkupLanguage"] == ""
+        assert "External markup missing" in diagnostics["missingMarkup"]["text"]
+        assert "tex / original" in diagnostics["missingMarkup"]["text"]
+
+        assert diagnostics["missingRenderer"]["ok"] is False
+        assert diagnostics["missingRenderer"]["reason"] == "external-markup-renderer-missing"
+        assert diagnostics["missingRenderer"]["externalMarkupLanguage"] == "markdown"
+        assert diagnostics["missingRenderer"]["externalMarkupSlot"] == "original"
+        assert "External markup renderer missing" in diagnostics["missingRenderer"]["text"]
+
+        assert diagnostics["rendererFailed"]["ok"] is False
+        assert diagnostics["rendererFailed"]["reason"] == "external-markup-render-failed"
+        assert diagnostics["rendererFailed"]["externalMarkupLanguage"] == "markdown"
+        assert diagnostics["rendererFailed"]["externalMarkupSlot"] == "original"
+        assert "External markup renderer failed" in diagnostics["rendererFailed"]["text"]
+        assert "markdown renderer exploded" in diagnostics["rendererFailed"]["text"]
+
+        assert diagnostics["sourceFallback"]["ok"] is True
+        assert diagnostics["sourceFallback"]["reason"] == ""
+        assert diagnostics["sourceFallback"]["renderMode"] == "external-markup"
+        assert diagnostics["sourceFallback"]["externalMarkupLanguage"] == "markdown"
+        assert diagnostics["sourceFallback"]["externalMarkupSlot"] == "original"
+        assert "Theorem" in diagnostics["sourceFallback"]["text"]
+        assert "uses 1" in diagnostics["sourceFallback"]["text"]
+        assert "# External Markdown with metadata" in diagnostics["sourceFallback"]["text"]
+        assert "unexpected TeX render" not in diagnostics["sourceFallback"]["text"]
+
+        assert diagnostics["missingShell"]["ok"] is False
+        assert diagnostics["missingShell"]["reason"] == "external-markup-node-shell-missing"
+        assert diagnostics["missingShell"]["renderMode"] == "external-markup"
+        assert diagnostics["missingShell"]["externalMarkupLanguage"] == "markdown"
+        assert "External markup node shell missing" in diagnostics["missingShell"]["text"]
+        assert "generated-page link" in diagnostics["missingShell"]["text"]
 
         assert_no_runtime_errors(errors)
 

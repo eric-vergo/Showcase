@@ -202,6 +202,10 @@ export function renderCanonicalPreviewInto(element, key, options) {
   return callRuntime("renderCanonicalPreviewInto", arguments);
 }
 
+export function renderNode(element, request, options) {
+  return callRuntime("renderNode", arguments);
+}
+
 export function hydrate(element, options) {
   return callRuntime("hydrate", arguments);
 }
@@ -235,6 +239,7 @@ const previewApi = {
   renderPreviewInto,
   resolveCanonicalPreview,
   renderCanonicalPreviewInto,
+  renderNode,
   hydrate
 };
 
