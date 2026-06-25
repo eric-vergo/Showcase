@@ -356,6 +356,10 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn('from "./blueprint-graph-core.mjs";', graph_esm)
         self.assertIn('from "../blueprint-graph-core.mjs";', runtime_data)
         self.assertIn("callRuntimeGraphCore", common)
+        self.assertIn("VersoBlueprint.__private", common)
+        self.assertNotIn("VersoBlueprintGraphCore", common)
+        self.assertIn("namespace.graphCore = existingCore", core)
+        self.assertNotIn("VersoBlueprintGraphCore", core)
         self.assertNotIn("callBlueprintGraphCore", runtime_data)
         self.assertNotIn("callBlueprintGraphApi", runtime_data)
         self.assertNotIn("window.bpGraphApi", runtime_data)
@@ -386,6 +390,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             self.assertIn(f"function {helper}", core)
         self.assertNotIn("const trimmedLabel = typeof label", preview_esm)
         self.assertNotIn("const trimmedLabel = typeof label", runtime_data)
+        self.assertIn("namespace.previewCore = existingCore", core)
+        self.assertNotIn("VersoBlueprintPreviewCore", core)
 
     def test_graph_runtime_helpers_live_in_private_graph_chunk(self) -> None:
         graph_core = (BLUEPRINT_SRC / "Commands" / "graph-runtime-core.mjs").read_text(
@@ -404,7 +410,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("startGraphRuntime(previewUtils)", graph_lean)
         self.assertIn("export const graphRuntimeCore = {", graph_core)
         self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_core)
-        self.assertIn("globalScope.VersoBlueprintGraphRuntimeCore = existingCore", graph_lean)
+        self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_lean)
+        self.assertIn("privateNamespace.graphRuntimeCore = existingCore", graph_lean)
         self.assertIn('from "./graph-runtime-core.mjs";', graph_runtime)
         for helper in GRAPH_RUNTIME_CORE_HELPERS:
             self.assertIn(f"function {helper}", graph_core)

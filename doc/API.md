@@ -36,7 +36,8 @@ Browser clients should use the generated ESM modules or
 `window.VersoBlueprint.onRenderReady`. Blueprint's own bundled feature scripts
 use the same render API instead of reading page globals directly; private
 classic-script adapters exist only to support the current Verso asset-loading
-mode.
+mode. Adapter internals may be staged under `window.VersoBlueprint.__private`,
+but that namespace is not a supported client API.
 
 ## Choosing an API
 
