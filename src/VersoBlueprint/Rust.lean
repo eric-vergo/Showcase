@@ -19,11 +19,7 @@ structure InlineCodeData where
   label : Data.Label
   raw : String
   foldCodeBlock : Bool := false
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson
-
-open Syntax in
-instance : Quote InlineCodeData where
-  quote data := mkCApp ``InlineCodeData.mk #[quote data.label, quote data.raw, quote data.foldCodeBlock]
+deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
 
 def css : String := r##"
 .bp_rust_code {
