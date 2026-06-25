@@ -45,11 +45,12 @@ relation-panel, inline-preview, and slide scripts can share runtime mechanics.
 They are not a custom-client contract unless they are promoted into the stable
 tables below.
 
-Compatibility globals such as `window.bpGraphApi` remain available for
-graph-specific clients, but new browser code should prefer the generated ESM
-modules or `window.VersoBlueprint.onRenderReady`. Blueprint's own bundled
-feature scripts should also go through the render API instead of reading
-compatibility globals directly.
+Browser clients should use the generated ESM modules or
+`window.VersoBlueprint.onRenderReady`. Blueprint's own bundled feature scripts
+use the same render API instead of reading page globals directly; private
+classic-script adapters exist only to support the current Verso asset-loading
+mode. Adapter internals may be staged under `window.VersoBlueprint.__private`,
+but that namespace is not a supported client API.
 
 ## Choosing an API
 
@@ -351,7 +352,7 @@ Generated sites also emit root implementation modules,
 `-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
 those implementations from stable, shorter import paths. The generated data
 directory also contains internal support files used by those modules, such as
-`blueprint-graph-core.js` and `blueprint-preview-core.js`; those support files
+`blueprint-graph-core.mjs` and `blueprint-preview-core.mjs`; those support files
 are not public import paths. New clients should use the `-verso-data/api/`
 paths.
 
@@ -523,7 +524,7 @@ order is not a synchronization guarantee.
 
 Blueprint's bundled preview clients get a small readiness bootstrap before
 their client code so `onRenderReady` is available even when the client asset is
-emitted before `preview-runtime.js`.
+emitted before the preview runtime installs the full render API.
 
 ### Stable Custom-Client API
 
@@ -533,7 +534,7 @@ views, and browser-only examples.
 
 | Entry point | Use |
 | --- | --- |
-| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before `preview-runtime.js`. |
+| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before the preview runtime installs it. |
 | `api.dataUrl(filename)` / `api.manifestUrl()` / `api.htmlCacheUrl()` | Resolve generated `-verso-data/` URLs relative to the current page. |
 | `api.loadManifest()` / `api.loadHtmlCache()` | Load the generated `Map` values keyed by preview key. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
@@ -603,43 +604,51 @@ through the render API. Components should pass preview keys to
 `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, or
 `renderCanonicalPreviewInto`, then render user-interface controls around the
 returned manifest entry. They should not scrape generated Blueprint DOM, call
-private bundled helpers, or couple component state to the current shape of
-`preview-runtime.js`.
+private bundled helpers, or couple component state to the current shape of the
+generated preview runtime.
 
 ### Private Runtime Chunks
 
-The `preview-runtime*.js` files under `src/VersoBlueprint/Commands/` are
-private source chunks used to build the generated runtime asset. They are not
-client import targets and do not change the public browser API. Generated pages
-and custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
+The `preview-runtime*` files under `src/VersoBlueprint/Commands/` are private
+source chunks used to build the generated runtime asset. They are not client
+import targets and do not change the public browser API. Generated pages and
+custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
 `window.VersoBlueprint.render`, or `api/preview.mjs`.
+
+Blueprint's browser source files are ESM-shaped modules. Current Verso output
+still receives classic scripts because Verso does not yet provide the asset
+loading mode Blueprint wants for these generated pages. The `BrowserAsset`
+adapter layer is therefore an output shim, not a second source API: new browser
+logic should be written as ESM source and installed through one explicit
+entrypoint when the current classic-script output needs it.
 
 The current private source chunks are:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `preview-runtime-base.js` | Small shared helpers, template collection, HTML escaping, and debug hooks. |
-| `preview-runtime-data.js` | Manifest/cache loading, graph-core delegation, status readers, and store lookups. |
-| `preview-runtime-render.js` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
-| `preview-runtime-hydration.js` | Math rendering, fragment hydration, and feature hydrator dispatch. |
-| `preview-runtime-lifecycle.js` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
-| `preview-runtime-surface.js` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
-| `preview-runtime-template.js` | Descriptor-driven binding for Lean-emitted template preview roots. |
-| `preview-runtime.js` | Stable render API assembly and `onRenderReady` installation. |
+| `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-api.mjs` | Stable render API assembly and `onRenderReady` installation; embedded into the current bundled runtime as a classic-script fragment. |
 
 Two adjacent implementation files are shared by bundled pages and generated ESM
 modules:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `blueprint-graph-core.js` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`. |
-| `blueprint-preview-core.js` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`. |
+| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
+| `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
 
-The graph command also has a private `graph-runtime-core.js` chunk. It owns
-graph-runtime utilities such as graph option normalization, canvas sizing,
-graph block state, script loading, and graph-specific panel positioning.
-`graph.js` owns graph rendering orchestration, variant selection, and graph UI
-event binding.
+The graph command also has private `graph-runtime-core.mjs` and `graph.mjs`
+chunks. The core chunk owns graph option normalization, canvas sizing, graph
+block state, script loading, and graph-specific panel positioning. `graph.mjs`
+owns graph rendering orchestration, variant selection, and graph UI event
+binding. Current Verso pages embed both through generated classic-script
+adapters; custom clients should use `api/graph.mjs` or the render API instead.
 
 ## Bundled Helper Boundary
 
@@ -680,7 +689,7 @@ cache-resolution helpers.
 External clients should stay on the stable custom-client API above.
 
 Inline-preview nesting is configured by private host policies in
-`inline-preview.js`. Today those policies recognize relation panels, graph
+`inline-preview.mjs`. Today those policies recognize relation panels, graph
 preview panels, and graph group-hover panels, then choose anchored hover
 behavior for nested previews inside those hosts. New bundled panel types should
 add an explicit host policy instead of adding more ad hoc ancestor checks.

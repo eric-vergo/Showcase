@@ -28,21 +28,21 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             set(discover_embedded_asset_owners(package_root)),
         )
 
-    def test_common_js_assets_are_owned_by_common_module(self) -> None:
+    def test_common_browser_assets_are_owned_by_common_module(self) -> None:
         for asset in (
-            "src/VersoBlueprint/Commands/open-target-details.js",
-            "src/VersoBlueprint/Commands/preview-ready.js",
-            "src/VersoBlueprint/blueprint-graph-core.js",
-            "src/VersoBlueprint/blueprint-preview-core.js",
-            "src/VersoBlueprint/Commands/preview-runtime-base.js",
-            "src/VersoBlueprint/Commands/preview-runtime-data.js",
-            "src/VersoBlueprint/Commands/preview-runtime-render.js",
-            "src/VersoBlueprint/Commands/preview-runtime-hydration.js",
-            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.js",
-            "src/VersoBlueprint/Commands/preview-runtime-surface.js",
-            "src/VersoBlueprint/Commands/preview-runtime-template.js",
-            "src/VersoBlueprint/Commands/preview-runtime.js",
-            "src/VersoBlueprint/Commands/inline-preview.js",
+            "src/VersoBlueprint/Commands/open-target-details.mjs",
+            "src/VersoBlueprint/Commands/preview-ready.mjs",
+            "src/VersoBlueprint/blueprint-graph-core.mjs",
+            "src/VersoBlueprint/blueprint-preview-core.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
+            "src/VersoBlueprint/Commands/inline-preview.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(
@@ -53,10 +53,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 EMBEDDED_ASSET_OWNERS,
             )
 
-    def test_standalone_api_core_js_assets_are_owned_by_preview_manifest_module(self) -> None:
+    def test_standalone_api_assets_are_owned_by_preview_manifest_module(self) -> None:
         for asset in (
-            "src/VersoBlueprint/blueprint-graph-core.js",
-            "src/VersoBlueprint/blueprint-preview-core.js",
+            "src/VersoBlueprint/blueprint-graph-core.mjs",
+            "src/VersoBlueprint/blueprint-preview-core.mjs",
+            "src/VersoBlueprint/blueprint-graph-api.mjs",
+            "src/VersoBlueprint/blueprint-preview-api.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(
@@ -70,8 +72,8 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_graph_js_assets_are_owned_by_graph_module(self) -> None:
         for asset in (
             "src/VersoBlueprint/Commands/graph.css",
-            "src/VersoBlueprint/Commands/graph-runtime-core.js",
-            "src/VersoBlueprint/Commands/graph.js",
+            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
+            "src/VersoBlueprint/Commands/graph.mjs",
         ):
             self.assertIn(
                 EmbeddedAssetOwner(
@@ -85,7 +87,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
     def test_preview_client_js_assets_are_owned_by_rendering_modules(self) -> None:
         for asset, owner, target in (
             (
-                "src/VersoBlueprint/Informal/Block/relation-panel.js",
+                "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
                 "src/VersoBlueprint/Informal/Block/Assets.lean",
                 "VersoBlueprint.Informal.Block.Assets",
             ),
@@ -335,7 +337,7 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             css = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.css"
-            js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.js"
+            js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.mjs"
             owner = root / "src" / "VersoBlueprint" / "Slides" / "Assets.lean"
             cached_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Slides" / "Assets.olean"
             cached_ir = root / ".lake" / "build" / "ir" / "VersoBlueprint" / "Slides" / "Assets.c"

@@ -549,9 +549,9 @@ def htmlCacheFilename : String := "blueprint-html-cache.json"
 
 def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
 
-def graphCoreModuleFilename : String := "blueprint-graph-core.js"
+def graphCoreModuleFilename : String := "blueprint-graph-core.mjs"
 
-def previewCoreModuleFilename : String := "blueprint-preview-core.js"
+def previewCoreModuleFilename : String := "blueprint-preview-core.mjs"
 
 def previewApiModuleFilename : String := "blueprint-preview-api.mjs"
 
@@ -566,19 +566,19 @@ def graphApiModulePath : String := apiModuleDirname ++ "/" ++ graphApiModuleAlia
 def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModuleAliasFilename
 
 -- Keep this module rebuilt when the standalone browser ESM APIs change.
-private def graphCoreModuleJs : String := include_str "blueprint-graph-core.js"
+private def graphCoreModuleMjs : String := include_str "blueprint-graph-core.mjs"
 
-private def previewCoreModuleJs : String := include_str "blueprint-preview-core.js"
+private def previewCoreModuleMjs : String := include_str "blueprint-preview-core.mjs"
 
-private def graphApiModuleJs : String := include_str "blueprint-graph-api.mjs"
+private def graphApiModuleMjs : String := include_str "blueprint-graph-api.mjs"
 
-private def previewApiModuleJs : String := include_str "blueprint-preview-api.mjs"
+private def previewApiModuleMjs : String := include_str "blueprint-preview-api.mjs"
 
-private def graphApiModuleAliasJs : String :=
+private def graphApiModuleAliasMjs : String :=
   "export * from \"../" ++ graphApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ graphApiModuleFilename ++ "\";\n"
 
-private def previewApiModuleAliasJs : String :=
+private def previewApiModuleAliasMjs : String :=
   "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ previewApiModuleFilename ++ "\";\n"
 
@@ -1663,12 +1663,12 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.createDirAll apiDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
-  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleJs
-  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleJs
-  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleJs
-  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleJs
-  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasJs
-  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasJs
+  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
+  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
+  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
+  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
+  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state
 

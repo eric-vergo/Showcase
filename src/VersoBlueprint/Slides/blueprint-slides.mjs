@@ -1,23 +1,26 @@
-(function () {
-  const namespace =
-    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-      ? window.VersoBlueprint
-      : (window.VersoBlueprint = {});
-  const slideRuntime =
-    namespace.slides && typeof namespace.slides === "object"
-      ? namespace.slides
-      : {};
-  if (slideRuntime.hydrate) return;
-  namespace.slides = slideRuntime;
+  // Blueprint slide-node hydration.
 
-  function trimSlashes(text, side) {
+  function currentSlideRuntime() {
+    const namespace =
+      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+        ? window.VersoBlueprint
+        : (window.VersoBlueprint = {});
+    const slideRuntime =
+      namespace.slides && typeof namespace.slides === "object"
+        ? namespace.slides
+        : {};
+    namespace.slides = slideRuntime;
+    return slideRuntime;
+  }
+
+  export function trimSlashes(text, side) {
     let value = String(text || "");
     if (side === "left" || side === "both") value = value.replace(/^\/+/, "");
     if (side === "right" || side === "both") value = value.replace(/\/+$/, "");
     return value;
   }
 
-  function readBlueprintBaseUrl(node) {
+  export function readBlueprintBaseUrl(node) {
     if (node instanceof Element) {
       const local = (node.getAttribute("data-bp-site-base") || "").trim();
       if (local) return local;
@@ -27,6 +30,7 @@
         if (hostBase) return hostBase;
       }
     }
+    const slideRuntime = currentSlideRuntime();
     const runtimeBase =
       typeof slideRuntime.blueprintBaseUrl === "string"
         ? slideRuntime.blueprintBaseUrl
@@ -34,14 +38,14 @@
     return runtimeBase.trim();
   }
 
-  function rememberBlueprintBaseUrl(node) {
+  export function rememberBlueprintBaseUrl(node) {
     const baseUrl = readBlueprintBaseUrl(node);
     if (!baseUrl) return "";
-    slideRuntime.blueprintBaseUrl = baseUrl;
+    currentSlideRuntime().blueprintBaseUrl = baseUrl;
     return baseUrl;
   }
 
-  function resolveBlueprintHref(href, baseUrl) {
+  export function resolveBlueprintHref(href, baseUrl) {
     const raw = String(href || "").trim();
     if (!raw || raw.startsWith("#")) return raw;
     if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) return raw;
@@ -50,7 +54,7 @@
     return trimSlashes(base, "right") + "/" + trimSlashes(raw, "left");
   }
 
-  function prepareBlueprintLinks(root, baseUrl) {
+  export function prepareBlueprintLinks(root, baseUrl) {
     if (!(root instanceof Element)) return;
     root.querySelectorAll("a[href]").forEach(function (link) {
       if (!(link instanceof HTMLAnchorElement)) return;
@@ -68,7 +72,7 @@
     });
   }
 
-  function hydrate(root, previewUtils) {
+  export function hydrate(root, previewUtils) {
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".bp_slide_node").forEach(function (node) {
       if (!(node instanceof Element)) return;
@@ -78,7 +82,7 @@
     });
   }
 
-  function hydrateWhenReady(root) {
+  export function hydrateWhenReady(root) {
     return new Promise(function (resolve) {
       window.VersoBlueprint.onRenderReady(function (previewUtils) {
         hydrate(root, previewUtils);
@@ -87,14 +91,14 @@
     });
   }
 
-  function registerPreviewHydrator(previewUtils) {
+  export function registerPreviewHydrator(previewUtils) {
     previewUtils.registerPreviewHydrator("slideBlueprintLinks", function (root) {
       if (!(root instanceof Element)) return;
       prepareBlueprintLinks(root, readBlueprintBaseUrl(root));
     });
   }
 
-  function start(previewUtils) {
+  export function start(previewUtils) {
     registerPreviewHydrator(previewUtils);
     hydrate(document, previewUtils);
     if (window.Reveal && typeof window.Reveal.on === "function") {
@@ -108,15 +112,43 @@
     }
   }
 
-  window.VersoBlueprint.onRenderReady(function (previewUtils) {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", function () {
-        start(previewUtils);
-      });
-    } else {
-      start(previewUtils);
-    }
-  });
+  export function installBlueprintSlides() {
+    const namespace =
+      window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+        ? window.VersoBlueprint
+        : (window.VersoBlueprint = {});
+    const slideRuntime =
+      namespace.slides && typeof namespace.slides === "object"
+        ? namespace.slides
+        : {};
+    if (slideRuntime.hydrate) return slideRuntime;
+    namespace.slides = slideRuntime;
 
-  slideRuntime.hydrate = hydrateWhenReady;
-})();
+    window.VersoBlueprint.onRenderReady(function (previewUtils) {
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", function () {
+          start(previewUtils);
+        });
+      } else {
+        start(previewUtils);
+      }
+    });
+
+    slideRuntime.hydrate = hydrateWhenReady;
+    return slideRuntime;
+  }
+
+  export const blueprintSlidesRuntime = {
+    trimSlashes,
+    readBlueprintBaseUrl,
+    rememberBlueprintBaseUrl,
+    resolveBlueprintHref,
+    prepareBlueprintLinks,
+    hydrate,
+    hydrateWhenReady,
+    registerPreviewHydrator,
+    start,
+    installBlueprintSlides
+  };
+
+export default blueprintSlidesRuntime;

@@ -1,5 +1,6 @@
-(function (globalScope) {
-  function debounce(fn, waitMs) {
+  // Graph command runtime helpers.
+
+  export function debounce(fn, waitMs) {
     let timeout = null;
     return function () {
       const args = arguments;
@@ -38,7 +39,7 @@
     return true;
   }
 
-  function normalizeGraphOptions(rawOptions) {
+  export function normalizeGraphOptions(rawOptions) {
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
       direction: normalizeGraphDirection(options.direction),
@@ -46,16 +47,16 @@
     };
   }
 
-  function graphPackAttr(pack) {
+  export function graphPackAttr(pack) {
     return normalizeGraphPack(pack) ? "true" : "false";
   }
 
-  function graphOptionsKey(options) {
+  export function graphOptionsKey(options) {
     const normalized = normalizeGraphOptions(options);
     return normalized.direction + "|" + graphPackAttr(normalized.pack);
   }
 
-  function readPreviewBehaviorDefaults(panel, fallbackMode, fallbackPlacement) {
+  export function readPreviewBehaviorDefaults(panel, fallbackMode, fallbackPlacement) {
     if (!(panel instanceof Element)) {
       return {
         mode: fallbackMode,
@@ -76,7 +77,7 @@
     return rect.bottom;
   }
 
-  function layoutGraphCanvas(graphRoot, graphState) {
+  export function layoutGraphCanvas(graphRoot, graphState) {
     if (!(graphRoot instanceof Element)) return;
     const rect = graphRoot.getBoundingClientRect();
     const viewportHeight = readViewportHeight();
@@ -114,7 +115,7 @@
     if (state) state.canvasAutoHeight = autoHeight;
   }
 
-  function load(src) {
+  export function load(src) {
     return new Promise(function (resolve, reject) {
       const s = document.createElement("script");
       s.src = src;
@@ -124,7 +125,7 @@
     });
   }
 
-  function graphNodeLabel(node) {
+  export function graphNodeLabel(node) {
     if (!(node instanceof Element)) return "";
     const titleNode = node.querySelector("title");
     const titleTxt =
@@ -136,13 +137,13 @@
     return textTxt || "";
   }
 
-  function graphNodeId(node) {
+  export function graphNodeId(node) {
     if (!(node instanceof Element)) return "";
     const id = node.getAttribute("id");
     return typeof id === "string" ? id.trim() : "";
   }
 
-  function ensureGraphBlockState(graphBlock) {
+  export function ensureGraphBlockState(graphBlock) {
     if (!(graphBlock instanceof Element)) return {};
     const existing = graphBlock.__bpGraphState;
     if (existing && typeof existing === "object") return existing;
@@ -173,7 +174,7 @@
     return state;
   }
 
-  function rememberGraphLayoutMeasurements(graphBlock, graphRoot, graphState) {
+  export function rememberGraphLayoutMeasurements(graphBlock, graphRoot, graphState) {
     if (
       !(graphBlock instanceof Element) ||
       !(graphRoot instanceof Element) ||
@@ -187,7 +188,7 @@
     graphState.lastCanvasHeight = Math.round(graphRoot.clientHeight);
   }
 
-  function resizeRenderedGraphToCanvas(graphRoot, graphState) {
+  export function resizeRenderedGraphToCanvas(graphRoot, graphState) {
     if (!(graphRoot instanceof Element)) return false;
     const svg = graphRoot.querySelector("svg");
     if (!(svg instanceof SVGElement)) return false;
@@ -203,7 +204,7 @@
     return true;
   }
 
-  function resetGraphvizForVariant(graphRoot, graphState) {
+  export function resetGraphvizForVariant(graphRoot, graphState) {
     let cachedGraphviz = null;
     if (graphState && typeof graphState === "object" && graphState.graphviz) {
       cachedGraphviz = graphState.graphviz;
@@ -246,7 +247,7 @@
     panel.style.top = "";
   }
 
-  function makeGroupPanelPositioner(graphBlock, behaviorSource) {
+  export function makeGroupPanelPositioner(graphBlock, behaviorSource) {
     return function (panel, anchorNode) {
       const behavior = readBehaviorSource(behaviorSource);
       if (!(panel instanceof Element) || !(graphBlock instanceof Element)) return;
@@ -273,7 +274,7 @@
     };
   }
 
-  const graphRuntimeCore = {
+  export const graphRuntimeCore = {
     debounce,
     normalizeGraphOptions,
     graphPackAttr,
@@ -290,15 +291,4 @@
     makeGroupPanelPositioner
   };
 
-  const existingCore =
-    globalScope.VersoBlueprintGraphRuntimeCore &&
-      typeof globalScope.VersoBlueprintGraphRuntimeCore === "object"
-      ? globalScope.VersoBlueprintGraphRuntimeCore
-      : {};
-  Object.assign(existingCore, graphRuntimeCore);
-  globalScope.VersoBlueprintGraphRuntimeCore = existingCore;
-})(
-  typeof globalThis !== "undefined"
-    ? globalThis
-    : (typeof window !== "undefined" ? window : this)
-);
+export default graphRuntimeCore;

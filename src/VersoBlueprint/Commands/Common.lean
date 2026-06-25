@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean.Data.Options
+import VersoBlueprint.BrowserAsset
 
 namespace Informal.Commands
 
@@ -163,44 +164,180 @@ def previewPanelCss : String := r##"
 -- Keep this module rebuilt when the embedded preview runtime changes.
 -- This module owns the shared Blueprint render API boundary, so adjacent edits
 -- here should land whenever preview runtime assets are intentionally refreshed.
-private def previewGraphCoreJs : String := include_str "../blueprint-graph-core.js"
+private def previewGraphCoreModuleMjs : String := include_str "../blueprint-graph-core.mjs"
 
-private def previewCoreJs : String := include_str "../blueprint-preview-core.js"
+private def previewGraphCoreJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript previewGraphCoreModuleMjs
+    "installGraphCoreGlobal(globalScope);"
 
-private def previewRuntimeBaseJs : String := include_str "preview-runtime-base.js"
+private def previewCoreModuleMjs : String := include_str "../blueprint-preview-core.mjs"
 
-private def previewRuntimeDataJs : String := include_str "preview-runtime-data.js"
+private def previewCoreClassicPrelude : String := r##"
+const graphDataUrl = function (filename, baseUrl) {
+  const namespace =
+    globalScope &&
+    globalScope.VersoBlueprint &&
+    typeof globalScope.VersoBlueprint.__private === "object"
+      ? globalScope.VersoBlueprint.__private
+      : {};
+  const core = namespace.graphCore;
+  if (core && typeof core.dataUrl === "function") {
+    return core.dataUrl(filename, baseUrl);
+  }
+  const safeFilename = String(filename || "").trim();
+  return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
+};
+"##
 
-private def previewRuntimeRenderJs : String := include_str "preview-runtime-render.js"
+private def previewCoreJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScriptWithPrelude previewCoreModuleMjs
+    previewCoreClassicPrelude
+    "installPreviewCoreGlobal(globalScope);"
 
-private def previewRuntimeHydrationJs : String := include_str "preview-runtime-hydration.js"
+private def previewRuntimeBaseModuleMjs : String := include_str "preview-runtime-base.mjs"
 
-private def previewRuntimeLifecycleJs : String := include_str "preview-runtime-lifecycle.js"
+private def previewRuntimeDataModuleMjs : String := include_str "preview-runtime-data.mjs"
 
-private def previewRuntimeSurfaceJs : String := include_str "preview-runtime-surface.js"
+private def previewRuntimeDataClassicPrelude : String := r##"
+const previewRuntimeDataGlobal = typeof globalThis !== "undefined" ? globalThis : window;
 
-private def previewRuntimeTemplateJs : String := include_str "preview-runtime-template.js"
+const previewRuntimePrivateNamespace =
+  previewRuntimeDataGlobal &&
+  previewRuntimeDataGlobal.VersoBlueprint &&
+  typeof previewRuntimeDataGlobal.VersoBlueprint.__private === "object"
+    ? previewRuntimeDataGlobal.VersoBlueprint.__private
+    : {};
 
-private def previewRuntimeApiJs : String := include_str "preview-runtime.js"
+function callRuntimePreviewCore(name, args, fallback) {
+  const core = previewRuntimePrivateNamespace.previewCore || null;
+  const method = core && core[name];
+  if (typeof method === "function") {
+    return method.apply(core, args);
+  }
+  if (typeof fallback === "function") {
+    return fallback();
+  }
+  return fallback;
+}
+
+function callRuntimeGraphCore(name, args, fallback) {
+  const core = previewRuntimePrivateNamespace.graphCore || null;
+  const method = core && core[name];
+  if (typeof method === "function") {
+    return method.apply(core, args);
+  }
+  if (typeof fallback === "function") {
+    return fallback();
+  }
+  return fallback;
+}
+
+const coreDataUrl = function (filename, baseUrl) {
+  return callRuntimePreviewCore("dataUrl", [filename, baseUrl], function () {
+    const safeFilename = String(filename || "").trim();
+    return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
+  });
+};
+
+const coreManifestUrl = function (baseUrl) {
+  return callRuntimePreviewCore("manifestUrl", [baseUrl], function () {
+    return coreDataUrl("blueprint-manifest.json", baseUrl);
+  });
+};
+
+const coreHtmlCacheUrl = function (baseUrl) {
+  return callRuntimePreviewCore("htmlCacheUrl", [baseUrl], function () {
+    return coreDataUrl("blueprint-html-cache.json", baseUrl);
+  });
+};
+
+const coreGraphApiModuleUrl = function (baseUrl) {
+  return callRuntimePreviewCore("graphApiModuleUrl", [baseUrl], function () {
+    return coreDataUrl("api/graph.mjs", baseUrl);
+  });
+};
+
+const corePreviewApiModuleUrl = function (baseUrl) {
+  return callRuntimePreviewCore("previewApiModuleUrl", [baseUrl], function () {
+    return coreDataUrl("api/preview.mjs", baseUrl);
+  });
+};
+
+const corePreviewKey = function (label, facet) {
+  return callRuntimePreviewCore("previewKey", [label, facet], "");
+};
+
+const coreStatementPreviewKey = function (label) {
+  return callRuntimePreviewCore("statementPreviewKey", [label], function () {
+    return corePreviewKey(label, "statement");
+  });
+};
+
+const coreGraphsFromManifest = function (manifest) {
+  return callRuntimeGraphCore("graphsFromManifest", [manifest], []);
+};
+
+const coreGetGraphData = function (root) {
+  return callRuntimeGraphCore("getGraphData", [root], null);
+};
+
+const coreGetGraphVariants = function (root) {
+  return callRuntimeGraphCore("getGraphVariants", [root], []);
+};
+
+const coreLoadManifestGraphs = function (url, options) {
+  return callRuntimeGraphCore("loadManifestGraphs", [url, options], function () {
+    return Promise.reject(new Error("Blueprint graph API unavailable"));
+  });
+};
+
+const coreLoadGraphs = function (options) {
+  return callRuntimeGraphCore("loadGraphs", [options], function () {
+    return coreLoadManifestGraphs(coreManifestUrl(), options);
+  });
+};
+"##
+
+private def previewRuntimeRenderModuleMjs : String := include_str "preview-runtime-render.mjs"
+
+private def previewRuntimeHydrationModuleMjs : String := include_str "preview-runtime-hydration.mjs"
+
+private def previewRuntimeLifecycleModuleMjs : String := include_str "preview-runtime-lifecycle.mjs"
+
+private def previewRuntimeSurfaceModuleMjs : String := include_str "preview-runtime-surface.mjs"
+
+private def previewRuntimeTemplateModuleMjs : String := include_str "preview-runtime-template.mjs"
+
+private def previewRuntimeApiModuleMjs : String := include_str "preview-runtime-api.mjs"
+
+private def previewRuntimeFragments : List String :=
+  [ Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeBaseModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragmentWithPrelude
+      previewRuntimeDataModuleMjs
+      previewRuntimeDataClassicPrelude,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeRenderModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeHydrationModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeLifecycleModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeSurfaceModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeTemplateModuleMjs,
+    Informal.BrowserAsset.esmModuleToClassicFragment previewRuntimeApiModuleMjs ++
+      "\ninstallPreviewRuntimeApi();" ]
 
 private def previewRuntimeJs : String :=
   "(function () {\n" ++
   "  if (window.VersoBlueprint && window.VersoBlueprint.render) return;\n\n" ++
-  previewRuntimeBaseJs ++ "\n" ++
-  previewRuntimeDataJs ++ "\n" ++
-  previewRuntimeRenderJs ++ "\n" ++
-  previewRuntimeHydrationJs ++ "\n" ++
-  previewRuntimeLifecycleJs ++ "\n" ++
-  previewRuntimeSurfaceJs ++ "\n" ++
-  previewRuntimeTemplateJs ++ "\n" ++
-  previewRuntimeApiJs ++ "\n" ++
+  String.intercalate "\n" previewRuntimeFragments ++ "\n" ++
   "})();"
 
 def previewHoverUtilsJs : String :=
   previewGraphCoreJs ++ "\n" ++ previewCoreJs ++ "\n" ++ previewRuntimeJs
 
 -- Keep this module rebuilt when the preview client readiness shim changes.
-def previewClientReadyJs : String := include_str "preview-ready.js"
+private def previewClientReadyModuleMjs : String := include_str "preview-ready.mjs"
+
+def previewClientReadyJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript previewClientReadyModuleMjs
+    "installPreviewClientReady(globalScope);"
 
 def previewHeaderCss : String := r##"
 .bp_preview_header_heading {
@@ -398,13 +535,25 @@ def inlinePreviewCss : String := r##"
 "##
 
 -- Keep this module rebuilt when target-opening runtime changes.
-def openTargetDetailsJs : String := include_str "open-target-details.js"
+private def openTargetDetailsModuleMjs : String := include_str "open-target-details.mjs"
+
+def openTargetDetailsJs : String :=
+  Informal.BrowserAsset.esmModuleToClassicScript openTargetDetailsModuleMjs
+    "installOpenTargetDetails(globalScope);"
 
 def withPreviewClientReadyJs (js : String) : String :=
   previewClientReadyJs ++ "\n" ++ js
 
 -- Keep this module rebuilt when the embedded inline preview runtime changes.
-def inlineLinkPreviewJs : String := withPreviewClientReadyJs (include_str "inline-preview.js")
+private def inlinePreviewModuleMjs : String := include_str "inline-preview.mjs"
+
+def inlineLinkPreviewJs : String :=
+  withPreviewClientReadyJs <|
+    Informal.BrowserAsset.esmModuleToClassicScript inlinePreviewModuleMjs r##"
+window.VersoBlueprint.onRenderReady(function (previewUtils) {
+  startInlinePreview(previewUtils);
+});
+"##
 
 /--
 Logical Blueprint browser assets before choosing a physical output mode.

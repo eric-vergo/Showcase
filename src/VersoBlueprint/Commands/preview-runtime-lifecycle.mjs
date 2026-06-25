@@ -1,9 +1,11 @@
+import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
+
   // Bundled preview lifecycle helpers.
   //
   // These helpers bind close buttons, popovers, trigger lifetimes,
   // dismissal, repositioning, and keep-open checks for bundled clients.
 
-  function bindCloseOnce(button, onClose) {
+  export function bindCloseOnce(button, onClose) {
     if (!(button instanceof Element)) return;
     if (button.getAttribute("data-bp-bound") === "1") return;
     if (typeof onClose !== "function") return;
@@ -15,7 +17,7 @@
     });
   }
 
-  function bindDismissHandlers(options) {
+  export function bindDismissHandlers(options) {
     const opts = options && typeof options === "object" ? options : {};
     const root = readElementOption(opts, "root", null);
     const trigger = readElementOption(opts, "trigger", null);
@@ -105,7 +107,7 @@
     return controller;
   }
 
-  function bindAnchoredPopover(options) {
+  export function bindAnchoredPopover(options) {
     const opts = options && typeof options === "object" ? options : {};
     const root = readElementOption(opts, "root", null);
     const trigger = readElementOption(opts, "trigger", null);
@@ -167,7 +169,7 @@
     return controller;
   }
 
-  function readAnchorRect(anchor) {
+  export function readAnchorRect(anchor) {
     if (anchor instanceof Element) {
       return anchor.getBoundingClientRect();
     }
@@ -184,7 +186,7 @@
     return null;
   }
 
-  function positionAnchoredPanel(panel, anchor, margin, offset) {
+  export function positionAnchoredPanel(panel, anchor, margin, offset) {
     if (!(panel instanceof Element)) return;
     const rect = readAnchorRect(anchor);
     if (!rect) return;
@@ -207,7 +209,7 @@
     panel.style.top = top + "px";
   }
 
-  function bindPanelRepositioner(options) {
+  export function bindPanelRepositioner(options) {
     const opts = options && typeof options === "object" ? options : {};
     const owner = readElementOption(opts, "owner", null);
     const boundAttr = readStringOption(opts, "boundAttr", "data-bp-panel-reposition-bound");
@@ -231,7 +233,7 @@
     return controller;
   }
 
-  function shouldKeepOpen(nextTarget, trigger, panel) {
+  export function shouldKeepOpen(nextTarget, trigger, panel) {
     if (!(nextTarget instanceof Element)) return false;
     if (trigger instanceof Element && trigger.contains(nextTarget)) return true;
     if (panel instanceof Element && panel.contains(nextTarget)) return true;
@@ -240,7 +242,7 @@
     return false;
   }
 
-  function bindPreviewTriggers(options) {
+  export function bindPreviewTriggers(options) {
     const opts = options && typeof options === "object" ? options : {};
     const triggerRoot = readRootOption(opts, "triggerRoot", document);
     const eventRoot = readRootOption(opts, "eventRoot", null);
@@ -488,3 +490,16 @@
       showTrigger: showTrigger
     });
   }
+
+  export const previewRuntimeLifecycle = {
+    bindCloseOnce,
+    bindDismissHandlers,
+    bindAnchoredPopover,
+    readAnchorRect,
+    positionAnchoredPanel,
+    bindPanelRepositioner,
+    shouldKeepOpen,
+    bindPreviewTriggers
+  };
+
+export default previewRuntimeLifecycle;
