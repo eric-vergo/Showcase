@@ -37,8 +37,14 @@
     example.dataset.bpRenderOk = result.ok ? "true" : "false";
     example.dataset.bpExpectedOk = expectedOk(example) ? "true" : "false";
     example.dataset.bpRenderReason = result.reason || "";
+    example.dataset.bpRenderMode = result.renderMode || "";
     example.dataset.bpCanonicalPreview = result.canonicalHtml ? "true" : "false";
     example.dataset.bpCanonicalSourceHref = result.canonicalSourceHref || "";
+    if (result.externalMarkup) {
+      example.dataset.bpExternalMarkupLanguage = result.externalMarkup.language || "";
+      example.dataset.bpExternalMarkupSlot = result.externalMarkup.slot || "";
+      example.dataset.bpExternalMarkupHasLocation = result.externalMarkup.location ? "true" : "false";
+    }
     if (result.manifestEntry) {
       example.dataset.bpManifestLabel = result.manifestEntry.label || "";
       example.dataset.bpManifestFacet = result.manifestEntry.facet || "";
@@ -110,6 +116,42 @@
     appendFact(facts, "Proof uses", Array.isArray(entry.proofUses) ? entry.proofUses.length : 0);
     appendFact(facts, "Used by", Array.isArray(entry.usedBy) ? entry.usedBy.length : 0);
     appendFact(facts, "Code previews", Array.isArray(entry.leanCodePreviewKeys) ? entry.leanCodePreviewKeys.length : 0);
+    appendFact(facts, "External markup", Array.isArray(entry.externalMarkup) ? entry.externalMarkup.length : 0);
+  }
+
+  function appendMarkdownInline(parent, text) {
+    String(text || "").split(/(\*\*[^*]+\*\*)/g).forEach(function (part) {
+      if (!part) return;
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+        appendTextNode(parent, "strong", "", part.slice(2, -2));
+      } else {
+        parent.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+
+  async function renderMarkdownFallback(payload, target) {
+    const article = document.createElement("article");
+    article.className = "bp_custom_render_client_external";
+    appendTextNode(article, "div", "bp_custom_render_client_external_kicker", "Markdown fallback");
+    const lines = String(payload.raw || "").split(/\n+/).map(function (line) {
+      return line.trim();
+    }).filter(Boolean);
+    lines.forEach(function (line) {
+      if (line.startsWith("# ")) {
+        appendTextNode(article, "h4", "", line.slice(2).trim());
+      } else {
+        const paragraph = document.createElement("p");
+        appendMarkdownInline(paragraph, line);
+        article.appendChild(paragraph);
+      }
+    });
+    appendFact(
+      article,
+      "Source",
+      (payload.language || "markup") + "/" + (payload.slot || "default")
+    );
+    target.replaceChildren(article);
   }
 
   function graphSampleNodes(graph) {
@@ -185,6 +227,17 @@
       result = await api.renderPreviewInto(body, key);
     } else if (exampleName === "render-canonical-preview-into") {
       result = await api.renderCanonicalPreviewInto(body, key);
+    } else if (exampleName === "render-node") {
+      result = await api.renderNode(body, {
+        label: example.dataset.bpPreviewLabel,
+        facet: example.dataset.bpPreviewFacet,
+        externalMarkup: {
+          prefer: [
+            { language: "markdown", slot: "original", render: renderMarkdownFallback },
+            { display: "source" }
+          ]
+        }
+      });
     } else {
       throw new Error("Unknown custom render client example: " + exampleName);
     }

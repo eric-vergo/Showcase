@@ -58,6 +58,7 @@ def customRenderClientCss : String := r##"
 }
 
 .bp_custom_render_client_example[data-bp-custom-client-example="render-preview-into"],
+.bp_custom_render_client_example[data-bp-custom-client-example="render-node"],
 .bp_custom_render_client_example[data-bp-render-ok="false"] {
   background: var(--bp-color-surface);
   border: 1px solid var(--bp-color-border-soft);
@@ -172,11 +173,39 @@ def customRenderClientCss : String := r##"
 .bp_custom_render_client_body .bp_extra_slot {
   justify-content: flex-start;
 }
+
+.bp_custom_render_client_external {
+  background: var(--bp-color-background);
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-sm);
+  padding: 0.75rem;
+}
+
+.bp_custom_render_client_external h4 {
+  font-size: 0.95rem;
+  margin: 0 0 0.45rem;
+}
+
+.bp_custom_render_client_external p {
+  margin: 0.35rem 0;
+}
+
+.bp_custom_render_client_external_kicker {
+  color: var(--bp-color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
 "##
 
 -- Keep this module rebuilt when the standalone custom-client asset changes.
 def customRenderClientJs : String :=
   Informal.Commands.withPreviewClientReadyJs (include_str "custom-render-client.js")
+
+-- Keep this module rebuilt when the standalone render-node Markdown example changes.
+def standaloneRenderNodeMarkdownJs : String :=
+  Informal.Commands.withPreviewClientReadyJs (include_str "standalone-render-node-markdown.js")
 
 private def clientText (text : String) : Verso.Output.Html :=
   VersoBlueprint.Html.text text
@@ -339,6 +368,14 @@ if (card) {
 }
 "##
 
+private def standaloneRenderNodeMarkdownHtml : Verso.Output.Html :=
+  clientTag "section"
+    #[ ("id", "standalone-render-node-markdown-example"),
+       ("data-bp-standalone-render-node-markdown", "true"),
+       ("data-bp-label", "custom_client_external_markdown_metadata"),
+       ("data-bp-facet", "statement") ]
+    (clientTag "div" #[("data-bp-standalone-render-node-target", "true")] .empty)
+
 def customRenderClientHtml : Verso.Output.Html :=
   let heading := clientTag "h2" #[] (clientText "Standalone Render Client")
   let status :=
@@ -356,6 +393,9 @@ def customRenderClientHtml : Verso.Output.Html :=
         clientExample "render-preview-into" "preview_facets" "statement" "Body fragment"
           "statement"
           "Direct insertion with renderPreviewInto: useful for custom UIs, but intentionally body-only.",
+        clientExample "render-node" "preview_facets" "statement" "Label native preview"
+          "label-native"
+          "Label-oriented renderNode call: native content uses the generated Blueprint node shell.",
         clientExample "render-canonical-preview-into" "preview_facets" "statement" "Canonical statement"
           "canonical-statement"
           "Canonical insertion with renderCanonicalPreviewInto; this reuses the generated Blueprint node wrapper.",
@@ -374,6 +414,9 @@ def customRenderClientHtml : Verso.Output.Html :=
         clientExample "render-canonical-preview-into" "used_grouped_proof_panel" "proof" "Proof dependencies"
           "grouped-proof"
           "The proof facet for the same theorem, showing proof-side uses and relation metadata.",
+        clientExample "render-node" "custom_client_external_markdown_metadata" "statement" "External Markdown fallback"
+          "external-markdown"
+          "Label-oriented renderNode call: the generated Blueprint shell stays standard while Markdown fills the content slot.",
         clientExample "render-canonical-preview-into" "missing_custom_client_target" "statement" "Missing preview diagnostic"
           "missing"
           "An expected miss that demonstrates the runtime diagnostic branch for custom clients."
@@ -388,11 +431,19 @@ def customRenderClientHtml : Verso.Output.Html :=
          ("data-bp-custom-render-client", "true"),
          ("data-bp-custom-client-status", "idle") ]
       (Verso.Output.Html.seq #[header, examples])
-  Verso.Output.Html.seq #[sectionBlock, previewModuleExampleScript, graphModuleExampleScript]
+  Verso.Output.Html.seq #[
+    sectionBlock,
+    standaloneRenderNodeMarkdownHtml,
+    previewModuleExampleScript,
+    graphModuleExampleScript
+  ]
 
 def customRenderClientAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   (Informal.Commands.blueprintCssAssetBundle [customRenderClientCss]).append
-    (Informal.Commands.previewRuntimeJsAssetBundle.withJs [] [customRenderClientJs])
+    (Informal.Commands.previewRuntimeJsAssetBundle.withJs [] [
+      customRenderClientJs,
+      standaloneRenderNodeMarkdownJs
+    ])
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.customRenderClientExample where
@@ -419,3 +470,24 @@ open PreviewRuntimeShowcase.Chapters.CustomRenderClient
 This page carries a standalone browser client for the Blueprint render API.
 
 {custom_render_client_example}
+
+:::Informal.group "custom_client_external_metadata_group"
+Custom render external metadata group.
+:::
+
+:::Informal.theorem "custom_client_external_markdown_metadata" (parent := "custom_client_external_metadata_group") (uses := "used_target") (tags := "external, markdown") (effort := "small") (priority := "medium")
+:::
+
+:::Informal.lemma_ "custom_client_external_metadata_consumer" (uses := "custom_client_external_markdown_metadata")
+Consumer node that gives the Markdown fallback target a used-by relation.
+:::
+
+```Informal.md "custom_client_external_markdown_metadata" (slot := original)
+# External Markdown with metadata
+This fallback keeps **manifest metadata** such as uses, used-by, group, tags, priority, and effort.
+```
+
+```Informal.md "custom_client_external_markdown" (slot := original)
+# External Markdown source
+This witness has **only Markdown** attached and no generated Blueprint node shell, so diagnostics can exercise source-only external markup.
+```
