@@ -6,6 +6,20 @@ function defaultGlobalScope() {
   return typeof globalThis !== "undefined" ? globalThis : {};
 }
 
+function blueprintPrivateNamespace(globalScope = defaultGlobalScope()) {
+  const namespace =
+    globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
+      ? globalScope.VersoBlueprint
+      : {};
+  const privateNamespace =
+    namespace.__private && typeof namespace.__private === "object"
+      ? namespace.__private
+      : {};
+  namespace.__private = privateNamespace;
+  globalScope.VersoBlueprint = namespace;
+  return privateNamespace;
+}
+
 export function dataUrl(filename, baseUrl) {
   return graphDataUrl(filename, baseUrl);
 }
@@ -50,12 +64,13 @@ export const previewCore = {
 };
 
 export function installPreviewCoreGlobal(globalScope = defaultGlobalScope()) {
+  const namespace = blueprintPrivateNamespace(globalScope);
   const existingCore =
-    globalScope.VersoBlueprintPreviewCore && typeof globalScope.VersoBlueprintPreviewCore === "object"
-      ? globalScope.VersoBlueprintPreviewCore
+    namespace.previewCore && typeof namespace.previewCore === "object"
+      ? namespace.previewCore
       : {};
   Object.assign(existingCore, previewCore);
-  globalScope.VersoBlueprintPreviewCore = existingCore;
+  namespace.previewCore = existingCore;
   return existingCore;
 }
 

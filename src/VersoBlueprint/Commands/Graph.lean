@@ -80,22 +80,37 @@ private def graphRuntimeCoreModuleMjs : String := include_str "graph-runtime-cor
 -- plus user-controlled resize persistence and cheap height resets.
 private def graphRuntimeCoreJs : String :=
   Informal.BrowserAsset.esmModuleToClassicScript graphRuntimeCoreModuleMjs r##"
+const namespace =
+  globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
+    ? globalScope.VersoBlueprint
+    : {};
+const privateNamespace =
+  namespace.__private && typeof namespace.__private === "object"
+    ? namespace.__private
+    : {};
+namespace.__private = privateNamespace;
+globalScope.VersoBlueprint = namespace;
 const existingCore =
-  globalScope.VersoBlueprintGraphRuntimeCore &&
-    typeof globalScope.VersoBlueprintGraphRuntimeCore === "object"
-    ? globalScope.VersoBlueprintGraphRuntimeCore
+  privateNamespace.graphRuntimeCore &&
+    typeof privateNamespace.graphRuntimeCore === "object"
+    ? privateNamespace.graphRuntimeCore
     : {};
 Object.assign(existingCore, graphRuntimeCore);
-globalScope.VersoBlueprintGraphRuntimeCore = existingCore;
+privateNamespace.graphRuntimeCore = existingCore;
 "##
 
 private def graphRuntimeModuleMjs : String := include_str "graph.mjs"
 
 private def graphRuntimeClassicPrelude : String := r##"
+const privateNamespace =
+  globalScope.VersoBlueprint &&
+  typeof globalScope.VersoBlueprint.__private === "object"
+    ? globalScope.VersoBlueprint.__private
+    : {};
 const graphRuntimeCoreModule =
-  globalScope.VersoBlueprintGraphRuntimeCore &&
-    typeof globalScope.VersoBlueprintGraphRuntimeCore === "object"
-    ? globalScope.VersoBlueprintGraphRuntimeCore
+  privateNamespace.graphRuntimeCore &&
+    typeof privateNamespace.graphRuntimeCore === "object"
+    ? privateNamespace.graphRuntimeCore
     : {};
 "##
 

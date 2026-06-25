@@ -174,7 +174,13 @@ private def previewCoreModuleMjs : String := include_str "../blueprint-preview-c
 
 private def previewCoreClassicPrelude : String := r##"
 const graphDataUrl = function (filename, baseUrl) {
-  const core = globalScope && globalScope.VersoBlueprintGraphCore;
+  const namespace =
+    globalScope &&
+    globalScope.VersoBlueprint &&
+    typeof globalScope.VersoBlueprint.__private === "object"
+      ? globalScope.VersoBlueprint.__private
+      : {};
+  const core = namespace.graphCore;
   if (core && typeof core.dataUrl === "function") {
     return core.dataUrl(filename, baseUrl);
   }
@@ -198,12 +204,15 @@ private def previewRuntimeDataModuleMjs : String := include_str "preview-runtime
 private def previewRuntimeDataClassicPrelude : String := r##"
 const previewRuntimeDataGlobal = typeof globalThis !== "undefined" ? globalThis : window;
 
+const previewRuntimePrivateNamespace =
+  previewRuntimeDataGlobal &&
+  previewRuntimeDataGlobal.VersoBlueprint &&
+  typeof previewRuntimeDataGlobal.VersoBlueprint.__private === "object"
+    ? previewRuntimeDataGlobal.VersoBlueprint.__private
+    : {};
+
 function callRuntimePreviewCore(name, args, fallback) {
-  const core =
-    previewRuntimeDataGlobal.VersoBlueprintPreviewCore &&
-      typeof previewRuntimeDataGlobal.VersoBlueprintPreviewCore === "object"
-      ? previewRuntimeDataGlobal.VersoBlueprintPreviewCore
-      : null;
+  const core = previewRuntimePrivateNamespace.previewCore || null;
   const method = core && core[name];
   if (typeof method === "function") {
     return method.apply(core, args);
@@ -215,11 +224,7 @@ function callRuntimePreviewCore(name, args, fallback) {
 }
 
 function callRuntimeGraphCore(name, args, fallback) {
-  const core =
-    previewRuntimeDataGlobal.VersoBlueprintGraphCore &&
-      typeof previewRuntimeDataGlobal.VersoBlueprintGraphCore === "object"
-      ? previewRuntimeDataGlobal.VersoBlueprintGraphCore
-      : null;
+  const core = previewRuntimePrivateNamespace.graphCore || null;
   const method = core && core[name];
   if (typeof method === "function") {
     return method.apply(core, args);
