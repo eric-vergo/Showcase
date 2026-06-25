@@ -1423,6 +1423,7 @@ private def buildExternalMarkupEntries
     (state : TraverseState)
     (previewBackedEntries : Array Entry) : IO (Array Entry) := do
   let mut entries := #[]
+  let storedBlocks := Informal.collectStoredBlocks state
   for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
@@ -1433,13 +1434,30 @@ private def buildExternalMarkupEntries
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
         continue
+      let blockData? := blockInfo? state data.label
+      let headingParts? := blockHeadingParts? state data.label .statement blockData?
       entries := entries.push {
         key := externalMarkupEntryKey data.label
         targetKind := .externalMarkup
         label := data.label
         facet := .statement
-        title := blockTitle state data.label
+        kind := blockKind? blockData?
+        title := blockTitle state data.label .statement blockData?
+        displayCaption := headingParts?.map (·.caption)
+        displayLabel := headingParts?.map (·.label)
+        href := blockHref state data.label
+        parent := blockData?.bind (·.parent)
+        parentTitle := blockParentTitle? state blockData?
+        statementUses := blockData?.map (·.statementUses) |>.getD #[]
+        proofUses := blockData?.map (·.proofUses) |>.getD #[]
         externalMarkup := data.markup.toArray
+        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
+        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+        group := blockData?.bind (buildGroupRelation? state storedBlocks)
+        ownerDisplayName := blockData?.bind (·.ownerDisplayName)
+        tags := blockData?.map (·.tags) |>.getD #[]
+        priority := blockData?.bind (·.priority)
+        effort := blockData?.bind (·.effort)
       }
   pure entries
 

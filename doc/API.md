@@ -49,6 +49,7 @@ but that namespace is not a supported client API.
 | Read data embedded in a rendered graph block | `getGraphData(element)` and `getGraphVariants(element)` |
 | Render only a preview body fragment in a custom wrapper | `renderPreviewInto(element, key)` |
 | Render the full generated Blueprint node wrapper | `renderCanonicalPreviewInto(element, key)` |
+| Render by label with external TeX or Markdown fallback source | `renderNode(element, request)` |
 | Inspect semantic manifest data before rendering | `resolvePreview(key)` or `resolveCanonicalPreview(key)` |
 | Render Blueprint nodes from a custom Lean generator | `Informal.Graft.renderNodeFromManifestCache` |
 | Join manifest/cache data manually | `PreviewManifest.File.findEntry?` and `PreviewManifest.HtmlCache.File.findHtml?` |
@@ -56,6 +57,13 @@ but that namespace is not a supported client API.
 Prefer the highest-level entry point that matches the job. Reach for direct
 manifest/cache lookup only when the client needs custom joining behavior or
 explicit diagnostics.
+
+Two rules keep most integrations simple:
+
+1. Treat `blueprint-manifest.json` as semantic data: labels, statuses, graph
+   records, dependency data, preview keys, hrefs, and display metadata.
+2. Treat `blueprint-html-cache.json` as rendered HTML: insert it and hydrate it,
+   but do not parse it to recover semantic facts.
 
 ## Generated Data Files
 
@@ -414,7 +422,7 @@ The generated ESM modules expose these entrypoint groups:
 
 | Module | Exports |
 | --- | --- |
-| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `hydrate`. |
+| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
 | `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`. |
 
 ## Browser Runtime API
@@ -483,6 +491,73 @@ window.VersoBlueprint.onRenderReady(async function (api) {
 });
 ```
 
+Use `renderNode` when the client starts from a Blueprint label and wants a
+generated Blueprint node. If native rendered content is available, VBP inserts
+the regular generated node shell. If only external markup is available, VBP
+still owns that shell: heading, relation chips, metadata, anchors, and
+hydration. The call-scoped renderer receives only the node's content slot as
+its target. The renderer is not registered globally.
+
+The ownership boundary is strict:
+
+- `renderNode` owns the outer Blueprint node shell.
+- The supplied external-markup renderer owns only the body target passed as its
+  second argument, which is the generated node's `.bp_content` slot.
+- The renderer should replace or append children inside that body target; it
+  should not replace the surrounding node, heading, relation chips, metadata
+  panel, anchors, or hydrated preview controls.
+- If external markup exists but VBP cannot find a generated node shell for the
+  label, `renderNode` reports `external-markup-node-shell-missing` rather than
+  inventing a different wrapper.
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const target = document.querySelector("#comparison-preview");
+  if (!target) return;
+
+  const result = await api.renderNode(target, {
+    label: "Chapter2:Problem2.11.6",
+    facet: "statement",
+    externalMarkup: {
+      prefer: [
+        { language: "markdown", slot: "original", render: renderMarkdown },
+        { language: "tex", slot: "original", render: renderTexSource },
+        { display: "source" }
+      ]
+    }
+  });
+
+  if (!result.ok) {
+    console.warn(result.reason);
+  }
+});
+
+async function renderMarkdown(markup, target) {
+  const node = await markdownToDom(markup.raw);
+  target.replaceChildren(node);
+}
+
+async function renderTexSource(markup, target) {
+  const pre = document.createElement("pre");
+  pre.textContent = markup.raw;
+  target.replaceChildren(pre);
+}
+```
+
+The renderer receives
+`{ raw, language, slot, location, node, manifestEntry, label, facet, nativePreview, externalMarkup }`
+plus the node-body target element as its second argument. `node` and
+`manifestEntry` are the manifest entry that owns the external markup; `location`
+is the optional project-relative source range recorded by the `tex` or `md`
+block. If the manifest has external markup but no generated Blueprint node shell
+for the label, `renderNode` returns a typed diagnostic instead of inventing a
+different wrapper shape.
+
+A complete standalone version of this pattern is available in
+[`standalone-render-node-markdown.js`](../tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/standalone-render-node-markdown.js).
+It does not use the showcase card UI: it binds one target element, calls
+`renderNode`, and renders Markdown into the body slot supplied by VBP.
+
 ### Runtime Readiness
 
 After readiness, the same API is available as `window.VersoBlueprint.render`.
@@ -516,6 +591,7 @@ views, and browser-only examples.
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |
 | `api.resolveCanonicalPreview(key)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
 | `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. |
+| `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. |
 
 ## Preview Result Shapes
@@ -531,6 +607,7 @@ the rendered HTML used by the operation. Failed results include a `reason` and
 | `renderPreviewInto(element, key, options)` | The `resolvePreview` success shape after writing `html` into `element` and hydrating it. | The `resolvePreview` failure shape after writing `diagnosticHtml` into `element`. |
 | `resolveCanonicalPreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html, canonicalHtml, canonicalSourceHref }` | `{ ok: false, key, reason, diagnosticHtml }` |
 | `renderCanonicalPreviewInto(element, key, options)` | The `resolveCanonicalPreview` success shape after writing `canonicalHtml` into `element` and hydrating it. | The `resolveCanonicalPreview` failure shape after writing `diagnosticHtml` into `element`. |
+| `renderNode(element, request, options)` | Native-preview success shape with `renderMode: "native"` and `canonicalHtml`, or external-markup success shape with `renderMode: "external-markup"`, `externalMarkup`, and `canonicalHtml`. | `{ ok: false, key, reason, manifestEntry?, externalMarkup?, nativePreview?, diagnosticHtml }` after writing diagnostics unless `options.diagnostics === false`. |
 
 The most common failure `reason` values are:
 
@@ -540,6 +617,13 @@ The most common failure `reason` values are:
 - `canonical-href-missing`
 - `canonical-preview-node-missing`
 - `canonical-preview-load-failed`
+- `missing-label`
+- `external-markup-entry-missing`
+- `external-markup-missing`
+- `external-markup-renderer-missing`
+- `external-markup-render-failed`
+- `external-markup-node-shell-missing`
+- `external-markup-node-shell-load-failed`
 
 Treat `html` and `canonicalHtml` as opaque rendered fragments. Use
 `manifestEntry` for semantic facts such as labels, titles, dependency metadata,
@@ -570,10 +654,11 @@ dashboard client owns its component tree, selection state, filters, and wrapper
 markup, but it should treat Blueprint data as manifest/cache records loaded
 through the render API. Components should pass preview keys to
 `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, or
-`renderCanonicalPreviewInto`, then render user-interface controls around the
-returned manifest entry. They should not scrape generated Blueprint DOM, call
-private bundled helpers, or couple component state to the current shape of the
-generated preview runtime.
+`renderCanonicalPreviewInto`, or pass labels plus call-scoped external-markup
+renderers to `renderNode`. They should render user-interface controls around
+the returned manifest entry, not scrape generated Blueprint DOM, call private
+bundled helpers, or couple component state to the current shape of the generated
+preview runtime.
 
 ### Private Runtime Chunks
 
@@ -679,8 +764,9 @@ as a standalone browser client on its `Custom Render Client` page. It also
 includes a graph-data card that calls `api.loadGraphs()` to read
 `blueprint-manifest.json.graphs` without embedding a rendered graph, a
 `type="module"` example that imports `renderPreviewInto` from
-`-verso-data/api/preview.mjs`, and a graph module example that imports
-`loadGraphs` from `-verso-data/api/graph.mjs`.
+`-verso-data/api/preview.mjs`, `renderNode` cards for native label rendering and
+a metadata-bearing external-markup node with a call-scoped body renderer, and a graph
+module example that imports `loadGraphs` from `-verso-data/api/graph.mjs`.
 
 The client asset lives in
 [`custom-render-client.js`](../tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/custom-render-client.js),
