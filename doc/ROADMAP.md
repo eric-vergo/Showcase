@@ -97,6 +97,11 @@ Work:
    - graph rendering orchestration, variant selection, and graph UI event
      binding
      (landed as `Commands/graph.mjs`, imported by the Manual page runtime)
+8. deduplicate the public JSDoc API object typedefs once the JS API surface
+   settles; today `BlueprintPreviewApi` deliberately repeats the data API
+   methods from `BlueprintDataApi` because classic JSDoc composition is brittle
+   for generated declaration output, but the long-term source of truth should be
+   a single shared API shape plus preview-specific extensions
 
 ### Data Model and Status Semantics
 

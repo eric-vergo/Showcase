@@ -9,6 +9,12 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
   // future client needs another fact, add it to the manifest instead of parsing
   // cached HTML.
 
+  function errorMessage(err) {
+    return err instanceof Error && typeof err.message === "string" && err.message.length > 0
+      ? err.message
+      : String(err);
+  }
+
   function blueprintDataApi(options) {
     const opts = options && typeof options === "object" ? options : {};
     return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
@@ -372,6 +378,16 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         };
       }
       const clone = node.cloneNode(true);
+      if (!(clone instanceof Element)) {
+        return {
+          ok: false,
+          reason: "canonical-preview-node-missing",
+          detail: "The generated page loaded, but the linked Blueprint node clone was not an element.",
+          node: null,
+          canonicalHtml: "",
+          canonicalSourceHref: url.href
+        };
+      }
       rebaseCanonicalPreviewLinks(clone, canonicalPreviewDocumentBaseUrl(doc, url));
       resetClonedPreviewBindingState(clone);
       return {
@@ -383,7 +399,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         canonicalSourceHref: url.href
       };
     } catch (err) {
-      const message = err && err.message ? err.message : String(err);
+      const message = errorMessage(err);
       return {
         ok: false,
         reason: "canonical-preview-load-failed",
@@ -409,7 +425,18 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         canonicalSourceHref: loaded.canonicalSourceHref
       };
     }
-    const contentTarget = blueprintContentTargetForNode(loaded.node);
+    const loadedNode = loaded.node;
+    if (!(loadedNode instanceof Element)) {
+      return {
+        ok: false,
+        reason: "external-markup-node-shell-missing",
+        detail: "The generated Blueprint node shell was not an element.",
+        node: null,
+        canonicalHtml: "",
+        canonicalSourceHref: loaded.canonicalSourceHref
+      };
+    }
+    const contentTarget = blueprintContentTargetForNode(loadedNode);
     if (!(contentTarget instanceof Element)) {
       return {
         ok: false,
@@ -421,14 +448,14 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       };
     }
     await renderExternalMarkupSelectionInto(contentTarget, selection, payload);
-    target.replaceChildren(loaded.node);
+    target.replaceChildren(loadedNode);
     hydrateRenderedPreview(target, options);
     return {
       ok: true,
       reason: "",
       detail: "",
-      node: loaded.node,
-      canonicalHtml: loaded.node.outerHTML,
+      node: loadedNode,
+      canonicalHtml: loadedNode.outerHTML,
       canonicalSourceHref: loaded.canonicalSourceHref
     };
   }
@@ -595,7 +622,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       renderHtmlInto(target, html, opts);
       return failed;
     } catch (err) {
-      const message = err && err.message ? err.message : String(err);
+      const message = errorMessage(err);
       const failed = renderNodePreviewResult(result, {
         ok: false,
         reason: "external-markup-render-failed",

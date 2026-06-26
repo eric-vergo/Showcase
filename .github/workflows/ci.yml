@@ -91,6 +91,30 @@ jobs:
       - name: Check Python harness syntax
         run: python3 -m compileall -q scripts
 
+  js-api-tooling:
+    name: JavaScript API Tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Typecheck JavaScript API
+        run: npm run typecheck
+      - name: Build JavaScript API declarations
+        run: npm run build:types
+      - name: Generate JavaScript API docs
+        run: npm run docs
+      - name: Upload JavaScript API docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: js-api-docs
+          path: _out/jsdoc-api
+
   project-template-fresh-repo:
     name: Project Template Fresh Repo
     if: github.event_name == 'pull_request'

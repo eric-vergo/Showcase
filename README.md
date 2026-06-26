@@ -204,6 +204,50 @@ passed to the generator binary, such as
 `--dump-manifest`, `--dump-html-cache`, and `--dump-schema`. See
 [doc/API.md](./doc/API.md) for the stable generated-data contract.
 
+### JavaScript API tooling
+
+The browser APIs emitted under `-verso-data/api/` remain plain JavaScript ESM.
+API documentation is written in JSDoc, and TypeScript checks the public API
+entrypoints plus their direct support modules with `allowJs` and `checkJs`.
+This first pass intentionally focuses on the custom-client API surface; broader
+private runtime coverage and `noImplicitAny` tightening are follow-up cleanup
+items. TypeScript users consume generated declaration files from `dist/types`;
+those files are build artifacts and are not tracked in source.
+
+Useful maintainer commands:
+
+- `npm run typecheck`
+- `npm run build:types`
+- `npm run docs`
+
+Custom clients can import the generated preview module directly from a rendered
+site:
+
+```js
+import { createPreview } from "./-verso-data/api/preview.mjs";
+
+const preview = createPreview();
+const container = document.querySelector("#target");
+if (!container) throw new Error("Missing preview target");
+
+await preview.renderNode(container, {
+  label: "Chapter2:Problem2.11.6",
+  externalMarkup: {
+    prefer: [
+      { language: "verso", slot: "statement" },
+      {
+        language: "markdown",
+        slot: "original",
+        render: async ({ raw }, target) => {
+          target.replaceChildren(renderMarkdown(raw));
+        }
+      },
+      { display: "source" }
+    ]
+  }
+});
+```
+
 ### Widget
 
 The widget surface is experimental. Import `VersoBlueprint.Widget` explicitly if
