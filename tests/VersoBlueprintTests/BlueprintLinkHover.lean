@@ -269,7 +269,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       countSubstr out "class=\"bp_inline_preview_ref\"" == 2 &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\"" &&
       countSubstr out s!"data-bp-preview-key=\"{hoverCitePreviewKey}\"" == 2 &&
-      hasExtraJs st "bindInlinePreview" &&
+      !hasExtraJs st "bindInlinePreview" &&
       hasExtraCss st ".bp_inline_preview_panel"
     )
 

@@ -56,19 +56,30 @@ def assert_no_runtime_errors(errors: list[str]) -> None:
 def blueprint_render_api_script(body: str) -> str:
     return f"""
     async () => {{
-        const api = await new Promise((resolve) => {{
-            window.VersoBlueprint.onRenderReady(resolve);
-        }});
+        async function loadBlueprintRenderApi() {{
+            if (
+                window.VersoBlueprint &&
+                typeof window.VersoBlueprint.onRenderReady === "function"
+            ) {{
+                return await new Promise((resolve) => {{
+                    window.VersoBlueprint.onRenderReady(resolve);
+                }});
+            }}
+            const moduleUrl = new URL(
+                "-verso-data/blueprint-page-runtime.mjs",
+                document.baseURI
+            ).href;
+            const runtime = await import(moduleUrl);
+            if (runtime && runtime.blueprintPageRuntime) {{
+                return runtime.blueprintPageRuntime;
+            }}
+            throw new Error("Blueprint page runtime did not expose a render API");
+        }}
+        const api = await loadBlueprintRenderApi();
         {body}
     }}
     """
 
 
 def wait_for_blueprint_render_api(page: Page) -> None:
-    page.wait_for_function(
-        """() => !!(
-          window.VersoBlueprint &&
-          typeof window.VersoBlueprint.onRenderReady === "function"
-        )"""
-    )
     page.evaluate(blueprint_render_api_script("return true;"))

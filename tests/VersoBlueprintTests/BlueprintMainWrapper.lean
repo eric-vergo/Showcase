@@ -40,6 +40,25 @@ open Verso.VersoBlueprintTests.Blueprint.Support
 #eval
   let cfg : RenderConfig := {}
   let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
+  cfg.toHtmlConfig.extraHead.any fun html =>
+    let source := html.asString
+    hasSubstr source "type=\"module\"" &&
+      hasSubstr source "-verso-data/blueprint-page-runtime.mjs"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let cfg : RenderConfig := {}
+  let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
+  let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
+  (cfg.toHtmlConfig.extraHead.filter fun html =>
+    hasSubstr html.asString "-verso-data/blueprint-page-runtime.mjs").size == 1
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let cfg : RenderConfig := {}
+  let cfg := Informal.PreviewManifest.withBlueprintAssets cfg
   cfg.toHtmlConfig.toHtmlAssets.extraCss.toArray.any fun css =>
     hasSubstr css.css ".bp_build_metadata"
 

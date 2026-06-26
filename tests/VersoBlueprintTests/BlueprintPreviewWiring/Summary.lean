@@ -44,24 +44,13 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
         ".bp_summary_preview_panel_close"
         (allowHtmlCache := true) &&
       legacyTemplateBinderJs?.isNone &&
-      match inlineJs?, mathJs? with
-      | some inlineJs, some mathJs =>
+      inlineJs?.isNone &&
+      !hasExtraJs st "window.VersoBlueprint.onRenderReady" &&
+      match mathJs? with
+      | some mathJs =>
         hasSubstr mathJs "\\\\newcommand{\\\\previewmacro}{\\\\mathsf{Preview}}" &&
-        hasRenderReadyWiring inlineJs "previewUtils" &&
-        hasAllSubstr inlineJs [
-          "bp-inline-preview-child-panel",
-          "data-bp-preview-footer-html"
-        ] &&
-        lacksAllSubstr inlineJs [
-          "previewUtils.resolvePreview(previewLookupKey)",
-          "typeof previewUtils.readPanelBehavior",
-          "typeof previewUtils.previewDebug",
-          "function onBlueprintRenderReady(fn)",
-          ".replaceAll(\"&\", \"&amp;\")",
-          "ensureInlinePreviewStore",
-          "template.bp_inline_preview_tpl"
-        ]
-      | _, _ => false
+        !hasSubstr mathJs "window.VersoBlueprint.onRenderReady"
+      | none => false
     )
 
 /-- info: true -/
@@ -79,11 +68,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "Nat.add</code>" &&
       !hasSubstr out "Lean code:" &&
       hasExtraCss st ".bp_inline_preview_panel" &&
-      match inlineJs? with
-      | some inlineJs =>
-        hasSubstr inlineJs "const triggerSelector = \".bp_inline_preview_ref[data-bp-preview-id]\"" &&
-        hasSubstr inlineJs "data-bp-preview-fallback-label"
-      | none => false
+      inlineJs?.isNone
     )
 
 /-- info: true -/

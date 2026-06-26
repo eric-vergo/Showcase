@@ -1,34 +1,150 @@
+import { collectPreviewTemplates, escapeHtml, previewDebug, previewDebugLabel } from "./preview-runtime-base.mjs";
+import { createBlueprintDataApi } from "./preview-runtime-data.mjs";
+import { renderBlueprintNodeInto, renderBlueprintPreviewInto, renderCanonicalBlueprintPreviewInto, resolveBlueprintPreview, resolveCanonicalBlueprintPreview } from "./preview-runtime-render.mjs";
+import { hydrateRenderedPreview, registerPreviewHydrator } from "./preview-runtime-hydration.mjs";
+import { bindAnchoredPopover } from "./preview-runtime-lifecycle.mjs";
+import { createPreviewPanel, createPreviewSurface, hidePreviewSurfaces, previewMessageHtml, renderPreviewIntoSurface, resolvePreviewHtml } from "./preview-runtime-surface.mjs";
+import { bindTemplatePreviewDescriptors } from "./preview-runtime-template.mjs";
+
 // API assembly and readiness synchronization.
 
-export function installPreviewRuntimeApi() {
+function defaultTemplatePreviewRoot(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (opts.root && typeof opts.root.querySelectorAll === "function") {
+    return opts.root;
+  }
+  return typeof document !== "undefined" ? document : null;
+}
+
+function templatePreviewDescriptorBinder(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  return typeof opts.templateBinder === "function"
+    ? opts.templateBinder
+    : bindTemplatePreviewDescriptors;
+}
+
+function bindInitialTemplatePreviewDescriptors(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (opts.bindTemplatePreviews === false) return;
+  const root = defaultTemplatePreviewRoot(opts);
+  if (!root || typeof root.querySelectorAll !== "function") return;
+  const bindTemplatePreviews = templatePreviewDescriptorBinder(opts);
+  if (
+    typeof document !== "undefined" &&
+    root === document &&
+    document.readyState === "loading"
+  ) {
+    document.addEventListener("DOMContentLoaded", function () {
+      bindTemplatePreviews(root, opts);
+    }, { once: true });
+    return;
+  }
+  bindTemplatePreviews(root, opts);
+}
+
+function previewRuntimeRenderOptions(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const renderOptions = {};
+  if ("dataApi" in opts) renderOptions.dataApi = opts.dataApi;
+  if ("fetchJson" in opts) renderOptions.fetchJson = opts.fetchJson;
+  if ("hydrate" in opts) renderOptions.hydrate = opts.hydrate;
+  if ("renderMath" in opts) renderOptions.renderMath = opts.renderMath;
+  if ("hydrators" in opts) renderOptions.hydrators = opts.hydrators;
+  if ("inheritPageHydrators" in opts) {
+    renderOptions.inheritPageHydrators = opts.inheritPageHydrators;
+  }
+  if ("templateBinder" in opts) renderOptions.templateBinder = opts.templateBinder;
+  if ("fetchText" in opts) renderOptions.fetchText = opts.fetchText;
+  if ("loadDocument" in opts) renderOptions.loadDocument = opts.loadDocument;
+  if ("canonicalBaseUrl" in opts) renderOptions.canonicalBaseUrl = opts.canonicalBaseUrl;
+  if ("canonicalPreviewDocuments" in opts) {
+    renderOptions.canonicalPreviewDocuments = opts.canonicalPreviewDocuments;
+  }
+  if ("canonicalPreviewHtmlByKey" in opts) {
+    renderOptions.canonicalPreviewHtmlByKey = opts.canonicalPreviewHtmlByKey;
+  }
+  return renderOptions;
+}
+
+function mergePreviewRenderOptions(defaults, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  return Object.assign({}, defaults || {}, opts);
+}
+
+export function createPreviewRuntimeApi(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const dataApi = createBlueprintDataApi(opts);
+  const runtimeOptions = Object.assign({}, opts, { dataApi: dataApi });
+
   const previewDataApi = {
-    dataUrl: blueprintDataUrl,
-    manifestUrl: blueprintManifestUrl,
-    htmlCacheUrl: blueprintHtmlCacheUrl,
-    loadManifest: loadBlueprintManifest,
-    readManifestStatus: readBlueprintManifestStatus,
-    loadManifestEntry: loadBlueprintManifestEntry,
-    loadHtmlCache: loadBlueprintHtmlCache,
-    readHtmlCacheStatus: readBlueprintHtmlCacheStatus,
-    loadHtmlCacheEntry: loadBlueprintHtmlCacheEntry,
-    getGraphData: collectGraphData,
-    getGraphVariants: collectGraphVariants,
-    graphsFromManifest: graphDataFromManifest,
-    loadManifestGraphs: loadManifestGraphs,
-    loadGraphs: loadBlueprintGraphs,
-    graphApiModuleUrl: graphApiModuleUrl,
-    previewApiModuleUrl: previewApiModuleUrl,
-    previewKey: previewKey,
-    statementPreviewKey: statementPreviewKey,
-    resolvePreview: resolveBlueprintPreview,
-    resolveCanonicalPreview: resolveCanonicalBlueprintPreview
+    dataUrl: dataApi.dataUrl,
+    manifestUrl: dataApi.manifestUrl,
+    htmlCacheUrl: dataApi.htmlCacheUrl,
+    loadManifest: function (options) { return dataApi.loadManifest(options); },
+    readManifestStatus: dataApi.readManifestStatus,
+    loadManifestEntry: function (key, options) { return dataApi.loadManifestEntry(key, options); },
+    loadHtmlCache: function (options) { return dataApi.loadHtmlCache(options); },
+    readHtmlCacheStatus: dataApi.readHtmlCacheStatus,
+    loadHtmlCacheEntry: function (key, options) { return dataApi.loadHtmlCacheEntry(key, options); },
+    getGraphData: dataApi.getGraphData,
+    getGraphVariants: dataApi.getGraphVariants,
+    graphsFromManifest: dataApi.graphsFromManifest,
+    loadManifestGraphs: function (url, options) { return dataApi.loadManifestGraphs(url, options); },
+    loadGraphs: function (options) { return dataApi.loadGraphs(options); },
+    graphApiModuleUrl: dataApi.graphApiModuleUrl,
+    dataApiModuleUrl: dataApi.dataApiModuleUrl,
+    previewApiModuleUrl: dataApi.previewApiModuleUrl,
+    previewKey: dataApi.previewKey,
+    statementPreviewKey: dataApi.statementPreviewKey,
+    resolvePreview: function (previewKey, options) {
+      return resolveBlueprintPreview(
+        previewKey,
+        mergePreviewRenderOptions({ dataApi: dataApi }, options)
+      );
+    },
+    resolveCanonicalPreview: function (previewKey, options) {
+      return resolveCanonicalBlueprintPreview(
+        previewKey,
+        mergePreviewRenderOptions({ dataApi: dataApi }, options)
+      );
+    }
   };
 
+  const defaultRenderOptions = previewRuntimeRenderOptions(runtimeOptions);
+  if (!(defaultRenderOptions.canonicalPreviewDocuments instanceof Map)) {
+    defaultRenderOptions.canonicalPreviewDocuments = new Map();
+  }
+  if (!(defaultRenderOptions.canonicalPreviewHtmlByKey instanceof Map)) {
+    defaultRenderOptions.canonicalPreviewHtmlByKey = new Map();
+  }
   const previewRenderApi = {
-    renderPreviewInto: renderBlueprintPreviewInto,
-    renderCanonicalPreviewInto: renderCanonicalBlueprintPreviewInto,
-    renderNode: renderBlueprintNodeInto,
-    hydrate: hydrateRenderedPreview
+    renderPreviewInto: function (target, previewKey, options) {
+      return renderBlueprintPreviewInto(
+        target,
+        previewKey,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    },
+    renderCanonicalPreviewInto: function (target, previewKey, options) {
+      return renderCanonicalBlueprintPreviewInto(
+        target,
+        previewKey,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    },
+    renderNode: function (target, request, options) {
+      return renderBlueprintNodeInto(
+        target,
+        request,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    },
+    hydrate: function (element, options) {
+      return hydrateRenderedPreview(
+        element,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    }
   };
 
   const previewTemplateHelpers = {
@@ -71,6 +187,7 @@ export function installPreviewRuntimeApi() {
     loadManifestGraphs: previewDataApi.loadManifestGraphs,
     loadGraphs: previewDataApi.loadGraphs,
     graphApiModuleUrl: previewDataApi.graphApiModuleUrl,
+    dataApiModuleUrl: previewDataApi.dataApiModuleUrl,
     previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
@@ -91,8 +208,19 @@ export function installPreviewRuntimeApi() {
     previewDebugLabel: previewHydrationHelpers.previewDebugLabel,
     previewMessageHtml: previewContentHelpers.previewMessageHtml,
     createPreviewPanel: previewContentHelpers.createPreviewPanel,
-    renderPreviewIntoSurface: previewContentHelpers.renderPreviewIntoSurface,
-    resolvePreviewHtml: previewContentHelpers.resolvePreviewHtml,
+    renderPreviewIntoSurface: function (surface, previewKey, options) {
+      return previewContentHelpers.renderPreviewIntoSurface(
+        surface,
+        previewKey,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    },
+    resolvePreviewHtml: function (previewKey, options) {
+      return previewContentHelpers.resolvePreviewHtml(
+        previewKey,
+        mergePreviewRenderOptions(defaultRenderOptions, options)
+      );
+    },
     bindAnchoredPopover: previewLifecycleHelpers.bindAnchoredPopover,
     hidePreviewSurfaces: previewLifecycleHelpers.hidePreviewSurfaces
   };
@@ -102,6 +230,15 @@ export function installPreviewRuntimeApi() {
     stableCustomClientApi,
     bundledFeatureRenderHelpers
   );
+
+  bindInitialTemplatePreviewDescriptors(runtimeOptions);
+
+  return renderApi;
+}
+
+export function installPreviewRuntimeApi(options) {
+  const renderApi = createPreviewRuntimeApi(options);
+  if (typeof window === "undefined") return renderApi;
 
   function reportRenderReadyError(err) {
     window.setTimeout(function () {
@@ -125,13 +262,6 @@ export function installPreviewRuntimeApi() {
   namespace.onRenderReady = onRenderReady;
   namespace.renderReadyCallbacks = [];
   window.VersoBlueprint = namespace;
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      bindTemplatePreviewDescriptors(document);
-    }, { once: true });
-  } else {
-    bindTemplatePreviewDescriptors(document);
-  }
   queuedRenderReadyCallbacks.forEach(function (fn) {
     try {
       onRenderReady(fn);
@@ -144,6 +274,7 @@ export function installPreviewRuntimeApi() {
 }
 
 export const previewRuntimeApi = {
+  createPreviewRuntimeApi,
   installPreviewRuntimeApi
 };
 

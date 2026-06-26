@@ -1,4 +1,6 @@
 (function () {
+  const { loadPreviewApi, onDomReady } = createBlueprintPreviewApiLoader(window);
+
   function appendTextNode(parent, tagName, className, text) {
     const node = document.createElement(tagName);
     if (className) node.className = className;
@@ -67,13 +69,21 @@
     });
   }
 
-  window.VersoBlueprint.onRenderReady(function (api) {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", function () {
-        bindAll(api);
-      });
-    } else {
+  function reportLoadError(err) {
+    document.querySelectorAll("[data-bp-standalone-render-node-markdown]").forEach(function (root) {
+      if (!(root instanceof HTMLElement)) return;
+      root.dataset.bpRenderOk = "false";
+      root.dataset.bpRenderReason = err && err.message ? err.message : String(err);
+    });
+  }
+
+  loadPreviewApi().then(function (api) {
+    onDomReady(function () {
       bindAll(api);
-    }
+    });
+  }).catch(function (err) {
+    onDomReady(function () {
+      reportLoadError(err);
+    });
   });
 })();

@@ -1,20 +1,403 @@
-import { dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
-import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants, graphsFromManifest as coreGraphsFromManifest, loadGraphs as coreLoadGraphs, loadManifestGraphs as coreLoadManifestGraphs } from "../blueprint-graph-core.mjs";
+import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
+import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants, graphsFromManifest as coreGraphsFromManifest, loadManifestGraphs as coreLoadManifestGraphs } from "../blueprint-graph-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
   // Generated-data URL helpers and graph-core delegation.
 
-  export function blueprintDataUrl(filename) {
-    return coreDataUrl(filename);
+  function normalizeBlueprintDataOptions(options) {
+    return options && typeof options === "object" ? options : {};
   }
 
-  export function fetchBlueprintJson(url) {
-    return fetch(url).then(function (resp) {
-      if (!resp.ok) {
-        throw new Error("HTTP " + resp.status + " while loading " + url);
+  function readOptionString(options, name) {
+    const opts = normalizeBlueprintDataOptions(options);
+    return typeof opts[name] === "string" ? opts[name] : "";
+  }
+
+  function readOptionFunction(options, name) {
+    const opts = normalizeBlueprintDataOptions(options);
+    return typeof opts[name] === "function" ? opts[name] : null;
+  }
+
+  function createBlueprintStore(fields) {
+    return Object.assign({
+      status: null,
+      map: null,
+      promise: null
+    }, fields || {});
+  }
+
+  export function createBlueprintDataApi(options) {
+    const initialOptions = normalizeBlueprintDataOptions(options);
+    let blueprintDataBaseUrl = readOptionString(initialOptions, "dataBaseUrl");
+    let blueprintFetchJson = readOptionFunction(initialOptions, "fetchJson");
+
+    function readBlueprintDataBaseUrl() {
+      return blueprintDataBaseUrl || undefined;
+    }
+
+    function readBlueprintFetchJson() {
+      return blueprintFetchJson;
+    }
+
+    function setBlueprintDataBaseUrlForApi(baseUrl) {
+      const nextBaseUrl = typeof baseUrl === "string" ? baseUrl : "";
+      if (blueprintDataBaseUrl === nextBaseUrl) return;
+      blueprintDataBaseUrl = nextBaseUrl;
+      resetBlueprintDataStoresForApi();
+    }
+
+    function setBlueprintFetchJsonForApi(fetchJson) {
+      const nextFetchJson = typeof fetchJson === "function" ? fetchJson : null;
+      if (blueprintFetchJson === nextFetchJson) return;
+      blueprintFetchJson = nextFetchJson;
+      resetBlueprintDataStoresForApi();
+    }
+
+    function blueprintDataUrlForApi(filename) {
+      return coreDataUrl(filename, readBlueprintDataBaseUrl());
+    }
+
+    function blueprintDataLoadOptions(options) {
+      const opts = normalizeBlueprintDataOptions(options);
+      const loadOptions = Object.assign({}, opts);
+      if (typeof loadOptions.fetchJson !== "function") {
+        const fetchJson = readBlueprintFetchJson();
+        if (fetchJson) loadOptions.fetchJson = fetchJson;
       }
-      return resp.json();
+      return loadOptions;
+    }
+
+    function fetchBlueprintJsonForApi(url, options) {
+      const opts = blueprintDataLoadOptions(options);
+      if (typeof opts.fetchJson === "function") {
+        return Promise.resolve(opts.fetchJson(url, opts));
+      }
+      const globalScope = typeof globalThis !== "undefined" ? globalThis : {};
+      const fetchFn = globalScope && globalScope.fetch;
+      if (typeof fetchFn !== "function") {
+        return Promise.reject(
+          new Error("Blueprint preview API requires fetch or createPreview({ fetchJson })")
+        );
+      }
+      const fetchOptions =
+        opts.fetchOptions && typeof opts.fetchOptions === "object"
+          ? opts.fetchOptions
+          : undefined;
+      return fetchFn.call(globalScope, url, fetchOptions).then(function (resp) {
+        if (!resp.ok) {
+          throw new Error("HTTP " + resp.status + " while loading " + url);
+        }
+        return resp.json();
+      });
+    }
+
+    function blueprintManifestUrlForApi() {
+      return coreManifestUrl(readBlueprintDataBaseUrl());
+    }
+
+    function graphApiModuleUrlForApi() {
+      return coreGraphApiModuleUrl(readBlueprintDataBaseUrl());
+    }
+
+    function dataApiModuleUrlForApi() {
+      return coreDataApiModuleUrl(readBlueprintDataBaseUrl());
+    }
+
+    function previewApiModuleUrlForApi() {
+      return corePreviewApiModuleUrl(readBlueprintDataBaseUrl());
+    }
+
+    function graphDataFromManifestForApi(manifest) {
+      return coreGraphsFromManifest(manifest);
+    }
+
+    function collectGraphDataForApi(root) {
+      return coreGetGraphData(root);
+    }
+
+    function collectGraphVariantsForApi(root) {
+      return coreGetGraphVariants(root);
+    }
+
+    function loadManifestGraphsForApi(url, options) {
+      const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrlForApi();
+      return coreLoadManifestGraphs(manifestUrl, blueprintDataLoadOptions(options));
+    }
+
+    function loadBlueprintGraphsForApi(options) {
+      return coreLoadManifestGraphs(blueprintManifestUrlForApi(), blueprintDataLoadOptions(options));
+    }
+
+    function blueprintHtmlCacheUrlForApi() {
+      return coreHtmlCacheUrl(readBlueprintDataBaseUrl());
+    }
+
+    // Manifest/cache status, loading, and diagnostics.
+
+    const blueprintManifestStoreForApi = createBlueprintStore({
+      url: blueprintManifestUrlForApi,
+      decode: decodeBlueprintManifest,
+      debugLabel: "manifest.loadFailed",
+      consoleLabel: "Blueprint manifest",
+      unavailableTitle: "Preview manifest unavailable.",
+      requiredFilename: "blueprint-manifest.json",
+      missingTitle: "Preview entry missing from manifest.",
+      missingReadyText: "The site emitted a Blueprint manifest, but this preview key was not present."
     });
+
+    const blueprintHtmlCacheStoreForApi = createBlueprintStore({
+      url: blueprintHtmlCacheUrlForApi,
+      decode: decodeBlueprintHtmlCache,
+      debugLabel: "htmlCache.loadFailed",
+      consoleLabel: "Blueprint HTML cache",
+      unavailableTitle: "Preview HTML cache unavailable.",
+      requiredFilename: "blueprint-html-cache.json",
+      missingTitle: "Preview entry missing from HTML cache.",
+      missingReadyText: "The site emitted a rendered-fragment cache, but this preview key was not present."
+    });
+
+    function resetBlueprintStoreForApi(store) {
+      store.status = null;
+      store.map = null;
+      store.promise = null;
+    }
+
+    function resetBlueprintDataStoresForApi() {
+      resetBlueprintStoreForApi(blueprintManifestStoreForApi);
+      resetBlueprintStoreForApi(blueprintHtmlCacheStoreForApi);
+    }
+
+    function defaultBlueprintStoreStatusForApi(store) {
+      return {
+        state: "idle",
+        attempts: 0,
+        url: store.url(),
+        lastError: "",
+        entryCount: 0
+      };
+    }
+
+    function cloneBlueprintStoreStatusForApi(store, status) {
+      const fallback = defaultBlueprintStoreStatusForApi(store);
+      if (!status || typeof status !== "object") return fallback;
+      return {
+        state: typeof status.state === "string" ? status.state : fallback.state,
+        attempts: Number.isFinite(status.attempts) ? status.attempts : fallback.attempts,
+        url: typeof status.url === "string" ? status.url : fallback.url,
+        lastError: typeof status.lastError === "string" ? status.lastError : fallback.lastError,
+        entryCount: Number.isFinite(status.entryCount) ? status.entryCount : fallback.entryCount
+      };
+    }
+
+    function readBlueprintStoreStatusForApi(store) {
+      return cloneBlueprintStoreStatusForApi(store, store.status);
+    }
+
+    function setBlueprintStoreStatusForApi(store, status) {
+      store.status = status;
+      return status;
+    }
+
+    function readBlueprintManifestStatusForApi() {
+      return readBlueprintStoreStatusForApi(blueprintManifestStoreForApi);
+    }
+
+    function readBlueprintHtmlCacheStatusForApi() {
+      return readBlueprintStoreStatusForApi(blueprintHtmlCacheStoreForApi);
+    }
+
+    function blueprintStoreDiagnosticHtmlForApi(store, previewKey) {
+      const status = readBlueprintStoreStatusForApi(store);
+      const trimmedKey = typeof previewKey === "string" ? previewKey.trim() : "";
+      const keyHtml = trimmedKey ? "<code>" + escapeHtml(trimmedKey) + "</code>" : "this preview";
+      if (status.state === "error") {
+        const errorHtml = status.lastError
+          ? "<p>Last load error: <code>" + escapeHtml(status.lastError) + "</code></p>"
+          : "";
+        return (
+          "<div class=\"bp_html_cache_preview_notice\">" +
+          "<p><strong>" + store.unavailableTitle + "</strong></p>" +
+          "<p>Blueprint previews require <code>-verso-data/" + store.requiredFilename + "</code>. " +
+          "Rebuild the site or retry after the current build finishes.</p>" +
+          "<p>Requested preview: " + keyHtml + "</p>" +
+          errorHtml +
+          "</div>"
+        );
+      }
+      if (status.state === "ready" && trimmedKey) {
+        return (
+          "<div class=\"bp_html_cache_preview_notice\">" +
+          "<p><strong>" + store.missingTitle + "</strong></p>" +
+          "<p>Requested preview: " + keyHtml + "</p>" +
+          "<p>" + store.missingReadyText + "</p>" +
+          "</div>"
+        );
+      }
+      return "";
+    }
+
+    function blueprintManifestDiagnosticHtmlForApi(previewKey) {
+      return blueprintStoreDiagnosticHtmlForApi(blueprintManifestStoreForApi, previewKey);
+    }
+
+    function blueprintHtmlCacheDiagnosticHtmlForApi(previewKey) {
+      return blueprintStoreDiagnosticHtmlForApi(blueprintHtmlCacheStoreForApi, previewKey);
+    }
+
+    function fetchBlueprintStoreDataForApi(store, options) {
+      const jsonUrl = store.url();
+      return fetchBlueprintJsonForApi(jsonUrl, options).then(function (data) {
+        return { data: data, url: jsonUrl };
+      });
+    }
+
+    function loadBlueprintStoreForApi(store, options) {
+      const existing = store.map;
+      if (existing instanceof Map) {
+        return Promise.resolve(existing);
+      }
+      const existingPromise = store.promise;
+      if (existingPromise) {
+        return existingPromise;
+      }
+      const url = store.url();
+      const previousStatus = readBlueprintStoreStatusForApi(store);
+      const attempts =
+        Number.isFinite(previousStatus.attempts) ? previousStatus.attempts + 1 : 1;
+      setBlueprintStoreStatusForApi(store, {
+        state: "loading",
+        attempts: attempts,
+        url: url,
+        lastError: "",
+        entryCount: 0
+      });
+      let promise = null;
+      promise = fetchBlueprintStoreDataForApi(store, blueprintDataLoadOptions(options))
+        .then(function (result) {
+          const map = store.decode(result.data);
+          store.map = map;
+          setBlueprintStoreStatusForApi(store, {
+            state: "ready",
+            attempts: attempts,
+            url: result.url,
+            lastError: "",
+            entryCount: map.size
+          });
+          return map;
+        })
+        .catch(function (err) {
+          const message =
+            err && typeof err.message === "string" && err.message.length > 0
+              ? err.message
+              : String(err);
+          store.map = null;
+          setBlueprintStoreStatusForApi(store, {
+            state: "error",
+            attempts: attempts,
+            url: url,
+            lastError: message,
+            entryCount: 0
+          });
+          previewDebug(store.debugLabel, {
+            url: url,
+            attempts: attempts,
+            error: message
+          });
+          try {
+            console.error("[bp-preview] " + store.consoleLabel + " load failed", {
+              url: url,
+              error: message
+            });
+          } catch (_consoleErr) {}
+          return new Map();
+        })
+        .then(function (map) {
+          if (store.promise === promise) {
+            store.promise = null;
+          }
+          return map;
+        });
+      store.promise = promise;
+      return promise;
+    }
+
+    function loadBlueprintManifestForApi(options) {
+      return loadBlueprintStoreForApi(blueprintManifestStoreForApi, options);
+    }
+
+    function loadBlueprintHtmlCacheForApi(options) {
+      return loadBlueprintStoreForApi(blueprintHtmlCacheStoreForApi, options);
+    }
+
+    function readBlueprintStoreEntryForApi(store, previewKey) {
+      if (typeof previewKey !== "string" || previewKey.length === 0) return null;
+      const map = store.map;
+      if (!(map instanceof Map)) return null;
+      return map.get(previewKey) || null;
+    }
+
+    async function loadBlueprintStoreEntryForApi(store, previewKey, options) {
+      const exact = readBlueprintStoreEntryForApi(store, previewKey);
+      if (exact) return exact;
+      const entryMap = await loadBlueprintStoreForApi(store, options);
+      if (!(entryMap instanceof Map)) return null;
+      if (typeof previewKey === "string" && previewKey.length > 0 && entryMap.has(previewKey)) {
+        return entryMap.get(previewKey) || null;
+      }
+      return null;
+    }
+
+    async function loadBlueprintManifestEntryForApi(previewKey, options) {
+      return loadBlueprintStoreEntryForApi(blueprintManifestStoreForApi, previewKey, options);
+    }
+
+    async function loadBlueprintHtmlCacheEntryForApi(previewKey, options) {
+      return loadBlueprintStoreEntryForApi(blueprintHtmlCacheStoreForApi, previewKey, options);
+    }
+
+    return {
+      dataUrl: blueprintDataUrlForApi,
+      fetchJson: fetchBlueprintJsonForApi,
+      decodeKeyedEntries: decodeBlueprintKeyedEntries,
+      decodeManifest: decodeBlueprintManifest,
+      decodeHtmlCache: decodeBlueprintHtmlCache,
+      manifestUrl: blueprintManifestUrlForApi,
+      graphApiModuleUrl: graphApiModuleUrlForApi,
+      dataApiModuleUrl: dataApiModuleUrlForApi,
+      previewApiModuleUrl: previewApiModuleUrlForApi,
+      graphsFromManifest: graphDataFromManifestForApi,
+      getGraphData: collectGraphDataForApi,
+      getGraphVariants: collectGraphVariantsForApi,
+      loadManifestGraphs: loadManifestGraphsForApi,
+      loadGraphs: loadBlueprintGraphsForApi,
+      missingPreviewKeyDiagnosticHtml: missingPreviewKeyDiagnosticHtml,
+      htmlCacheUrl: blueprintHtmlCacheUrlForApi,
+      manifestStore: blueprintManifestStoreForApi,
+      htmlCacheStore: blueprintHtmlCacheStoreForApi,
+      defaultStoreStatus: defaultBlueprintStoreStatusForApi,
+      cloneStoreStatus: cloneBlueprintStoreStatusForApi,
+      readStoreStatus: readBlueprintStoreStatusForApi,
+      setStoreStatus: setBlueprintStoreStatusForApi,
+      readManifestStatus: readBlueprintManifestStatusForApi,
+      readHtmlCacheStatus: readBlueprintHtmlCacheStatusForApi,
+      storeDiagnosticHtml: blueprintStoreDiagnosticHtmlForApi,
+      manifestDiagnosticHtml: blueprintManifestDiagnosticHtmlForApi,
+      htmlCacheDiagnosticHtml: blueprintHtmlCacheDiagnosticHtmlForApi,
+      fetchStoreData: fetchBlueprintStoreDataForApi,
+      loadStore: loadBlueprintStoreForApi,
+      loadManifest: loadBlueprintManifestForApi,
+      loadHtmlCache: loadBlueprintHtmlCacheForApi,
+      readStoreEntry: readBlueprintStoreEntryForApi,
+      previewKey: previewKey,
+      statementPreviewKey: statementPreviewKey,
+      loadStoreEntry: loadBlueprintStoreEntryForApi,
+      loadManifestEntry: loadBlueprintManifestEntryForApi,
+      loadHtmlCacheEntry: loadBlueprintHtmlCacheEntryForApi,
+      setDataBaseUrl: setBlueprintDataBaseUrlForApi,
+      setFetchJson: setBlueprintFetchJsonForApi,
+      resetStore: resetBlueprintStoreForApi,
+      resetStores: resetBlueprintDataStoresForApi
+    };
   }
 
   export function decodeBlueprintKeyedEntries(data, spec) {
@@ -73,41 +456,6 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     });
   }
 
-  export function blueprintManifestUrl() {
-    return coreManifestUrl();
-  }
-
-  export function graphApiModuleUrl() {
-    return coreGraphApiModuleUrl();
-  }
-
-  export function previewApiModuleUrl() {
-    return corePreviewApiModuleUrl();
-  }
-
-  export function graphDataFromManifest(manifest) {
-    return coreGraphsFromManifest(manifest);
-  }
-
-  export function collectGraphData(root) {
-    return coreGetGraphData(root);
-  }
-
-  export function collectGraphVariants(root) {
-    return coreGetGraphVariants(root);
-  }
-
-  export function loadManifestGraphs(url, options) {
-    const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrl();
-    return coreLoadManifestGraphs(manifestUrl, options);
-  }
-
-  export function loadBlueprintGraphs(options) {
-    return coreLoadGraphs(options);
-  }
-
-  // Manifest/cache status, loading, and diagnostics.
-
   export function missingPreviewKeyDiagnosticHtml() {
     return (
       "<div class=\"bp_html_cache_preview_notice\">" +
@@ -118,207 +466,6 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     );
   }
 
-  export function blueprintHtmlCacheUrl() {
-    return coreHtmlCacheUrl();
-  }
-
-  export const blueprintManifestStore = {
-    status: null,
-    map: null,
-    promise: null,
-    url: blueprintManifestUrl,
-    decode: decodeBlueprintManifest,
-    debugLabel: "manifest.loadFailed",
-    consoleLabel: "Blueprint manifest",
-    unavailableTitle: "Preview manifest unavailable.",
-    requiredFilename: "blueprint-manifest.json",
-    missingTitle: "Preview entry missing from manifest.",
-    missingReadyText: "The site emitted a Blueprint manifest, but this preview key was not present."
-  };
-
-  export const blueprintHtmlCacheStore = {
-    status: null,
-    map: null,
-    promise: null,
-    url: blueprintHtmlCacheUrl,
-    decode: decodeBlueprintHtmlCache,
-    debugLabel: "htmlCache.loadFailed",
-    consoleLabel: "Blueprint HTML cache",
-    unavailableTitle: "Preview HTML cache unavailable.",
-    requiredFilename: "blueprint-html-cache.json",
-    missingTitle: "Preview entry missing from HTML cache.",
-    missingReadyText: "The site emitted a rendered-fragment cache, but this preview key was not present."
-  };
-
-  export function defaultBlueprintStoreStatus(store) {
-    return {
-      state: "idle",
-      attempts: 0,
-      url: store.url(),
-      lastError: "",
-      entryCount: 0
-    };
-  }
-
-  export function cloneBlueprintStoreStatus(store, status) {
-    const fallback = defaultBlueprintStoreStatus(store);
-    if (!status || typeof status !== "object") return fallback;
-    return {
-      state: typeof status.state === "string" ? status.state : fallback.state,
-      attempts: Number.isFinite(status.attempts) ? status.attempts : fallback.attempts,
-      url: typeof status.url === "string" ? status.url : fallback.url,
-      lastError: typeof status.lastError === "string" ? status.lastError : fallback.lastError,
-      entryCount: Number.isFinite(status.entryCount) ? status.entryCount : fallback.entryCount
-    };
-  }
-
-  export function readBlueprintStoreStatus(store) {
-    return cloneBlueprintStoreStatus(store, store.status);
-  }
-
-  export function setBlueprintStoreStatus(store, status) {
-    store.status = status;
-    return status;
-  }
-
-  export function readBlueprintManifestStatus() {
-    return readBlueprintStoreStatus(blueprintManifestStore);
-  }
-
-  export function readBlueprintHtmlCacheStatus() {
-    return readBlueprintStoreStatus(blueprintHtmlCacheStore);
-  }
-
-  export function blueprintStoreDiagnosticHtml(store, previewKey) {
-    const status = readBlueprintStoreStatus(store);
-    const trimmedKey = typeof previewKey === "string" ? previewKey.trim() : "";
-    const keyHtml = trimmedKey ? "<code>" + escapeHtml(trimmedKey) + "</code>" : "this preview";
-    if (status.state === "error") {
-      const errorHtml = status.lastError
-        ? "<p>Last load error: <code>" + escapeHtml(status.lastError) + "</code></p>"
-        : "";
-      return (
-        "<div class=\"bp_html_cache_preview_notice\">" +
-        "<p><strong>" + store.unavailableTitle + "</strong></p>" +
-        "<p>Blueprint previews require <code>-verso-data/" + store.requiredFilename + "</code>. " +
-        "Rebuild the site or retry after the current build finishes.</p>" +
-        "<p>Requested preview: " + keyHtml + "</p>" +
-        errorHtml +
-        "</div>"
-      );
-    }
-    if (status.state === "ready" && trimmedKey) {
-      return (
-        "<div class=\"bp_html_cache_preview_notice\">" +
-        "<p><strong>" + store.missingTitle + "</strong></p>" +
-        "<p>Requested preview: " + keyHtml + "</p>" +
-        "<p>" + store.missingReadyText + "</p>" +
-        "</div>"
-      );
-    }
-    return "";
-  }
-
-  export function blueprintManifestDiagnosticHtml(previewKey) {
-    return blueprintStoreDiagnosticHtml(blueprintManifestStore, previewKey);
-  }
-
-  export function blueprintHtmlCacheDiagnosticHtml(previewKey) {
-    return blueprintStoreDiagnosticHtml(blueprintHtmlCacheStore, previewKey);
-  }
-
-  export function fetchBlueprintStoreData(store) {
-    const jsonUrl = store.url();
-    return fetchBlueprintJson(jsonUrl).then(function (data) {
-      return { data: data, url: jsonUrl };
-    });
-  }
-
-  export function loadBlueprintStore(store) {
-    const existing = store.map;
-    if (existing instanceof Map) {
-      return Promise.resolve(existing);
-    }
-    const existingPromise = store.promise;
-    if (existingPromise) {
-      return existingPromise;
-    }
-    const url = store.url();
-    const previousStatus = readBlueprintStoreStatus(store);
-    const attempts =
-      Number.isFinite(previousStatus.attempts) ? previousStatus.attempts + 1 : 1;
-    setBlueprintStoreStatus(store, {
-      state: "loading",
-      attempts: attempts,
-      url: url,
-      lastError: "",
-      entryCount: 0
-    });
-    let promise = null;
-    promise = fetchBlueprintStoreData(store)
-      .then(function (result) {
-        const map = store.decode(result.data);
-        store.map = map;
-        setBlueprintStoreStatus(store, {
-          state: "ready",
-          attempts: attempts,
-          url: result.url,
-          lastError: "",
-          entryCount: map.size
-        });
-        return map;
-      })
-      .catch(function (err) {
-        const message =
-          err && typeof err.message === "string" && err.message.length > 0
-            ? err.message
-            : String(err);
-        store.map = null;
-        setBlueprintStoreStatus(store, {
-          state: "error",
-          attempts: attempts,
-          url: url,
-          lastError: message,
-          entryCount: 0
-        });
-        previewDebug(store.debugLabel, {
-          url: url,
-          attempts: attempts,
-          error: message
-        });
-        try {
-          console.error("[bp-preview] " + store.consoleLabel + " load failed", {
-            url: url,
-            error: message
-          });
-        } catch (_consoleErr) {}
-        return new Map();
-      })
-      .then(function (map) {
-        if (store.promise === promise) {
-          store.promise = null;
-        }
-        return map;
-      });
-    store.promise = promise;
-    return promise;
-  }
-
-  export function loadBlueprintManifest() {
-    return loadBlueprintStore(blueprintManifestStore);
-  }
-
-  export function loadBlueprintHtmlCache() {
-    return loadBlueprintStore(blueprintHtmlCacheStore);
-  }
-
-  export function readBlueprintStoreEntry(store, previewKey) {
-    if (typeof previewKey !== "string" || previewKey.length === 0) return null;
-    const map = store.map;
-    if (!(map instanceof Map)) return null;
-    return map.get(previewKey) || null;
-  }
-
   export function previewKey(label, facet) {
     return corePreviewKey(label, facet);
   }
@@ -327,62 +474,14 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
     return coreStatementPreviewKey(label);
   }
 
-  export async function loadBlueprintStoreEntry(store, previewKey) {
-    const exact = readBlueprintStoreEntry(store, previewKey);
-    if (exact) return exact;
-    const entryMap = await loadBlueprintStore(store);
-    if (!(entryMap instanceof Map)) return null;
-    if (typeof previewKey === "string" && previewKey.length > 0 && entryMap.has(previewKey)) {
-      return entryMap.get(previewKey) || null;
-    }
-    return null;
-  }
-
-  export async function loadBlueprintManifestEntry(previewKey) {
-    return loadBlueprintStoreEntry(blueprintManifestStore, previewKey);
-  }
-
-  export async function loadBlueprintHtmlCacheEntry(previewKey) {
-    return loadBlueprintStoreEntry(blueprintHtmlCacheStore, previewKey);
-  }
-
   export const previewRuntimeData = {
-    blueprintDataUrl,
-    fetchBlueprintJson,
+    createBlueprintDataApi,
     decodeBlueprintKeyedEntries,
     decodeBlueprintManifest,
     decodeBlueprintHtmlCache,
-    blueprintManifestUrl,
-    graphApiModuleUrl,
-    previewApiModuleUrl,
-    graphDataFromManifest,
-    collectGraphData,
-    collectGraphVariants,
-    loadManifestGraphs,
-    loadBlueprintGraphs,
     missingPreviewKeyDiagnosticHtml,
-    blueprintHtmlCacheUrl,
-    blueprintManifestStore,
-    blueprintHtmlCacheStore,
-    defaultBlueprintStoreStatus,
-    cloneBlueprintStoreStatus,
-    readBlueprintStoreStatus,
-    setBlueprintStoreStatus,
-    readBlueprintManifestStatus,
-    readBlueprintHtmlCacheStatus,
-    blueprintStoreDiagnosticHtml,
-    blueprintManifestDiagnosticHtml,
-    blueprintHtmlCacheDiagnosticHtml,
-    fetchBlueprintStoreData,
-    loadBlueprintStore,
-    loadBlueprintManifest,
-    loadBlueprintHtmlCache,
-    readBlueprintStoreEntry,
     previewKey,
-    statementPreviewKey,
-    loadBlueprintStoreEntry,
-    loadBlueprintManifestEntry,
-    loadBlueprintHtmlCacheEntry
+    statementPreviewKey
   };
 
 export default previewRuntimeData;
