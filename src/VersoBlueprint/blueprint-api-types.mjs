@@ -1,0 +1,336 @@
+/**
+ * Shared JSDoc typedefs for the browser-facing Blueprint ESM APIs.
+ *
+ * The runtime remains JavaScript. These declarations document the generated
+ * data contract that custom clients consume from `-verso-data/api/*.mjs`.
+ *
+ * @module blueprint-api-types
+ */
+
+/**
+ * Custom JSON loader used by standalone clients that cannot or do not want to
+ * use the page's global `fetch`.
+ *
+ * @callback BlueprintFetchJson
+ * @param {string} url URL to load.
+ * @param {Record<string, unknown>} [options] The resolved load options.
+ * @returns {unknown | Promise<unknown>} Parsed JSON data or a promise for it.
+ */
+
+/**
+ * Common options accepted by the generated-data loaders.
+ *
+ * @typedef {Object} BlueprintDataApiOptions
+ * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
+ * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
+ * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
+ */
+
+/**
+ * Context passed to preview hydrators.
+ *
+ * @typedef {Object} BlueprintHydratorContext
+ * @property {string} name Hydrator name when known.
+ * @property {"registered" | "options" | string} source Where the hydrator came from.
+ */
+
+/**
+ * Custom post-render hook for nested preview bindings, math, or client widgets.
+ *
+ * @callback BlueprintHydrator
+ * @param {Element | Document} root Rendered root to hydrate.
+ * @param {BlueprintHydratorContext} context Hydrator provenance.
+ * @returns {void}
+ */
+
+/**
+ * Named hydrator object accepted in preview options.
+ *
+ * @typedef {Object} BlueprintHydratorEntry
+ * @property {string} [name] Optional hydrator name.
+ * @property {BlueprintHydrator} [fn] Hydrator function.
+ * @property {BlueprintHydrator} [hydrate] Hydrator method.
+ */
+
+/**
+ * Hydrator collection accepted by preview render calls.
+ *
+ * @typedef {BlueprintHydrator | BlueprintHydratorEntry | Array<BlueprintHydrator | BlueprintHydratorEntry> | Map<string, BlueprintHydrator | BlueprintHydratorEntry> | Record<string, BlueprintHydrator | BlueprintHydratorEntry>} BlueprintHydrators
+ */
+
+/**
+ * Custom binder for Lean-emitted preview templates in rendered fragments.
+ *
+ * @callback BlueprintTemplateBinder
+ * @param {ParentNode | Element | Document | DocumentFragment} root Rendered root.
+ * @param {BlueprintPreviewOptions} [options] Render options for this call.
+ * @returns {unknown}
+ */
+
+/**
+ * Custom text loader used by canonical generated-node rendering.
+ *
+ * @callback BlueprintFetchText
+ * @param {string} url URL to load.
+ * @param {BlueprintPreviewOptions} [options] Render options for this call.
+ * @returns {string | Promise<string>} Loaded HTML text.
+ */
+
+/**
+ * Payload passed to a custom canonical document loader.
+ *
+ * @typedef {Object} BlueprintLoadDocumentPayload
+ * @property {string} url Canonical page URL without the hash.
+ * @property {string} sourceUrl Canonical source URL including the requested hash.
+ * @property {BlueprintPreviewOptions} options Render options for this call.
+ */
+
+/**
+ * Custom canonical document loader.
+ *
+ * @callback BlueprintLoadDocument
+ * @param {BlueprintLoadDocumentPayload} payload Canonical document load request.
+ * @returns {Document | string | Promise<Document | string>} Loaded document or HTML source.
+ */
+
+/**
+ * Options accepted by render-capable preview APIs.
+ *
+ * @typedef {Object} BlueprintPreviewOptions
+ * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
+ * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
+ * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
+ * @property {boolean} [hydrate] Set to `false` to skip preview-template and hydrator hooks.
+ * @property {boolean} [renderMath] Set to `false` to skip KaTeX rendering.
+ * @property {BlueprintHydrators} [hydrators] Per-render or per-preview hydrators.
+ * @property {boolean} [inheritPageHydrators] Set to `false` to ignore registered page hydrators.
+ * @property {BlueprintTemplateBinder} [templateBinder] Custom preview-template binder.
+ * @property {BlueprintFetchText} [fetchText] Custom text loader for canonical generated pages.
+ * @property {BlueprintLoadDocument} [loadDocument] Custom document loader for canonical generated pages.
+ * @property {string} [canonicalBaseUrl] Base URL used to resolve canonical generated-page links.
+ * @property {Map<string, Document | Promise<Document>>} [canonicalPreviewDocuments] Canonical page document cache.
+ * @property {Map<string, string>} [canonicalPreviewHtmlByKey] Canonical generated-node HTML cache.
+ */
+
+/**
+ * Loading status for a generated JSON store such as the manifest or HTML cache.
+ *
+ * @typedef {Object} BlueprintStoreStatus
+ * @property {"idle" | "loading" | "ready" | "error" | string} state Current loader state.
+ * @property {number} attempts Number of load attempts.
+ * @property {string} url URL most recently used for the store.
+ * @property {string} lastError Last error message, or an empty string.
+ * @property {number} entryCount Number of decoded entries when ready.
+ */
+
+/**
+ * External source markup attached to a Blueprint label.
+ *
+ * @typedef {Object} BlueprintExternalMarkup
+ * @property {string} language Source language, for example `markdown`, `tex`, or `verso`.
+ * @property {string} slot Logical source slot, for example `statement` or `proof`.
+ * @property {string} raw Raw source text.
+ * @property {unknown} [location] Optional source provenance supplied by the generator.
+ */
+
+/**
+ * Semantic manifest entry emitted for a rendered Blueprint preview or an
+ * external-markup-only node.
+ *
+ * @typedef {Object} BlueprintManifestEntry
+ * @property {string} key Stable manifest key.
+ * @property {string} [label] Blueprint node label when available.
+ * @property {string} [facet] Rendered facet such as `statement` or `proof`.
+ * @property {string} [href] Link to the canonical generated node.
+ * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
+ */
+
+/**
+ * Rendered-fragment cache entry.
+ *
+ * @typedef {Object} BlueprintHtmlCacheEntry
+ * @property {string} key Stable cache key.
+ * @property {string} html Rendered HTML fragment.
+ */
+
+/**
+ * Graph data exported by the Blueprint manifest or embedded in a graph page.
+ *
+ * @typedef {Object} BlueprintGraphData
+ * @property {number} schemaVersion Graph payload schema version.
+ * @property {string} key Variant key.
+ * @property {unknown[]} nodes Graph node payloads.
+ * @property {unknown[]} edges Graph edge payloads.
+ * @property {unknown[]} groups Optional graph grouping payloads.
+ */
+
+/**
+ * DOT fallback graph variant embedded by graph pages.
+ *
+ * @typedef {Object} BlueprintGraphVariant
+ * @property {string} key Variant key.
+ * @property {string} label Human-readable variant label.
+ * @property {string} dot DOT source.
+ * @property {Record<string, unknown>} [options] Rendering options emitted with the fallback.
+ * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
+ * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.
+ */
+
+/**
+ * Result of resolving a preview key against the manifest and HTML cache.
+ *
+ * @typedef {Object} BlueprintPreviewResult
+ * @property {boolean} ok Whether the rendered preview is available.
+ * @property {string} key Requested preview key.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {BlueprintHtmlCacheEntry | null} htmlCacheEntry Matching HTML cache entry.
+ * @property {string} html Rendered fragment HTML on success.
+ * @property {string} diagnosticHtml Diagnostic HTML when unavailable.
+ */
+
+/**
+ * Result of resolving a canonical generated node for insertion into another
+ * document.
+ *
+ * @typedef {Object} BlueprintCanonicalPreviewResult
+ * @property {boolean} ok Whether the canonical node is available.
+ * @property {string} key Requested preview key.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {BlueprintHtmlCacheEntry | null} htmlCacheEntry Matching HTML cache entry.
+ * @property {string} html Rendered fragment HTML on success.
+ * @property {string} diagnosticHtml Diagnostic HTML when unavailable.
+ * @property {string} [canonicalHtml] Full canonical generated-node HTML.
+ * @property {string} [canonicalSourceHref] Source document URL for the canonical node.
+ */
+
+/**
+ * Payload supplied to a call-scoped external markup renderer.
+ *
+ * @typedef {Object} BlueprintExternalMarkupPayload
+ * @property {string} raw Raw external source.
+ * @property {string} language Selected source language.
+ * @property {string} slot Selected source slot.
+ * @property {unknown} location Source provenance when available.
+ * @property {BlueprintManifestEntry | null} node Manifest node data.
+ * @property {BlueprintManifestEntry | null} manifestEntry Manifest node data.
+ * @property {string} label Requested Blueprint label.
+ * @property {string} facet Requested rendered facet.
+ * @property {BlueprintPreviewResult | null} nativePreview Native preview resolution result.
+ * @property {BlueprintExternalMarkup} externalMarkup Selected external source entry.
+ */
+
+/**
+ * Renders selected external markup into a target element.
+ *
+ * @callback BlueprintExternalMarkupRenderer
+ * @param {BlueprintExternalMarkupPayload} payload VBP-owned source and provenance data.
+ * @param {Element} target Element whose contents should be replaced or updated.
+ * @returns {void | string | Node | Promise<void | string | Node>}
+ */
+
+/**
+ * Preference used by `renderNode` when a native rendered preview is absent.
+ *
+ * @typedef {Object} BlueprintExternalMarkupPreference
+ * @property {string} [language] Preferred language such as `markdown`, `tex`, or `verso`.
+ * @property {string} [slot] Preferred source slot.
+ * @property {"source" | string} [display] Use `source` to render the raw source without a custom renderer.
+ * @property {BlueprintExternalMarkupRenderer} [render] Per-call renderer for this preference.
+ */
+
+/**
+ * Ordered external-markup fallback preferences.
+ *
+ * @typedef {Object} BlueprintExternalMarkupPreferences
+ * @property {BlueprintExternalMarkupPreference[]} prefer Ordered external-markup preferences.
+ */
+
+/**
+ * Label-oriented render request.
+ *
+ * @typedef {Object} BlueprintRenderNodeRequest
+ * @property {string} label Blueprint label to render.
+ * @property {string} [facet="statement"] Rendered facet to prefer for native previews.
+ * @property {BlueprintExternalMarkupPreference | BlueprintExternalMarkupPreference[] | BlueprintExternalMarkupPreferences} [externalMarkup] External-markup fallback preferences.
+ * @property {BlueprintExternalMarkupPreference} [preferredExternalMarkup] Shorthand for a single external-markup preference.
+ */
+
+/**
+ * Result returned by `renderNode`.
+ *
+ * @typedef {Object} BlueprintRenderNodeResult
+ * @property {boolean} ok Whether rendering succeeded.
+ * @property {string} key Requested preview key.
+ * @property {string} reason Empty on success; diagnostic reason otherwise.
+ * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
+ * @property {BlueprintHtmlCacheEntry | null} htmlCacheEntry Matching HTML cache entry.
+ * @property {string} html Rendered fragment HTML when available.
+ * @property {string} diagnosticHtml Diagnostic HTML when unavailable.
+ * @property {"native" | "external-markup" | "diagnostic" | string} [renderMode] Rendering path used.
+ * @property {string} [label] Requested Blueprint label.
+ * @property {string} [facet] Requested rendered facet.
+ * @property {BlueprintExternalMarkup | null} [externalMarkup] Selected external markup, if any.
+ * @property {BlueprintPreviewResult | null} [nativePreview] Native preview lookup result.
+ * @property {string} [canonicalHtml] Full canonical generated-node HTML.
+ * @property {string} [canonicalSourceHref] Source document URL for the canonical node.
+ */
+
+/**
+ * Data API returned by `createPreviewData`.
+ *
+ * @typedef {Object} BlueprintDataApi
+ * @property {function(string): string} dataUrl
+ * @property {function(): string} manifestUrl
+ * @property {function(): string} htmlCacheUrl
+ * @property {function(): string} graphApiModuleUrl
+ * @property {function(): string} dataApiModuleUrl
+ * @property {function(): string} previewApiModuleUrl
+ * @property {function(string, string=): string} previewKey
+ * @property {function(string): string} statementPreviewKey
+ * @property {function(): BlueprintStoreStatus} readManifestStatus
+ * @property {function(): BlueprintStoreStatus} readHtmlCacheStatus
+ * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
+ * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
+ * @property {function(unknown): BlueprintGraphData[]} graphsFromManifest
+ * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): (BlueprintGraphData | null)} getGraphData
+ * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): BlueprintGraphVariant[]} getGraphVariants
+ * @property {function(string=, BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadManifestGraphs
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadGraphs
+ */
+
+/**
+ * Preview API returned by `createPreview`.
+ *
+ * @typedef {Object} BlueprintPreviewApi
+ * @property {function(string): string} dataUrl
+ * @property {function(): string} manifestUrl
+ * @property {function(): string} htmlCacheUrl
+ * @property {function(): string} graphApiModuleUrl
+ * @property {function(): string} dataApiModuleUrl
+ * @property {function(): string} previewApiModuleUrl
+ * @property {function(string, string=): string} previewKey
+ * @property {function(string): string} statementPreviewKey
+ * @property {function(): BlueprintStoreStatus} readManifestStatus
+ * @property {function(): BlueprintStoreStatus} readHtmlCacheStatus
+ * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
+ * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
+ * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
+ * @property {function(unknown): BlueprintGraphData[]} graphsFromManifest
+ * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): (BlueprintGraphData | null)} getGraphData
+ * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): BlueprintGraphVariant[]} getGraphVariants
+ * @property {function(string=, BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadManifestGraphs
+ * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadGraphs
+ * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintPreviewResult>} resolvePreview
+ * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintPreviewResult>} renderPreviewInto
+ * @property {function(string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} resolveCanonicalPreview
+ * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} renderCanonicalPreviewInto
+ * @property {function(Element, (string | BlueprintRenderNodeRequest), BlueprintPreviewOptions=): Promise<BlueprintRenderNodeResult>} renderNode
+ * @property {function(Element, BlueprintPreviewOptions=): boolean} hydrate
+ */
+
+export {};

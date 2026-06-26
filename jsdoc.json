@@ -1,0 +1,22 @@
+{
+  "source": {
+    "include": [
+      "src/VersoBlueprint/blueprint-data-api.mjs",
+      "src/VersoBlueprint/blueprint-api-types.mjs",
+      "src/VersoBlueprint/blueprint-preview-api.mjs",
+      "src/VersoBlueprint/blueprint-graph-api.mjs"
+    ],
+    "includePattern": ".+\\.mjs$",
+    "excludePattern": "(^|/)(node_modules|dist|\\.lake|_out)/"
+  },
+  "opts": {
+    "destination": "_out/jsdoc-api",
+    "readme": "doc/JS_API_DOCS.md",
+    "recurse": false
+  },
+  "templates": {
+    "default": {
+      "outputSourceFiles": false
+    }
+  }
+}
