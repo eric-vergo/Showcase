@@ -111,6 +111,20 @@ def buildMetadataHtmlAssets : HtmlAssets :=
 def blueprintHtmlAssets : HtmlAssets :=
   Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets
 
+def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
+
+private def blueprintPageRuntimeHead : Verso.Output.Html :=
+  open Verso.Output.Html in
+  {{<script type="module" src={{"-verso-data/" ++ pageRuntimeModuleFilename}}></script>}}
+
+private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
+    Array Verso.Output.Html :=
+  let valueString := Verso.Output.Html.asString value
+  if values.any (fun item => Verso.Output.Html.asString item == valueString) then
+    values
+  else
+    values.push value
+
 def withBuildMetadataAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
   let htmlAssets := htmlConfig.toHtmlAssets.combine buildMetadataHtmlAssets
@@ -122,7 +136,11 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
   let htmlAssets := htmlConfig.toHtmlAssets.combine blueprintHtmlAssets
   { config with
-    toHtmlConfig := { htmlConfig with toHtmlAssets := htmlAssets }
+    toHtmlConfig := {
+      htmlConfig with
+      toHtmlAssets := htmlAssets
+      extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
+    }
   }
 
 structure GitCommitMetadata where
@@ -553,15 +571,25 @@ def graphCoreModuleFilename : String := "blueprint-graph-core.mjs"
 
 def previewCoreModuleFilename : String := "blueprint-preview-core.mjs"
 
+def apiCommonModuleFilename : String := "blueprint-api-common.mjs"
+
+def dataApiModuleFilename : String := "blueprint-data-api.mjs"
+
 def previewApiModuleFilename : String := "blueprint-preview-api.mjs"
 
 def apiModuleDirname : String := "api"
 
+def previewRuntimeModuleDirname : String := "Commands"
+
 def graphApiModuleAliasFilename : String := "graph.mjs"
+
+def dataApiModuleAliasFilename : String := "data.mjs"
 
 def previewApiModuleAliasFilename : String := "preview.mjs"
 
 def graphApiModulePath : String := apiModuleDirname ++ "/" ++ graphApiModuleAliasFilename
+
+def dataApiModulePath : String := apiModuleDirname ++ "/" ++ dataApiModuleAliasFilename
 
 def previewApiModulePath : String := apiModuleDirname ++ "/" ++ previewApiModuleAliasFilename
 
@@ -570,13 +598,100 @@ private def graphCoreModuleMjs : String := include_str "blueprint-graph-core.mjs
 
 private def previewCoreModuleMjs : String := include_str "blueprint-preview-core.mjs"
 
+private def apiCommonModuleMjs : String := include_str "blueprint-api-common.mjs"
+
 private def graphApiModuleMjs : String := include_str "blueprint-graph-api.mjs"
 
+private def dataApiModuleMjs : String := include_str "blueprint-data-api.mjs"
+
 private def previewApiModuleMjs : String := include_str "blueprint-preview-api.mjs"
+
+private def pageRuntimeModuleMjs : String := include_str "blueprint-page-runtime.mjs"
+
+private def openTargetDetailsModuleMjs : String := include_str "Commands/open-target-details.mjs"
+
+private def inlinePreviewModuleMjs : String := include_str "Commands/inline-preview.mjs"
+
+private def graphRuntimeCoreModuleMjs : String := include_str "Commands/graph-runtime-core.mjs"
+
+private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
+
+private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
+
+private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
+
+private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
+
+private def previewRuntimeRenderModuleFilename : String := "preview-runtime-render.mjs"
+
+private def previewRuntimeHydrationModuleFilename : String := "preview-runtime-hydration.mjs"
+
+private def previewRuntimeLifecycleModuleFilename : String := "preview-runtime-lifecycle.mjs"
+
+private def previewRuntimeSurfaceModuleFilename : String := "preview-runtime-surface.mjs"
+
+private def previewRuntimeTemplateModuleFilename : String := "preview-runtime-template.mjs"
+
+private def previewRuntimeApiModuleFilename : String := "preview-runtime-api.mjs"
+
+private def previewRuntimeBaseModuleMjs : String := include_str "Commands/preview-runtime-base.mjs"
+
+private def previewRuntimeDataModuleMjs : String := include_str "Commands/preview-runtime-data.mjs"
+
+private def previewRuntimeRenderModuleMjs : String := include_str "Commands/preview-runtime-render.mjs"
+
+private def previewRuntimeHydrationModuleMjs : String := include_str "Commands/preview-runtime-hydration.mjs"
+
+private def previewRuntimeLifecycleModuleMjs : String := include_str "Commands/preview-runtime-lifecycle.mjs"
+
+private def previewRuntimeSurfaceModuleMjs : String := include_str "Commands/preview-runtime-surface.mjs"
+
+private def previewRuntimeTemplateModuleMjs : String := include_str "Commands/preview-runtime-template.mjs"
+
+private def previewRuntimeApiModuleMjs : String := include_str "Commands/preview-runtime-api.mjs"
+
+private def previewRuntimeModules : Array (String × String) := #[
+  (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
+  (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
+  (previewRuntimeRenderModuleFilename, previewRuntimeRenderModuleMjs),
+  (previewRuntimeHydrationModuleFilename, previewRuntimeHydrationModuleMjs),
+  (previewRuntimeLifecycleModuleFilename, previewRuntimeLifecycleModuleMjs),
+  (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
+  (previewRuntimeTemplateModuleFilename, previewRuntimeTemplateModuleMjs),
+  (previewRuntimeApiModuleFilename, previewRuntimeApiModuleMjs)
+]
+
+private def pageRuntimeModules : Array (String × String) := #[
+  (pageRuntimeModuleFilename, pageRuntimeModuleMjs),
+  ("Commands/open-target-details.mjs", openTargetDetailsModuleMjs),
+  ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
+  ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
+  ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
+]
+
+private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do
+  let path := dataDir / relativePath
+  IO.FS.createDirAll (path.parent.getD ".")
+  IO.FS.writeFile path contents
+
+private def writePageRuntimeModules (dataDir : System.FilePath) : IO Unit := do
+  for module in pageRuntimeModules do
+    writeDataFile dataDir module.fst module.snd
+
+private def writePreviewRuntimeModules (dataDir : System.FilePath) : IO Unit := do
+  let runtimeDir := dataDir / previewRuntimeModuleDirname
+  IO.FS.createDirAll runtimeDir
+  for module in previewRuntimeModules do
+    IO.FS.writeFile (runtimeDir / module.fst) module.snd
 
 private def graphApiModuleAliasMjs : String :=
   "export * from \"../" ++ graphApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ graphApiModuleFilename ++ "\";\n"
+
+private def dataApiModuleAliasMjs : String :=
+  "export * from \"../" ++ dataApiModuleFilename ++ "\";\n" ++
+  "export { default } from \"../" ++ dataApiModuleFilename ++ "\";\n"
 
 private def previewApiModuleAliasMjs : String :=
   "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
@@ -1683,9 +1798,14 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
   IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
+  IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs
   IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
+  IO.FS.writeFile (dataDir / dataApiModuleFilename) dataApiModuleMjs
   IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
+  writePageRuntimeModules dataDir
+  writePreviewRuntimeModules dataDir
   IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
   IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
   mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
   emitPublicXref mode logError cfg state

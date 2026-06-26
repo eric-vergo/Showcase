@@ -199,13 +199,17 @@ def customRenderClientCss : String := r##"
 }
 "##
 
+-- Keep this module rebuilt when the shared standalone preview API loader changes.
+private def previewApiLoaderJs : String :=
+  include_str "preview-api-loader.js"
+
 -- Keep this module rebuilt when the standalone custom-client asset changes.
 def customRenderClientJs : String :=
-  Informal.Commands.withPreviewClientReadyJs (include_str "custom-render-client.js")
+  previewApiLoaderJs ++ "\n" ++ include_str "custom-render-client.js"
 
 -- Keep this module rebuilt when the standalone render-node Markdown example changes.
 def standaloneRenderNodeMarkdownJs : String :=
-  Informal.Commands.withPreviewClientReadyJs (include_str "standalone-render-node-markdown.js")
+  previewApiLoaderJs ++ "\n" ++ include_str "standalone-render-node-markdown.js"
 
 private def clientText (text : String) : Verso.Output.Html :=
   VersoBlueprint.Html.text text
@@ -291,11 +295,8 @@ private def previewModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
 // Import the generated preview/render ESM API.
 import {
-  getRenderApi,
-  loadManifest,
-  previewKey,
-  renderPreviewInto,
-  resolvePreview
+  createPreview,
+  previewKey
 } from "../-verso-data/api/preview.mjs";
 
 // Find the showcase card that will display this module-based result.
@@ -305,20 +306,20 @@ if (card) {
   const summary = card.querySelector("[data-bp-preview-module-summary]");
   const body = card.querySelector("[data-bp-preview-module-body]");
   try {
+    // Create a call-site renderer from the generated ESM modules.
+    const api = createPreview();
+
     // Build the manifest/cache key for the statement facet.
     const key = previewKey("preview_facets", "statement");
 
-    // Load the generated preview manifest through the shared runtime cache.
-    const manifest = await loadManifest();
+    // Load the generated preview manifest through this renderer.
+    const manifest = await api.loadManifest();
 
     // Resolve semantic manifest data and cached HTML for the key.
-    const resolved = await resolvePreview(key);
+    const resolved = await api.resolvePreview(key);
 
     // Render the preview body fragment into the body target.
-    if (body) await renderPreviewInto(body, key);
-
-    // Read the shared runtime API to prove the module and runtime are connected.
-    const api = await getRenderApi();
+    if (body) await api.renderPreviewInto(body, key);
 
     // Store test-visible attributes that describe what the module resolved.
     card.dataset.bpPreviewModuleOk = resolved.ok ? "true" : "false";
@@ -440,10 +441,10 @@ def customRenderClientHtml : Verso.Output.Html :=
 
 def customRenderClientAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   (Informal.Commands.blueprintCssAssetBundle [customRenderClientCss]).append
-    (Informal.Commands.previewRuntimeJsAssetBundle.withJs [] [
-      customRenderClientJs,
-      standaloneRenderNodeMarkdownJs
-    ])
+    ({ js := [
+        customRenderClientJs,
+        standaloneRenderNodeMarkdownJs
+      ] } : Informal.Commands.BlueprintAssetBundle)
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.customRenderClientExample where

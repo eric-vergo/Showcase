@@ -72,62 +72,8 @@ def graphCss := include_str "graph.css"
 def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : String :=
   s!"{Informal.HtmlId.prefixed "bp-graph" (toString id)}{suffix}"
 
-private def graphRuntimeCoreModuleMjs : String := include_str "graph-runtime-core.mjs"
-
--- Keep this binding in Lean so asset updates flow through the command module rebuild.
--- Updated when the runtime asset changes; current runtime leaves block placement to CSS
--- and relies on graphviz auto-fit plus flow-aware canvas sizing for initial placement
--- plus user-controlled resize persistence and cheap height resets.
-private def graphRuntimeCoreJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicScript graphRuntimeCoreModuleMjs r##"
-const namespace =
-  globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
-    ? globalScope.VersoBlueprint
-    : {};
-const privateNamespace =
-  namespace.__private && typeof namespace.__private === "object"
-    ? namespace.__private
-    : {};
-namespace.__private = privateNamespace;
-globalScope.VersoBlueprint = namespace;
-const existingCore =
-  privateNamespace.graphRuntimeCore &&
-    typeof privateNamespace.graphRuntimeCore === "object"
-    ? privateNamespace.graphRuntimeCore
-    : {};
-Object.assign(existingCore, graphRuntimeCore);
-privateNamespace.graphRuntimeCore = existingCore;
-"##
-
-private def graphRuntimeModuleMjs : String := include_str "graph.mjs"
-
-private def graphRuntimeClassicPrelude : String := r##"
-const privateNamespace =
-  globalScope.VersoBlueprint &&
-  typeof globalScope.VersoBlueprint.__private === "object"
-    ? globalScope.VersoBlueprint.__private
-    : {};
-const graphRuntimeCoreModule =
-  privateNamespace.graphRuntimeCore &&
-    typeof privateNamespace.graphRuntimeCore === "object"
-    ? privateNamespace.graphRuntimeCore
-    : {};
-"##
-
-private def graphRuntimeJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicScriptWithPrelude
-    graphRuntimeModuleMjs
-    graphRuntimeClassicPrelude
-    r##"
-window.VersoBlueprint.onRenderReady(function (previewUtils) {
-  startGraphRuntime(previewUtils);
-});
-"##
-
-def loadD3Dot := withPreviewClientReadyJs (graphRuntimeCoreJs ++ "\n" ++ graphRuntimeJs)
-
 def graphAssetBundle : BlueprintAssetBundle :=
-  previewPanelAssetBundle (cssExtras := [graphCss]) (jsAfter := [loadD3Dot])
+  previewPanelAssetBundle (cssExtras := [graphCss])
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.graph (graphData : GraphBlockData) where

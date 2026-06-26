@@ -431,6 +431,174 @@ class TestPreviewRuntimeRegressions:
         expect(
             preview_module_card.locator("[data-bp-preview-module-body]").first
         ).to_contain_text("Statement facet marker")
+        standalone_module = page.evaluate(
+            """
+            async () => {
+                const hadOwnNamespace = Object.prototype.hasOwnProperty.call(
+                    window,
+                    "VersoBlueprint"
+                );
+                const previousNamespace = window.VersoBlueprint;
+                try {
+                    delete window.VersoBlueprint;
+                    const preview = await import(
+                        "../-verso-data/blueprint-preview-api.mjs?standalone-no-window=" +
+                          Date.now()
+                    );
+                    const api = preview.createPreview({
+                        bindTemplatePreviews: false,
+                        inheritPageHydrators: false,
+                        hydrators: {
+                            constructorOption(root, context) {
+                                root.dataset.bpConstructorHydrator =
+                                  context && context.name ? context.name : "missing";
+                            }
+                        }
+                    });
+                    const host = document.createElement("section");
+                    document.body.appendChild(host);
+                    const key = api.previewKey("preview_facets", "statement");
+                    const result = await api.renderPreviewInto(
+                        host,
+                        key,
+                        { renderMath: false }
+                    );
+                    const callHost = document.createElement("section");
+                    document.body.appendChild(callHost);
+                    const callResult = await api.renderPreviewInto(
+                        callHost,
+                        key,
+                        {
+                            renderMath: false,
+                            hydrators: [
+                                function (root, context) {
+                                    root.dataset.bpCallHydrator =
+                                      context && context.source ? context.source : "missing";
+                                }
+                            ]
+                        }
+                    );
+                    const customCalls = [];
+                    const customApi = preview.createPreview({
+                        bindTemplatePreviews: false,
+                        dataBaseUrl:
+                          "https://example.invalid/html-multi/-verso-data/api/preview.mjs",
+                        fetchJson(url) {
+                            customCalls.push(url);
+                            if (url.endsWith("blueprint-manifest.json")) {
+                                return Promise.resolve({
+                                    previews: [
+                                        {
+                                            key: "custom_loader--statement",
+                                            label: "custom_loader",
+                                            facet: "statement",
+                                            title: "Custom loader"
+                                        }
+                                    ],
+                                    graphs: [
+                                        {
+                                            schemaVersion: 1,
+                                            key: "graph:custom-loader",
+                                            nodes: [],
+                                            edges: [],
+                                            groups: []
+                                        }
+                                    ]
+                                });
+                            }
+                            if (url.endsWith("blueprint-html-cache.json")) {
+                                return Promise.resolve({
+                                    entries: [
+                                        {
+                                            key: "custom_loader--statement",
+                                            html: "<p>Custom loader body</p>"
+                                        }
+                                    ]
+                                });
+                            }
+                            throw new Error("Unexpected custom loader URL: " + url);
+                        }
+                    });
+                    const customHost = document.createElement("section");
+                    document.body.appendChild(customHost);
+                    const customResult = await customApi.renderPreviewInto(
+                        customHost,
+                        "custom_loader--statement",
+                        { hydrate: false, renderMath: false }
+                    );
+                    const customGraphs = await customApi.loadGraphs();
+                    const afterCustomHost = document.createElement("section");
+                    document.body.appendChild(afterCustomHost);
+                    const afterCustomResult = await api.renderPreviewInto(
+                        afterCustomHost,
+                        key,
+                        { renderMath: false }
+                    );
+                    const hasWindowNamespace = Object.prototype.hasOwnProperty.call(
+                        window,
+                        "VersoBlueprint"
+                    );
+                    const text = host.textContent || "";
+                    const callText = callHost.textContent || "";
+                    const customText = customHost.textContent || "";
+                    const afterCustomText = afterCustomHost.textContent || "";
+                    const constructorHydrator = host.dataset.bpConstructorHydrator || "";
+                    const callConstructorHydrator =
+                      callHost.dataset.bpConstructorHydrator || "";
+                    const callHydrator = callHost.dataset.bpCallHydrator || "";
+                    host.remove();
+                    callHost.remove();
+                    customHost.remove();
+                    afterCustomHost.remove();
+                    return {
+                        ok: result.ok,
+                        key: result.key,
+                        text: text,
+                        callOk: callResult.ok,
+                        callText: callText,
+                        customOk: customResult.ok,
+                        customText: customText,
+                        customCalls: customCalls,
+                        customGraphCount: customGraphs.length,
+                        afterCustomOk: afterCustomResult.ok,
+                        afterCustomText: afterCustomText,
+                        constructorHydrator: constructorHydrator,
+                        callConstructorHydrator: callConstructorHydrator,
+                        callHydrator: callHydrator,
+                        hasWindowNamespace: hasWindowNamespace
+                    };
+                } finally {
+                    if (hadOwnNamespace) {
+                        window.VersoBlueprint = previousNamespace;
+                    } else {
+                        delete window.VersoBlueprint;
+                    }
+                }
+            }
+            """
+        )
+        assert standalone_module["ok"]
+        assert standalone_module["key"] == "preview_facets--statement"
+        assert "Statement facet marker" in standalone_module["text"]
+        assert standalone_module["callOk"]
+        assert "Statement facet marker" in standalone_module["callText"]
+        assert standalone_module["customOk"]
+        assert "Custom loader body" in standalone_module["customText"]
+        assert standalone_module["afterCustomOk"]
+        assert "Statement facet marker" in standalone_module["afterCustomText"]
+        assert any(
+            call.endswith("blueprint-manifest.json")
+            for call in standalone_module["customCalls"]
+        )
+        assert any(
+            call.endswith("blueprint-html-cache.json")
+            for call in standalone_module["customCalls"]
+        )
+        assert standalone_module["customGraphCount"] == 1
+        assert standalone_module["constructorHydrator"] == "constructorOption"
+        assert standalone_module["callConstructorHydrator"] == ""
+        assert standalone_module["callHydrator"] == "options"
+        assert not standalone_module["hasWindowNamespace"]
         graph_card = client.locator("[data-bp-custom-client-graph]").first
         expect(graph_card.locator("[data-bp-custom-client-title]").first).to_have_text(
             "Graph manifest data"
@@ -946,6 +1114,7 @@ class TestPreviewRuntimeRegressions:
         rendered = page.evaluate(
             blueprint_render_api_script(
                 """
+                await Promise.all([api.loadManifest(), api.loadHtmlCache()]);
                 const manifestStatus = api.readManifestStatus();
                 const htmlCacheStatus = api.readHtmlCacheStatus();
                 const mutatedManifestStatus = api.readManifestStatus();
@@ -1114,6 +1283,13 @@ class TestPreviewRuntimeRegressions:
         )
         expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
+        statement_item = wrap.locator(
+            '.bp_relation_item[data-bp-relation-preview-key="used_statement--statement"]'
+        ).first
+        expect(statement_item).to_be_visible()
+        statement_item.hover()
+        expect(statement_item).to_have_class(re.compile(r"bp_relation_item_active"))
+
         header_label = wrap.locator(".bp_relation_preview_header_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_statement")
@@ -1126,9 +1302,11 @@ class TestPreviewRuntimeRegressions:
         )
         expect(body).to_contain_text("Statement depends on")
 
-        second_item = wrap.locator(".bp_relation_item").nth(1)
-        second_item.hover()
-        expect(second_item).to_have_class(re.compile(r"bp_relation_item_active"))
+        proof_item = wrap.locator(
+            '.bp_relation_item[data-bp-relation-preview-key="used_proof--statement"]'
+        ).first
+        proof_item.hover()
+        expect(proof_item).to_have_class(re.compile(r"bp_relation_item_active"))
         expect(header_label).to_contain_text("used_proof")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_proof"))
         page.wait_for_function(

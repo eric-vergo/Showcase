@@ -9,8 +9,8 @@ namespace Informal.BrowserAsset
 /--
 Drop ESM-only import/export lines before embedding a private module as a
 classic script. This is intentionally narrow: Blueprint controls the source
-modules and uses the helper only while Verso lacks first-class module-script
-assets.
+modules and uses the helper only for output paths that still need classic
+scripts, currently the Slides adapter.
 -/
 private def dropEsmOnlyLine (line : String) : Bool :=
   let trimmed := line.trimAsciiStart
@@ -56,7 +56,7 @@ def esmModuleToClassicScript (source installCall : String) : String :=
 Embed a private ESM source module as a classic-script fragment. Unlike
 `esmModuleToClassicScript`, this does not add an IIFE; callers use it when the
 fragment must share lexical scope with neighboring runtime chunks in the
-current bundled Verso asset.
+classic-script Slides adapter.
 -/
 def esmModuleToClassicFragmentWithPrelude (source prelude : String) : String :=
   prelude ++ "\n" ++ stripEsmExportKeywords (withoutEsmOnlyLines source)

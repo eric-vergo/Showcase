@@ -1481,24 +1481,13 @@ div.proof_content {
 }
 "##
 
--- Keep this module rebuilt when relation panel runtime changes.
-private def relationPanelModuleMjs : String := include_str "relation-panel.mjs"
-
-def relationPanelJs : String :=
-  Informal.Commands.withPreviewClientReadyJs <|
-    Informal.BrowserAsset.esmModuleToClassicScript relationPanelModuleMjs r##"
-window.VersoBlueprint.onRenderReady(function (previewUtils) {
-  startRelationPanels(previewUtils);
-});
-"##
-
 def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.blueprintCssAssetBundle [css, Verso.Genre.Manual.docstringStyle]
 
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.previewPanelInlinePreviewAssetBundle
     (cssExtras := [css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle])
-    (jsAfter := [relationPanelJs, Informal.StyleSwitcher.jsInteractive])
+    (jsAfter := [Informal.StyleSwitcher.jsInteractive])
 
 def codeCssAssets : List String :=
   codeAssetBundle.css

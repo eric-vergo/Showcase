@@ -1,7 +1,28 @@
   // Runtime-local registries. Keep these private and expose behavior through
   // the render API instead of growing new window globals.
-  export const previewHydrators = new Map();
+  const localPreviewHydrators = new Map();
+  export const previewHydrators = localPreviewHydrators;
   let bindTemplatePreviewDescriptorsImpl = function (_root) { return []; };
+
+  function previewPrivateNamespace() {
+    const globalScope = typeof globalThis !== "undefined" ? globalThis : {};
+    const namespace =
+      globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
+        ? globalScope.VersoBlueprint
+        : null;
+    return namespace && namespace.__private && typeof namespace.__private === "object"
+      ? namespace.__private
+      : null;
+  }
+
+  function activePreviewHydrators() {
+    const namespace = previewPrivateNamespace();
+    if (!namespace) return localPreviewHydrators;
+    if (!(namespace.previewHydrators instanceof Map)) {
+      namespace.previewHydrators = localPreviewHydrators;
+    }
+    return namespace.previewHydrators;
+  }
 
   // Hydration extension points and math rendering.
 
@@ -11,12 +32,83 @@
       : function (_root) { return []; };
   }
 
+  function isHydratableRoot(root) {
+    const isElement =
+      typeof Element !== "undefined" && root instanceof Element;
+    const isDocument =
+      typeof Document !== "undefined" && root instanceof Document;
+    return isElement || isDocument;
+  }
+
+  function normalizeHydratorEntry(name, value) {
+    if (typeof value === "function") {
+      return {
+        name: typeof name === "string" ? name : "",
+        fn: value
+      };
+    }
+    if (!value || typeof value !== "object") return null;
+    if (typeof value.hydrate === "function") {
+      return {
+        name: typeof value.name === "string" ? value.name : (typeof name === "string" ? name : ""),
+        fn: value.hydrate
+      };
+    }
+    if (typeof value.fn === "function") {
+      return {
+        name: typeof value.name === "string" ? value.name : (typeof name === "string" ? name : ""),
+        fn: value.fn
+      };
+    }
+    return null;
+  }
+
+  export function normalizePreviewHydrators(hydrators) {
+    if (!hydrators) return [];
+    if (typeof hydrators === "function") {
+      return [{ name: "", fn: hydrators }];
+    }
+    if (hydrators instanceof Map) {
+      return Array.from(hydrators.entries()).flatMap(function (entry) {
+        const normalized = normalizeHydratorEntry(String(entry[0] || ""), entry[1]);
+        return normalized ? [normalized] : [];
+      });
+    }
+    if (Array.isArray(hydrators)) {
+      return hydrators.flatMap(function (entry, index) {
+        const normalized = normalizeHydratorEntry(String(index), entry);
+        return normalized ? [normalized] : [];
+      });
+    }
+    if (typeof hydrators === "object") {
+      return Object.entries(hydrators).flatMap(function (entry) {
+        const normalized = normalizeHydratorEntry(entry[0], entry[1]);
+        return normalized ? [normalized] : [];
+      });
+    }
+    return [];
+  }
+
+  function runPreviewHydratorEntry(root, entry, source) {
+    if (!entry || typeof entry.fn !== "function") return;
+    try {
+      entry.fn(root, {
+        name: entry.name || "",
+        source: source || ""
+      });
+    } catch (_err) {}
+  }
+
   export function hydrateRenderedPreview(root, options) {
     const opts = options && typeof options === "object" ? options : {};
-    if (!(root instanceof Element || root instanceof Document)) return false;
+    if (!isHydratableRoot(root)) return false;
     if (opts.hydrate !== false) {
-      bindTemplatePreviewDescriptorsImpl(root);
-      runPreviewHydrators(root);
+      const bindTemplatePreviewDescriptors =
+        typeof opts.templateBinder === "function"
+          ? opts.templateBinder
+          : bindTemplatePreviewDescriptorsImpl;
+      bindTemplatePreviewDescriptors(root, opts);
+      runPreviewHydrators(root, opts);
     }
     if (opts.renderMath !== false) {
       renderBlueprintMath(root);
@@ -25,7 +117,7 @@
   }
 
   export function renderBlueprintMath(root) {
-    if (!(root instanceof Element || root instanceof Document)) return;
+    if (!isHydratableRoot(root)) return;
     if (typeof katex !== "object" || typeof katex.render !== "function") return;
     const resolvePrelude = function (m) {
       if (!(m instanceof Element)) return "";
@@ -60,21 +152,25 @@
   export function registerPreviewHydrator(name, fn) {
     if (typeof name !== "string" || name.length === 0) return;
     if (typeof fn !== "function") return;
-    previewHydrators.set(name, fn);
+    activePreviewHydrators().set(name, fn);
   }
 
-  export function runPreviewHydrators(root) {
-    if (!(root instanceof Element || root instanceof Document)) return;
-    previewHydrators.forEach(function (fn) {
-      if (typeof fn !== "function") return;
-      try {
-        fn(root);
-      } catch (_err) {}
+  export function runPreviewHydrators(root, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (!isHydratableRoot(root)) return;
+    if (opts.inheritPageHydrators !== false) {
+      activePreviewHydrators().forEach(function (fn, name) {
+        runPreviewHydratorEntry(root, { name: String(name || ""), fn }, "registered");
+      });
+    }
+    normalizePreviewHydrators(opts.hydrators).forEach(function (entry) {
+      runPreviewHydratorEntry(root, entry, "options");
     });
   }
 
   export const previewRuntimeHydration = {
     previewHydrators,
+    normalizePreviewHydrators,
     setTemplatePreviewDescriptorBinder,
     hydrateRenderedPreview,
     renderBlueprintMath,

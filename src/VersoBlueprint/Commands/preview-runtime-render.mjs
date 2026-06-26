@@ -1,5 +1,5 @@
 import { escapeHtml, readHtml } from "./preview-runtime-base.mjs";
-import { blueprintHtmlCacheDiagnosticHtml, blueprintManifestDiagnosticHtml, loadBlueprintHtmlCacheEntry, loadBlueprintManifestEntry, missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
+import { missingPreviewKeyDiagnosticHtml, previewKey } from "./preview-runtime-data.mjs";
 import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
   // Preview resolution joins semantic manifest entries with opaque body fragments.
@@ -9,7 +9,38 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
   // future client needs another fact, add it to the manifest instead of parsing
   // cached HTML.
 
-  export async function resolveBlueprintPreview(previewKey) {
+  function blueprintDataApi(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    return opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
+  }
+
+  function requireBlueprintDataApi(options) {
+    const dataApi = blueprintDataApi(options);
+    if (!dataApi) {
+      throw new Error("Blueprint data API missing; call through createPreview() or createBlueprintDataApi()");
+    }
+    return dataApi;
+  }
+
+  function loadManifestEntry(previewKey, options) {
+    const dataApi = requireBlueprintDataApi(options);
+    return dataApi.loadManifestEntry(previewKey, options);
+  }
+
+  function loadHtmlCacheEntry(previewKey, options) {
+    const dataApi = requireBlueprintDataApi(options);
+    return dataApi.loadHtmlCacheEntry(previewKey, options);
+  }
+
+  function manifestDiagnosticHtml(previewKey, options) {
+    return requireBlueprintDataApi(options).manifestDiagnosticHtml(previewKey);
+  }
+
+  function htmlCacheDiagnosticHtml(previewKey, options) {
+    return requireBlueprintDataApi(options).htmlCacheDiagnosticHtml(previewKey);
+  }
+
+  export async function resolveBlueprintPreview(previewKey, options) {
     const key = typeof previewKey === "string" ? previewKey.trim() : "";
     if (!key) {
       return {
@@ -23,8 +54,8 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       };
     }
     const results = await Promise.all([
-      loadBlueprintManifestEntry(key),
-      loadBlueprintHtmlCacheEntry(key)
+      loadManifestEntry(key, options),
+      loadHtmlCacheEntry(key, options)
     ]);
     const manifestEntry = results[0] || null;
     const htmlCacheEntry = results[1] || null;
@@ -37,7 +68,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         manifestEntry: null,
         htmlCacheEntry: htmlCacheEntry,
         html: "",
-        diagnosticHtml: blueprintManifestDiagnosticHtml(key)
+        diagnosticHtml: manifestDiagnosticHtml(key, options)
       };
     }
     if (!html) {
@@ -48,7 +79,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
         manifestEntry: manifestEntry,
         htmlCacheEntry: htmlCacheEntry,
         html: "",
-        diagnosticHtml: blueprintHtmlCacheDiagnosticHtml(key)
+        diagnosticHtml: htmlCacheDiagnosticHtml(key, options)
       };
     }
     return {
@@ -81,7 +112,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       throw new Error("renderBlueprintPreviewInto target must be a DOM Element");
     }
     const opts = options && typeof options === "object" ? options : {};
-    const result = await resolveBlueprintPreview(previewKey);
+    const result = await resolveBlueprintPreview(previewKey, opts);
     const html = result.ok ? result.html : (opts.diagnostics === false ? "" : result.diagnosticHtml);
     renderHtmlInto(target, html, opts);
     return result;
@@ -167,10 +198,10 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return trimmedLabel ? "externalMarkup:" + trimmedLabel : "";
   }
 
-  export async function loadExternalMarkupNodeEntry(label) {
+  export async function loadExternalMarkupNodeEntry(label, options) {
     const key = externalMarkupEntryKey(label);
     if (!key) return null;
-    return loadBlueprintManifestEntry(key);
+    return loadManifestEntry(key, options);
   }
 
   export function normalizeExternalMarkupPreferences(externalMarkup) {
@@ -314,8 +345,8 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return node.querySelector(".bp_content");
   }
 
-  export async function loadCanonicalPreviewNode(entry, result) {
-    const url = canonicalPreviewUrl(entry);
+  export async function loadCanonicalPreviewNode(entry, result, options) {
+    const url = canonicalPreviewUrl(entry, options);
     if (!url) {
       return {
         ok: false,
@@ -327,7 +358,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       };
     }
     try {
-      const doc = await loadCanonicalPreviewDocument(url);
+      const doc = await loadCanonicalPreviewDocument(url, options);
       const id = canonicalPreviewId(url, result);
       const node = id ? doc.getElementById(id) : null;
       if (!(node instanceof Element)) {
@@ -365,7 +396,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
   }
 
   export async function renderExternalMarkupNodeInto(target, result, selection, payload, options) {
-    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result);
+    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result, options);
     if (!loaded.ok) {
       return {
         ok: false,
@@ -428,9 +459,9 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     }
 
     const nativeKey = previewKey(normalized.label, normalized.facet);
-    const nativeResult = await resolveBlueprintPreview(nativeKey);
+    const nativeResult = await resolveBlueprintPreview(nativeKey, opts);
     if (nativeResult.ok) {
-      const canonicalResult = await resolveCanonicalBlueprintPreview(nativeKey);
+      const canonicalResult = await resolveCanonicalBlueprintPreview(nativeKey, opts);
       const result = renderNodePreviewResult(canonicalResult, {
         renderMode: canonicalResult.ok ? "native" : "diagnostic",
         label: normalized.label,
@@ -458,7 +489,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     }
 
     const manifestEntry =
-      nativeResult.manifestEntry || (await loadExternalMarkupNodeEntry(normalized.label));
+      nativeResult.manifestEntry || (await loadExternalMarkupNodeEntry(normalized.label, opts));
     if (!manifestEntry) {
       const result = renderNodePreviewResult({
         ok: false,
@@ -602,12 +633,37 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     return clone.href;
   }
 
-  export function canonicalPreviewUrl(entry) {
+  export function canonicalPreviewDocumentCache(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    return opts.canonicalPreviewDocuments instanceof Map
+      ? opts.canonicalPreviewDocuments
+      : canonicalPreviewDocuments;
+  }
+
+  export function canonicalPreviewHtmlCache(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    return opts.canonicalPreviewHtmlByKey instanceof Map
+      ? opts.canonicalPreviewHtmlByKey
+      : canonicalPreviewHtmlByKey;
+  }
+
+  export function canonicalPreviewBaseUrl(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (typeof opts.canonicalBaseUrl === "string" && opts.canonicalBaseUrl.trim()) {
+      return opts.canonicalBaseUrl.trim();
+    }
+    if (typeof document !== "undefined" && document.baseURI) return document.baseURI;
+    if (typeof window !== "undefined" && window.location) return window.location.href;
+    return "";
+  }
+
+  export function canonicalPreviewUrl(entry, options) {
     if (!entry || typeof entry !== "object" || typeof entry.href !== "string") return null;
     const href = entry.href.trim();
     if (!href) return null;
     try {
-      return new URL(href, document.baseURI || window.location.href);
+      const baseUrl = canonicalPreviewBaseUrl(options);
+      return baseUrl ? new URL(href, baseUrl) : new URL(href);
     } catch (_err) {
       return null;
     }
@@ -651,23 +707,58 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     );
   }
 
-  export async function loadCanonicalPreviewDocument(url) {
+  export function parseCanonicalPreviewHtml(html) {
+    if (typeof DOMParser === "undefined") {
+      throw new Error("Canonical preview loading requires DOMParser or options.loadDocument");
+    }
+    return new DOMParser().parseFromString(String(html || ""), "text/html");
+  }
+
+  function defaultCanonicalPreviewFetchText(pageUrl, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (typeof opts.fetchText === "function") {
+      return Promise.resolve(opts.fetchText(pageUrl, opts));
+    }
+    const globalScope = typeof globalThis !== "undefined" ? globalThis : {};
+    const fetchFn = globalScope && globalScope.fetch;
+    if (typeof fetchFn !== "function") {
+      return Promise.reject(
+        new Error("Canonical preview loading requires fetch, options.fetchText, or options.loadDocument")
+      );
+    }
+    const fetchOptions =
+      opts.fetchOptions && typeof opts.fetchOptions === "object"
+        ? opts.fetchOptions
+        : undefined;
+    return fetchFn.call(globalScope, pageUrl, fetchOptions).then(function (resp) {
+      if (!resp.ok) {
+        throw new Error("HTTP " + resp.status + " while loading " + pageUrl);
+      }
+      return resp.text();
+    });
+  }
+
+  function normalizeCanonicalPreviewDocument(loaded) {
+    if (typeof loaded === "string") return parseCanonicalPreviewHtml(loaded);
+    if (loaded && typeof loaded.getElementById === "function") return loaded;
+    throw new Error("Canonical preview loader did not return a Document");
+  }
+
+  export async function loadCanonicalPreviewDocument(url, options) {
     const pageUrl = urlWithoutHash(url);
-    const existing = canonicalPreviewDocuments.get(pageUrl);
+    const cache = canonicalPreviewDocumentCache(options);
+    const existing = cache.get(pageUrl);
     if (existing) return existing;
     // Do not shortcut same-page URLs to `document`: hydration mutates the live
     // DOM by moving local panels to body and adding binding state.
-    const promise = fetch(pageUrl)
-      .then(function (resp) {
-        if (!resp.ok) {
-          throw new Error("HTTP " + resp.status + " while loading " + pageUrl);
-        }
-        return resp.text();
-      })
-      .then(function (html) {
-        return new DOMParser().parseFromString(html, "text/html");
-      });
-    canonicalPreviewDocuments.set(pageUrl, promise);
+    const opts = options && typeof options === "object" ? options : {};
+    const promise =
+      typeof opts.loadDocument === "function"
+        ? Promise.resolve(opts.loadDocument({ url: pageUrl, sourceUrl: url.href, options: opts }))
+            .then(normalizeCanonicalPreviewDocument)
+        : defaultCanonicalPreviewFetchText(pageUrl, opts)
+            .then(parseCanonicalPreviewHtml);
+    cache.set(pageUrl, promise);
     return promise;
   }
 
@@ -697,7 +788,10 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
 
   export function canonicalPreviewDocumentBaseUrl(doc, sourceUrl) {
     const pageUrl = urlWithoutHash(sourceUrl);
-    const base = doc instanceof Document ? doc.querySelector("base[href]") : null;
+    const base =
+      doc && typeof doc.querySelector === "function"
+        ? doc.querySelector("base[href]")
+        : null;
     const href = base instanceof Element ? (base.getAttribute("href") || "").trim() : "";
     if (href.length > 0) {
       try {
@@ -757,19 +851,21 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     root.querySelectorAll(selector).forEach(reset);
   }
 
-  export async function resolveCanonicalBlueprintPreview(previewKey) {
-    const result = await resolveBlueprintPreview(previewKey);
+  export async function resolveCanonicalBlueprintPreview(previewKey, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const result = await resolveBlueprintPreview(previewKey, opts);
     if (!result.ok) {
       return canonicalPreviewResult(result);
     }
-    const cached = canonicalPreviewHtmlByKey.get(result.key);
+    const cache = canonicalPreviewHtmlCache(opts);
+    const cached = cache.get(result.key);
     if (cached) {
       return canonicalPreviewResult(result, {
         canonicalHtml: cached.html,
         canonicalSourceHref: cached.href
       });
     }
-    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result);
+    const loaded = await loadCanonicalPreviewNode(result.manifestEntry, result, opts);
     if (!loaded.ok) {
       const title =
         loaded.reason === "canonical-href-missing"
@@ -792,7 +888,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       html: loaded.canonicalHtml,
       href: loaded.canonicalSourceHref
     };
-    canonicalPreviewHtmlByKey.set(result.key, canonical);
+    cache.set(result.key, canonical);
     return canonicalPreviewResult(result, {
       canonicalHtml: canonical.html,
       canonicalSourceHref: canonical.href
@@ -804,7 +900,7 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
       throw new Error("renderCanonicalBlueprintPreviewInto target must be a DOM Element");
     }
     const opts = options && typeof options === "object" ? options : {};
-    const result = await resolveCanonicalBlueprintPreview(previewKey);
+    const result = await resolveCanonicalBlueprintPreview(previewKey, opts);
     const html = result.ok
       ? result.canonicalHtml
       : (opts.diagnostics === false ? "" : result.diagnosticHtml);
@@ -840,10 +936,14 @@ import { hydrateRenderedPreview } from "./preview-runtime-hydration.mjs";
     canonicalPreviewDocuments,
     canonicalPreviewHtmlByKey,
     urlWithoutHash,
+    canonicalPreviewDocumentCache,
+    canonicalPreviewHtmlCache,
+    canonicalPreviewBaseUrl,
     canonicalPreviewUrl,
     canonicalPreviewId,
     canonicalPreviewDiagnosticHtml,
     canonicalPreviewResult,
+    parseCanonicalPreviewHtml,
     loadCanonicalPreviewDocument,
     rebaseUrlAttribute,
     forEachMatchingElement,

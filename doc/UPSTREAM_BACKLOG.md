@@ -1,6 +1,6 @@
 # Verso Upstream Backlog
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-06-26
 
 This file is the repository's local "Verso upstream backlog": a queue of
 changes that would be better solved in upstream `verso`, Lake, or Lean once the
@@ -69,9 +69,9 @@ pull requests unless that upstream write action is explicitly requested.
 - [ ] Add first-class structured runtime assets, including ESM module scripts.
   - current Blueprint workaround:
     Blueprint package assets are embedded through package-owned Lean modules and
-    emitted through Verso's current ordered classic-script/style loading path,
-    so ESM-shaped runtime code still needs Blueprint-local wrappers and
-    generated compatibility shims
+    emitted through Blueprint-local `-verso-data/` writers; regular Manual
+    pages inject the page ESM entrypoint with raw `extraHead`, while legacy
+    classic-script paths such as slides still need Blueprint-local wrappers
   - desired upstream behavior:
     downstream packages should be able to declare emitted runtime assets with
     stable output URLs, explicit asset kinds such as stylesheet, classic script,
@@ -82,6 +82,39 @@ pull requests unless that upstream write action is explicitly requested.
     ad hoc `include_str` asset assembly, `extraJs` compatibility wrappers, and
     local owner-module invalidation rules whose only job is keeping embedded
     browser assets fresh
+
+- [ ] Add module-script/head injection support to Verso Slides.
+  - current Blueprint workaround:
+    Slides cannot inject `type="module"` scripts through their public config:
+    `VersoSlides.Config.extraJs` emits plain `<script src=...>` tags and there
+    is no `extraHead` hook like Manual has. Blueprint therefore keeps
+    `VersoBlueprint.Slides.ClassicPreviewAdapter`, which rewrites the generated
+    ESM preview/runtime modules into one classic `blueprint-slides.js` adapter
+    and keeps the private `window.VersoBlueprint.onRenderReady` bridge alive
+    only for slide decks.
+  - desired upstream behavior:
+    Slides should allow downstream packages to add structured head content, at
+    least enough to inject `<script type="module" src="..."></script>` with a
+    stable URL and predictable ordering relative to generated CSS and
+    `Reveal.initialize`.
+  - upstream implementation sketch:
+    add `extraHead : Array Html := #[]` to `VersoSlides.Config`, emit it in
+    `renderFullHtml` inside `<head>`, and keep the existing `extraCss` and
+    `extraJs` behavior unchanged for current slide projects. A later structured
+    asset API can subsume this, but the minimal `extraHead` hook is enough to
+    unblock module entrypoints without adding another classic-script adapter.
+  - Blueprint follow-up once the upstream hook lands:
+    write the normal preview ESM support files into slide output, add a
+    slide-specific `blueprint-slide-runtime.mjs` entrypoint, inject that module
+    through Slides `extraHead`, pass hydrators and the preview renderer
+    explicitly to the slide runtime, and remove
+    `VersoBlueprint.Slides.ClassicPreviewAdapter` plus the remaining
+    slide-only `window.VersoBlueprint.onRenderReady` path.
+  - acceptance checks:
+    generated slide decks should load preview panels, relation panels, math, and
+    inline preview hydration through ESM modules; regular Manual pages should
+    keep using `blueprint-page-runtime.mjs`; no generated Blueprint asset should
+    need a de-ESMified slide bundle after the migration.
 
 - [ ] Expose Verso Slides hooks for quiet rendering and initial hover state.
   - current Blueprint workaround:
