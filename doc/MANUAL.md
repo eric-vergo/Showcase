@@ -926,17 +926,18 @@ and lower-level block-shell rendering APIs.
 ### Browser-side Consumers
 
 Browser-side custom interfaces should start through
-`window.VersoBlueprint.onRenderReady` or import the generated ESM modules under
-`-verso-data/`. Use `renderPreviewInto` for body fragments,
+the generated ESM modules under `-verso-data/`; use `createPreview()` from
+`api/preview.mjs` when the client needs the render API object. Use
+`renderPreviewInto` for body fragments,
 `renderCanonicalPreviewInto` for the full generated Blueprint node wrapper, and
 `loadGraphs` for standalone graph-data clients.
 
 Use [`API.md#choosing-an-api`](./API.md#choosing-an-api) when deciding between
-the generated ESM modules, the runtime callback, and Lean-side graft helpers.
+the generated ESM modules and Lean-side graft helpers.
 See [`API.md#browser-esm-apis`](./API.md#browser-esm-apis) for ordinary
 `import { ... } from ...` usage, module path rules, and copyable inline
 examples. See [`API.md#browser-runtime-api`](./API.md#browser-runtime-api) for
-the `window.VersoBlueprint.onRenderReady` API and stable runtime table.
+the stable render API table.
 
 ### Troubleshooting Grafts
 

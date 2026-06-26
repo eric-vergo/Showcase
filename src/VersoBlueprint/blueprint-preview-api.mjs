@@ -6,16 +6,8 @@ import {
   loadManifestGraphs,
   normalizeGraphData
 } from "./blueprint-graph-api.mjs";
-import {
-  dataUrl as coreDataUrl,
-  graphApiModuleUrl as coreGraphApiModuleUrl,
-  htmlCacheUrl as coreHtmlCacheUrl,
-  manifestUrl as coreManifestUrl,
-  previewApiModuleUrl as corePreviewApiModuleUrl,
-  previewKey as corePreviewKey,
-  statementPreviewKey as coreStatementPreviewKey,
-  version as coreVersion
-} from "./blueprint-preview-core.mjs";
+import { callDefaultApi, callDefaultApiSync, createDefaultApiHandle, createPreviewUrlApi, fallbackStoreStatus, optionsWithDefaultDataBaseUrl, version } from "./blueprint-api-common.mjs";
+import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
 
 export {
   getGraphData,
@@ -26,188 +18,92 @@ export {
   normalizeGraphData
 };
 
-export const version = coreVersion;
+export { version };
 
-function currentHref() {
-  return typeof window !== "undefined" && window.location ? window.location.href : "";
+const moduleUrl = import.meta.url;
+const previewUrls = createPreviewUrlApi(moduleUrl);
+
+export function createPreview(options) {
+  return createPreviewRuntimeApi(optionsWithDefaultDataBaseUrl(options, moduleUrl));
 }
 
-function ensureNamespace() {
-  if (typeof window === "undefined") return null;
-  const namespace =
-    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
-      ? window.VersoBlueprint
-      : {};
-  if (!Array.isArray(namespace.renderReadyCallbacks)) {
-    namespace.renderReadyCallbacks = [];
-  }
-  window.VersoBlueprint = namespace;
-  return namespace;
-}
+const defaultRenderHandle = createDefaultApiHandle(createPreview);
 
 export function currentRenderApi() {
-  const namespace = ensureNamespace();
-  if (!namespace || !namespace.render || typeof namespace.render !== "object") return null;
-  return namespace.render;
-}
-
-export function onRenderReady(callback) {
-  if (typeof callback !== "function") return;
-  const namespace = ensureNamespace();
-  if (!namespace) return;
-  if (namespace.render && typeof namespace.render === "object") {
-    callback(namespace.render);
-    return;
-  }
-  const installed = namespace.onRenderReady;
-  if (typeof installed === "function" && installed !== onRenderReady) {
-    installed(callback);
-    return;
-  }
-  namespace.renderReadyCallbacks.push(callback);
-}
-
-const namespace = ensureNamespace();
-if (namespace && typeof namespace.onRenderReady !== "function") {
-  namespace.onRenderReady = onRenderReady;
+  return defaultRenderHandle.currentApi();
 }
 
 export function getRenderApi() {
-  const api = currentRenderApi();
-  if (api) return Promise.resolve(api);
-  return new Promise(function (resolve) {
-    onRenderReady(resolve);
-  });
+  return defaultRenderHandle.getApi();
 }
 
-export const ready = getRenderApi();
+export const ready = defaultRenderHandle.ready;
 
-export function dataUrl(filename, baseUrl = currentHref()) {
-  const api = currentRenderApi();
-  if (api && typeof api.dataUrl === "function" && baseUrl === currentHref()) {
-    return api.dataUrl(filename);
-  }
-  return coreDataUrl(filename, baseUrl);
-}
-
-export function manifestUrl(baseUrl = currentHref()) {
-  const api = currentRenderApi();
-  if (api && typeof api.manifestUrl === "function" && baseUrl === currentHref()) {
-    return api.manifestUrl();
-  }
-  return coreManifestUrl(baseUrl);
-}
-
-export function htmlCacheUrl(baseUrl = currentHref()) {
-  const api = currentRenderApi();
-  if (api && typeof api.htmlCacheUrl === "function" && baseUrl === currentHref()) {
-    return api.htmlCacheUrl();
-  }
-  return coreHtmlCacheUrl(baseUrl);
-}
-
-export function graphApiModuleUrl(baseUrl = currentHref()) {
-  const api = currentRenderApi();
-  if (api && typeof api.graphApiModuleUrl === "function" && baseUrl === currentHref()) {
-    return api.graphApiModuleUrl();
-  }
-  return coreGraphApiModuleUrl(baseUrl);
-}
-
-export function previewApiModuleUrl(baseUrl = currentHref()) {
-  const api = currentRenderApi();
-  if (api && typeof api.previewApiModuleUrl === "function" && baseUrl === currentHref()) {
-    return api.previewApiModuleUrl();
-  }
-  return corePreviewApiModuleUrl(baseUrl);
-}
-
-export function previewKey(label, facet) {
-  return corePreviewKey(label, facet);
-}
-
-export function statementPreviewKey(label) {
-  return coreStatementPreviewKey(label);
-}
-
-function fallbackStatus(url) {
-  return {
-    state: "idle",
-    attempts: 0,
-    url: url,
-    lastError: "",
-    entryCount: 0
-  };
-}
-
-function callRuntimeSync(name, fallback) {
-  const api = currentRenderApi();
-  const method = api && api[name];
-  if (typeof method === "function") {
-    return method.apply(api, Array.prototype.slice.call(arguments, 2));
-  }
-  return fallback();
-}
-
-async function callRuntime(name, args) {
-  const api = await getRenderApi();
-  const method = api && api[name];
-  if (typeof method !== "function") {
-    throw new Error("Blueprint render API method unavailable: " + name);
-  }
-  return method.apply(api, args);
-}
+export const dataUrl = previewUrls.dataUrl;
+export const manifestUrl = previewUrls.manifestUrl;
+export const htmlCacheUrl = previewUrls.htmlCacheUrl;
+export const graphApiModuleUrl = previewUrls.graphApiModuleUrl;
+export const dataApiModuleUrl = previewUrls.dataApiModuleUrl;
+export const previewApiModuleUrl = previewUrls.previewApiModuleUrl;
+export const previewKey = previewUrls.previewKey;
+export const statementPreviewKey = previewUrls.statementPreviewKey;
 
 export function readManifestStatus() {
-  return callRuntimeSync("readManifestStatus", function () {
-    return fallbackStatus(manifestUrl());
-  });
+  return callDefaultApiSync(
+    defaultRenderHandle.readDefaultApi,
+    "readManifestStatus",
+    function () { return fallbackStoreStatus(manifestUrl()); },
+    arguments
+  );
 }
 
 export function readHtmlCacheStatus() {
-  return callRuntimeSync("readHtmlCacheStatus", function () {
-    return fallbackStatus(htmlCacheUrl());
-  });
+  return callDefaultApiSync(
+    defaultRenderHandle.readDefaultApi,
+    "readHtmlCacheStatus",
+    function () { return fallbackStoreStatus(htmlCacheUrl()); },
+    arguments
+  );
 }
 
 export function loadManifest() {
-  return callRuntime("loadManifest", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadManifest", arguments);
 }
 
 export function loadHtmlCache() {
-  return callRuntime("loadHtmlCache", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadHtmlCache", arguments);
 }
 
 export function loadManifestEntry(key) {
-  return callRuntime("loadManifestEntry", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadManifestEntry", arguments);
 }
 
 export function loadHtmlCacheEntry(key) {
-  return callRuntime("loadHtmlCacheEntry", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "loadHtmlCacheEntry", arguments);
 }
 
 export function resolvePreview(key) {
-  return callRuntime("resolvePreview", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolvePreview", arguments);
 }
 
 export function renderPreviewInto(element, key, options) {
-  return callRuntime("renderPreviewInto", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "renderPreviewInto", arguments);
 }
 
 export function resolveCanonicalPreview(key) {
-  return callRuntime("resolveCanonicalPreview", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "resolveCanonicalPreview", arguments);
 }
 
 export function renderCanonicalPreviewInto(element, key, options) {
-  return callRuntime("renderCanonicalPreviewInto", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "renderCanonicalPreviewInto", arguments);
 }
 
 export function renderNode(element, request, options) {
-  return callRuntime("renderNode", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "renderNode", arguments);
 }
 
 export function hydrate(element, options) {
-  return callRuntime("hydrate", arguments);
+  return callDefaultApi(defaultRenderHandle.readDefaultApi, "render", "hydrate", arguments);
 }
 
 const previewApi = {
@@ -216,11 +112,12 @@ const previewApi = {
   manifestUrl,
   htmlCacheUrl,
   graphApiModuleUrl,
+  dataApiModuleUrl,
   previewApiModuleUrl,
+  createPreview,
   currentRenderApi,
   getRenderApi,
   ready,
-  onRenderReady,
   loadManifest,
   readManifestStatus,
   loadManifestEntry,

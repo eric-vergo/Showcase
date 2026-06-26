@@ -1,5 +1,4 @@
 import { collectPreviewTemplates, readElementOption, readFunctionOption, readHtml, readNumberOption, readObjectOption, readRootOption, readStringOption } from "./preview-runtime-base.mjs";
-import { blueprintHtmlCacheDiagnosticHtml } from "./preview-runtime-data.mjs";
 import { resolveBlueprintPreview } from "./preview-runtime-render.mjs";
 import { setTemplatePreviewDescriptorBinder } from "./preview-runtime-hydration.mjs";
 import { createPreviewSurface } from "./preview-runtime-surface.mjs";
@@ -77,11 +76,16 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       if (localHtml) return localHtml;
       if (!allowHtmlCache) return "";
       const lookupKey = readLookupKey(trigger, key, localEntry);
-      const result = await resolveBlueprintPreview(lookupKey);
+      const result = await resolveBlueprintPreview(lookupKey, opts);
       if (result && result.ok) return result.html;
       const diagnosticHtml =
         result && typeof result.diagnosticHtml === "string" ? result.diagnosticHtml : "";
-      return diagnosticHtml || blueprintHtmlCacheDiagnosticHtml(lookupKey || key);
+      const dataApi = opts.dataApi && typeof opts.dataApi === "object" ? opts.dataApi : null;
+      const htmlCacheDiagnosticHtml =
+        dataApi && typeof dataApi.htmlCacheDiagnosticHtml === "function"
+          ? dataApi.htmlCacheDiagnosticHtml(lookupKey || key)
+          : "";
+      return diagnosticHtml || htmlCacheDiagnosticHtml;
     }
 
     async function showFromTrigger(trigger) {
@@ -127,7 +131,8 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
     return value.length > 0 ? value : fallback;
   }
 
-  export function bindTemplatePreviewDescriptor(root) {
+  export function bindTemplatePreviewDescriptor(root, options) {
+    const opts = options && typeof options === "object" ? options : {};
     if (!(root instanceof Element)) return null;
     if (root.getAttribute("data-bp-template-preview-bound") === "1") return null;
 
@@ -151,6 +156,7 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       closeSelector: readTemplateDescriptorString(root, "close-selector", ""),
       triggerBoundAttr: readTemplateDescriptorString(root, "trigger-bound-attr", "data-bp-bound")
     };
+    if ("fetchJson" in opts) bindOptions.fetchJson = opts.fetchJson;
     if (mode.length > 0 || placement.length > 0) {
       bindOptions.defaults = {
         mode: mode.length > 0 ? mode : "hover",
@@ -168,16 +174,16 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
     return controller;
   }
 
-  export function bindTemplatePreviewDescriptors(root) {
+  export function bindTemplatePreviewDescriptors(root, options) {
     const scope = root instanceof Element || root instanceof Document ? root : document;
     const selector = "[data-bp-template-preview-root]";
     const controllers = [];
     if (scope instanceof Element && scope.matches(selector)) {
-      const controller = bindTemplatePreviewDescriptor(scope);
+      const controller = bindTemplatePreviewDescriptor(scope, options);
       if (controller) controllers.push(controller);
     }
     scope.querySelectorAll(selector).forEach(function (rootNode) {
-      const controller = bindTemplatePreviewDescriptor(rootNode);
+      const controller = bindTemplatePreviewDescriptor(rootNode, options);
       if (controller) controllers.push(controller);
     });
     return controllers;

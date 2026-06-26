@@ -53,7 +53,7 @@ Work:
    inline-reference behavior on shared browser helpers where the interaction
    model is genuinely shared; the current surfaces, descriptors, trigger
    binding, dismissal, popover, slide cleanup, and resize/scroll lifecycles
-   already use bundled runtime helpers
+   already use shared runtime helpers
 5. evaluate a lighter preview delivery path so a page does not always fetch and
    decode the full shared manifest for a small number of previews
 6. remove remaining browser timing workarounds only after targeted browser tests
@@ -62,45 +62,41 @@ Work:
 7. continue splitting the large preview runtime only along the component-like boundaries now
    encoded in its API tiers: data/cache lookup, fragment rendering and
    hydration, template descriptors, preview surface state, lifecycle binding,
-   and readiness/debug hooks. Each split should keep the same emitted bundled
-   asset and public `onRenderReady` API, then move private helpers in this order:
+   and readiness/debug hooks. Each split should keep the generated ESM
+   `createPreview()` API and the classic Slides adapter working, then
+   move private helpers in this order:
    - readiness/bootstrap and render API installation
      (landed as the current `Commands/preview-runtime-api.mjs` API chunk)
    - manifest/cache loading, status, and entry lookup
-     (landed as `Commands/preview-runtime-data.mjs`, embedded into the current
-     bundled runtime as a classic-script fragment)
-   - generated-data URL and preview-key primitives shared by bundled runtime
-     and ESM clients
-     (landed as `blueprint-preview-core.mjs`, embedded into current Verso
-     page assets through a generated classic-script adapter; runtime stores
+     (landed as `Commands/preview-runtime-data.mjs`, emitted as ESM for Manual
+     pages and wrapped only by the classic Slides adapter)
+   - generated-data URL and preview-key primitives shared by generated page
+     runtime and ESM clients
+     (landed as `blueprint-preview-core.mjs`, shared by the generated page
+     runtime and public ESM APIs; runtime stores
      still live in `Commands/preview-runtime-data.mjs`)
    - fragment and canonical-node resolution plus diagnostic rendering
-     (landed as `Commands/preview-runtime-render.mjs`, embedded into the
-     current bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-render.mjs`, emitted as ESM for
+     Manual pages and wrapped only by the classic Slides adapter)
    - hydration registry and math/feature hydrator dispatch
-     (landed as `Commands/preview-runtime-hydration.mjs`, embedded into the
-     current bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-hydration.mjs`, emitted as ESM for
+     Manual pages and wrapped only by the classic Slides adapter)
    - template descriptor binding for Lean-emitted preview triggers
-     (landed as `Commands/preview-runtime-template.mjs`, embedded into the
-     current bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-template.mjs`)
    - preview surface state, slots, and content updates
-     (landed as `Commands/preview-runtime-surface.mjs`, embedded into the
-     current bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-surface.mjs`)
    - lifecycle binding for trigger events, dismissal, pointer checks,
      repositioning, and keep-open checks
-     (landed as `Commands/preview-runtime-lifecycle.mjs`, embedded into the
-     current bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-lifecycle.mjs`)
    - debug hooks used by tests and local inspection
-     (landed as `Commands/preview-runtime-base.mjs`, embedded into the current
-     bundled runtime as a classic-script fragment)
+     (landed as `Commands/preview-runtime-base.mjs`)
    - graph runtime utilities such as option normalization, canvas sizing,
      graph block state, script loading, and graph-specific panel positioning
-     (landed as `Commands/graph-runtime-core.mjs`, embedded into current
-     Verso page assets through a generated classic-script adapter)
+     (landed as `Commands/graph-runtime-core.mjs`, imported by the Manual page
+     runtime and retained by the classic slide adapter where needed)
    - graph rendering orchestration, variant selection, and graph UI event
      binding
-     (landed as `Commands/graph.mjs`, embedded into current Verso page assets
-     through a generated classic-script adapter)
+     (landed as `Commands/graph.mjs`, imported by the Manual page runtime)
 
 ### Data Model and Status Semantics
 

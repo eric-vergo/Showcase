@@ -36,6 +36,10 @@ export function graphApiModuleUrl(baseUrl) {
   return dataUrl("api/graph.mjs", baseUrl);
 }
 
+export function dataApiModuleUrl(baseUrl) {
+  return dataUrl("api/data.mjs", baseUrl);
+}
+
 export function previewApiModuleUrl(baseUrl) {
   return dataUrl("api/preview.mjs", baseUrl);
 }
@@ -58,6 +62,7 @@ export const previewCore = {
   manifestUrl,
   htmlCacheUrl,
   graphApiModuleUrl,
+  dataApiModuleUrl,
   previewApiModuleUrl,
   previewKey,
   statementPreviewKey
