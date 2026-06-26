@@ -15,21 +15,6 @@ open Informal
 
 set_option doc.verso true
 
-def hasRenderReadyBootstrap (js : String) : Bool :=
-  hasSubstr js "namespace.onRenderReady = function (fn) {"
-
-def hasRenderReadyCallback (js param : String) : Bool :=
-  hasSubstr js ("window.VersoBlueprint.onRenderReady(function (" ++ param ++ ") {")
-
-def hasRenderReadyCallbackNoParam (js : String) : Bool :=
-  hasSubstr js "window.VersoBlueprint.onRenderReady(function () {"
-
-def hasRenderReadyWiring (js param : String) : Bool :=
-  hasRenderReadyBootstrap js && hasRenderReadyCallback js param
-
-def hasRenderReadyWiringNoParam (js : String) : Bool :=
-  hasRenderReadyBootstrap js && hasRenderReadyCallbackNoParam js
-
 def hasAllSubstr (s : String) (needles : List String) : Bool :=
   needles.all fun needle => hasSubstr s needle
 

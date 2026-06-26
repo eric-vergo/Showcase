@@ -94,22 +94,8 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasExtraCss st ".bp_relation_badge_intent_technical" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
-      match relationJs? with
-      | some relationJs =>
-        hasRenderReadyWiring relationJs "previewUtils" &&
-        !hasSubstr relationJs "function blueprintRender()" &&
-        hasSubstr relationJs "previewUtils.registerPreviewHydrator(\"relationPanel\", function (root) {" &&
-        hasSubstr relationJs "triggerSelector: \".bp_relation_chip\"" &&
-        lacksAllSubstr relationJs [
-          "previewUtils.renderPreviewInto(body, previewKey, { diagnostics: false })",
-          "previewUtils.resolvePreview(previewKey)",
-          "previewUtils.readHtmlCacheStatus()",
-          "previewUtils.bindDismissHandlers({",
-          "previewUtils.shouldKeepOpen(",
-          "function previewMessageHtml(previewUtils",
-          "fallbackTemplates"
-        ]
-      | none => false
+      relationJs?.isNone &&
+      !hasExtraJs st "window.VersoBlueprint.onRenderReady"
     )
 
 /-- info: true -/
@@ -178,11 +164,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       !hasSubstr out "bp_uses_intent_badge" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
       appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
-      match relationJs? with
-      | some relationJs =>
-        hasRenderReadyCallback relationJs "previewUtils" &&
-        !hasSubstr relationJs "previewUtils.setPreviewHeaderLink(headerLabel, item)"
-      | none => false
+      relationJs?.isNone
     )
 
 /-- info: true -/
@@ -208,11 +190,7 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
       hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
       hasSubstr out "Preview group title." &&
       hasSubstr out "used by 1" &&
-      match relationJs? with
-      | some relationJs =>
-        hasRenderReadyCallback relationJs "previewUtils" &&
-        !hasSubstr relationJs "activate(initialItem, { openWrap: false })"
-      | none => false
+      relationJs?.isNone
     )
 
 /-- info: true -/

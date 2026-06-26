@@ -109,26 +109,9 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "data-bp-tex-prelude-id" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
-      match graphJs? with
-      | some graphJs =>
-        hasRenderReadyWiring graphJs "previewUtils" &&
-        !hasSubstr graphJs "function blueprintRender()" &&
-        !hasSubstr graphJs "window.bpGraphApi" &&
-        !hasSubstr graphJs "previewUtils.createPanelController(" &&
-        !hasSubstr graphJs "previewUtils.renderHtmlInto(" &&
-        !hasSubstr graphJs "previewUtils.positionAnchoredPanel(" &&
-        !hasSubstr graphJs "previewUtils.resetPanelPosition(" &&
-        !hasSubstr graphJs "previewUtils.resolvePreview(previewKey)" &&
-        hasAllSubstr graphJs [
-          ".bp_graph_preview_mode_select",
-          ".bp_graph_preview_placement_select",
-          ".bp_graph_direction_select",
-          ".bp_graph_pack_input"
-        ] &&
-        lacksAllSubstr graphJs [
-          "function parsePreviewEntry("
-        ]
-      | none => false
+      graphJs?.isNone &&
+      !hasExtraJs st "window.VersoBlueprint.onRenderReady" &&
+      !hasExtraJs st "window.bpGraphApi"
     )
 
 /-- info: true -/

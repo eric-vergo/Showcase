@@ -6,7 +6,6 @@ import {
   graphCanvasFor as coreGraphCanvasFor,
   graphFallbackVariants as coreGraphFallbackVariants,
   graphsFromManifest as coreGraphsFromManifest,
-  loadGraphs as coreLoadGraphs,
   loadJson as coreLoadJson,
   loadManifestGraphs as coreLoadManifestGraphs,
   normalizeGraphData as coreNormalizeGraphData,
@@ -15,8 +14,9 @@ import {
 } from "./blueprint-graph-core.mjs";
 
 export const version = coreVersion;
-export const dataUrl = coreDataUrl;
-export const graphApiModuleUrl = coreGraphApiModuleUrl;
+const moduleUrl = import.meta.url;
+export const dataUrl = (filename, baseUrl = moduleUrl) => coreDataUrl(filename, baseUrl);
+export const graphApiModuleUrl = (baseUrl = moduleUrl) => coreGraphApiModuleUrl(baseUrl);
 export const graphCanvasFor = coreGraphCanvasFor;
 export const readGraphJsonScript = coreReadGraphJsonScript;
 export const graphFallbackVariants = coreGraphFallbackVariants;
@@ -25,8 +25,15 @@ export const graphsFromManifest = coreGraphsFromManifest;
 export const getGraphData = coreGetGraphData;
 export const getGraphVariants = coreGetGraphVariants;
 export const loadJson = coreLoadJson;
-export const loadManifestGraphs = coreLoadManifestGraphs;
-export const loadGraphs = coreLoadGraphs;
+export const loadManifestGraphs = (url, options) => {
+  const manifestUrl =
+    typeof url === "string" && url.trim()
+      ? url
+      : coreDataUrl("blueprint-manifest.json", moduleUrl);
+  return coreLoadManifestGraphs(manifestUrl, options);
+};
+export const loadGraphs = (options) =>
+  coreLoadManifestGraphs(coreDataUrl("blueprint-manifest.json", moduleUrl), options);
 
 const graphApi = {
   version,

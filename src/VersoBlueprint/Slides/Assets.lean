@@ -11,6 +11,7 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
+import VersoBlueprint.Slides.ClassicPreviewAdapter
 
 namespace Informal.Slides
 
@@ -19,23 +20,13 @@ def blueprintSlidesJsFilename : String := "blueprint-slides.js"
 
 private def slideNodeCss : String := include_str "blueprint-slides.css"
 
-/--
-Hydrate interactions around Blueprint slide nodes whose HTML shell was rendered
-while generating the slide deck.
--/
-private def slideNodeHydrationModuleMjs : String := include_str "blueprint-slides.mjs"
-
-private def slideNodeHydrationJs : String :=
-  Informal.BrowserAsset.esmModuleToClassicScript slideNodeHydrationModuleMjs
-    "installBlueprintSlides();"
-
 def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   { css :=
       (Informal.Commands.previewPanelInlinePreviewCssAssetBundle
         [Informal.Block.Assets.css, Informal.Graft.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]).css
     js :=
-      (Informal.Commands.inlinePreviewJsAssetBundle.withJs []
-        [Informal.Block.Assets.relationPanelJs, slideNodeHydrationJs]).js }
+      (ClassicPreviewAdapter.inlinePreviewAssetBundle.withJs []
+        [ClassicPreviewAdapter.relationPanelJs, ClassicPreviewAdapter.slideNodeHydrationJs]).js }
 
 def blueprintSlidesCss : String :=
   String.intercalate "\n\n" blueprintSlidesAssetBundle.css

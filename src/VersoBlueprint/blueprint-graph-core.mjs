@@ -47,11 +47,16 @@ function isScriptElement(node) {
 
 export function dataUrl(filename, baseUrl) {
   const safeFilename = String(filename || "").trim();
-  if (!safeFilename) return "-verso-data/";
   const sourceUrl =
     typeof baseUrl === "string" && baseUrl.length > 0 ? baseUrl : currentHref();
   try {
     const url = new URL(sourceUrl);
+    const dataMarker = "/-verso-data/";
+    const dataIdx = url.pathname.indexOf(dataMarker);
+    if (dataIdx >= 0) {
+      const rootPath = url.pathname.slice(0, dataIdx + dataMarker.length);
+      return rootPath + safeFilename;
+    }
     const markers = ["/html-multi/", "/html-single/"];
     for (const marker of markers) {
       const idx = url.pathname.indexOf(marker);
@@ -61,7 +66,7 @@ export function dataUrl(filename, baseUrl) {
       }
     }
   } catch (_err) {}
-  return "-verso-data/" + safeFilename;
+  return safeFilename ? "-verso-data/" + safeFilename : "-verso-data/";
 }
 
 export function graphApiModuleUrl(baseUrl) {
@@ -152,16 +157,22 @@ export function getGraphVariants(root) {
 }
 
 export function loadJson(url, options, errorPrefix) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (typeof opts.fetchJson === "function") {
+    return Promise.resolve(opts.fetchJson(url, opts));
+  }
   const globalScope = defaultGlobalScope();
   const fetchFn = globalScope && globalScope.fetch;
   if (typeof fetchFn !== "function") {
-    return Promise.reject(new Error("Blueprint graph API requires fetch"));
+    return Promise.reject(new Error("Blueprint graph API requires fetch or options.fetchJson"));
   }
   const prefix =
     typeof errorPrefix === "string" && errorPrefix.length > 0
       ? errorPrefix
       : "Could not load Blueprint JSON";
-  return fetchFn.call(globalScope, url, options).then(function (response) {
+  const fetchOptions =
+    opts.fetchOptions && typeof opts.fetchOptions === "object" ? opts.fetchOptions : opts;
+  return fetchFn.call(globalScope, url, fetchOptions).then(function (response) {
     if (!response.ok) {
       throw new Error(prefix + ": " + response.status);
     }

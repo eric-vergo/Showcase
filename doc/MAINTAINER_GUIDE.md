@@ -137,9 +137,10 @@ uv run --project tests/browser --extra test python -m pytest tests/browser -q --
 
 Browser tests that need the public Blueprint render API should use
 `blueprint_render_api_script` or `wait_for_blueprint_render_api` from
-`tests/browser/support.py`. Those helpers synchronize through
-`window.VersoBlueprint.onRenderReady`, which keeps browser fixtures aligned with
-the runtime readiness contract instead of reading `window.VersoBlueprint.render`
+`tests/browser/support.py`. Those helpers import
+`-verso-data/blueprint-page-runtime.mjs` for regular Manual pages and fall back
+to `window.VersoBlueprint.onRenderReady` only for the current classic-script
+Slides adapter. Browser fixtures should not read `window.VersoBlueprint.render`
 directly.
 
 ### Embedded Browser Assets

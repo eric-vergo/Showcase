@@ -1,11 +1,26 @@
 # Blueprint API Reference
 
-This document records the public API surfaces for tools that read Blueprint
-data or render Blueprint fragments outside the standard generated pages.
+This document is for integration work: custom generators, dashboards, audit
+pages, slide adapters, and browser scripts that need to read Blueprint data or
+render Blueprint fragments outside the standard generated pages.
 
 For authoring syntax and rendering behavior, see
 [`MANUAL.md`](./MANUAL.md). For the architecture boundaries behind these APIs,
 see [`DESIGN_RATIONALE.md`](./DESIGN_RATIONALE.md).
+
+If you are not sure where to start, read [Choosing an API](#choosing-an-api)
+first. The short version is:
+
+- use the generated ESM modules for ordinary browser `import { ... } from ...`
+  JavaScript
+- use `createPreviewData()` from `api/data.mjs` when a client only needs
+  manifest/cache/graph data and should not import DOM rendering code
+- use `createPreview()` from `api/preview.mjs` when a browser client needs to
+  render Blueprint nodes, fragments, or external-markup fallbacks
+- use the generated manifest for semantic data and the HTML cache for rendered
+  fragments
+- use the Lean graft/render APIs when a generator wants to place Blueprint nodes
+  into a custom page
 
 ## Contents
 
@@ -32,31 +47,38 @@ relation-panel, inline-preview, and slide scripts can share runtime mechanics.
 They are not a custom-client contract unless they are promoted into the stable
 tables below.
 
-Browser clients should use the generated ESM modules or
-`window.VersoBlueprint.onRenderReady`. Blueprint's own bundled feature scripts
-use the same render API instead of reading page globals directly; private
-classic-script adapters exist only to support the current Verso asset-loading
-mode. Adapter internals may be staged under `window.VersoBlueprint.__private`,
-but that namespace is not a supported client API.
+Browser clients should use the generated ESM modules. `api/preview.mjs` imports
+the renderer directly and exposes `createPreview()` so each client makes its
+rendering dependency explicit at the call site. Regular generated Manual pages
+load `-verso-data/blueprint-page-runtime.mjs` as a module script from
+`extraHead`; that page runtime constructs the renderer and starts Blueprint's
+own inline-preview, relation-panel, graph, and template-preview hydrators
+without depending on `window.VersoBlueprint`. The remaining
+`window.VersoBlueprint.onRenderReady` bridge is an internal adapter for the
+current classic-script Slides output path. Adapter internals may be staged under
+`window.VersoBlueprint.__private`, but that namespace is not a supported client
+API.
 
 ## Choosing an API
 
-| Need | Use |
-| --- | --- |
-| Build semantic graph data before traversal has finished | `Informal.Graph.buildData` |
-| Read finalized graph data after traversal has completed | `Informal.GraphApi.finalDataForBlock` or `Informal.GraphApi.cachedData` |
-| Read all generated graph records from a browser page | `loadGraphs()` from `api/graph.mjs` or `api.loadGraphs()` |
-| Read data embedded in a rendered graph block | `getGraphData(element)` and `getGraphVariants(element)` |
-| Render only a preview body fragment in a custom wrapper | `renderPreviewInto(element, key)` |
-| Render the full generated Blueprint node wrapper | `renderCanonicalPreviewInto(element, key)` |
-| Render by label with external TeX or Markdown fallback source | `renderNode(element, request)` |
-| Inspect semantic manifest data before rendering | `resolvePreview(key)` or `resolveCanonicalPreview(key)` |
-| Render Blueprint nodes from a custom Lean generator | `Informal.Graft.renderNodeFromManifestCache` |
-| Join manifest/cache data manually | `PreviewManifest.File.findEntry?` and `PreviewManifest.HtmlCache.File.findHtml?` |
+Start from what you are building:
 
-Prefer the highest-level entry point that matches the job. Reach for direct
-manifest/cache lookup only when the client needs custom joining behavior or
-explicit diagnostics.
+| You are building | Start with | Why |
+| --- | --- | --- |
+| A small browser script or standalone web page | [`api/data.mjs`](#browser-esm-apis), [`api/preview.mjs`](#browser-esm-apis), or [`api/graph.mjs`](#browser-esm-apis) | These are normal ESM modules, so clients can use regular `import { ... } from ...` syntax. |
+| A script loaded by a generated Blueprint page | `createPreview()` from [`api/preview.mjs`](#browser-esm-apis) | The generated module constructs the renderer directly from emitted runtime modules without waiting on `window.VersoBlueprint.render`. |
+| A Node-like audit or migration tool that only reads generated data | `createPreviewData()` from [`api/data.mjs`](#browser-esm-apis) | It loads manifest/cache data without importing render, hydration, or DOM surface code. |
+| A graph dashboard or audit page | [`loadGraphs()`](#graph-data-apis) | It reads finalized graph records from `blueprint-manifest.json`, even when the current page has no rendered graph block. |
+| A custom browser widget beside an existing graph block | [`getGraphData(element)`](#graph-data-apis) and `getGraphVariants(element)` | These read the graph data embedded next to a rendered graph. |
+| A custom page that needs a rendered preview body only | [`renderPreviewInto(element, key)`](#browser-esm-apis) or [`api.renderPreviewInto`](#browser-runtime-api) | This inserts the cached rendered fragment into your own wrapper. |
+| A custom page that should look like generated Blueprint nodes | [`renderCanonicalPreviewInto(element, key)`](#browser-esm-apis) or [`api.renderCanonicalPreviewInto`](#browser-runtime-api) | This inserts the standard Blueprint node wrapper and body. |
+| A custom page that starts from a label and can render external TeX or Markdown fallback source | [`renderNode(element, request)`](#browser-esm-apis) | This renders the generated node shell for native previews and external-markup fallbacks; external renderers own only the content slot. |
+| A Lean generator that renders Blueprint nodes into another page | [`Informal.Graft.renderNodeFromManifestCache`](#lean-graft-and-render-apis) | It reuses the generated manifest/cache pair while letting the generator choose wrapper classes and diagnostics. |
+| Lean code that needs graph data during rendering | [`Informal.GraphApi`](#graph-data-apis) | It finalizes semantic graph data against completed traversal state. |
+
+Prefer the highest-level entry point that matches the job. Direct
+manifest/cache lookup is available, but it is usually only needed when a client
+wants custom joining behavior or explicit diagnostics.
 
 Two rules keep most integrations simple:
 
@@ -78,6 +100,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
   graph topology, labels, statuses, or dependency relationships.
 - `api/graph.mjs` exposes graph-data helpers for ordinary browser `import`
   usage.
+- `api/data.mjs` exposes manifest/cache/graph data helpers for clients that do
+  not need to render DOM previews.
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
   `import` usage.
 
@@ -123,8 +147,8 @@ Three common workflows consume that same model:
    is still available.
 2. A Slides deck or generated audit page can graft nodes from a manifest/cache
    pair emitted by a Blueprint site.
-3. Browser-side UI can use `window.VersoBlueprint.onRenderReady` or the
-   generated ESM modules to resolve and insert previews after the page loads.
+3. Browser-side UI can use the generated ESM modules to create a renderer,
+   resolve previews, and insert hydrated fragments after the page loads.
 
 ## Graph Data APIs
 
@@ -198,44 +222,29 @@ const graphs = await loadGraphs();
 const graph = getGraphData(document);
 ```
 
-Browser consumers that are already using the runtime API can read page-local
-graph data from the render API:
+Browser consumers that already created a preview renderer can read page-local
+graph data from that renderer:
 
 ```javascript
-window.VersoBlueprint.onRenderReady((api) => {
-  const block = document.querySelector(".bp_graph_fullwidth");
-  const graph = api.getGraphData(block);
-  console.log(graph?.nodes.length ?? 0);
-});
+import { createPreview } from "../-verso-data/api/preview.mjs";
+
+const api = createPreview();
+const block = document.querySelector(".bp_graph_fullwidth");
+const graph = api.getGraphData(block);
+console.log(graph?.nodes.length ?? 0);
 ```
 
 Standalone clients that do not render a graph block on the current page can
 load the manifest graph records instead:
 
 ```javascript
-window.VersoBlueprint.onRenderReady(async (api) => {
-  const graphs = await api.loadGraphs();
-  for (const graph of graphs) {
-    console.log(graph.key, graph.nodes.length, graph.edges.length);
-  }
-});
-```
+import { createPreview } from "../-verso-data/api/preview.mjs";
 
-When a client must resolve the module URL relative to an arbitrary generated
-page, use `api.graphApiModuleUrl()` from the render API:
-
-```javascript
-// Wait until the generated preview runtime has installed the render API.
-window.VersoBlueprint.onRenderReady(async function (api) {
-  // Resolve and import the generated graph API module relative to this page.
-  const graphApi = await import(api.graphApiModuleUrl());
-
-  // Load every finalized graph record from the generated manifest.
-  const graphs = await graphApi.loadGraphs();
-
-  // Use the records in the custom client.
-  console.log(graphs.length);
-});
+const api = createPreview();
+const graphs = await api.loadGraphs();
+for (const graph of graphs) {
+  console.log(graph.key, graph.nodes.length, graph.edges.length);
+}
 ```
 
 ## Lean Graft and Render APIs
@@ -325,28 +334,64 @@ it the semantic manifest entry plus `BlockRender.RenderedContent`, using
 
 Generated sites emit importable modules under `-verso-data/api/`:
 
+- `data.mjs`
 - `preview.mjs`
 - `graph.mjs`
 
 The relative path depends on the generated page location. Root generated pages
 can import from `-verso-data/api/...`; nested generated pages commonly import
 from `../-verso-data/api/...`. Generated clients that need to resolve the
-module URL from an arbitrary page should use `api.previewApiModuleUrl()` or
-`api.graphApiModuleUrl()`.
+module URL from an arbitrary page should use the same generated-data path
+convention as `dataUrl`: find `/html-multi/` or `/html-single/` in the current
+URL and append `-verso-data/api/data.mjs`,
+`-verso-data/api/preview.mjs`, or `-verso-data/api/graph.mjs`.
 
 Generated sites also emit root implementation modules,
-`-verso-data/blueprint-preview-api.mjs` and
+`-verso-data/blueprint-data-api.mjs`,
+`-verso-data/blueprint-preview-api.mjs`, and
 `-verso-data/blueprint-graph-api.mjs`. The public `api/*.mjs` modules re-export
 those implementations from stable, shorter import paths. The generated data
 directory also contains internal support files used by those modules, such as
-`blueprint-graph-core.mjs` and `blueprint-preview-core.mjs`; those support files
-are not public import paths. New clients should use the `-verso-data/api/`
-paths.
+`blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
+`blueprint-api-common.mjs`, and the `Commands/preview-runtime-*.mjs` renderer
+chunks. Those support files are not public import paths. New clients should use
+the `-verso-data/api/` paths.
 
-URL, graph-data, and key helpers in `api/preview.mjs` are available
-immediately. Manifest/cache loading, rendering, and hydration helpers wait for
-the page runtime before delegating to the shared render API. In the preview ESM
-module, `ready` is a Promise for the runtime API object.
+URL, graph-data, key, manifest/cache, rendering, and hydration helpers in
+`api/preview.mjs` are available through generated ESM modules. The module
+constructs its renderer directly from emitted runtime chunks; it does not need
+`window.VersoBlueprint.render` or `window.VersoBlueprint.onRenderReady`.
+Use `createPreview()` when a client wants an explicit renderer object. The
+top-level helper functions use a module-local default renderer for small
+scripts.
+
+Use these modules when the client can use normal JavaScript modules:
+
+```javascript
+import { createPreviewData } from "../-verso-data/api/data.mjs";
+import { renderPreviewInto } from "../-verso-data/api/preview.mjs";
+import { loadGraphs } from "../-verso-data/api/graph.mjs";
+```
+
+If the script does not know how deeply nested the current page is, resolve the
+generated data URL using the same marker convention as the core helpers: find
+the `/html-multi/` or `/html-single/` path segment and append
+`-verso-data/api/data.mjs`, `-verso-data/api/preview.mjs`, or
+`-verso-data/api/graph.mjs`.
+
+Load generated data without importing render code:
+
+```javascript
+import { createPreviewData } from "../-verso-data/api/data.mjs";
+
+const data = createPreviewData({
+  fetchJson: async (url) => readFromClientCacheOrFetch(url)
+});
+
+const manifest = await data.loadManifest();
+const entry = await data.loadManifestEntry(data.previewKey("addition_right_identity", "statement"));
+const graphs = await data.loadGraphs();
+```
 
 Render only a preview body fragment:
 
@@ -398,53 +443,101 @@ Render the full generated Blueprint node from a module path and key:
 </script>
 ```
 
-Resolve the generated module path from the runtime:
+Create an explicit renderer object and call the stable methods from it:
 
 ```javascript
-// Wait for the generated runtime so it can resolve URLs for this page.
-window.VersoBlueprint.onRenderReady(async function (api) {
-  // Dynamically import the generated preview/render module.
-  const previewApi = await import(api.previewApiModuleUrl());
+import {
+  createPreview,
+  previewKey
+} from "../-verso-data/api/preview.mjs";
 
-  // Build a normalized preview key from a label and facet.
-  const key = previewApi.previewKey("addition_right_identity", "statement");
+const api = createPreview();
+const key = previewKey("addition_right_identity", "statement");
+const target = document.querySelector("#audit-preview");
 
-  // Choose the DOM element that will receive the rendered fragment.
-  const target = document.querySelector("#audit-preview");
-  if (target) {
-    // Render the preview body fragment through the imported module.
-    await previewApi.renderPreviewInto(target, key);
-  }
-});
+if (target) {
+  await api.renderPreviewInto(target, key);
+}
 ```
 
 The generated ESM modules expose these entrypoint groups:
 
 | Module | Exports |
 | --- | --- |
-| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `previewApiModuleUrl`; runtime readiness: `onRenderReady`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
+| `api/data.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; data API creation/default access: `createPreviewData`, `currentDataApi`, `getDataApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers: `getGraphData`, `getGraphVariants`, `graphsFromManifest`, `loadManifestGraphs`, `loadGraphs`; preview-key helpers: `previewKey`, `statementPreviewKey`. |
+| `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; renderer creation/default access: `createPreview`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
 | `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`. |
 
 ## Browser Runtime API
 
-Browser-side custom interfaces should start through
-`window.VersoBlueprint.onRenderReady`. The callback receives the shared render
-API installed by the standard Blueprint preview/runtime asset. It loads the
-manifest and rendered-fragment cache from the page's `-verso-data/` directory,
-keeps load status for diagnostics, and hydrates inserted fragments.
+Browser-side custom interfaces should start from `createPreview()` in
+`api/preview.mjs`. It returns the render API object that loads the manifest and
+rendered-fragment cache from the page's `-verso-data/` directory, keeps load
+status for diagnostics, and hydrates inserted fragments. The renderer is scoped
+to the importing module; clients do not need `window.VersoBlueprint.render`.
 
 Use `renderPreviewInto` when the client just needs to place a preview body
 fragment into the page:
 
 ```javascript
-window.VersoBlueprint.onRenderReady(async function (api) {
-  const key = api.previewKey("addition_right_identity", "statement");
-  const target = document.querySelector("#audit-preview");
-  if (!target) return;
+import { createPreview } from "../-verso-data/api/preview.mjs";
 
+const api = createPreview();
+const key = api.previewKey("addition_right_identity", "statement");
+const target = document.querySelector("#audit-preview");
+if (target) {
   const result = await api.renderPreviewInto(target, key);
-  if (result.ok) {
-    console.log(result.manifestEntry.title);
+  if (result.ok) console.log(result.manifestEntry.title);
+}
+```
+
+`createPreview(options)` also accepts data-loading and hydration defaults for
+custom clients:
+
+- `dataBaseUrl`: a generated `-verso-data/` URL or API-module URL used to
+  resolve `blueprint-manifest.json`, `blueprint-html-cache.json`, and API
+  module URLs. The public ESM module supplies its own `import.meta.url` by
+  default.
+- `fetchJson`: an optional JSON loader `(url, options) => data`. Use this for
+  standalone clients, tests, Node-like environments, authenticated requests, or
+  clients that already own a cache. If omitted, VBP uses the ambient `fetch`.
+- `fetchText`: an optional text loader `(url, options) => html` used by
+  canonical-node rendering when it needs to load the generated source page.
+- `loadDocument`: an optional canonical-page loader
+  `({ url, sourceUrl, options }) => Document | string`. It overrides
+  `fetchText`; string results are parsed with `DOMParser`.
+- `canonicalBaseUrl`: an optional base URL for resolving manifest `href`
+  values when the client is not running on a generated Blueprint page.
+- `hydrators`: a function, array, `Map`, or plain object of named functions.
+  Each hydrator receives `(root, context)` after VBP inserts a fragment.
+- `inheritPageHydrators`: defaults to `true`. Set it to `false` for standalone
+  clients that should not reuse generated-page feature hydrators.
+- `templateBinder`: an optional function for clients that need to bind preview
+  descriptors through their own component lifecycle.
+
+Render-call options accept the same `fetchJson`, `fetchText`, `loadDocument`,
+`canonicalBaseUrl`, `hydrators`, `inheritPageHydrators`, and `templateBinder`
+keys, plus `hydrate: false` and `renderMath: false`. Per-call options override
+factory defaults for that render.
+
+```javascript
+import { createPreview } from "../-verso-data/api/preview.mjs";
+
+const api = createPreview({
+  fetchJson: async (url) => {
+    return readFromClientCacheOrFetch(url);
+  },
+  inheritPageHydrators: false,
+  hydrators: {
+    audit(root) {
+      root.dataset.auditHydrated = "true";
+    }
+  }
+});
+
+await api.renderPreviewInto(target, key, {
+  hydrators(root, context) {
+    console.log("hydrated by", context.source);
   }
 });
 ```
@@ -455,27 +548,27 @@ entry, follows its generated-page link, extracts the canonical node by id, and
 hydrates the inserted copy:
 
 ```javascript
-window.VersoBlueprint.onRenderReady(async function (api) {
-  const key = api.previewKey("addition_right_identity", "statement");
-  const target = document.querySelector("#audit-preview");
-  if (!target) return;
+import { createPreview } from "../-verso-data/api/preview.mjs";
 
+const api = createPreview();
+const key = api.previewKey("addition_right_identity", "statement");
+const target = document.querySelector("#audit-preview");
+if (target) {
   const result = await api.renderCanonicalPreviewInto(target, key);
-  if (result.ok) {
-    console.log(result.canonicalSourceHref);
-  }
-});
+  if (result.ok) console.log(result.canonicalSourceHref);
+}
 ```
 
 Use `resolvePreview` when the client needs semantic data before deciding how to
 display the preview:
 
 ```javascript
-window.VersoBlueprint.onRenderReady(async function (api) {
-  const key = api.previewKey("addition_right_identity", "statement");
-  const result = await api.resolvePreview(key);
-  if (!result.ok) return;
+import { createPreview } from "../-verso-data/api/preview.mjs";
 
+const api = createPreview();
+const key = api.previewKey("addition_right_identity", "statement");
+const result = await api.resolvePreview(key);
+if (result.ok) {
   const row = document.createElement("section");
   row.className = "audit-preview-row";
   row.dataset.previewKey = result.key;
@@ -486,9 +579,8 @@ window.VersoBlueprint.onRenderReady(async function (api) {
   row.appendChild(heading);
   row.appendChild(body);
   const inserted = await api.renderPreviewInto(body, result.key);
-  if (!inserted.ok) return;
-  document.querySelector("#audit-previews").appendChild(row);
-});
+  if (inserted.ok) document.querySelector("#audit-previews").appendChild(row);
+}
 ```
 
 Use `renderNode` when the client starts from a Blueprint label and wants a
@@ -511,10 +603,11 @@ The ownership boundary is strict:
   inventing a different wrapper.
 
 ```javascript
-window.VersoBlueprint.onRenderReady(async function (api) {
-  const target = document.querySelector("#comparison-preview");
-  if (!target) return;
+import { createPreview } from "../-verso-data/api/preview.mjs";
 
+const api = createPreview();
+const target = document.querySelector("#comparison-preview");
+if (target) {
   const result = await api.renderNode(target, {
     label: "Chapter2:Problem2.11.6",
     facet: "statement",
@@ -530,7 +623,7 @@ window.VersoBlueprint.onRenderReady(async function (api) {
   if (!result.ok) {
     console.warn(result.reason);
   }
-});
+}
 
 async function renderMarkdown(markup, target) {
   const node = await markdownToDom(markup.raw);
@@ -560,14 +653,25 @@ It does not use the showcase card UI: it binds one target element, calls
 
 ### Runtime Readiness
 
-After readiness, the same API is available as `window.VersoBlueprint.render`.
-Scripts that are emitted as Blueprint inline assets should still use
-`onRenderReady`: Verso stores inline JavaScript assets as a set, so source-list
-order is not a synchronization guarantee.
+Regular Manual pages load one module entrypoint:
+`-verso-data/blueprint-page-runtime.mjs`. `withBlueprintAssets` injects it with
+Manual's `extraHead` as:
 
-Blueprint's bundled preview clients get a small readiness bootstrap before
-their client code so `onRenderReady` is available even when the client asset is
-emitted before the preview runtime installs the full render API.
+```html
+<script type="module" src="-verso-data/blueprint-page-runtime.mjs"></script>
+```
+
+That module imports `api/preview.mjs`, constructs the page renderer with
+`createPreview()`, installs target-detail opening, and starts Blueprint's
+inline-preview, relation-panel, graph, and template-preview bindings. Command
+renderers still contribute markup, CSS, and stable data attributes, but they no
+longer inject preview-runtime startup JavaScript into Manual `extraJs`.
+
+The private `window.VersoBlueprint.onRenderReady` bridge remains only for the
+current classic-script Slides adapter. New custom clients should import the ESM
+modules directly, or import
+`blueprint-page-runtime.mjs` if they intentionally want the already-started page
+renderer from a generated Manual page.
 
 ### Stable Custom-Client API
 
@@ -577,22 +681,23 @@ views, and browser-only examples.
 
 | Entry point | Use |
 | --- | --- |
-| `window.VersoBlueprint.onRenderReady(callback)` | Run startup code that needs the render API, even if the client asset executes before the preview runtime installs it. |
+| `createPreview(options)` | Construct a render API object from the generated ESM runtime modules. This is the preferred entry point for custom browser clients. `options.dataBaseUrl` and `options.fetchJson` configure JSON loading; `options.fetchText`, `options.loadDocument`, and `options.canonicalBaseUrl` configure canonical page loading; `options.hydrators`, `options.inheritPageHydrators`, and `options.templateBinder` configure hydration defaults for this renderer. |
 | `api.dataUrl(filename)` / `api.manifestUrl()` / `api.htmlCacheUrl()` | Resolve generated `-verso-data/` URLs relative to the current page. |
-| `api.loadManifest()` / `api.loadHtmlCache()` | Load the generated `Map` values keyed by preview key. |
+| `api.loadManifest(options)` / `api.loadHtmlCache(options)` | Load the generated `Map` values keyed by preview key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
-| `api.loadManifestEntry(key)` / `api.loadHtmlCacheEntry(key)` | Read one generated entry by key. |
+| `api.loadManifestEntry(key, options)` / `api.loadHtmlCacheEntry(key, options)` | Read one generated entry by key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
 | `api.getGraphData(element)` / `api.getGraphVariants(element)` | Read page-embedded graph data and render variants from a rendered graph block. |
-| `api.graphsFromManifest(manifestJson)` / `api.loadManifestGraphs(url, options)` / `api.loadGraphs()` | Decode or fetch finalized graph records from `blueprint-manifest.json.graphs`; `loadGraphs` uses the current page's generated manifest URL. |
+| `api.graphsFromManifest(manifestJson)` / `api.loadManifestGraphs(url, options)` / `api.loadGraphs(options)` | Decode or fetch finalized graph records from `blueprint-manifest.json.graphs`; `loadGraphs` uses the renderer's generated manifest URL and JSON loader. |
 | `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. |
+| `api.dataApiModuleUrl()` | Resolve the generated ESM data API module URL for dynamic imports from custom clients. |
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolvePreview(key)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
-| `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. |
-| `api.resolveCanonicalPreview(key)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
-| `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. |
-| `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. |
-| `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. |
+| `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
+| `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
+| `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
+| `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. It accepts the same hydration options as `renderPreviewInto`. |
+| `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
+| `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. It accepts the same hydration options as `renderPreviewInto`. |
 
 ## Preview Result Shapes
 
@@ -629,12 +734,15 @@ Treat `html` and `canonicalHtml` as opaque rendered fragments. Use
 `manifestEntry` for semantic facts such as labels, titles, dependency metadata,
 group data, code associations, and generated links.
 
-Blueprint's bundled graph, summary, relation-panel, inline preview, and slide
-JavaScript also start through `onRenderReady` and receive the same render API.
-Custom clients should do the same so preview lookup, diagnostics, and hydration
-stay on one runtime path. The runtime keeps manifest/cache load state private;
-clients should inspect it through `readManifestStatus()` and
-`readHtmlCacheStatus()` rather than reading `window` globals.
+Blueprint's bundled graph, summary, relation-panel, and inline-preview
+JavaScript receive the same render API from `blueprint-page-runtime.mjs`.
+The classic-script Slides adapter receives that shape through the private
+`onRenderReady` bridge. Custom clients should get the same API shape from
+`createPreview()` so preview lookup, diagnostics, and hydration stay on one
+runtime path without depending on page globals. The runtime keeps
+manifest/cache load state private; clients should inspect it through
+`readManifestStatus()` and `readHtmlCacheStatus()` rather than reading `window`
+globals.
 
 Slide decks keep their slide-specific rehydration bridge under the same
 namespace as `window.VersoBlueprint.slides`. That bridge is for the generated
@@ -663,52 +771,55 @@ preview runtime.
 ### Private Runtime Chunks
 
 The `preview-runtime*` files under `src/VersoBlueprint/Commands/` are private
-source chunks used to build the generated runtime asset. They are not client
-import targets and do not change the public browser API. Generated pages and
-custom clients should continue to use `window.VersoBlueprint.onRenderReady`,
-`window.VersoBlueprint.render`, or `api/preview.mjs`.
+source chunks used to build the generated runtime asset and the generated ESM
+preview module implementation. They are not client import targets and do not
+change the public browser API. Custom clients should continue to use
+`api/preview.mjs`; regular generated Manual pages start through
+`blueprint-page-runtime.mjs`, which imports the public preview module and the
+private feature modules it owns.
 
-Blueprint's browser source files are ESM-shaped modules. Current Verso output
-still receives classic scripts because Verso does not yet provide the asset
-loading mode Blueprint wants for these generated pages. The `BrowserAsset`
-adapter layer is therefore an output shim, not a second source API: new browser
-logic should be written as ESM source and installed through one explicit
-entrypoint when the current classic-script output needs it.
+Blueprint's browser source files are ESM modules. The `BrowserAsset` adapter
+layer remains only for the current classic-script Slides adapter. It is an
+output shim, not a second source API: new browser logic should be written as ESM
+source and started through one explicit entrypoint.
 
 The current private source chunks are:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots; embedded into the current bundled runtime as a classic-script fragment. |
-| `preview-runtime-api.mjs` | Stable render API assembly and `onRenderReady` installation; embedded into the current bundled runtime as a classic-script fragment. |
+| `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks. |
+| `preview-runtime-data.mjs` | Manifest/cache loading, graph-core delegation, status readers, and store lookups. |
+| `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
+| `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch. |
+| `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
+| `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |
+| `preview-runtime-template.mjs` | Descriptor-driven binding for Lean-emitted template preview roots. |
+| `preview-runtime-api.mjs` | Stable render API assembly, `createPreviewRuntimeApi`, and the private `onRenderReady` installation used by the classic Slides adapter. |
 
 Two adjacent implementation files are shared by bundled pages and generated ESM
 modules:
 
 | Chunk | Private responsibility |
 | --- | --- |
-| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the bundled runtime and `api/graph.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
-| `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the bundled runtime and `api/preview.mjs`; current Verso page assets embed it through a generated classic-script adapter. |
+| `blueprint-graph-core.mjs` | Graph JSON discovery, graph manifest loading, and graph-data normalization shared by the page runtime, `api/graph.mjs`, and the classic Slides adapter. |
+| `blueprint-preview-core.mjs` | Generated-data URL helpers and preview-key construction shared by the page runtime, `api/data.mjs`, `api/preview.mjs`, and the classic Slides adapter. |
+| `blueprint-api-common.mjs` | Common generated-ESM wrapper mechanics shared by `api/data.mjs` and `api/preview.mjs`, including default data-base options, URL/key forwarding, default API handles, fallback statuses, and method dispatch. |
 
 The graph command also has private `graph-runtime-core.mjs` and `graph.mjs`
 chunks. The core chunk owns graph option normalization, canvas sizing, graph
 block state, script loading, and graph-specific panel positioning. `graph.mjs`
 owns graph rendering orchestration, variant selection, and graph UI event
-binding. Current Verso pages embed both through generated classic-script
-adapters; custom clients should use `api/graph.mjs` or the render API instead.
+binding. Regular generated pages import them through `blueprint-page-runtime.mjs`;
+custom clients should use `api/graph.mjs` or the render API instead.
 
 ## Bundled Helper Boundary
 
 Bundled-feature helper APIs are intentionally narrower than the stable API.
-They are exported on `window.VersoBlueprint.render` so Blueprint's own feature
-scripts can share runtime mechanics without duplicating them. They are not a
-custom-client contract unless they are promoted into the stable table above.
+They are present on the renderer returned by `createPreview()` so Blueprint's
+own feature scripts can share runtime mechanics without duplicating them. The
+classic Slides adapter also exposes that renderer as `window.VersoBlueprint.render`,
+but that global is not a custom-client contract unless a helper is promoted into
+the stable table above.
 The intended path for Blueprint-owned panels is `createPreviewSurface`; it owns
 content updates plus trigger, dismissal, and reposition lifetimes. Lower-level
 helpers remain exported only where bundled graph popovers, positioning

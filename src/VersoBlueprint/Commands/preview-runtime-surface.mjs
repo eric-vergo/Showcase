@@ -335,7 +335,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       replaceBody(loadingHtml, loadingRenderOptions);
     }
     try {
-      const result = await resolveBlueprintPreview(previewKey);
+      const result = await resolveBlueprintPreview(previewKey, opts);
       if (!mayRender()) return result;
       if (!result || !result.ok) {
         const diagnosticHtml = result && typeof result.diagnosticHtml === "string"
@@ -366,7 +366,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const opts = options && typeof options === "object" ? options : {};
     const fallbackHtml = readStringOption(opts, "fallbackHtml", "");
     try {
-      const result = await resolveBlueprintPreview(previewKey);
+      const result = await resolveBlueprintPreview(previewKey, opts);
       if (result && result.ok && typeof result.html === "string" && result.html.length > 0) {
         return {
           ok: true,

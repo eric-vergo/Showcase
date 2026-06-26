@@ -72,7 +72,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
       (jsAfter := ["graph-js"])
   bundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss, "graph-css"] &&
-    bundle.js == [Informal.Commands.previewHoverUtilsJs, "graph-js"]
+    bundle.js == ["graph-js"]
 
 /-- info: true -/
 #guard_msgs in
@@ -84,8 +84,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   bundle.css ==
       [Informal.Commands.blueprintTokensCss, "bibliography-css",
         Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    bundle.js ==
-      ["open-target", Informal.Commands.previewHoverUtilsJs, Informal.Commands.inlineLinkPreviewJs]
+    bundle.js == ["open-target"]
 
 /-- info: true -/
 #guard_msgs in
@@ -93,8 +92,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   Informal.Commands.graphAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
         Informal.Commands.graphCss] &&
-    Informal.Commands.graphAssetBundle.js ==
-      [Informal.Commands.previewHoverUtilsJs, Informal.Commands.loadD3Dot]
+    Informal.Commands.graphAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
@@ -103,9 +101,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
         Informal.Commands.summaryCss, Informal.Commands.previewHeaderCss,
         Informal.Commands.inlinePreviewCss] &&
-    Informal.Commands.summaryAssetBundle.js ==
-      [Informal.Commands.openTargetDetailsJs, Informal.Commands.previewHoverUtilsJs,
-        Informal.Commands.inlineLinkPreviewJs]
+    Informal.Commands.summaryAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
@@ -113,9 +109,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   Informal.Commands.bibliographyAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.bibliographyCss,
         Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    Informal.Commands.bibliographyAssetBundle.js ==
-      [Informal.Commands.openTargetDetailsJs, Informal.Commands.previewHoverUtilsJs,
-        Informal.Commands.inlineLinkPreviewJs]
+    Informal.Commands.bibliographyAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
@@ -132,9 +126,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
         Informal.Block.Assets.css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle,
         Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    Informal.Block.Assets.blockAssetBundle.js ==
-      [Informal.Commands.previewHoverUtilsJs, Informal.Commands.inlineLinkPreviewJs,
-        Informal.Block.Assets.relationPanelJs, Informal.StyleSwitcher.jsInteractive]
+    Informal.Block.Assets.blockAssetBundle.js == [Informal.StyleSwitcher.jsInteractive]
 
 /-- info: true -/
 #guard_msgs in
@@ -149,8 +141,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   Informal.Cite.citeAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewHeaderCss,
         Informal.Commands.inlinePreviewCss] &&
-    Informal.Cite.citeAssetBundle.js ==
-      [Informal.Commands.previewHoverUtilsJs, Informal.Commands.inlineLinkPreviewJs]
+    Informal.Cite.citeAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
@@ -158,8 +149,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
   Informal.usesAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewHeaderCss,
         Informal.Commands.inlinePreviewCss] &&
-    Informal.usesAssetBundle.js ==
-      [Informal.Commands.previewHoverUtilsJs, Informal.Commands.inlineLinkPreviewJs]
+    Informal.usesAssetBundle.js == []
 
 /-- info: true -/
 #guard_msgs in
