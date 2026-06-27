@@ -52,11 +52,12 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       onClose: function () { hidePanel(); }
     });
     if (!surface || (!allowHtmlCache && previewMap.size === 0)) {
-      if (panel instanceof Element) panel.hidden = true;
+      if (panel instanceof HTMLElement) panel.hidden = true;
       return null;
     }
+    const previewSurface = surface;
     if (triggers.length === 0) {
-      surface.hide();
+      previewSurface.hide();
       return null;
     }
     let activeTrigger = null;
@@ -66,7 +67,7 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
     function hidePanel() {
       if (triggerLifecycle) triggerLifecycle.cancelHide();
       showRequestToken += 1;
-      surface.hide();
+      previewSurface.hide();
       activeTrigger = null;
     }
 
@@ -100,14 +101,14 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       }
       activeTrigger = trigger;
       const heading = readTitle(trigger, key);
-      surface.showContent({
+      previewSurface.showContent({
         heading: heading,
         html: html,
         anchor: trigger
       });
     }
 
-    triggerLifecycle = surface.bindTriggers({
+    triggerLifecycle = previewSurface.bindTriggers({
       triggerRoot: triggerRoot,
       triggerSelector: triggerSelector,
       triggerBoundAttr: triggerBoundAttr,
@@ -118,8 +119,8 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
 
     return {
       previewMap: previewMap,
-      surface: surface,
-      behavior: surface.behavior,
+      surface: previewSurface,
+      behavior: previewSurface.behavior,
       hidePanel: hidePanel,
       showFromTrigger: showFromTrigger
     };
