@@ -80,6 +80,9 @@
       prepareBlueprintLinks(node, baseUrl);
       previewUtils.hydrate(node);
     });
+    if (previewUtils && typeof previewUtils.renderGraphs === "function") {
+      previewUtils.renderGraphs(scope, { refresh: true });
+    }
   }
 
   export function hydrateWhenReady(root) {

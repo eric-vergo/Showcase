@@ -70,6 +70,7 @@ Start from what you are building:
 | A Node-like audit or migration tool that only reads generated data | `createPreviewData()` from [`api/data.mjs`](#browser-esm-apis) | It loads manifest/cache data without importing render, hydration, or DOM surface code. |
 | A graph dashboard or audit page | [`loadGraphs()`](#graph-data-apis) | It reads finalized graph records from `blueprint-manifest.json`, even when the current page has no rendered graph block. |
 | A custom browser widget beside an existing graph block | [`getGraphData(element)`](#graph-data-apis) and `getGraphVariants(element)` | These read the graph data embedded next to a rendered graph. |
+| A custom page or slide that already has graph-block markup | [`renderGraphBlock(element)`](#graph-data-apis) or `api.renderGraphBlock(element)` | It loads the graph renderer and initializes the same block UI used by generated graph pages. |
 | A custom page that needs a rendered preview body only | [`renderPreviewInto(element, key)`](#browser-esm-apis) or [`api.renderPreviewInto`](#browser-runtime-api) | This inserts the cached rendered fragment into your own wrapper. |
 | A custom page that should look like generated Blueprint nodes | [`renderCanonicalPreviewInto(element, key)`](#browser-esm-apis) or [`api.renderCanonicalPreviewInto`](#browser-runtime-api) | This inserts the standard Blueprint node wrapper and body. |
 | A custom page that starts from a label and can render external TeX or Markdown fallback source | [`renderNode(element, request)`](#browser-esm-apis) | This renders the generated node shell for native previews and external-markup fallbacks; external renderers own only the content slot. |
@@ -99,7 +100,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
   same preview keys. It is presentation data; do not parse it to rediscover
   graph topology, labels, statuses, or dependency relationships.
 - `api/graph.mjs` exposes graph-data helpers for ordinary browser `import`
-  usage.
+  usage, plus graph-block rendering helpers for pages that carry generated
+  graph markup.
 - `api/data.mjs` exposes manifest/cache/graph data helpers for clients that do
   not need to render DOM previews.
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
@@ -222,8 +224,48 @@ const graphs = await loadGraphs();
 const graph = getGraphData(document);
 ```
 
-Browser consumers that already created a preview renderer can read page-local
-graph data from that renderer:
+The same module can render an existing graph block. The block should use the
+standard `.bp_graph_fullwidth` markup emitted by `{blueprint_graph}`, including
+its embedded `script.bp-graph-data` and `script.bp-graph-variants` payloads.
+Rendering also needs the Blueprint browser render runtime for preview surfaces,
+popovers, and hydration. Generated graph pages and Blueprint slide decks include
+that runtime; custom module-only pages should call from `onRenderReady`, pass an
+API object as `previewUtils`, or create one with `createPreview()`.
+The ESM render helpers lazy-load the interactive graph runtime, so callers
+should `await` them.
+
+```javascript
+import { createPreview } from "../-verso-data/api/preview.mjs";
+import { renderGraphBlock } from "../-verso-data/api/graph.mjs";
+
+const block = document.querySelector(".bp_graph_fullwidth");
+if (block) {
+  const previewUtils = createPreview();
+  const controller = await renderGraphBlock(block, { previewUtils });
+  controller.setView("full");
+}
+```
+
+For slide or embed contexts whose container should own the graph height, pass
+`layout: "fill"` or set `data-bp-graph-layout="fill"` on the graph block:
+
+```javascript
+import { createPreview } from "../-verso-data/api/preview.mjs";
+import { renderGraphBlock } from "../-verso-data/api/graph.mjs";
+
+const previewUtils = createPreview();
+const block = document.querySelector(".bp_graph_fullwidth");
+await renderGraphBlock(block, { previewUtils, layout: "fill" });
+```
+
+`await renderGraphBlock(block, options)` resolves to a controller with `render()`,
+`scheduleRender()`, `setView(key)`, `setOptions({ direction, pack })`,
+`setDirection(direction)`, `setPack(enabled)`, and
+`setPreviewBehavior(mode, placement)`. Use `renderGraphs(root, options)` to
+initialize every graph block under a document, element, or fragment.
+
+Browser consumers that are already using the runtime API can read page-local
+graph data from the render API:
 
 ```javascript
 import { createPreview } from "../-verso-data/api/preview.mjs";
@@ -353,9 +395,10 @@ Generated sites also emit root implementation modules,
 those implementations from stable, shorter import paths. The generated data
 directory also contains internal support files used by those modules, such as
 `blueprint-graph-core.mjs`, `blueprint-preview-core.mjs`,
-`blueprint-api-common.mjs`, and the `Commands/preview-runtime-*.mjs` renderer
-chunks. Those support files are not public import paths. New clients should use
-the `-verso-data/api/` paths.
+`blueprint-api-common.mjs`, the `Commands/preview-runtime-*.mjs` renderer
+chunks, and the `Commands/graph-runtime-core.mjs`/`Commands/graph.mjs` graph
+renderer chunks. Those support files are not public import paths. New clients
+should use the `-verso-data/api/` paths.
 
 URL, graph-data, key, manifest/cache, rendering, and hydration helpers in
 `api/preview.mjs` are available through generated ESM modules. The module
@@ -466,7 +509,7 @@ The generated ESM modules expose these entrypoint groups:
 | --- | --- |
 | `api/data.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; data API creation/default access: `createPreviewData`, `currentDataApi`, `getDataApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers: `getGraphData`, `getGraphVariants`, `graphsFromManifest`, `loadManifestGraphs`, `loadGraphs`; preview-key helpers: `previewKey`, `statementPreviewKey`. |
 | `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `graphApiModuleUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; renderer creation/default access: `createPreview`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; graph-data helpers re-exported from the graph module; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
-| `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`. |
+| `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; page-embedded graph helpers: `graphCanvasFor`, `readGraphJsonScript`, `graphFallbackVariants`, `getGraphData`, `getGraphVariants`; manifest graph helpers: `normalizeGraphData`, `graphsFromManifest`, `loadJson`, `loadManifestGraphs`, `loadGraphs`; graph rendering helpers: `ensureGraphRuntimeLibraries`, `getGraphRenderApi`, `initGraphBlock`, `installGraphRenderApi`, `renderGraphBlock`, `renderGraphs`. |
 
 ## Browser Runtime API
 
@@ -650,6 +693,19 @@ A complete standalone version of this pattern is available in
 [`standalone-render-node-markdown.js`](../tests/test_blueprints/preview_runtime_showcase/PreviewRuntimeShowcase/Chapters/standalone-render-node-markdown.js).
 It does not use the showcase card UI: it binds one target element, calls
 `renderNode`, and renders Markdown into the body slot supplied by VBP.
+
+When a page includes the graph runtime asset, the render API also exposes
+`renderGraphBlock`, `renderGraphs`, `initGraphBlock`, and
+`ensureGraphRuntimeLibraries`. These are the runtime equivalents of the graph
+ESM helpers and are useful for slide decks or dynamic clients that reveal graph
+blocks after the initial page load:
+
+```javascript
+window.VersoBlueprint.onRenderReady(async function (api) {
+  const slide = document.querySelector(".current-slide");
+  await api.renderGraphs(slide, { layout: "fill", refresh: true });
+});
+```
 
 ### Runtime Readiness
 

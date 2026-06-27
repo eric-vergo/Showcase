@@ -93,10 +93,12 @@ Work:
    - graph runtime utilities such as option normalization, canvas sizing,
      graph block state, script loading, and graph-specific panel positioning
      (landed as `Commands/graph-runtime-core.mjs`, imported by the Manual page
-     runtime and retained by the classic slide adapter where needed)
+     runtime, emitted for `api/graph.mjs`, and retained by the classic slide
+     adapter where needed)
    - graph rendering orchestration, variant selection, and graph UI event
      binding
-     (landed as `Commands/graph.mjs`, imported by the Manual page runtime)
+     (landed as `Commands/graph.mjs`, imported by the Manual page runtime,
+     emitted for `api/graph.mjs`, and retained by the classic slide adapter)
 8. deduplicate the public JSDoc API object typedefs once the JS API surface
    settles; today `BlueprintPreviewApi` deliberately repeats the data API
    methods from `BlueprintDataApi` because classic JSDoc composition is brittle
