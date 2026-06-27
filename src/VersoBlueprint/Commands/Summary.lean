@@ -896,7 +896,7 @@ private def Summary.previewLabels (data : Summary) : Array Name :=
 def summaryCss := include_str "summary.css"
 
 def summaryAssetBundle : BlueprintAssetBundle :=
-  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss]) (jsBefore := [openTargetDetailsJs])
+  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss])
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
