@@ -67,6 +67,8 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/preview-ready.mjs",
             "src/VersoBlueprint/Commands/inline-preview.mjs",
             "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
+            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
+            "src/VersoBlueprint/Commands/graph.mjs",
             "src/VersoBlueprint/Slides/blueprint-slides.mjs",
         ):
             self.assertIn(

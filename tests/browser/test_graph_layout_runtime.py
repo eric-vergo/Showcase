@@ -1,6 +1,60 @@
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
 from playwright.sync_api import Page, expect
 
-from support import blueprint_render_api_script
+from scripts.blueprint_harness_paths import canonical_test_blueprint_output_dir
+from scripts.blueprint_harness_project_commands import rebuild_and_log_embedded_asset_owners
+from scripts.blueprint_harness_utils import lean_low_priority_command
+from support import PACKAGE_ROOT, blueprint_render_api_script, find_free_port, wait_for_server
+
+
+@pytest.fixture(scope="session")
+def preview_runtime_showcase_output_dir() -> Path:
+    output_dir = canonical_test_blueprint_output_dir("preview_runtime_showcase", Path(__file__))
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    project_dir = PACKAGE_ROOT / "tests" / "test_blueprints" / "preview_runtime_showcase"
+    rebuild_and_log_embedded_asset_owners(PACKAGE_ROOT)
+    subprocess.run(
+        lean_low_priority_command(PACKAGE_ROOT, "lake", "build", "PreviewRuntimeShowcase"),
+        cwd=project_dir,
+        check=True,
+    )
+    subprocess.run(
+        lean_low_priority_command(
+            PACKAGE_ROOT,
+            "lake",
+            "env",
+            "lean",
+            "--run",
+            "PreviewRuntimeShowcaseMain.lean",
+            "--output",
+            str(output_dir),
+            "--with-html-single",
+            "--without-html-multi",
+        ),
+        cwd=project_dir,
+        check=True,
+    )
+    return output_dir
+
+
+@pytest.fixture(scope="session")
+def preview_runtime_showcase_root_server(preview_runtime_showcase_output_dir: Path):
+    port = find_free_port()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        cwd=preview_runtime_showcase_output_dir,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    server_url = f"http://127.0.0.1:{port}"
+    wait_for_server(server_url, proc)
+    yield server_url
+    proc.terminate()
+    proc.wait()
 
 
 def wait_for_graph(page: Page):
@@ -11,6 +65,10 @@ def wait_for_graph(page: Page):
             return !!canvas && !!svg;
         }"""
     )
+
+
+def goto_graph_page(page: Page, url: str):
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
 
 def wait_for_rendered_variant(page: Page, variant: str):
@@ -130,7 +188,7 @@ def first_preview_node(page: Page):
 class TestGraphLayoutRuntime:
     def test_public_graph_api_exposes_rendered_page_and_manifest_data(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         graph_data = page.evaluate(
@@ -193,9 +251,123 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestSampleTitle"] == graph_data["sampleTitle"]
         assert graph_data["manifestSampleHref"] == graph_data["sampleHref"]
 
+    def test_public_graph_api_can_render_copied_graph_block(self, server: str, page: Page):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
+        wait_for_graph(page)
+
+        result = page.evaluate(
+            blueprint_render_api_script(
+                """
+                const source = document.querySelector(".bp_graph_fullwidth");
+                if (!source) return { ok: false, reason: "missing source graph" };
+                const clone = source.cloneNode(true);
+                clone.querySelectorAll("svg").forEach((svg) => svg.remove());
+                const host = document.createElement("section");
+                host.id = "copied-graph-host";
+                host.style.height = "520px";
+                host.style.marginTop = "24px";
+                host.appendChild(clone);
+                document.body.appendChild(host);
+
+                const graphModuleUrl = new URL("../-verso-data/api/graph.mjs", window.location.href).href;
+                const graphModule = await import(graphModuleUrl);
+                const controller = await graphModule.renderGraphBlock(clone, {
+                    previewUtils: api,
+                    layout: "fill"
+                });
+                await new Promise((resolve, reject) => {
+                    const startedAt = performance.now();
+                    const check = () => {
+                        const canvas = clone.querySelector(".bp_graph_canvas");
+                        const svg = canvas ? canvas.querySelector("svg") : null;
+                        const state = clone.__bpGraphState || null;
+                        if (
+                            canvas &&
+                            svg &&
+                            state &&
+                            state.renderFinalizedToken === state.renderToken
+                        ) {
+                            resolve();
+                            return;
+                        }
+                        if (performance.now() - startedAt > 5000) {
+                            reject(new Error("copied graph block did not render"));
+                            return;
+                        }
+                        setTimeout(check, 50);
+                    };
+                    check();
+                });
+                const canvas = clone.querySelector(".bp_graph_canvas");
+                const svg = canvas ? canvas.querySelector("svg") : null;
+                return {
+                    ok: true,
+                    moduleRenderGraphBlock: typeof graphModule.renderGraphBlock === "function",
+                    moduleRenderGraphs: typeof graphModule.renderGraphs === "function",
+                    runtimeRenderGraphBlock: typeof api.renderGraphBlock === "function",
+                    runtimeRenderGraphs: typeof api.renderGraphs === "function",
+                    controller: !!controller && controller === clone.__bpGraphController,
+                    layout: clone.getAttribute("data-bp-graph-layout") || "",
+                    canvasLayout: canvas ? (canvas.getAttribute("data-bp-graph-layout") || "") : "",
+                    canvasHeight: canvas ? canvas.getBoundingClientRect().height : 0,
+                    hasSvg: !!svg,
+                    activeVariant: clone.__bpGraphState ? clone.__bpGraphState.renderedVariantKey : ""
+                };
+                """
+            )
+        )
+
+        assert result["ok"], result
+        assert result["moduleRenderGraphBlock"]
+        assert result["moduleRenderGraphs"]
+        assert result["runtimeRenderGraphBlock"]
+        assert result["runtimeRenderGraphs"]
+        assert result["controller"]
+        assert result["layout"] == "fill"
+        assert result["canvasLayout"] == "fill"
+        assert result["canvasHeight"] > 300
+        assert result["hasSvg"]
+        assert result["activeVariant"] == "full"
+
+    def test_single_page_graph_canvas_does_not_collapse(
+        self,
+        preview_runtime_showcase_root_server: str,
+        page: Page,
+    ):
+        page.set_viewport_size({"width": 1400, "height": 900})
+        goto_graph_page(page, f"{preview_runtime_showcase_root_server}/html-single/")
+        wait_for_graph(page)
+
+        metrics = page.evaluate(
+            """() => {
+                const block = document.querySelector(".bp_graph_fullwidth");
+                const canvas = document.querySelector(".bp_graph_canvas");
+                const svg = canvas ? canvas.querySelector("svg") : null;
+                const state = block ? block.__bpGraphState : null;
+                if (!block || !canvas || !svg || !state) return null;
+                const canvasRect = canvas.getBoundingClientRect();
+                const svgRect = svg.getBoundingClientRect();
+                return {
+                    canvasHeight: canvasRect.height,
+                    svgHeight: svgRect.height,
+                    rendered: state.renderFinalizedToken === state.renderToken,
+                    layout: canvas.getAttribute("data-bp-graph-layout") || "",
+                    path: window.location.pathname,
+                };
+            }"""
+        )
+
+        assert metrics is not None
+        assert metrics["path"].endswith("/html-single/")
+        assert metrics["rendered"]
+        assert metrics["layout"] == ""
+        assert metrics["canvasHeight"] > 240
+        assert metrics["svgHeight"] > 200
+
     def test_graph_legend_is_collapsed_by_default_and_tracks_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         button = page.locator(".bp_graph_legend_button").first
@@ -241,7 +413,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_options_popover_switches_direction(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         options_button = page.locator(".bp_graph_options_button").first
@@ -343,7 +515,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_preview_defaults_to_pinned(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         panel = page.locator(".bp_graph_preview").first
@@ -377,7 +549,7 @@ class TestGraphLayoutRuntime:
 
     def test_render_api_surface_normalizes_graph_preview_behavior(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         assert page.evaluate(
@@ -429,7 +601,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_preview_can_switch_to_hover_autohide(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         options_button = page.locator(".bp_graph_options_button").first
@@ -493,7 +665,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_page_does_not_force_extra_vertical_scroll(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         metrics = page.evaluate(
@@ -507,7 +679,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_aligns_with_local_content_frame(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         metrics = page.evaluate(
@@ -538,14 +710,14 @@ class TestGraphLayoutRuntime:
 
     def test_graph_content_is_visible_near_top_of_canvas(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         assert_graph_is_well_placed(page)
 
     def test_graph_remains_well_placed_after_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         selector = page.locator(".bp_graph_view_select").first
@@ -567,7 +739,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_remains_interactive_after_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         selector = page.locator(".bp_graph_view_select").first
@@ -583,7 +755,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_width_is_css_driven_without_inline_offsets(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         graph = page.locator(".bp_graph_fullwidth").first
@@ -614,7 +786,7 @@ class TestGraphLayoutRuntime:
 
     def test_graph_reflows_with_viewport_width_change(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         graph = page.locator(".bp_graph_fullwidth").first
@@ -644,7 +816,7 @@ class TestGraphLayoutRuntime:
 
     def test_manual_canvas_height_survives_variant_switch(self, server: str, page: Page):
         page.set_viewport_size({"width": 1400, "height": 900})
-        page.goto(f"{server}/Dependency-Graph/")
+        goto_graph_page(page, f"{server}/Dependency-Graph/")
         wait_for_graph(page)
 
         canvas = page.locator(".bp_graph_canvas").first

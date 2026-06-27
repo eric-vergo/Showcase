@@ -23,7 +23,7 @@ import {
  * @module blueprint-graph-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintGraphData, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintGraphController, BlueprintGraphData, BlueprintGraphRenderOptions, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
 
 /** Graph API schema/runtime version. */
 export const version = coreVersion;
@@ -86,6 +86,96 @@ export const loadManifestGraphs = (url, options) => {
 export const loadGraphs = (options) =>
   coreLoadManifestGraphs(coreDataUrl("blueprint-manifest.json", moduleUrl), options);
 
+let graphRuntimeModulePromise = null;
+
+function graphRuntimeModuleUrl() {
+  return new URL("./Commands/graph.mjs", moduleUrl).href;
+}
+
+function loadGraphRuntimeModule() {
+  if (!graphRuntimeModulePromise) {
+    graphRuntimeModulePromise = import(graphRuntimeModuleUrl()).catch(function (err) {
+      graphRuntimeModulePromise = null;
+      throw err;
+    });
+  }
+  return graphRuntimeModulePromise;
+}
+
+/**
+ * Load the graph runtime's D3 and Graphviz dependencies.
+ *
+ * The interactive graph renderer is imported only when a render helper is used;
+ * data-only calls such as `loadGraphs()` do not load the renderer.
+ *
+ * @param {BlueprintGraphRenderOptions} [options] Runtime dependency overrides.
+ * @returns {Promise<unknown>}
+ */
+export async function ensureGraphRuntimeLibraries(options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.ensureGraphRuntimeLibraries(options);
+}
+
+/**
+ * Resolve the render-capable preview API used by graph rendering helpers.
+ *
+ * @param {BlueprintGraphRenderOptions} [options] Render API lookup options.
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export async function getGraphRenderApi(options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.getGraphRenderApi(options);
+}
+
+/**
+ * Initialize one already-loaded graph block with an explicit preview API.
+ *
+ * @param {Record<string, unknown>} previewUtils Render-capable Blueprint preview API.
+ * @param {Element} graphBlock Standard `.bp_graph_fullwidth` graph block.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render options.
+ * @returns {Promise<BlueprintGraphController | null>}
+ */
+export async function initGraphBlock(previewUtils, graphBlock, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.initGraphBlock(previewUtils, graphBlock, options);
+}
+
+/**
+ * Install graph rendering helpers onto a preview API object.
+ *
+ * @param {Record<string, unknown>} previewUtils Render-capable Blueprint preview API.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render defaults.
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export async function installGraphRenderApi(previewUtils, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.installGraphRenderApi(previewUtils, options);
+}
+
+/**
+ * Render one standard `.bp_graph_fullwidth` graph block.
+ *
+ * @param {Element} graphBlock Standard graph block.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render options.
+ * @returns {Promise<BlueprintGraphController | null>}
+ */
+export async function renderGraphBlock(graphBlock, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.renderGraphBlock(graphBlock, options);
+}
+
+/**
+ * Render every standard graph block under a document, element, or fragment.
+ *
+ * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
+ * @param {BlueprintGraphRenderOptions} [options] Graph render options.
+ * @returns {Promise<BlueprintGraphController[]>}
+ */
+export async function renderGraphs(root, options) {
+  const runtime = await loadGraphRuntimeModule();
+  return runtime.renderGraphs(root, options);
+}
+
 const graphApi = {
   version,
   dataUrl,
@@ -99,7 +189,13 @@ const graphApi = {
   getGraphVariants,
   loadJson,
   loadManifestGraphs,
-  loadGraphs
+  loadGraphs,
+  ensureGraphRuntimeLibraries,
+  getGraphRenderApi,
+  initGraphBlock,
+  installGraphRenderApi,
+  renderGraphBlock,
+  renderGraphs
 };
 
 export default graphApi;

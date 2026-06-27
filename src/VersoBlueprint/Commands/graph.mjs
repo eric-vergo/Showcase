@@ -5,6 +5,7 @@ const {
   normalizeGraphOptions,
   graphPackAttr,
   graphOptionsKey,
+  graphLayoutMode,
   readPreviewBehaviorDefaults,
   layoutGraphCanvas,
   load,
@@ -284,20 +285,29 @@ function bindOptionsPopover(previewUtils, graphBlock) {
   );
 }
 
-export function bindGraphs(previewUtils) {
-    const graphBlocks = Array.from(document.querySelectorAll(".bp_graph_fullwidth"));
-    if (graphBlocks.length === 0) return;
-    Promise.resolve()
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"); })
-    .then(function () { return load("https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"); })
-    .then(function () {
-    function initGraphBlock(graphBlock) {
+export function initGraphBlock(previewUtils, graphBlock, options) {
+      const opts = options && typeof options === "object" ? options : {};
       if (!(graphBlock instanceof Element)) return;
       const graphRoot = graphBlock.querySelector(".bp_graph_canvas");
       if (!graphRoot) return;
+      if (opts.layout) {
+        const layoutMode = graphLayoutMode(graphRoot, opts);
+        graphBlock.setAttribute("data-bp-graph-layout", layoutMode);
+        graphRoot.setAttribute("data-bp-graph-layout", layoutMode);
+      }
       const graphContainer = d3.select(graphRoot);
       if (graphContainer.empty()) return;
       const graphState = ensureGraphBlockState(graphBlock);
+      const existingController =
+        graphState.controller && graphState.controller.__bpGraphController
+          ? graphState.controller
+          : (
+            graphBlock.__bpGraphController &&
+              graphBlock.__bpGraphController.__bpGraphController
+              ? graphBlock.__bpGraphController
+              : null
+          );
+      if (existingController) return existingController;
       const graphApiData = readPublicGraphData(previewUtils, graphBlock);
       if (graphApiData) {
         graphState.graphData = graphApiData;
@@ -626,7 +636,7 @@ export function bindGraphs(previewUtils) {
         syncLegend(graphBlock, activeVariant.key);
         if (previewController) previewController.hide();
         if (groupHoverController) groupHoverController.hide();
-        layoutGraphCanvas(graphRoot, graphState);
+        layoutGraphCanvas(graphRoot, graphState, opts);
         const width = graphRoot.clientWidth;
         const height = graphRoot.clientHeight;
         rememberGraphLayoutMeasurements(graphBlock, graphRoot, graphState);
@@ -709,6 +719,55 @@ export function bindGraphs(previewUtils) {
         });
       }
 
+      const controller = {
+        __bpGraphController: true,
+        block: graphBlock,
+        canvas: graphRoot,
+        state: graphState,
+        variants: variants,
+        variantsByKey: variantsByKey,
+        getActiveVariant: getActiveVariant,
+        getActiveOptions: getActiveOptions,
+        layout: function (layoutOptions) {
+          layoutGraphCanvas(graphRoot, graphState, layoutOptions || opts);
+          return controller;
+        },
+        render: function () {
+          renderGraph();
+          return controller;
+        },
+        scheduleRender: function () {
+          scheduleRender();
+          return controller;
+        },
+        setView: function (nextKey) {
+          switchVariant(nextKey);
+          return controller;
+        },
+        setVariant: function (nextKey) {
+          switchVariant(nextKey);
+          return controller;
+        },
+        setOptions: function (nextOptions) {
+          switchGraphOptions(nextOptions);
+          return controller;
+        },
+        setDirection: function (nextDirection) {
+          switchDirection(nextDirection);
+          return controller;
+        },
+        setPack: function (nextPack) {
+          switchPack(nextPack);
+          return controller;
+        },
+        setPreviewBehavior: function (nextMode, nextPlacement, behaviorOptions) {
+          setPreviewBehavior(nextMode, nextPlacement, behaviorOptions);
+          return controller;
+        }
+      };
+      graphState.controller = controller;
+      graphBlock.__bpGraphController = controller;
+
       renderGraph();
       if (!graphState.blockResizeBound) {
         graphState.blockResizeBound = true;
@@ -752,23 +811,229 @@ export function bindGraphs(previewUtils) {
           graphState.resizeObserver = observer;
         }
       }
+      return controller;
     }
 
-    graphBlocks.forEach(initGraphBlock);
-    });
+const defaultGraphRuntimeLibraryUrls = {
+  d3: "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+  graphviz: "https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"
+};
+
+let graphRuntimeLibrariesPromise = null;
+
+function readGraphRuntimeLibraryUrls(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const libs = opts.libraries && typeof opts.libraries === "object" ? opts.libraries : {};
+  return {
+    d3: typeof libs.d3 === "string" && libs.d3.length > 0 ? libs.d3 : defaultGraphRuntimeLibraryUrls.d3,
+    graphviz:
+      typeof libs.graphviz === "string" && libs.graphviz.length > 0
+        ? libs.graphviz
+        : defaultGraphRuntimeLibraryUrls.graphviz
+  };
 }
 
-export function startGraphRuntime(previewUtils) {
+function hasD3Library() {
+  return !!(window.d3 && typeof window.d3.select === "function");
+}
+
+function hasGraphvizLibrary() {
+  if (!hasD3Library()) return false;
+  try {
+    const probe = document.createElement("div");
+    return typeof window.d3.select(probe).graphviz === "function";
+  } catch (_err) {
+    return false;
+  }
+}
+
+export function ensureGraphRuntimeLibraries(options) {
+  const urls = readGraphRuntimeLibraryUrls(options);
+  if (hasGraphvizLibrary()) return Promise.resolve();
+  if (!graphRuntimeLibrariesPromise) {
+    graphRuntimeLibrariesPromise = Promise.resolve()
+      .then(function () {
+        if (hasD3Library()) return null;
+        return load(urls.d3);
+      })
+      .then(function () {
+        if (hasGraphvizLibrary()) return null;
+        return load(urls.graphviz);
+      })
+      .catch(function (err) {
+        graphRuntimeLibrariesPromise = null;
+        throw err;
+      });
+  }
+  return graphRuntimeLibrariesPromise;
+}
+
+function currentRenderApi() {
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : null;
+  const renderApi =
+    namespace && namespace.render && typeof namespace.render === "object"
+      ? namespace.render
+      : null;
+  return renderApi;
+}
+
+export function getGraphRenderApi(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (opts.previewUtils && typeof opts.previewUtils === "object") {
+    return Promise.resolve(opts.previewUtils);
+  }
+  const readyApi = currentRenderApi();
+  if (readyApi) return Promise.resolve(readyApi);
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : null;
+  if (namespace && typeof namespace.onRenderReady === "function") {
+    return new Promise(function (resolve) {
+      namespace.onRenderReady(resolve);
+    });
+  }
+  return Promise.reject(
+    new Error("Blueprint graph rendering requires the Blueprint render API or options.previewUtils")
+  );
+}
+
+function isGraphSearchRoot(root) {
+  return (
+    root instanceof Element ||
+    root instanceof Document ||
+    (typeof DocumentFragment !== "undefined" && root instanceof DocumentFragment)
+  );
+}
+
+function graphBlocksIn(root) {
+  const scope = isGraphSearchRoot(root) ? root : document;
+  const blocks = [];
+  if (scope instanceof Element && scope.matches(".bp_graph_fullwidth")) {
+    blocks.push(scope);
+  }
+  if (typeof scope.querySelectorAll === "function") {
+    scope.querySelectorAll(".bp_graph_fullwidth").forEach(function (block) {
+      if (block instanceof Element && blocks.indexOf(block) < 0) {
+        blocks.push(block);
+      }
+    });
+  }
+  return blocks;
+}
+
+function normalizeGraphRenderArgs(root, options) {
+  if (isGraphSearchRoot(root)) {
+    return {
+      root: root,
+      options: options && typeof options === "object" ? options : {}
+    };
+  }
+  return {
+    root: document,
+    options: root && typeof root === "object" ? root : {}
+  };
+}
+
+export async function renderGraphBlock(graphBlock, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const previewUtils = await getGraphRenderApi(opts);
+  await ensureGraphRuntimeLibraries(opts);
+  const controller = initGraphBlock(previewUtils, graphBlock, opts);
+  if (opts.refresh && controller && typeof controller.render === "function") {
+    controller.render();
+  }
+  return controller || null;
+}
+
+export async function renderGraphs(root, options) {
+  const args = normalizeGraphRenderArgs(root, options);
+  const blocks = graphBlocksIn(args.root);
+  if (blocks.length === 0) return [];
+  const previewUtils = await getGraphRenderApi(args.options);
+  await ensureGraphRuntimeLibraries(args.options);
+  return blocks
+    .map(function (block) {
+      const controller = initGraphBlock(previewUtils, block, args.options);
+      if (args.options.refresh && controller && typeof controller.render === "function") {
+        controller.render();
+      }
+      return controller || null;
+    })
+    .filter(function (controller) { return !!controller; });
+}
+
+export function installGraphRenderApi(previewUtils, options) {
+  if (!previewUtils || typeof previewUtils !== "object") return {};
+  const installed = {
+    ensureGraphRuntimeLibraries: ensureGraphRuntimeLibraries,
+    initGraphBlock: function (graphBlock, nextOptions) {
+      return initGraphBlock(
+        previewUtils,
+        graphBlock,
+        Object.assign({}, options || {}, nextOptions || {})
+      );
+    },
+    renderGraphBlock: function (graphBlock, nextOptions) {
+      return renderGraphBlock(
+        graphBlock,
+        Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
+      );
+    },
+    renderGraphs: function (root, nextOptions) {
+      if (!isGraphSearchRoot(root) && root && typeof root === "object" && !nextOptions) {
+        return renderGraphs(
+          Object.assign({}, options || {}, root, { previewUtils: previewUtils })
+        );
+      }
+      return renderGraphs(
+        root,
+        Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
+      );
+    }
+  };
+  Object.assign(previewUtils, installed);
+  return installed;
+}
+
+export function bindGraphs(previewUtils, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const root = isGraphSearchRoot(opts.root) ? opts.root : document;
+    const graphBlocks = graphBlocksIn(root);
+    if (graphBlocks.length === 0) return Promise.resolve([]);
+    return ensureGraphRuntimeLibraries(opts)
+      .then(function () {
+        return graphBlocks
+          .map(function (graphBlock) {
+            return initGraphBlock(previewUtils, graphBlock, opts) || null;
+          })
+          .filter(function (controller) { return !!controller; });
+      });
+}
+
+export function startGraphRuntime(previewUtils, options) {
+  installGraphRenderApi(previewUtils, options);
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      bindGraphs(previewUtils);
-    }, { once: true });
+    return new Promise(function (resolve, reject) {
+      document.addEventListener("DOMContentLoaded", function () {
+        bindGraphs(previewUtils, options).then(resolve, reject);
+      }, { once: true });
+    });
   } else {
-    bindGraphs(previewUtils);
+    return bindGraphs(previewUtils, options);
   }
 }
 
 export const graphRuntime = {
+  ensureGraphRuntimeLibraries,
+  getGraphRenderApi,
+  initGraphBlock,
+  renderGraphBlock,
+  renderGraphs,
+  installGraphRenderApi,
   bindGraphs,
   startGraphRuntime
 };
