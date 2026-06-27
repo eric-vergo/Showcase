@@ -30,6 +30,7 @@
     "docs": "rm -rf _out/jsdoc-api && jsdoc -c jsdoc.json"
   },
   "devDependencies": {
+    "docdash": "^2.0.2",
     "jsdoc": "^4.0.5",
     "typescript": "^6.0.3"
   }
