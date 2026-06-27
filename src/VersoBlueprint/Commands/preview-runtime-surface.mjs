@@ -2,13 +2,70 @@ import { escapeHtml, normalizePanelBehavior, normalizePreviewMode, normalizePrev
 import { renderHtmlInto, resolveBlueprintPreview } from "./preview-runtime-render.mjs";
 import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewTriggers, positionAnchoredPanel, readAnchorRect, shouldKeepOpen } from "./preview-runtime-lifecycle.mjs";
 
+  /**
+   * @typedef {Object} PreviewTriggerLifecycle
+   * @property {() => void} cancelHide
+   * @property {() => void} scheduleHide
+   * @property {() => void} hide
+   * @property {() => object} behavior
+   * @property {(root?: unknown) => void} refresh
+   * @property {(trigger: unknown, ev?: unknown, force?: unknown) => void} showTrigger
+   */
+
+  /**
+   * @typedef {Object} PreviewRepositionLifecycle
+   * @property {() => void} reposition
+   */
+
+  /**
+   * @typedef {Object} PreviewDismissLifecycle
+   * @property {unknown} root
+   * @property {unknown} trigger
+   * @property {unknown} panel
+   * @property {unknown} closeButton
+   * @property {() => boolean} isOpen
+   * @property {(...args: unknown[]) => void} open
+   * @property {(...args: unknown[]) => void} close
+   * @property {(...args: unknown[]) => void} toggle
+   */
+
+  /**
+   * @typedef {Object} PreviewSurface
+   * @property {HTMLElement} panel
+   * @property {Element} title
+   * @property {HTMLElement | null} headerLabel
+   * @property {Element} body
+   * @property {HTMLElement | null} footer
+   * @property {HTMLElement | null} closeButton
+   * @property {object} behavior
+   * @property {PreviewTriggerLifecycle | null} triggerLifecycle
+   * @property {PreviewRepositionLifecycle | null} repositionLifecycle
+   * @property {PreviewDismissLifecycle | null} dismissLifecycle
+   * @property {() => boolean} isOpen
+   * @property {(nextBehavior: unknown) => object} setBehavior
+   * @property {(sourceNode: unknown) => void} setSource
+   * @property {(sourceNode: unknown) => void} setFooterSource
+   * @property {() => void} clearChrome
+   * @property {() => void} hideContent
+   * @property {(content: unknown) => boolean} showContent
+   * @property {(content: unknown) => void} replaceBody
+   * @property {(anchor?: unknown, nextBehavior?: unknown) => void} position
+   * @property {() => void} hide
+   * @property {(ev: unknown) => boolean} pointerWithin
+   * @property {(nextTarget: unknown, trigger: unknown) => boolean} shouldKeepOpen
+   * @property {(heading: string, payload: unknown, anchor?: unknown) => boolean} show
+   * @property {(triggerOptions: unknown) => PreviewTriggerLifecycle} bindTriggers
+   * @property {(repositionOptions: unknown) => PreviewRepositionLifecycle | null} bindRepositioner
+   * @property {(dismissOptions: unknown) => PreviewDismissLifecycle} bindDismissal
+   */
+
   // Bundled preview surface, panel, and content helpers.
   //
   // These helpers own panel slots, behavior state, content updates,
   // and runtime diagnostic markup for bundled clients.
 
   export function resetPanelPosition(panel) {
-    if (!(panel instanceof Element)) return;
+    if (!(panel instanceof HTMLElement)) return;
     panel.style.left = "";
     panel.style.top = "";
   }
@@ -28,7 +85,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
   }
 
   export function configureCloseButton(closeButton, onClose, behavior) {
-    if (!(closeButton instanceof Element)) return;
+    if (!(closeButton instanceof HTMLElement)) return;
     const pinned = !!(behavior && behavior.isPinned);
     closeButton.hidden = !pinned;
     closeButton.style.display = pinned ? "" : "none";
@@ -72,9 +129,14 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
   export function createPreviewSurface(options) {
     const opts = options && typeof options === "object" ? options : {};
     const panel = readElementOption(opts, "panel", null);
-    if (!(panel instanceof Element)) return null;
+    if (!(panel instanceof HTMLElement)) return null;
     const slots = readPreviewSurfaceSlots(panel, opts);
-    if (!(slots.title instanceof Element) || !(slots.body instanceof Element)) return null;
+    const titleSlot = slots.title;
+    const bodySlot = slots.body;
+    if (!(titleSlot instanceof Element) || !(bodySlot instanceof Element)) return null;
+    const headerLabelSlot = slots.headerLabel instanceof HTMLElement ? slots.headerLabel : null;
+    const footerSlot = slots.footer instanceof HTMLElement ? slots.footer : null;
+    const closeButtonSlot = slots.closeButton instanceof HTMLElement ? slots.closeButton : null;
 
     const defaults = readObjectOption(opts, "defaults", {});
     const margin = readNumberOption(opts, "margin", 12);
@@ -88,36 +150,42 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
     const renderBody = readFunctionOption(opts, "renderBody", null);
     const positionPanel = readFunctionOption(opts, "positionPanel", null);
     const onHide = readFunctionOption(opts, "onHide", null);
+    /** @type {PreviewTriggerLifecycle | null} */
     let triggerLifecycle = null;
+    /** @type {PreviewRepositionLifecycle | null} */
     let repositionLifecycle = null;
+    /** @type {PreviewDismissLifecycle | null} */
     let dismissLifecycle = null;
 
     function renderSurfaceBody(content) {
-      const payload = content && typeof content === "object" ? content : {};
+      const payload = /** @type {Record<string, unknown>} */ (
+        content && typeof content === "object" ? content : {}
+      );
       if (renderBody) {
         const bodyPayload = Object.prototype.hasOwnProperty.call(payload, "payload")
           ? payload.payload
           : payload.html;
-        renderBody(slots.body, bodyPayload, surface, payload);
+        renderBody(bodySlot, bodyPayload, surface, payload);
         return true;
       }
       const html = typeof payload.html === "string" ? payload.html : "";
       if (html.length === 0 && payload.allowEmpty !== true) return false;
-      renderHtmlInto(slots.body, html, readObjectOption(payload, "renderOptions", undefined));
+      renderHtmlInto(bodySlot, html, readObjectOption(payload, "renderOptions", undefined));
       return true;
     }
 
+    /** @type {PreviewSurface} */
     const surface = {
       panel: panel,
-      title: slots.title,
-      headerLabel: slots.headerLabel,
-      body: slots.body,
-      footer: slots.footer,
-      closeButton: slots.closeButton,
+      title: titleSlot,
+      headerLabel: headerLabelSlot,
+      body: bodySlot,
+      footer: footerSlot,
+      closeButton: closeButtonSlot,
       behavior: normalizePanelBehavior(panel, defaults, null),
-      triggerLifecycle: null,
-      repositionLifecycle: null,
-      dismissLifecycle: null,
+      triggerLifecycle: /** @type {typeof triggerLifecycle} */ (null),
+      repositionLifecycle: /** @type {typeof repositionLifecycle} */ (null),
+      dismissLifecycle: /** @type {typeof dismissLifecycle} */ (null),
       isOpen: function () {
         return !panel.hidden;
       },
@@ -140,9 +208,10 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         surface.setFooterSource(sourceNode);
       },
       setFooterSource: function (sourceNode) {
-        if (!(slots.footer instanceof Element)) return;
+        if (!(slots.footer instanceof HTMLElement)) return;
+        const footerSlot = slots.footer;
         if (renderFooter) {
-          renderFooter(slots.footer, sourceNode, surface);
+          renderFooter(footerSlot, sourceNode, surface);
           return;
         }
         if (!footerHtmlAttr) return;
@@ -151,11 +220,11 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
             ? (sourceNode.getAttribute(footerHtmlAttr) || "").trim()
             : "";
         if (footerHtml.length > 0) {
-          renderHtmlInto(slots.footer, footerHtml);
-          slots.footer.hidden = false;
+          renderHtmlInto(footerSlot, footerHtml);
+          footerSlot.hidden = false;
         } else {
-          slots.footer.replaceChildren();
-          slots.footer.hidden = true;
+          footerSlot.replaceChildren();
+          footerSlot.hidden = true;
         }
       },
       clearChrome: function () {
@@ -164,13 +233,15 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
       },
       hideContent: function () {
         panel.hidden = true;
-        slots.title.textContent = "";
-        clearBody(slots.body);
+        titleSlot.textContent = "";
+        clearBody(bodySlot);
         surface.clearChrome();
         if (onHide) onHide(surface);
       },
       showContent: function (content) {
-        const payload = content && typeof content === "object" ? content : {};
+        const payload = /** @type {Record<string, unknown>} */ (
+          content && typeof content === "object" ? content : {}
+        );
         const behavior =
           payload.behavior && typeof payload.behavior === "object"
             ? surface.setBehavior(payload.behavior)
@@ -180,11 +251,12 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
           surface.hideContent();
           return false;
         }
-        if (!renderBody && payload.html.length === 0 && payload.allowEmpty !== true) {
+        const html = typeof payload.html === "string" ? payload.html : "";
+        if (!renderBody && html.length === 0 && payload.allowEmpty !== true) {
           surface.hideContent();
           return false;
         }
-        slots.title.textContent = typeof payload.heading === "string" ? payload.heading : "";
+        titleSlot.textContent = typeof payload.heading === "string" ? payload.heading : "";
         surface.setSource(source);
         if (!renderSurfaceBody(payload)) {
           surface.hideContent();
@@ -195,11 +267,13 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         return true;
       },
       replaceBody: function (content) {
-        const payload = content && typeof content === "object" ? content : {};
+        const payload = /** @type {Record<string, unknown>} */ (
+          content && typeof content === "object" ? content : {}
+        );
         if (payload.behavior && typeof payload.behavior === "object") {
           surface.setBehavior(payload.behavior);
         }
-        slots.title.textContent = typeof payload.heading === "string" ? payload.heading : "";
+        titleSlot.textContent = typeof payload.heading === "string" ? payload.heading : "";
         if (
           Object.prototype.hasOwnProperty.call(payload, "source") ||
           Object.prototype.hasOwnProperty.call(payload, "anchor")
@@ -246,8 +320,9 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         return surface.showContent(content);
       },
       bindTriggers: function (triggerOptions) {
-        const triggerOpts =
-          triggerOptions && typeof triggerOptions === "object" ? Object.assign({}, triggerOptions) : {};
+        const triggerOpts = /** @type {Record<string, unknown>} */ (
+          triggerOptions && typeof triggerOptions === "object" ? Object.assign({}, triggerOptions) : {}
+        );
         if (!(triggerOpts.panel instanceof Element)) triggerOpts.panel = panel;
         if (
           typeof triggerOpts.getBehavior !== "function" &&
@@ -263,18 +338,20 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
         return triggerLifecycle;
       },
       bindRepositioner: function (repositionOptions) {
-        const repositionOpts =
+        const repositionOpts = /** @type {Record<string, unknown>} */ (
           repositionOptions && typeof repositionOptions === "object"
             ? Object.assign({}, repositionOptions)
-            : {};
+            : {}
+        );
         if (!(repositionOpts.owner instanceof Element)) repositionOpts.owner = panel;
         repositionLifecycle = bindPanelRepositioner(repositionOpts);
         surface.repositionLifecycle = repositionLifecycle;
         return repositionLifecycle;
       },
       bindDismissal: function (dismissOptions) {
-        const dismissOpts =
-          dismissOptions && typeof dismissOptions === "object" ? Object.assign({}, dismissOptions) : {};
+        const dismissOpts = /** @type {Record<string, unknown>} */ (
+          dismissOptions && typeof dismissOptions === "object" ? Object.assign({}, dismissOptions) : {}
+        );
         if (!(dismissOpts.panel instanceof Element)) dismissOpts.panel = panel;
         if (
           !Object.prototype.hasOwnProperty.call(dismissOpts, "closeButton") &&
@@ -485,7 +562,7 @@ import { bindCloseOnce, bindDismissHandlers, bindPanelRepositioner, bindPreviewT
   }
 
   export function setPreviewHeaderLink(labelNode, sourceNode) {
-    if (!(labelNode instanceof Element)) return;
+    if (!(labelNode instanceof HTMLElement)) return;
     const label =
       sourceNode instanceof Element
         ? (sourceNode.getAttribute("data-bp-preview-header-label") || "").trim()

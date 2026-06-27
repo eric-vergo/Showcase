@@ -32,7 +32,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     const open = readFunctionOption(opts, "open", function () {});
     const close = readFunctionOption(opts, "close", function () {});
     const isOpen = readFunctionOption(opts, "isOpen", function () {
-      return panel instanceof Element ? !panel.hidden : true;
+      return panel instanceof HTMLElement ? !panel.hidden : true;
     });
     const toggle = readFunctionOption(opts, "toggle", function () {
       if (isOpen()) {
@@ -115,40 +115,44 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     const closeButton = readElementOption(opts, "close", null);
     const boundAttr = readStringOption(opts, "boundAttr", "data-bp-popover-bound");
     const offset = readNumberOption(opts, "offset", 8);
-    const positionPopover = readFunctionOption(opts, "position", function () {
-      const rootRect = root.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
+    const positionPopover = readFunctionOption(opts, "position", function (_controller, rootNode, triggerNode, panelNode) {
+      if (!(rootNode instanceof Element)) return;
+      if (!(triggerNode instanceof Element)) return;
+      if (!(panelNode instanceof HTMLElement)) return;
+      const rootRect = rootNode.getBoundingClientRect();
+      const triggerRect = triggerNode.getBoundingClientRect();
       const top = Math.max(0, Math.round(triggerRect.bottom - rootRect.top + offset));
       const right = Math.max(0, Math.round(rootRect.right - triggerRect.right));
-      panel.style.top = top + "px";
-      panel.style.right = right + "px";
+      panelNode.style.top = top + "px";
+      panelNode.style.right = right + "px";
     });
 
-    if (!(root instanceof Element) || !(trigger instanceof Element) || !(panel instanceof Element)) {
+    if (!(root instanceof Element) || !(trigger instanceof Element) || !(panel instanceof HTMLElement)) {
       return null;
     }
+    const panelElement = panel;
 
     const controller = {
       root: root,
       trigger: trigger,
-      panel: panel,
+      panel: panelElement,
       closeButton: closeButton,
-      isOpen: function () { return !panel.hidden; },
+      isOpen: function () { return !panelElement.hidden; },
       open: function () { setOpen(true); },
       close: function () { setOpen(false); },
-      toggle: function () { setOpen(panel.hidden); },
+      toggle: function () { setOpen(panelElement.hidden); },
       position: position,
       setOpen: setOpen
     };
 
     function position() {
-      positionPopover(controller, root, trigger, panel);
+      positionPopover(controller, root, trigger, panelElement);
     }
 
     function setOpen(isOpen) {
       const open = !!isOpen;
       if (open) position();
-      panel.hidden = !open;
+      panelElement.hidden = !open;
       trigger.setAttribute("aria-expanded", open ? "true" : "false");
     }
 
@@ -157,7 +161,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
       owner: trigger,
       root: root,
       trigger: trigger,
-      panel: panel,
+      panel: panelElement,
       close: controller.close,
       closeButton: closeButton,
       isOpen: controller.isOpen,
@@ -187,7 +191,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
   }
 
   export function positionAnchoredPanel(panel, anchor, margin, offset) {
-    if (!(panel instanceof Element)) return;
+    if (!(panel instanceof HTMLElement)) return;
     const rect = readAnchorRect(anchor);
     if (!rect) return;
     const safeMargin = Number.isFinite(margin) ? margin : 12;
@@ -240,6 +244,12 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     const inlinePanel = document.getElementById("bp-inline-preview-panel");
     if (inlinePanel instanceof Element && inlinePanel.contains(nextTarget)) return true;
     return false;
+  }
+
+  function eventKey(ev) {
+    if (!ev || typeof ev !== "object" || !("key" in ev)) return "";
+    const key = ev.key;
+    return typeof key === "string" ? key : "";
   }
 
   export function bindPreviewTriggers(options) {
@@ -326,15 +336,21 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
       behavior: behavior
     };
 
+    /**
+     * @param {unknown} target
+     * @param {unknown} ev
+     * @returns {Element | null}
+     */
     function resolveTrigger(target, ev) {
       if (resolveTriggerOption) {
         const resolved = resolveTriggerOption(target, ev);
         return resolved instanceof Element ? resolved : null;
       }
-      if (!(target instanceof Element)) return null;
-      if (!triggerSelector) return target;
-      if (target.matches(triggerSelector)) return target;
-      const closest = target.closest(triggerSelector);
+      const element = target instanceof Element ? target : null;
+      if (!element) return null;
+      if (!triggerSelector) return element;
+      if (element.matches(triggerSelector)) return element;
+      const closest = Element.prototype.closest.call(element, triggerSelector);
       return closest instanceof Element ? closest : null;
     }
 
@@ -394,7 +410,8 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
       }
       if (activateOnKeydown) {
         trigger.addEventListener("keydown", function (ev) {
-          if (ev.key !== "Enter" && ev.key !== " ") return;
+          const key = eventKey(ev);
+          if (key !== "Enter" && key !== " ") return;
           activateTrigger(trigger, ev);
         });
       }
@@ -425,7 +442,8 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
       }
       if (activateOnKeydown) {
         root.addEventListener("keydown", function (ev) {
-          if (ev.key !== "Enter" && ev.key !== " ") return;
+          const key = eventKey(ev);
+          if (key !== "Enter" && key !== " ") return;
           activateTrigger(resolveTrigger(ev.target, ev), ev);
         });
       }
@@ -478,7 +496,7 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
         reposition: function () {
           const current = behavior();
           const activeAnchor = getActiveAnchor();
-          if (current.isAnchored && activeAnchor && panel instanceof Element && !panel.hidden) {
+          if (current.isAnchored && activeAnchor && panel instanceof HTMLElement && !panel.hidden) {
             position(activeAnchor);
           }
         }
