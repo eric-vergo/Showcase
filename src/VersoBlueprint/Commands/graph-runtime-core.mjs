@@ -39,6 +39,13 @@
     return true;
   }
 
+  function normalizeGraphLayout(rawLayout) {
+    const layout = String(rawLayout || "").trim().toLowerCase();
+    if (layout === "fill" || layout === "embed" || layout === "slide") return "fill";
+    if (layout === "block" || layout === "single") return "block";
+    return "page";
+  }
+
   export function normalizeGraphOptions(rawOptions) {
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
@@ -56,6 +63,31 @@
     return normalized.direction + "|" + graphPackAttr(normalized.pack);
   }
 
+  export function graphLayoutMode(graphRoot, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (Object.prototype.hasOwnProperty.call(opts, "layout")) {
+      return normalizeGraphLayout(opts.layout);
+    }
+    if (graphRoot instanceof Element) {
+      const attrLayout = graphRoot.getAttribute("data-bp-graph-layout");
+      if (attrLayout) return normalizeGraphLayout(attrLayout);
+      const block = graphRoot.closest(".bp_graph_fullwidth");
+      if (block instanceof Element) {
+        const blockLayout = block.getAttribute("data-bp-graph-layout");
+        if (blockLayout) return normalizeGraphLayout(blockLayout);
+      }
+    }
+    try {
+      const path = window.location && typeof window.location.pathname === "string"
+        ? window.location.pathname
+        : "";
+      if (path.indexOf("/html-single/") >= 0 || /\/html-single\/?$/.test(path)) {
+        return "block";
+      }
+    } catch (_err) {}
+    return "page";
+  }
+
   export function readPreviewBehaviorDefaults(panel, fallbackMode, fallbackPlacement) {
     if (!(panel instanceof Element)) {
       return {
@@ -69,23 +101,59 @@
     };
   }
 
-  function readGraphCanvasFlowBottom(graphRoot) {
+  function readGraphCanvasFlowBottom(graphRoot, layoutMode) {
     if (!(graphRoot instanceof Element)) return 0;
+    const block = graphRoot.closest(".bp_graph_fullwidth");
+    if (layoutMode === "block" || layoutMode === "fill") {
+      if (block instanceof Element) return block.getBoundingClientRect().bottom;
+      return graphRoot.getBoundingClientRect().bottom;
+    }
     const flowContainer = graphRoot.closest(".content-wrapper") || graphRoot.closest("main");
     if (!(flowContainer instanceof Element)) return 0;
     const rect = flowContainer.getBoundingClientRect();
     return rect.bottom;
   }
 
-  export function layoutGraphCanvas(graphRoot, graphState) {
+  function layoutGraphCanvasFill(graphRoot, graphState) {
+    const rect = graphRoot.getBoundingClientRect();
+    const parent = graphRoot.parentElement;
+    const parentRect = parent instanceof Element ? parent.getBoundingClientRect() : null;
+    const viewportHeight = readViewportHeight();
+    const fallbackHeight = Math.max(280, Math.floor(viewportHeight * 0.7));
+    let nextHeight = fallbackHeight;
+    if (parentRect && parentRect.height > 0) {
+      nextHeight = Math.floor(parentRect.bottom - rect.top);
+    } else if (graphRoot.clientHeight > 0) {
+      nextHeight = graphRoot.clientHeight;
+    }
+    nextHeight = Math.max(1, nextHeight);
+    graphRoot.style.minHeight = "0px";
+    graphRoot.style.maxHeight = "none";
+    graphRoot.style.height = nextHeight + "px";
+    graphRoot.style.resize = "none";
+    if (graphState && typeof graphState === "object") {
+      graphState.canvasAutoHeight = nextHeight;
+    }
+  }
+
+  export function layoutGraphCanvas(graphRoot, graphState, options) {
     if (!(graphRoot instanceof Element)) return;
+    const layoutMode = graphLayoutMode(graphRoot, options);
+    if (layoutMode === "fill") {
+      layoutGraphCanvasFill(graphRoot, graphState);
+      return;
+    }
     const rect = graphRoot.getBoundingClientRect();
     const viewportHeight = readViewportHeight();
     const bottomGap = 20;
     const viewportMaxHeight = Math.max(280, Math.floor(viewportHeight * 0.84));
-    const flowBottom = readGraphCanvasFlowBottom(graphRoot);
+    const flowBottom = readGraphCanvasFlowBottom(graphRoot, layoutMode);
     const trailingHeight = Math.max(0, flowBottom - rect.bottom);
-    const availableHeight = Math.max(1, Math.floor(viewportHeight - rect.top - bottomGap - trailingHeight));
+    const rawAvailableHeight = Math.floor(viewportHeight - rect.top - bottomGap - trailingHeight);
+    const availableHeight =
+      layoutMode === "block" && rawAvailableHeight < 280
+        ? viewportMaxHeight
+        : Math.max(1, rawAvailableHeight);
     const autoHeight = Math.min(viewportMaxHeight, availableHeight);
     const minHeight = Math.min(autoHeight, 280);
     const currentHeight = parsePixelSize(graphRoot.style.height);
@@ -279,6 +347,7 @@
     normalizeGraphOptions,
     graphPackAttr,
     graphOptionsKey,
+    graphLayoutMode,
     readPreviewBehaviorDefaults,
     layoutGraphCanvas,
     load,

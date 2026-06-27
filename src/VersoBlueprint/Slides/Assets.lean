@@ -8,6 +8,7 @@ import Std.Data.HashMap
 import VersoSlides
 import VersoManual
 import VersoBlueprint.Commands.Common
+import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Graft.Assets
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.PreviewManifest
@@ -23,10 +24,16 @@ private def slideNodeCss : String := include_str "blueprint-slides.css"
 def blueprintSlidesAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   { css :=
       (Informal.Commands.previewPanelInlinePreviewCssAssetBundle
-        [Informal.Block.Assets.css, Informal.Graft.css, Verso.Genre.Manual.docstringStyle, slideNodeCss]).css
+        [ Informal.Block.Assets.css,
+          Informal.Graft.css,
+          Verso.Genre.Manual.docstringStyle,
+          Informal.Commands.graphCss,
+          slideNodeCss]).css
     js :=
       (ClassicPreviewAdapter.inlinePreviewAssetBundle.withJs []
-        [ClassicPreviewAdapter.relationPanelJs, ClassicPreviewAdapter.slideNodeHydrationJs]).js }
+        [ ClassicPreviewAdapter.relationPanelJs,
+          ClassicPreviewAdapter.graphRuntimeJs,
+          ClassicPreviewAdapter.slideNodeHydrationJs]).js }
 
 def blueprintSlidesCss : String :=
   String.intercalate "\n\n" blueprintSlidesAssetBundle.css

@@ -109,6 +109,7 @@ GRAPH_RUNTIME_CORE_HELPERS = {
     "normalizeGraphOptions",
     "graphPackAttr",
     "graphOptionsKey",
+    "graphLayoutMode",
     "readPreviewBehaviorDefaults",
     "layoutGraphCanvas",
     "load",
@@ -393,7 +394,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertIn("readPublicGraphVariants(previewUtils, graphBlock)", runtime)
         self.assertIn("previewUtils.getGraphVariants(root)", runtime)
-        self.assertIn("export function startGraphRuntime(previewUtils)", runtime)
+        self.assertIn("export function startGraphRuntime(previewUtils, options)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)
 
     def test_regular_page_feature_js_uses_page_runtime_instead_of_window_bridge(self) -> None:
@@ -534,6 +535,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn('include_str "graph.mjs"', graph_lean)
         self.assertIn('include_str "Commands/graph-runtime-core.mjs"', preview_manifest)
         self.assertIn('include_str "Commands/graph.mjs"', preview_manifest)
+        self.assertIn("export function startGraphRuntime(previewUtils, options)", graph_runtime)
+        self.assertIn("installGraphRenderApi(previewUtils, options);", graph_runtime)
         self.assertIn("export const graphRuntimeCore = {", graph_core)
         self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_core)
         self.assertNotIn("globalScope.VersoBlueprintGraphRuntimeCore", graph_lean)

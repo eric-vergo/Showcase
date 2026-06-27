@@ -177,6 +177,45 @@
  */
 
 /**
+ * Runtime dependency URLs accepted by graph rendering helpers.
+ *
+ * @typedef {Object} BlueprintGraphRuntimeLibraries
+ * @property {string} [d3] URL for D3 when the page has not loaded it already.
+ * @property {string} [graphviz] URL for d3-graphviz when the page has not loaded it already.
+ */
+
+/**
+ * Options accepted by graph rendering helpers in `api/graph.mjs`.
+ *
+ * @typedef {Object} BlueprintGraphRenderOptions
+ * @property {Record<string, unknown>} [previewUtils] Render-capable Blueprint preview API.
+ * @property {"page" | "block" | "fill" | string} [layout] Graph sizing mode.
+ * @property {boolean} [refresh] Re-render immediately after initialization.
+ * @property {BlueprintGraphRuntimeLibraries} [libraries] Runtime dependency URL overrides.
+ */
+
+/**
+ * Layout options accepted by graph controllers.
+ *
+ * @typedef {Object} BlueprintGraphLayoutOptions
+ * @property {string} [direction] Graphviz rank direction.
+ * @property {boolean} [pack] Enable or disable Graphviz packing.
+ */
+
+/**
+ * Controller returned by graph rendering helpers.
+ *
+ * @typedef {Object} BlueprintGraphController
+ * @property {function(): void} render Re-render the active graph view immediately.
+ * @property {function(): void} scheduleRender Schedule a debounced render.
+ * @property {function(string): void} setView Select a graph variant by key.
+ * @property {function(BlueprintGraphLayoutOptions): void} setOptions Update graph layout options.
+ * @property {function(string): void} setDirection Update the Graphviz rank direction.
+ * @property {function(boolean): void} setPack Enable or disable Graphviz packing.
+ * @property {function(string, string=): void} setPreviewBehavior Update graph preview behavior.
+ */
+
+/**
  * Result of resolving a preview key against the manifest and HTML cache.
  *
  * @typedef {Object} BlueprintPreviewResult
