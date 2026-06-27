@@ -17,6 +17,7 @@ RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-api.mjs"),
     Path("Commands/preview-ready.mjs"),
     Path("blueprint-api-common.mjs"),
+    Path("Commands/graph.mjs"),
     Path("blueprint-graph-api.mjs"),
     Path("blueprint-graph-core.mjs"),
     Path("blueprint-data-api.mjs"),
