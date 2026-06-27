@@ -206,8 +206,9 @@ passed to the generator binary, such as
 ### JavaScript API tooling
 
 The browser APIs emitted under `-verso-data/api/` remain plain JavaScript ESM.
-API documentation is written in JSDoc, and TypeScript checks the public API
-entrypoints plus their direct support modules with `allowJs` and `checkJs`.
+API documentation is written in JSDoc, rendered with Docdash, and TypeScript
+checks the public API entrypoints plus their direct support modules with
+`allowJs` and `checkJs`.
 This first pass intentionally focuses on the custom-client API surface; broader
 private runtime coverage and `noImplicitAny` tightening are follow-up cleanup
 items. TypeScript users consume generated declaration files from `dist/types`;
