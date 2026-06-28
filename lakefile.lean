@@ -1,10 +1,10 @@
 import Lake
 open Lake DSL
 
--- While the split is in progress, the extracted blueprint package depends on
--- the parent repo root, which remains a checkout of Verso.
--- require verso from "../verso"
-require verso from git "https://github.com/leanprover/verso"@"v4.31.0"
+-- Our Verso fork, which self-hosts `marked` for offline / strict-CSP viewing instead of
+-- loading it from a CDN. Required before verso-slides' transitive (upstream) verso so this
+-- fork wins resolution. A fork branch isn't in Lake's prebuilt cache, so it builds from source.
+require verso from git "https://github.com/eric-vergo/verso"@"viewer-integration"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"v4.31.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 

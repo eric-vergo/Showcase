@@ -812,9 +812,13 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       return controller;
     }
 
+// Vendored locally (see PreviewManifest.lean writeVendorLibraries -> -verso-data/lib/) so the
+// dependency graph works offline / under a strict-CSP viewer with no CDN access. These are
+// document-relative; every page's <base href> resolves to the site root, so this resolves to
+// /-verso-data/lib/*.min.js (matching how katex is referenced at -verso-data/katex/...).
 const defaultGraphRuntimeLibraryUrls = {
-  d3: "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
-  graphviz: "https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"
+  d3: "-verso-data/lib/d3.min.js",
+  graphviz: "-verso-data/lib/d3-graphviz.min.js"
 };
 
 let graphRuntimeLibrariesPromise = null;

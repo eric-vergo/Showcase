@@ -616,6 +616,13 @@ private def graphRuntimeCoreModuleMjs : String := include_str "Commands/graph-ru
 
 private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
+-- Vendored graph runtime libraries (d3 + d3-graphviz), embedded so the dependency graph
+-- renders offline / under a strict-CSP viewer instead of fetching them from a CDN. Written to
+-- -verso-data/lib/ and referenced by Commands/graph.mjs.
+private def d3MinJs : String := include_str "vendor/d3.min.js"
+
+private def d3GraphvizMinJs : String := include_str "vendor/d3-graphviz.min.js"
+
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
@@ -667,6 +674,8 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
+  ("lib/d3.min.js", d3MinJs),
+  ("lib/d3-graphviz.min.js", d3GraphvizMinJs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
 ]
 
