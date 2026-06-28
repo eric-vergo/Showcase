@@ -129,7 +129,8 @@ script map, not a second command reference.
   Local worktree-coordination helpers for ignored metadata under `.worktrees/`.
 - `prepare_reference_blueprints_pages.py`
   Helper used by the Pages publication flow to stage a combined site artifact
-  from generated reference and test blueprint output.
+  from generated reference blueprints, test blueprints, and optional generated
+  JavaScript API docs.
 - `__init__.py`
   Package marker for `python3 -m scripts ...` entry points.
 
