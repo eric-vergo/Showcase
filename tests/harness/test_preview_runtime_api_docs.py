@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import re
 import unittest
 
 from tests.preview_runtime_api import (
     BLUEPRINT_SRC,
+    PACKAGE_ROOT,
+    PUBLIC_API_JSDOC_SOURCES,
+    PUBLIC_API_MODULES,
+    PUBLIC_API_PACKAGE_EXPORTS,
+    PUBLIC_DATA_API_EXPORTS,
+    PUBLIC_GENERATED_API_MODULES,
+    PUBLIC_GRAPH_API_EXPORTS,
+    PUBLIC_PREVIEW_API_EXPORTS,
     RUNTIME_BOOTSTRAP_JS,
     blueprint_js_files,
     blueprint_js_source,
@@ -15,9 +25,10 @@ from tests.preview_runtime_api import (
     js_object_methods,
 )
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 API_DOC = PACKAGE_ROOT / "doc" / "API.md"
 DESIGN_RATIONALE = PACKAGE_ROOT / "doc" / "DESIGN_RATIONALE.md"
+JSDOC_CONFIG = PACKAGE_ROOT / "jsdoc.json"
+PACKAGE_JSON = PACKAGE_ROOT / "package.json"
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
     "bindDismissHandlers",
@@ -35,44 +46,6 @@ INTERNAL_ONLY_HELPERS = {
     "renderHtmlInto",
     "resetPanelPosition",
     "shouldKeepOpen",
-}
-PREVIEW_ESM_EXTRA_EXPORTS = {
-    "createPreview",
-    "currentRenderApi",
-    "getRenderApi",
-    "ready",
-    "version",
-}
-DATA_ESM_EXPORTS = {
-    "createPreviewData",
-    "currentDataApi",
-    "dataApiModuleUrl",
-    "dataUrl",
-    "getDataApi",
-    "htmlCacheUrl",
-    "loadHtmlCache",
-    "loadHtmlCacheEntry",
-    "loadManifest",
-    "loadManifestEntry",
-    "manifestUrl",
-    "previewApiModuleUrl",
-    "previewKey",
-    "readHtmlCacheStatus",
-    "readManifestStatus",
-    "ready",
-    "statementPreviewKey",
-    "version",
-}
-GRAPH_ESM_EXPORTS = {
-    "dataUrl",
-    "getGraphData",
-    "getGraphVariants",
-    "graphApiModuleUrl",
-    "loadGraphs",
-    "loadManifestGraphs",
-    "renderGraphBlock",
-    "renderGraphs",
-    "version",
 }
 GRAPH_CORE_HELPERS = {
     "dataUrl",
@@ -128,6 +101,47 @@ GRAPH_RUNTIME_CORE_HELPERS = {
 
 
 class PreviewRuntimeApiDocsTests(unittest.TestCase):
+    def test_package_json_exports_only_public_js_api_modules(self) -> None:
+        package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
+
+        preview_entry = PUBLIC_API_MODULES["preview"]
+        self.assertEqual(package["type"], "module")
+        self.assertEqual(package["main"], f"./{preview_entry['source']}")
+        self.assertEqual(package["module"], f"./{preview_entry['source']}")
+        self.assertEqual(package["types"], f"./{preview_entry['declaration']}")
+        self.assertEqual(set(package["exports"]), set(PUBLIC_API_PACKAGE_EXPORTS))
+        for export_name, entry in PUBLIC_API_PACKAGE_EXPORTS.items():
+            self.assertEqual(
+                package["exports"][export_name],
+                {
+                    "types": f"./{entry['declaration']}",
+                    "import": f"./{entry['source']}",
+                },
+            )
+
+    def test_jsdoc_documents_only_public_js_api_modules(self) -> None:
+        jsdoc_config = json.loads(JSDOC_CONFIG.read_text(encoding="utf-8"))
+        source_includes = set(jsdoc_config["source"]["include"])
+
+        self.assertEqual(source_includes, PUBLIC_API_JSDOC_SOURCES)
+        self.assertFalse(any("/Commands/" in source for source in source_includes))
+        self.assertFalse(any(source.endswith("-core.mjs") for source in source_includes))
+        self.assertFalse(any(source.endswith("-common.mjs") for source in source_includes))
+
+    def test_api_doc_module_table_matches_public_generated_modules(self) -> None:
+        api_doc = API_DOC.read_text(encoding="utf-8")
+        js_api_docs = (PACKAGE_ROOT / "doc" / "JS_API_DOCS.md").read_text(
+            encoding="utf-8"
+        )
+
+        documented_modules = set(
+            re.findall(r"\| `(api/[A-Za-z][A-Za-z0-9_-]*\.mjs)` \|", api_doc)
+        )
+        self.assertEqual(documented_modules, PUBLIC_GENERATED_API_MODULES)
+        self.assertIn("Only the files listed in this table are public", api_doc)
+        for entry in PUBLIC_API_MODULES.values():
+            self.assertIn(entry["jsdoc_page"], js_api_docs)
+
     def test_api_stable_api_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
         api_doc = API_DOC.read_text(encoding="utf-8")
@@ -174,10 +188,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         default_methods = js_object_keys(source, "previewApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
-        self.assertLessEqual(stable_methods, named_exports)
-        self.assertLessEqual(stable_methods, default_methods)
-        self.assertEqual(named_exports, stable_methods | PREVIEW_ESM_EXTRA_EXPORTS)
-        self.assertEqual(default_methods, stable_methods | PREVIEW_ESM_EXTRA_EXPORTS)
+        self.assertLessEqual(stable_methods, PUBLIC_PREVIEW_API_EXPORTS)
+        self.assertEqual(named_exports, PUBLIC_PREVIEW_API_EXPORTS)
+        self.assertEqual(default_methods, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertFalse(named_exports & helper_methods)
         self.assertFalse(default_methods & helper_methods)
 
@@ -187,8 +200,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         named_exports = esm_named_exports(source)
         default_methods = js_object_keys(source, "dataApi")
 
-        self.assertEqual(named_exports, DATA_ESM_EXPORTS)
-        self.assertEqual(default_methods, DATA_ESM_EXPORTS)
+        self.assertEqual(named_exports, PUBLIC_DATA_API_EXPORTS)
+        self.assertEqual(default_methods, PUBLIC_DATA_API_EXPORTS)
         for render_name in (
             "renderPreviewInto",
             "renderCanonicalPreviewInto",
@@ -449,7 +462,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         self.assertIn('from "./blueprint-graph-core.mjs";', graph_esm)
         self.assertIn('from "../blueprint-graph-core.mjs";', graph_runtime)
-        self.assertEqual(esm_named_exports(graph_esm), GRAPH_ESM_EXPORTS)
+        self.assertEqual(esm_named_exports(graph_esm), PUBLIC_GRAPH_API_EXPORTS)
         self.assertIn(
             'throw new Error("Blueprint graph rendering requires options.previewUtils from createPreview().");',
             graph_esm,

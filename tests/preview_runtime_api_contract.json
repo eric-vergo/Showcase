@@ -1,0 +1,90 @@
+{
+  "modules": {
+    "data": {
+      "source": "src/VersoBlueprint/blueprint-data-api.mjs",
+      "declaration": "dist/types/src/VersoBlueprint/blueprint-data-api.d.mts",
+      "generated": "api/data.mjs",
+      "packageExport": "./data",
+      "jsdocPage": "module-blueprint-data-api.html"
+    },
+    "preview": {
+      "source": "src/VersoBlueprint/blueprint-preview-api.mjs",
+      "declaration": "dist/types/src/VersoBlueprint/blueprint-preview-api.d.mts",
+      "generated": "api/preview.mjs",
+      "packageExport": ".",
+      "jsdocPage": "module-blueprint-preview-api.html"
+    },
+    "graph": {
+      "source": "src/VersoBlueprint/blueprint-graph-api.mjs",
+      "declaration": "dist/types/src/VersoBlueprint/blueprint-graph-api.d.mts",
+      "generated": "api/graph.mjs",
+      "packageExport": "./graph",
+      "jsdocPage": "module-blueprint-graph-api.html"
+    }
+  },
+  "typesModule": {
+    "source": "src/VersoBlueprint/blueprint-api-types.mjs",
+    "declaration": "dist/types/src/VersoBlueprint/blueprint-api-types.d.mts",
+    "packageExport": "./types",
+    "jsdocPage": "module-blueprint-api-types.html"
+  },
+  "exports": {
+    "data": [
+      "createPreviewData",
+      "currentDataApi",
+      "dataApiModuleUrl",
+      "dataUrl",
+      "getDataApi",
+      "htmlCacheUrl",
+      "loadHtmlCache",
+      "loadHtmlCacheEntry",
+      "loadManifest",
+      "loadManifestEntry",
+      "manifestUrl",
+      "previewApiModuleUrl",
+      "previewKey",
+      "readHtmlCacheStatus",
+      "readManifestStatus",
+      "ready",
+      "statementPreviewKey",
+      "version"
+    ],
+    "preview": [
+      "createPreview",
+      "currentRenderApi",
+      "dataApiModuleUrl",
+      "dataUrl",
+      "getRenderApi",
+      "htmlCacheUrl",
+      "hydrate",
+      "loadHtmlCache",
+      "loadHtmlCacheEntry",
+      "loadManifest",
+      "loadManifestEntry",
+      "manifestUrl",
+      "previewApiModuleUrl",
+      "previewKey",
+      "readHtmlCacheStatus",
+      "readManifestStatus",
+      "ready",
+      "renderCanonicalPreviewInto",
+      "renderNode",
+      "renderPreviewInto",
+      "resolveCanonicalPreview",
+      "resolvePreview",
+      "statementPreviewKey",
+      "version"
+    ],
+    "graph": [
+      "dataUrl",
+      "getGraphData",
+      "getGraphVariants",
+      "graphApiModuleUrl",
+      "loadGraphs",
+      "loadManifestGraphs",
+      "renderGraphBlock",
+      "renderGraphs",
+      "version"
+    ]
+  }
+}

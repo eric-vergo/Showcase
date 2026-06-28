@@ -2,6 +2,16 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const docsDir = path.resolve("_out/jsdoc-api");
+const contractPath = path.resolve("tests/preview_runtime_api_contract.json");
+const publicApiContract = JSON.parse(await readFile(contractPath, "utf8"));
+const publicApiDocPages = [
+  ...Object.values(publicApiContract.modules).map((entry) => entry.jsdocPage),
+  publicApiContract.typesModule.jsdocPage
+];
+const dataPage = publicApiContract.modules.data.jsdocPage;
+const graphPage = publicApiContract.modules.graph.jsdocPage;
+const previewPage = publicApiContract.modules.preview.jsdocPage;
+const typesPage = publicApiContract.typesModule.jsdocPage;
 const failures = [];
 const textCache = new Map();
 
@@ -115,14 +125,25 @@ async function checkLocalLinks() {
   }
 }
 
+async function checkPublicModulePages() {
+  const files = await listFiles();
+  const expectedModulePages = new Set(publicApiDocPages);
+  const modulePages = files.filter((file) => file.startsWith("module-") && file.endsWith(".html"));
+  for (const modulePage of modulePages) {
+    if (!expectedModulePages.has(modulePage)) {
+      fail(`unexpected generated public module page: ${modulePage}`);
+    }
+  }
+}
+
 const pages = {
   "index.html": await requireReadableFile("index.html"),
-  "module-blueprint-api-types.html": await requireReadableFile("module-blueprint-api-types.html"),
-  "module-blueprint-data-api.html": await requireReadableFile("module-blueprint-data-api.html"),
-  "module-blueprint-graph-api.html": await requireReadableFile("module-blueprint-graph-api.html"),
-  "module-blueprint-preview-api.html": await requireReadableFile("module-blueprint-preview-api.html"),
   "jsdoc-type-links.js": await requireReadableFile("jsdoc-type-links.js")
 };
+
+for (const page of publicApiDocPages) {
+  pages[page] = await requireReadableFile(page);
+}
 
 requireIncludes(
   "index.html",
@@ -130,47 +151,38 @@ requireIncludes(
   "Verso Blueprint JavaScript API",
   "landing-page title"
 );
-requireIncludes(
-  "index.html",
-  pages["index.html"],
-  "module-blueprint-preview-api.html",
-  "preview API guide link"
-);
-requireIncludes(
-  "index.html",
-  pages["index.html"],
-  "module-blueprint-api-types.html",
-  "shared API types guide link"
-);
+for (const entry of [...Object.values(publicApiContract.modules), publicApiContract.typesModule]) {
+  requireIncludes("index.html", pages["index.html"], entry.jsdocPage, `${entry.jsdocPage} guide link`);
+}
 
 requireMatches(
-  "module-blueprint-preview-api.html",
-  pages["module-blueprint-preview-api.html"],
+  previewPage,
+  pages[previewPage],
   /id="\.createPreview"[\s\S]*?&rarr; \{BlueprintPreviewApi\}/,
   "createPreview return type"
 );
 requireMatches(
-  "module-blueprint-preview-api.html",
-  pages["module-blueprint-preview-api.html"],
+  previewPage,
+  pages[previewPage],
   /id="\.renderNode"[\s\S]*?&rarr; \{Promise\.&lt;BlueprintRenderNodeResult>\}/,
   "renderNode result type"
 );
 requireMatches(
-  "module-blueprint-preview-api.html",
-  pages["module-blueprint-preview-api.html"],
+  previewPage,
+  pages[previewPage],
   /<script src="jsdoc-type-links\.js"><\/script>/,
   "typedef-linking script"
 );
 
 requireMatches(
-  "module-blueprint-data-api.html",
-  pages["module-blueprint-data-api.html"],
+  dataPage,
+  pages[dataPage],
   /id="\.createPreviewData"[\s\S]*?&rarr; \{BlueprintDataApi\}/,
   "createPreviewData return type"
 );
 requireMatches(
-  "module-blueprint-graph-api.html",
-  pages["module-blueprint-graph-api.html"],
+  graphPage,
+  pages[graphPage],
   /id="\.loadGraphs"[\s\S]*?Load graph variants from this generated site's default manifest\./,
   "loadGraphs documentation"
 );
@@ -183,8 +195,8 @@ for (const typeName of [
   "BlueprintExternalMarkupPreference"
 ]) {
   requireIncludes(
-    "module-blueprint-api-types.html",
-    pages["module-blueprint-api-types.html"],
+    typesPage,
+    pages[typesPage],
     `id="~${typeName}"`,
     `${typeName} typedef anchor`
   );
@@ -199,11 +211,12 @@ for (const typeName of [
 requireIncludes(
   "jsdoc-type-links.js",
   pages["jsdoc-type-links.js"],
-  "module-blueprint-api-types.html#~",
+  `${typesPage}#~`,
   "typedef target prefix"
 );
 
 await checkLocalLinks();
+await checkPublicModulePages();
 
 if (failures.length > 0) {
   console.error("JavaScript API docs smoke check failed:");
