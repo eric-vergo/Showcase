@@ -195,25 +195,22 @@ class TestGraphLayoutRuntime:
             blueprint_render_api_script(
                 """
                 const block = document.querySelector(".bp_graph_fullwidth");
-                const pageGraph = api.getGraphData(block);
-                const manifestGraphs = await api.loadGraphs();
-                const manifestGraph = manifestGraphs.find((graph) => graph.key === pageGraph.key) || null;
-                const variants = api.getGraphVariants(block);
                 const graphModuleUrl = new URL("../-verso-data/api/graph.mjs", window.location.href).href;
                 const graphModule = await import(graphModuleUrl);
-                const esmPageGraph = graphModule.getGraphData(block);
-                const esmManifestGraphs = await graphModule.loadGraphs();
-                const esmVariants = graphModule.getGraphVariants(block);
+                const pageGraph = graphModule.getGraphData(block);
+                const manifestGraphs = await graphModule.loadGraphs();
+                const manifestGraph = manifestGraphs.find((graph) => graph.key === pageGraph.key) || null;
+                const variants = graphModule.getGraphVariants(block);
                 const sample = pageGraph.nodes.find((node) => node.label === "used_target") || null;
                 const manifestSample = manifestGraph
                     ? manifestGraph.nodes.find((node) => node.label === "used_target") || null
                     : null;
                 return {
                     hasLegacyGlobal: typeof window.bpGraphApi !== "undefined",
-                    sameEsmPageKey: !!esmPageGraph && esmPageGraph.key === pageGraph.key,
+                    previewHasGraphData: typeof api.getGraphData === "function",
+                    previewHasLoadGraphs: typeof api.loadGraphs === "function",
                     pageKey: pageGraph.key,
                     manifestGraphs: manifestGraphs.length,
-                    esmManifestGraphs: esmManifestGraphs.length,
                     manifestKey: manifestGraph ? manifestGraph.key : "",
                     pageNodes: pageGraph.nodes.length,
                     pageEdges: pageGraph.edges.length,
@@ -222,7 +219,6 @@ class TestGraphLayoutRuntime:
                     manifestEdges: manifestGraph ? manifestGraph.edges.length : 0,
                     manifestGroups: manifestGraph ? manifestGraph.groups.length : 0,
                     variantKeys: variants.map((variant) => variant.key),
-                    esmVariantKeys: esmVariants.map((variant) => variant.key),
                     sampleTitle: sample ? sample.title : "",
                     sampleHref: sample ? sample.href : "",
                     manifestSampleTitle: manifestSample ? manifestSample.title : "",
@@ -233,10 +229,10 @@ class TestGraphLayoutRuntime:
         )
 
         assert graph_data["hasLegacyGlobal"] is False
-        assert graph_data["sameEsmPageKey"]
+        assert graph_data["previewHasGraphData"] is False
+        assert graph_data["previewHasLoadGraphs"] is False
         assert graph_data["pageKey"].startswith("graph:#<")
         assert graph_data["manifestGraphs"] == 1
-        assert graph_data["esmManifestGraphs"] == graph_data["manifestGraphs"]
         assert graph_data["manifestKey"] == graph_data["pageKey"]
         assert graph_data["pageNodes"] >= 55
         assert graph_data["pageEdges"] >= 13
@@ -245,7 +241,6 @@ class TestGraphLayoutRuntime:
         assert graph_data["manifestEdges"] == graph_data["pageEdges"]
         assert graph_data["manifestGroups"] == graph_data["pageGroups"]
         assert {"full", "group"}.issubset(set(graph_data["variantKeys"]))
-        assert set(graph_data["variantKeys"]) == set(graph_data["esmVariantKeys"])
         assert graph_data["sampleTitle"].startswith("Definition")
         assert graph_data["sampleHref"] == "Preview-Relationships/#--informal-preview-used_target--statement"
         assert graph_data["manifestSampleTitle"] == graph_data["sampleTitle"]

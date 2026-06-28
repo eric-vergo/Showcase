@@ -188,7 +188,7 @@
  * Options accepted by graph rendering helpers in `api/graph.mjs`.
  *
  * @typedef {Object} BlueprintGraphRenderOptions
- * @property {Record<string, unknown>} [previewUtils] Render-capable Blueprint preview API.
+ * @property {Record<string, unknown>} previewUtils Render-capable Blueprint preview API required by public `api/graph.mjs` render helpers.
  * @property {"page" | "block" | "fill" | string} [layout] Graph sizing mode.
  * @property {boolean} [refresh] Re-render immediately after initialization.
  * @property {BlueprintGraphRuntimeLibraries} [libraries] Runtime dependency URL overrides.
@@ -323,7 +323,6 @@
  * @property {function(string): string} dataUrl
  * @property {function(): string} manifestUrl
  * @property {function(): string} htmlCacheUrl
- * @property {function(): string} graphApiModuleUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
  * @property {function(string, string=): string} previewKey
@@ -334,11 +333,6 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
- * @property {function(unknown): BlueprintGraphData[]} graphsFromManifest
- * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): (BlueprintGraphData | null)} getGraphData
- * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): BlueprintGraphVariant[]} getGraphVariants
- * @property {function(string=, BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadManifestGraphs
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadGraphs
  */
 
 /**
@@ -348,7 +342,6 @@
  * @property {function(string): string} dataUrl
  * @property {function(): string} manifestUrl
  * @property {function(): string} htmlCacheUrl
- * @property {function(): string} graphApiModuleUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
  * @property {function(string, string=): string} previewKey
@@ -359,11 +352,6 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
- * @property {function(unknown): BlueprintGraphData[]} graphsFromManifest
- * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): (BlueprintGraphData | null)} getGraphData
- * @property {function((ParentNode | Element | Document | DocumentFragment | null)=): BlueprintGraphVariant[]} getGraphVariants
- * @property {function(string=, BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadManifestGraphs
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGraphData[]>} loadGraphs
  * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintPreviewResult>} resolvePreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintPreviewResult>} renderPreviewInto
  * @property {function(string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} resolveCanonicalPreview

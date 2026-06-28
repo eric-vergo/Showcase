@@ -479,45 +479,46 @@ class TestPreviewRuntimeRegressions:
                         }
                     );
                     const customCalls = [];
+                    const customFetchJson = function (url) {
+                        customCalls.push(url);
+                        if (url.endsWith("blueprint-manifest.json")) {
+                            return Promise.resolve({
+                                previews: [
+                                    {
+                                        key: "custom_loader--statement",
+                                        label: "custom_loader",
+                                        facet: "statement",
+                                        title: "Custom loader"
+                                    }
+                                ],
+                                graphs: [
+                                    {
+                                        schemaVersion: 1,
+                                        key: "graph:custom-loader",
+                                        nodes: [],
+                                        edges: [],
+                                        groups: []
+                                    }
+                                ]
+                            });
+                        }
+                        if (url.endsWith("blueprint-html-cache.json")) {
+                            return Promise.resolve({
+                                entries: [
+                                    {
+                                        key: "custom_loader--statement",
+                                        html: "<p>Custom loader body</p>"
+                                    }
+                                ]
+                            });
+                        }
+                        throw new Error("Unexpected custom loader URL: " + url);
+                    };
                     const customApi = preview.createPreview({
                         bindTemplatePreviews: false,
                         dataBaseUrl:
                           "https://example.invalid/html-multi/-verso-data/api/preview.mjs",
-                        fetchJson(url) {
-                            customCalls.push(url);
-                            if (url.endsWith("blueprint-manifest.json")) {
-                                return Promise.resolve({
-                                    previews: [
-                                        {
-                                            key: "custom_loader--statement",
-                                            label: "custom_loader",
-                                            facet: "statement",
-                                            title: "Custom loader"
-                                        }
-                                    ],
-                                    graphs: [
-                                        {
-                                            schemaVersion: 1,
-                                            key: "graph:custom-loader",
-                                            nodes: [],
-                                            edges: [],
-                                            groups: []
-                                        }
-                                    ]
-                                });
-                            }
-                            if (url.endsWith("blueprint-html-cache.json")) {
-                                return Promise.resolve({
-                                    entries: [
-                                        {
-                                            key: "custom_loader--statement",
-                                            html: "<p>Custom loader body</p>"
-                                        }
-                                    ]
-                                });
-                            }
-                            throw new Error("Unexpected custom loader URL: " + url);
-                        }
+                        fetchJson: customFetchJson
                     });
                     const customHost = document.createElement("section");
                     document.body.appendChild(customHost);
@@ -526,7 +527,13 @@ class TestPreviewRuntimeRegressions:
                         "custom_loader--statement",
                         { hydrate: false, renderMath: false }
                     );
-                    const customGraphs = await customApi.loadGraphs();
+                    const graphModule = await import(
+                      new URL("../-verso-data/api/graph.mjs", window.location.href).href
+                    );
+                    const customGraphs = await graphModule.loadManifestGraphs(
+                      customApi.manifestUrl(),
+                      { fetchJson: customFetchJson }
+                    );
                     const afterCustomHost = document.createElement("section");
                     document.body.appendChild(afterCustomHost);
                     const afterCustomResult = await api.renderPreviewInto(

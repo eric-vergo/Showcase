@@ -40,7 +40,6 @@ PREVIEW_ESM_EXTRA_EXPORTS = {
     "createPreview",
     "currentRenderApi",
     "getRenderApi",
-    "normalizeGraphData",
     "ready",
     "version",
 }
@@ -50,17 +49,11 @@ DATA_ESM_EXPORTS = {
     "dataApiModuleUrl",
     "dataUrl",
     "getDataApi",
-    "getGraphData",
-    "getGraphVariants",
-    "graphApiModuleUrl",
-    "graphsFromManifest",
     "htmlCacheUrl",
-    "loadGraphs",
     "loadHtmlCache",
     "loadHtmlCacheEntry",
     "loadManifest",
     "loadManifestEntry",
-    "loadManifestGraphs",
     "manifestUrl",
     "previewApiModuleUrl",
     "previewKey",
@@ -68,6 +61,17 @@ DATA_ESM_EXPORTS = {
     "readManifestStatus",
     "ready",
     "statementPreviewKey",
+    "version",
+}
+GRAPH_ESM_EXPORTS = {
+    "dataUrl",
+    "getGraphData",
+    "getGraphVariants",
+    "graphApiModuleUrl",
+    "loadGraphs",
+    "loadManifestGraphs",
+    "renderGraphBlock",
+    "renderGraphs",
     "version",
 }
 GRAPH_CORE_HELPERS = {
@@ -227,7 +231,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         for marker in (
             "Runtime-local diagnostics and page-local template capture.",
-            "Generated-data URL helpers and graph-core delegation.",
+            "Generated-data URL helpers.",
             "Manifest/cache status, loading, and diagnostics.",
             "Preview resolution joins semantic manifest entries with opaque body fragments.",
             "Canonical generated-node rendering.",
@@ -392,8 +396,8 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("readPublicGraphVariants(previewUtils, graphBlock)", runtime)
-        self.assertIn("previewUtils.getGraphVariants(root)", runtime)
+        self.assertIn("readPublicGraphVariants(graphBlock)", runtime)
+        self.assertIn("coreGetGraphVariants(root)", runtime)
         self.assertIn("export function startGraphRuntime(previewUtils, options)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)
 
@@ -427,9 +431,12 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_graph_helpers_are_owned_by_graph_core(self) -> None:
         core = (BLUEPRINT_SRC / "blueprint-graph-core.mjs").read_text(encoding="utf-8")
         graph_esm = (BLUEPRINT_SRC / "blueprint-graph-api.mjs").read_text(encoding="utf-8")
-        runtime_data = (BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs").read_text(
+        graph_runtime = (BLUEPRINT_SRC / "Commands" / "graph.mjs").read_text(
             encoding="utf-8"
         )
+        runtime_data = (
+            BLUEPRINT_SRC / "Commands" / "preview-runtime-data.mjs"
+        ).read_text(encoding="utf-8")
         common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
@@ -441,7 +448,12 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         )
 
         self.assertIn('from "./blueprint-graph-core.mjs";', graph_esm)
-        self.assertIn('from "../blueprint-graph-core.mjs";', runtime_data)
+        self.assertIn('from "../blueprint-graph-core.mjs";', graph_runtime)
+        self.assertEqual(esm_named_exports(graph_esm), GRAPH_ESM_EXPORTS)
+        self.assertIn(
+            'throw new Error("Blueprint graph rendering requires options.previewUtils from createPreview().");',
+            graph_esm,
+        )
         self.assertIn("callRuntimeGraphCore", classic_adapter)
         self.assertIn("VersoBlueprint.__private", classic_adapter)
         self.assertNotIn("callRuntimeGraphCore", common)
@@ -455,9 +467,10 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("window.bpGraphApi", runtime_data)
         for helper in GRAPH_CORE_HELPERS:
             self.assertIn(f"function {helper}", core)
+        for helper in GRAPH_CORE_HELPERS - {"getGraphData", "getGraphVariants"}:
             self.assertNotIn(f"function {helper}", graph_esm)
         for helper in GRAPH_CORE_IMPLEMENTATION_HELPERS:
-            self.assertNotIn(f"function {helper}", runtime_data)
+            self.assertNotIn(f"function {helper}", graph_runtime)
             self.assertNotIn(f"function {helper}", runtime)
 
     def test_preview_helpers_are_owned_by_preview_core(self) -> None:
