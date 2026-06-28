@@ -1,11 +1,51 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT_SRC = PACKAGE_ROOT / "src" / "VersoBlueprint"
+PUBLIC_API_CONTRACT = json.loads(
+    (PACKAGE_ROOT / "tests" / "preview_runtime_api_contract.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def normalize_public_api_entry(entry: dict[str, str]) -> dict[str, str]:
+    normalized = dict(entry)
+    normalized["package_export"] = normalized.pop("packageExport")
+    normalized["jsdoc_page"] = normalized.pop("jsdocPage")
+    return normalized
+
+
+PUBLIC_API_MODULES = {
+    name: normalize_public_api_entry(entry)
+    for name, entry in PUBLIC_API_CONTRACT["modules"].items()
+}
+PUBLIC_API_TYPES_MODULE = normalize_public_api_entry(
+    PUBLIC_API_CONTRACT["typesModule"]
+)
+PUBLIC_API_PACKAGE_EXPORTS = {
+    entry["package_export"]: {
+        "source": entry["source"],
+        "declaration": entry["declaration"],
+    }
+    for entry in [*PUBLIC_API_MODULES.values(), PUBLIC_API_TYPES_MODULE]
+}
+PUBLIC_API_JSDOC_SOURCES = {
+    entry["source"]
+    for entry in [*PUBLIC_API_MODULES.values(), PUBLIC_API_TYPES_MODULE]
+}
+PUBLIC_GENERATED_API_MODULES = {
+    entry["generated"]
+    for entry in PUBLIC_API_MODULES.values()
+}
+PUBLIC_DATA_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["data"])
+PUBLIC_PREVIEW_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["preview"])
+PUBLIC_GRAPH_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["graph"])
 RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-base.mjs"),
     Path("Commands/preview-runtime-data.mjs"),
