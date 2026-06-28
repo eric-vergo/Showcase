@@ -57,5 +57,6 @@ import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.StyleSwitcher
 import VersoBlueprint.Profiling
+import VersoBlueprint.Widget
 
 set_option doc.verso true
