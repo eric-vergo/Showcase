@@ -209,6 +209,9 @@ The browser APIs emitted under `-verso-data/api/` remain plain JavaScript ESM.
 API documentation is written in JSDoc, rendered with Docdash, and TypeScript
 checks the public API entrypoints plus their direct support modules with
 `allowJs` and `checkJs`.
+The generated-site public browser entrypoints are `api/preview.mjs`,
+`api/data.mjs`, and `api/graph.mjs`; the other emitted JavaScript modules are
+private runtime support chunks for those entrypoints and generated pages.
 This first pass intentionally focuses on the custom-client API surface; broader
 private runtime coverage and `noImplicitAny` tightening are follow-up cleanup
 items. TypeScript users consume generated declaration files from `dist/types`;
