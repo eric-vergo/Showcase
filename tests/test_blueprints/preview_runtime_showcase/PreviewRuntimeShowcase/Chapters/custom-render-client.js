@@ -184,14 +184,15 @@
     return item;
   }
 
-  async function renderGraphData(api, root) {
+  async function renderGraphData(root) {
     const card = root.querySelector("[data-bp-custom-client-graph]");
     if (!card) return { ok: true };
     const summary = card.querySelector("[data-bp-custom-client-graph-summary]");
     const nodesTarget = card.querySelector("[data-bp-custom-client-graph-nodes]");
     if (summary) summary.replaceChildren();
     if (nodesTarget) nodesTarget.replaceChildren();
-    const graphs = typeof api.loadGraphs === "function" ? await api.loadGraphs() : [];
+    const graphModule = await import("../-verso-data/api/graph.mjs");
+    const graphs = typeof graphModule.loadGraphs === "function" ? await graphModule.loadGraphs() : [];
     const graph = graphs[0] || null;
     card.dataset.bpGraphOk = graph ? "true" : "false";
     card.dataset.bpGraphCount = String(graphs.length);
@@ -263,7 +264,7 @@
       const results = await Promise.all(examples.map(function (example) {
         return renderExample(api, example);
       }));
-      const graphResult = await renderGraphData(api, root);
+      const graphResult = await renderGraphData(root);
       const ok = results.every(function (result, index) {
         return result && result.ok === expectedOk(examples[index]);
       }) && graphResult.ok;

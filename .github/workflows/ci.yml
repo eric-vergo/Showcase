@@ -107,8 +107,12 @@ jobs:
         run: npm run typecheck
       - name: Build JavaScript API declarations
         run: npm run build:types
+      - name: Check JavaScript API declarations
+        run: npm run check:types
       - name: Generate JavaScript API docs
         run: npm run docs
+      - name: Check JavaScript API docs
+        run: npm run check:docs
       - name: Upload JavaScript API docs artifact
         uses: actions/upload-artifact@v7
         with:

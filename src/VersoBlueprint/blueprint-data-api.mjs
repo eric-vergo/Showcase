@@ -5,13 +5,13 @@ import { createBlueprintDataApi } from "./Commands/preview-runtime-data.mjs";
  * Generated-data API for custom Blueprint clients.
  *
  * This module is emitted as `-verso-data/api/data.mjs` in generated sites. It
- * exposes manifest, HTML cache, graph, and URL helpers without installing any
+ * exposes manifest, HTML cache, and URL helpers without installing any
  * page-global render hook.
  *
  * @module blueprint-data-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintHtmlCacheEntry, BlueprintGraphData, BlueprintGraphVariant } from "./blueprint-api-types.mjs" */
+/** @import { BlueprintDataApiOptions, BlueprintDataApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintHtmlCacheEntry } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -87,16 +87,6 @@ export function manifestUrl(baseUrl) {
  */
 export function htmlCacheUrl(baseUrl) {
   return previewUrls.htmlCacheUrl(baseUrl);
-}
-
-/**
- * Resolve the generated graph API module URL.
- *
- * @param {string} [baseUrl] Base URL. Defaults to this module URL.
- * @returns {string}
- */
-export function graphApiModuleUrl(baseUrl) {
-  return previewUrls.graphApiModuleUrl(baseUrl);
 }
 
 /**
@@ -210,63 +200,11 @@ export function loadHtmlCacheEntry(key, options) {
   return callDefaultApi(defaultDataHandle.readDefaultApi, "data", "loadHtmlCacheEntry", [key, options]);
 }
 
-/**
- * Extract graph variants from an already-loaded manifest object.
- *
- * @param {unknown} manifest Parsed manifest JSON.
- * @returns {BlueprintGraphData[]}
- */
-export function graphsFromManifest(manifest) {
-  return defaultDataHandle.readDefaultApi().graphsFromManifest(manifest);
-}
-
-/**
- * Read embedded graph data from a generated graph page.
- *
- * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
- * @returns {BlueprintGraphData | null}
- */
-export function getGraphData(root) {
-  return defaultDataHandle.readDefaultApi().getGraphData(root);
-}
-
-/**
- * Read graph variants embedded in a generated graph page.
- *
- * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
- * @returns {BlueprintGraphVariant[]}
- */
-export function getGraphVariants(root) {
-  return defaultDataHandle.readDefaultApi().getGraphVariants(root);
-}
-
-/**
- * Load graph variants from a manifest URL.
- *
- * @param {string} [url] Manifest URL. Defaults to this module's generated-data manifest.
- * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
- * @returns {Promise<BlueprintGraphData[]>}
- */
-export function loadManifestGraphs(url, options) {
-  return defaultDataHandle.readDefaultApi().loadManifestGraphs(url, options);
-}
-
-/**
- * Load graph variants from this generated site's default manifest.
- *
- * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
- * @returns {Promise<BlueprintGraphData[]>}
- */
-export function loadGraphs(options) {
-  return defaultDataHandle.readDefaultApi().loadGraphs(options);
-}
-
 const dataApi = {
   version,
   dataUrl,
   manifestUrl,
   htmlCacheUrl,
-  graphApiModuleUrl,
   dataApiModuleUrl,
   previewApiModuleUrl,
   createPreviewData,
@@ -279,11 +217,6 @@ const dataApi = {
   loadHtmlCache,
   readHtmlCacheStatus,
   loadHtmlCacheEntry,
-  getGraphData,
-  getGraphVariants,
-  graphsFromManifest,
-  loadManifestGraphs,
-  loadGraphs,
   previewKey,
   statementPreviewKey
 };

@@ -99,11 +99,13 @@ Work:
      binding
      (landed as `Commands/graph.mjs`, imported by the Manual page runtime,
      emitted for `api/graph.mjs`, and retained by the classic slide adapter)
-8. deduplicate the public JSDoc API object typedefs once the JS API surface
-   settles; today `BlueprintPreviewApi` deliberately repeats the data API
-   methods from `BlueprintDataApi` because classic JSDoc composition is brittle
-   for generated declaration output, but the long-term source of truth should be
-   a single shared API shape plus preview-specific extensions
+8. deduplicate the public JSDoc API object typedefs once the documentation and
+   declaration toolchain can express typedef composition cleanly. Today
+   `BlueprintPreviewApi` repeats the data API methods from `BlueprintDataApi`:
+   TypeScript accepts intersection typedefs, but JSDoc/Docdash rejects `&`,
+   while JSDoc-native `@augments` on a typedef is rejected by TypeScript. Keep
+   generated declaration checks in CI so this explicit duplication does not
+   silently drift or collapse to broad types.
 
 ### Data Model and Status Semantics
 

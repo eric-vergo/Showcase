@@ -3,13 +3,7 @@ import {
   getGraphData as coreGetGraphData,
   getGraphVariants as coreGetGraphVariants,
   graphApiModuleUrl as coreGraphApiModuleUrl,
-  graphCanvasFor as coreGraphCanvasFor,
-  graphFallbackVariants as coreGraphFallbackVariants,
-  graphsFromManifest as coreGraphsFromManifest,
-  loadJson as coreLoadJson,
   loadManifestGraphs as coreLoadManifestGraphs,
-  normalizeGraphData as coreNormalizeGraphData,
-  readGraphJsonScript as coreReadGraphJsonScript,
   version as coreVersion
 } from "./blueprint-graph-core.mjs";
 
@@ -17,8 +11,9 @@ import {
  * Graph-only Blueprint browser API.
  *
  * This module is emitted as `-verso-data/api/graph.mjs` in generated sites. It
- * exposes URL helpers and graph data readers without loading the preview
- * runtime.
+ * exposes URL helpers, graph data readers, and graph-block render helpers.
+ * Data-only calls do not load the interactive graph renderer; render helpers
+ * lazy-load it when called.
  *
  * @module blueprint-graph-api
  */
@@ -45,22 +40,26 @@ export const dataUrl = (filename, baseUrl = moduleUrl) => coreDataUrl(filename, 
  * @returns {string}
  */
 export const graphApiModuleUrl = (baseUrl = moduleUrl) => coreGraphApiModuleUrl(baseUrl);
-/** Find the graph canvas associated with a root node. */
-export const graphCanvasFor = coreGraphCanvasFor;
-/** Read and parse an embedded graph JSON script from a graph page. */
-export const readGraphJsonScript = coreReadGraphJsonScript;
-/** Read the DOT fallback graph variants embedded in a graph page. */
-export const graphFallbackVariants = coreGraphFallbackVariants;
-/** Normalize raw graph JSON into the stable graph payload shape. */
-export const normalizeGraphData = coreNormalizeGraphData;
-/** Extract graph variants from a parsed Blueprint manifest. */
-export const graphsFromManifest = coreGraphsFromManifest;
-/** Read embedded graph data from the current graph page or supplied root. */
-export const getGraphData = coreGetGraphData;
-/** Read embedded graph variants from the current graph page or supplied root. */
-export const getGraphVariants = coreGetGraphVariants;
-/** Load and parse JSON using `fetch` or `options.fetchJson`. */
-export const loadJson = coreLoadJson;
+
+/**
+ * Read embedded graph data from the current graph page or supplied root.
+ *
+ * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
+ * @returns {BlueprintGraphData | null}
+ */
+export function getGraphData(root) {
+  return coreGetGraphData(root);
+}
+
+/**
+ * Read embedded graph variants from the current graph page or supplied root.
+ *
+ * @param {ParentNode | Element | Document | DocumentFragment} [root] Search root.
+ * @returns {BlueprintGraphVariant[]}
+ */
+export function getGraphVariants(root) {
+  return coreGetGraphVariants(root);
+}
 
 /**
  * Load graph variants from a manifest URL.
@@ -102,54 +101,26 @@ function loadGraphRuntimeModule() {
   return graphRuntimeModulePromise;
 }
 
-/**
- * Load the graph runtime's D3 and Graphviz dependencies.
- *
- * The interactive graph renderer is imported only when a render helper is used;
- * data-only calls such as `loadGraphs()` do not load the renderer.
- *
- * @param {BlueprintGraphRenderOptions} [options] Runtime dependency overrides.
- * @returns {Promise<unknown>}
- */
-export async function ensureGraphRuntimeLibraries(options) {
-  const runtime = await loadGraphRuntimeModule();
-  return runtime.ensureGraphRuntimeLibraries(options);
+function hasSearchRootShape(value) {
+  return !!(
+    value &&
+    typeof value === "object" &&
+    typeof value.querySelectorAll === "function"
+  );
 }
 
-/**
- * Resolve the render-capable preview API used by graph rendering helpers.
- *
- * @param {BlueprintGraphRenderOptions} [options] Render API lookup options.
- * @returns {Promise<Record<string, unknown>>}
- */
-export async function getGraphRenderApi(options) {
-  const runtime = await loadGraphRuntimeModule();
-  return runtime.getGraphRenderApi(options);
+function readGraphRenderOptions(root, options) {
+  if (options && typeof options === "object") return options;
+  if (root && typeof root === "object" && !hasSearchRootShape(root)) return root;
+  return {};
 }
 
-/**
- * Initialize one already-loaded graph block with an explicit preview API.
- *
- * @param {Record<string, unknown>} previewUtils Render-capable Blueprint preview API.
- * @param {Element} graphBlock Standard `.bp_graph_fullwidth` graph block.
- * @param {BlueprintGraphRenderOptions} [options] Graph render options.
- * @returns {Promise<BlueprintGraphController | null>}
- */
-export async function initGraphBlock(previewUtils, graphBlock, options) {
-  const runtime = await loadGraphRuntimeModule();
-  return runtime.initGraphBlock(previewUtils, graphBlock, options);
-}
-
-/**
- * Install graph rendering helpers onto a preview API object.
- *
- * @param {Record<string, unknown>} previewUtils Render-capable Blueprint preview API.
- * @param {BlueprintGraphRenderOptions} [options] Graph render defaults.
- * @returns {Promise<Record<string, unknown>>}
- */
-export async function installGraphRenderApi(previewUtils, options) {
-  const runtime = await loadGraphRuntimeModule();
-  return runtime.installGraphRenderApi(previewUtils, options);
+function requirePreviewUtils(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (!opts.previewUtils || typeof opts.previewUtils !== "object") {
+    throw new Error("Blueprint graph rendering requires options.previewUtils from createPreview().");
+  }
+  return opts;
 }
 
 /**
@@ -161,7 +132,7 @@ export async function installGraphRenderApi(previewUtils, options) {
  */
 export async function renderGraphBlock(graphBlock, options) {
   const runtime = await loadGraphRuntimeModule();
-  return runtime.renderGraphBlock(graphBlock, options);
+  return runtime.renderGraphBlock(graphBlock, requirePreviewUtils(options));
 }
 
 /**
@@ -173,27 +144,21 @@ export async function renderGraphBlock(graphBlock, options) {
  */
 export async function renderGraphs(root, options) {
   const runtime = await loadGraphRuntimeModule();
-  return runtime.renderGraphs(root, options);
+  const renderOptions = requirePreviewUtils(readGraphRenderOptions(root, options));
+  if (!options && renderOptions === root) {
+    return runtime.renderGraphs(renderOptions);
+  }
+  return runtime.renderGraphs(root, renderOptions);
 }
 
 const graphApi = {
   version,
   dataUrl,
   graphApiModuleUrl,
-  graphCanvasFor,
-  readGraphJsonScript,
-  graphFallbackVariants,
-  normalizeGraphData,
-  graphsFromManifest,
   getGraphData,
   getGraphVariants,
-  loadJson,
   loadManifestGraphs,
   loadGraphs,
-  ensureGraphRuntimeLibraries,
-  getGraphRenderApi,
-  initGraphBlock,
-  installGraphRenderApi,
   renderGraphBlock,
   renderGraphs
 };

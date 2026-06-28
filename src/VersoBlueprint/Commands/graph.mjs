@@ -1,4 +1,8 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
+import {
+  getGraphData as coreGetGraphData,
+  getGraphVariants as coreGetGraphVariants
+} from "../blueprint-graph-core.mjs";
 
 const {
   debounce,
@@ -25,18 +29,12 @@ function collectPreviewTemplates(previewUtils, rootNode) {
   );
 }
 
-function readPublicGraphData(previewUtils, root) {
-  if (previewUtils && typeof previewUtils.getGraphData === "function") {
-    return previewUtils.getGraphData(root);
-  }
-  return null;
+function readPublicGraphData(root) {
+  return coreGetGraphData(root);
 }
 
-function readPublicGraphVariants(previewUtils, root) {
-  let variants = [];
-  if (previewUtils && typeof previewUtils.getGraphVariants === "function") {
-    variants = previewUtils.getGraphVariants(root);
-  }
+function readPublicGraphVariants(root) {
+  const variants = coreGetGraphVariants(root);
   if (Array.isArray(variants) && variants.length > 0) {
     return variants;
   }
@@ -308,7 +306,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
               : null
           );
       if (existingController) return existingController;
-      const graphApiData = readPublicGraphData(previewUtils, graphBlock);
+      const graphApiData = readPublicGraphData(graphBlock);
       if (graphApiData) {
         graphState.graphData = graphApiData;
         graphBlock.__bpGraphData = graphApiData;
@@ -378,7 +376,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         { keepOpen: true }
       );
 
-      const rawVariants = readPublicGraphVariants(previewUtils, graphBlock);
+      const rawVariants = readPublicGraphVariants(graphBlock);
       if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
       const variantsByKey = new Map();
       rawVariants.forEach(function (variant) {
