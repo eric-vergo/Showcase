@@ -26,6 +26,11 @@ def parse_args() -> argparse.Namespace:
         default="_site",
         help="Directory to populate with the Pages artifact.",
     )
+    parser.add_argument(
+        "--js-api-docs-root",
+        default=None,
+        help="Optional generated JSDoc directory to publish under js-api/.",
+    )
     return parser.parse_args()
 
 
@@ -175,6 +180,16 @@ def copy_reference_sites(reference_root: Path, publish_reference_root: Path) -> 
     return release_projects
 
 
+def copy_js_api_docs(js_api_docs_root: Path, publish_js_api_root: Path) -> None:
+    if not js_api_docs_root.exists():
+        raise SystemExit(f"missing JavaScript API docs root: {js_api_docs_root}")
+    if not js_api_docs_root.is_dir():
+        raise SystemExit(f"JavaScript API docs root is not a directory: {js_api_docs_root}")
+    if not (js_api_docs_root / "index.html").exists():
+        raise SystemExit(f"JavaScript API docs root is missing index.html: {js_api_docs_root}")
+    shutil.copytree(js_api_docs_root, publish_js_api_root)
+
+
 def main() -> int:
     args = parse_args()
     reference_root = Path(args.reference_root).resolve()
@@ -196,6 +211,10 @@ def main() -> int:
     release_projects = copy_reference_sites(reference_root, publish_reference_root)
     write_reference_index(publish_reference_root, release_projects)
     write_unique_project_aliases(publish_reference_root, release_projects)
+
+    publish_js_api_docs = args.js_api_docs_root is not None
+    if publish_js_api_docs:
+        copy_js_api_docs(Path(args.js_api_docs_root).resolve(), output_root / "js-api")
 
     test_blueprints: list[str] = []
     for test_dir in sorted(path for path in test_root.iterdir() if path.is_dir()):
@@ -236,6 +255,14 @@ def main() -> int:
                         ],
                         "</ul>",
                     ]
+                ),
+                *(
+                    [
+                        "<h2>JavaScript API</h2>",
+                        "<p><a href=\"js-api/\">Open JavaScript API documentation</a></p>",
+                    ]
+                    if publish_js_api_docs
+                    else []
                 ),
                 "<h2>Test Blueprints</h2>",
                 "<p><a href=\"test-blueprints/\">Open categorized test blueprint index</a></p>",

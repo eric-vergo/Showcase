@@ -673,6 +673,8 @@ pushes to release branches named like `v4.30.0`, and manual dispatch, it:
   `publish_reference: true`
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
+- builds and checks the generated JavaScript API documentation when assembling
+  a deployable site artifact
 - stages a branch-local site artifact under `_site/` only when the selected
   release target has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
@@ -707,6 +709,7 @@ The branch-local site artifact produced by `reference-blueprints.yml` for one
 release includes:
 
 - `_site/index.html`
+- `_site/js-api/`
 - `_site/reference-blueprints/<project-id>/` for each deployable reference
   target selected on that branch
 - `_site/test-blueprints/index.html`
@@ -717,6 +720,7 @@ The combined Pages artifact produced by `reference-blueprints-deploy.yml`
 includes:
 
 - `_site/index.html`
+- `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release slices
 - `_site/test-blueprints/index.html`
