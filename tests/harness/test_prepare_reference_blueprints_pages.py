@@ -13,18 +13,28 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
-    def run_helper(self, reference_root: Path, test_root: Path, output_root: Path) -> subprocess.CompletedProcess[str]:
+    def run_helper(
+        self,
+        reference_root: Path,
+        test_root: Path,
+        output_root: Path,
+        *,
+        js_api_docs_root: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        command = [
+            sys.executable,
+            "scripts/prepare_reference_blueprints_pages.py",
+            "--reference-root",
+            str(reference_root),
+            "--test-root",
+            str(test_root),
+            "--output-root",
+            str(output_root),
+        ]
+        if js_api_docs_root is not None:
+            command.extend(["--js-api-docs-root", str(js_api_docs_root)])
         return subprocess.run(
-            [
-                sys.executable,
-                "scripts/prepare_reference_blueprints_pages.py",
-                "--reference-root",
-                str(reference_root),
-                "--test-root",
-                str(test_root),
-                "--output-root",
-                str(output_root),
-            ],
+            command,
             cwd=PACKAGE_ROOT,
             text=True,
             capture_output=True,
@@ -90,6 +100,52 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
             self.assertIn('href="project-template/"', reference_index)
             self.assertIn('href="noperthedron/"', reference_index)
             self.assertNotIn("reference-blueprints/project-template/", reference_index)
+            self.assertNotIn("js-api/", landing_index)
+
+    def test_prepare_pages_stages_javascript_api_docs_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            reference_root = tmp_path / "reference-blueprints"
+            test_root = tmp_path / "test-blueprints"
+            js_api_docs_root = tmp_path / "jsdoc-api"
+            output_root = tmp_path / "_site"
+
+            (reference_root / "project-template" / "html-multi").mkdir(parents=True)
+            (reference_root / "project-template" / "html-multi" / "index.html").write_text(
+                "reference project template",
+                encoding="utf-8",
+            )
+            (test_root / "preview_runtime_showcase" / "html-multi").mkdir(parents=True)
+            (test_root / "preview_runtime_showcase" / "html-multi" / "index.html").write_text(
+                "test showcase",
+                encoding="utf-8",
+            )
+            js_api_docs_root.mkdir()
+            (js_api_docs_root / "index.html").write_text("js api docs", encoding="utf-8")
+            (js_api_docs_root / "module-blueprint-preview-api.html").write_text(
+                "preview api",
+                encoding="utf-8",
+            )
+
+            result = self.run_helper(
+                reference_root,
+                test_root,
+                output_root,
+                js_api_docs_root=js_api_docs_root,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+            self.assertEqual(
+                (output_root / "js-api" / "index.html").read_text(encoding="utf-8"),
+                "js api docs",
+            )
+            self.assertEqual(
+                (output_root / "js-api" / "module-blueprint-preview-api.html").read_text(encoding="utf-8"),
+                "preview api",
+            )
+            landing_index = (output_root / "index.html").read_text(encoding="utf-8")
+            self.assertIn("JavaScript API", landing_index)
+            self.assertIn('href="js-api/"', landing_index)
 
     def test_prepare_pages_stages_release_namespaced_reference_blueprints(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -71,5 +71,12 @@ The declarations produced by `npm run build:types` are build artifacts under
 that the generated public declarations keep named API types instead of
 collapsing to broad `any` shapes. The HTML docs produced by `npm run docs` are
 written to `_out/jsdoc-api`; `npm run check:docs` validates the generated
-module pages, local links, and Blueprint typedef anchors before CI uploads that
-directory as the `js-api-docs` artifact.
+module pages, local links, and Blueprint typedef anchors.
+
+CI uses the generated docs in two places:
+
+- `ci.yml` uploads `_out/jsdoc-api` as the `js-api-docs` artifact for direct
+  inspection from pull requests and branch runs.
+- The Pages assembly workflows rebuild and check the same docs, then stage
+  them under `_site/js-api/` so the deployed site exposes them at
+  `https://leanprover.github.io/verso-blueprint/js-api/`.
