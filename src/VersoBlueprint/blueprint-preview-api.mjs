@@ -1,11 +1,3 @@
-import {
-  getGraphData,
-  getGraphVariants,
-  graphsFromManifest,
-  loadGraphs,
-  loadManifestGraphs,
-  normalizeGraphData
-} from "./blueprint-graph-api.mjs";
 import { callDefaultApi, callDefaultApiSync, createDefaultApiHandle, createPreviewUrlApi, fallbackStoreStatus, optionsWithDefaultDataBaseUrl, version } from "./blueprint-api-common.mjs";
 import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
 
@@ -19,16 +11,7 @@ import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
  * @module blueprint-preview-api
  */
 
-/** @import { BlueprintDataApiOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintHtmlCacheEntry, BlueprintGraphData, BlueprintGraphVariant, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult } from "./blueprint-api-types.mjs" */
-
-export {
-  getGraphData,
-  getGraphVariants,
-  graphsFromManifest,
-  loadGraphs,
-  loadManifestGraphs,
-  normalizeGraphData
-};
+/** @import { BlueprintDataApiOptions, BlueprintPreviewOptions, BlueprintPreviewApi, BlueprintStoreStatus, BlueprintManifestEntry, BlueprintHtmlCacheEntry, BlueprintPreviewResult, BlueprintCanonicalPreviewResult, BlueprintRenderNodeRequest, BlueprintRenderNodeResult } from "./blueprint-api-types.mjs" */
 
 export { version };
 
@@ -101,16 +84,6 @@ export function manifestUrl(baseUrl) {
  */
 export function htmlCacheUrl(baseUrl) {
   return previewUrls.htmlCacheUrl(baseUrl);
-}
-
-/**
- * Resolve the generated graph API module URL.
- *
- * @param {string} [baseUrl] Base URL. Defaults to this module URL.
- * @returns {string}
- */
-export function graphApiModuleUrl(baseUrl) {
-  return previewUrls.graphApiModuleUrl(baseUrl);
 }
 
 /**
@@ -299,7 +272,6 @@ const previewApi = {
   dataUrl,
   manifestUrl,
   htmlCacheUrl,
-  graphApiModuleUrl,
   dataApiModuleUrl,
   previewApiModuleUrl,
   createPreview,
@@ -312,12 +284,6 @@ const previewApi = {
   loadHtmlCache,
   readHtmlCacheStatus,
   loadHtmlCacheEntry,
-  getGraphData,
-  getGraphVariants,
-  graphsFromManifest,
-  loadManifestGraphs,
-  loadGraphs,
-  normalizeGraphData,
   previewKey,
   statementPreviewKey,
   resolvePreview,

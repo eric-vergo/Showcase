@@ -256,7 +256,7 @@ private def graphDataExample : Verso.Output.Html :=
     clientTag "h3" #[("data-bp-custom-client-title", "true")] (clientText "Graph manifest data")
   let noteNode :=
     clientTag "p" #[("class", "bp_custom_render_client_note")]
-      (clientText "Standalone manifest access with api.loadGraphs; no rendered graph block is required on this page.")
+      (clientText "Standalone manifest access with api/graph.mjs loadGraphs; no rendered graph block is required on this page.")
   let summaryNode :=
     clientTag "div"
       #[("class", "bp_custom_render_client_summary"), ("data-bp-custom-client-graph-summary", "true")]

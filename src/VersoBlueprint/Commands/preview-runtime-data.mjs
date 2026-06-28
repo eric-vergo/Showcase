@@ -1,8 +1,7 @@
-import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
-import { getGraphData as coreGetGraphData, getGraphVariants as coreGetGraphVariants, graphsFromManifest as coreGraphsFromManifest, loadManifestGraphs as coreLoadManifestGraphs } from "../blueprint-graph-core.mjs";
+import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
 
-  // Generated-data URL helpers and graph-core delegation.
+  // Generated-data URL helpers.
 
   function normalizeBlueprintDataOptions(options) {
     return options && typeof options === "object" ? options : {};
@@ -95,37 +94,12 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       return coreManifestUrl(readBlueprintDataBaseUrl());
     }
 
-    function graphApiModuleUrlForApi() {
-      return coreGraphApiModuleUrl(readBlueprintDataBaseUrl());
-    }
-
     function dataApiModuleUrlForApi() {
       return coreDataApiModuleUrl(readBlueprintDataBaseUrl());
     }
 
     function previewApiModuleUrlForApi() {
       return corePreviewApiModuleUrl(readBlueprintDataBaseUrl());
-    }
-
-    function graphDataFromManifestForApi(manifest) {
-      return coreGraphsFromManifest(manifest);
-    }
-
-    function collectGraphDataForApi(root) {
-      return coreGetGraphData(root);
-    }
-
-    function collectGraphVariantsForApi(root) {
-      return coreGetGraphVariants(root);
-    }
-
-    function loadManifestGraphsForApi(url, options) {
-      const manifestUrl = typeof url === "string" && url.trim() ? url : blueprintManifestUrlForApi();
-      return coreLoadManifestGraphs(manifestUrl, blueprintDataLoadOptions(options));
-    }
-
-    function loadBlueprintGraphsForApi(options) {
-      return coreLoadManifestGraphs(blueprintManifestUrlForApi(), blueprintDataLoadOptions(options));
     }
 
     function blueprintHtmlCacheUrlForApi() {
@@ -362,14 +336,8 @@ import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
       decodeManifest: decodeBlueprintManifest,
       decodeHtmlCache: decodeBlueprintHtmlCache,
       manifestUrl: blueprintManifestUrlForApi,
-      graphApiModuleUrl: graphApiModuleUrlForApi,
       dataApiModuleUrl: dataApiModuleUrlForApi,
       previewApiModuleUrl: previewApiModuleUrlForApi,
-      graphsFromManifest: graphDataFromManifestForApi,
-      getGraphData: collectGraphDataForApi,
-      getGraphVariants: collectGraphVariantsForApi,
-      loadManifestGraphs: loadManifestGraphsForApi,
-      loadGraphs: loadBlueprintGraphsForApi,
       missingPreviewKeyDiagnosticHtml: missingPreviewKeyDiagnosticHtml,
       htmlCacheUrl: blueprintHtmlCacheUrlForApi,
       manifestStore: blueprintManifestStoreForApi,

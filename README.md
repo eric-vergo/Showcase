@@ -218,7 +218,9 @@ Useful maintainer commands:
 
 - `npm run typecheck`
 - `npm run build:types`
+- `npm run check:types`
 - `npm run docs`
+- `npm run check:docs`
 
 Custom clients can import the generated preview module directly from a rendered
 site:

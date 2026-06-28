@@ -13,6 +13,7 @@
     "BlueprintFetchJson",
     "BlueprintFetchText",
     "BlueprintGraphData",
+    "BlueprintGraphLayoutOptions",
     "BlueprintGraphVariant",
     "BlueprintHtmlCacheEntry",
     "BlueprintHydrator",
