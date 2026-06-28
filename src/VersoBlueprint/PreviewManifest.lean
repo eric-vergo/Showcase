@@ -1075,6 +1075,21 @@ def previewMetadataLosses (state : TraverseState) (file : File) : Array PreviewM
               }
     losses
 
+/-- Human-facing warning text for one manifest metadata-loss audit result. -/
+def PreviewMetadataLoss.warningMessage (loss : PreviewMetadataLoss) : String :=
+  let manifestEntry :=
+    match loss.manifestEntryKey? with
+    | some key => s!"manifest entry {key}"
+    | none => "no matching manifest entry"
+  let missing := String.intercalate ", " loss.missingLeanCodePreviewKeys.toList
+  s!"Blueprint manifest: traversal preview {loss.previewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
+
+/-- Report non-fatal generator warnings for traversal metadata lost during manifest export. -/
+def reportPreviewMetadataLossWarnings
+    (logger : Verso.Logger IO) (state : TraverseState) (file : File) : IO Unit := do
+  for loss in previewMetadataLosses state file do
+    logger.reportWarning loss.warningMessage
+
 /-- Stable string form used by manifest query APIs for Blueprint labels. -/
 def labelString : Name → String
   | .str .anonymous s => s
@@ -1774,6 +1789,8 @@ private def dumpManifest
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
       |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  let logger := callbackLogger logError
+  reportPreviewMetadataLossWarnings logger traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.manifest
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1792,6 +1809,8 @@ private def dumpHtmlCache
     ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
       |>.run (callbackLogger logError)
   let files ← buildPreviewDataFiles extensionImpls logError traverseState externalMarkupConfig
+  let logger := callbackLogger logError
+  reportPreviewMetadataLossWarnings logger traverseState files.manifest
   IO.println <| jsonPretty <| toJson files.htmlCache
   if (← errorCount.get) == 0 then pure 0 else pure 1
 
@@ -1825,6 +1844,7 @@ def emitBlueprintPreviewData
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
   let files ← buildPreviewDataFiles extensionImpls logError state externalMarkupConfig
+  reportPreviewMetadataLossWarnings logger state files.manifest
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
   let apiDir := dataDir / apiModuleDirname
