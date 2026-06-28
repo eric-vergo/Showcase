@@ -308,7 +308,9 @@ Read these in order:
    project and file layout
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md): first Blueprint walkthrough
 3. [doc/MANUAL.md](./doc/MANUAL.md): authoring and rendering reference
-4. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs.
+4. [JavaScript API reference](https://leanprover.github.io/verso-blueprint/js-api/):
+   browser-facing data, preview, graph, and shared type APIs
+5. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs.
    Start with [Choosing an API](./doc/API.md#choosing-an-api), then jump to
    [Browser ESM APIs](./doc/API.md#browser-esm-apis),
    [Graph Data APIs](./doc/API.md#graph-data-apis), or
@@ -316,16 +318,16 @@ Read these in order:
 
 ### Developer Documentation
 
-5. [doc/CONTRIBUTING.md](./doc/CONTRIBUTING.md): contribution conventions for
+6. [doc/CONTRIBUTING.md](./doc/CONTRIBUTING.md): contribution conventions for
    this repository
-6. [doc/MAINTAINER_GUIDE.md](./doc/MAINTAINER_GUIDE.md): repository-local
+7. [doc/MAINTAINER_GUIDE.md](./doc/MAINTAINER_GUIDE.md): repository-local
    generation, validation, CI publication, and worktree workflow
-7. [scripts/README.md](./scripts/README.md): lightweight guide to the
+8. [scripts/README.md](./scripts/README.md): lightweight guide to the
    repository scripts and harness entry points
-8. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
+9. [doc/DESIGN_RATIONALE.md](./doc/DESIGN_RATIONALE.md): architecture and design
    boundaries
-9. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
-10. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
+10. [doc/ROADMAP.md](./doc/ROADMAP.md): active cleanup and follow-up work
+11. [doc/UPSTREAM_BACKLOG.md](./doc/UPSTREAM_BACKLOG.md): items intended to move
    back into `verso`, Lake, or Lean
 
 ### Agent Helper Skill
