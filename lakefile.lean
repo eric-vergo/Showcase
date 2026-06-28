@@ -6,7 +6,7 @@ open Lake DSL
 -- require verso from "../verso"
 require verso from git "https://github.com/leanprover/verso"@"v4.31.0"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"v4.31.0"
-require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
+require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 
 package VersoBlueprint where
   precompileModules := false
