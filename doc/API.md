@@ -510,6 +510,12 @@ The generated ESM modules expose these entrypoint groups:
 | `api/preview.mjs` | URL helpers: `dataUrl`, `manifestUrl`, `htmlCacheUrl`, `dataApiModuleUrl`, `previewApiModuleUrl`; renderer creation/default access: `createPreview`, `currentRenderApi`, `getRenderApi`, `ready`; manifest/cache helpers: `loadManifest`, `readManifestStatus`, `loadManifestEntry`, `loadHtmlCache`, `readHtmlCacheStatus`, `loadHtmlCacheEntry`; preview/render helpers: `previewKey`, `statementPreviewKey`, `resolvePreview`, `renderPreviewInto`, `resolveCanonicalPreview`, `renderCanonicalPreviewInto`, `renderNode`, `hydrate`. |
 | `api/graph.mjs` | URL helpers: `dataUrl`, `graphApiModuleUrl`; graph-data helpers: `getGraphData`, `getGraphVariants`, `loadManifestGraphs`, `loadGraphs`; graph rendering helpers: `renderGraphBlock`, `renderGraphs`. |
 
+Only the files listed in this table are public generated-site browser API
+entrypoints. Other generated JavaScript files under `-verso-data/`, including
+the `blueprint-*-core.mjs`, `blueprint-api-common.mjs`, and
+`Commands/*.mjs` support chunks, are implementation modules owned by the
+generated page runtime or by those public entrypoints.
+
 ## Browser Runtime API
 
 Browser-side custom interfaces should start from `createPreview()` in

@@ -477,6 +477,14 @@ The workflow implies a few constraints for renderers:
   Blueprint-owned DOM structure; otherwise they should remain bundled helpers
   until the argument shape is clearer.
 
+  The public generated-site module boundary is intentionally narrower than the
+  implementation module graph. `api/data.mjs`, `api/preview.mjs`, and
+  `api/graph.mjs` are the browser import targets for clients. The sibling
+  `blueprint-*-core.mjs`, `blueprint-api-common.mjs`, and `Commands/*.mjs`
+  modules are emitted so generated pages, Slides, and the public API wrappers
+  can share one runtime path; they are not a custom-client contract merely
+  because they are ESM modules.
+
 - **Split JavaScript by responsibility, not feature semantics.**
   The preview runtime is emitted as ESM support modules for regular Manual
   pages and public generated APIs. The current Slides path wraps those modules

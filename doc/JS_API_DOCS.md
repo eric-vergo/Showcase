@@ -31,6 +31,13 @@ await preview.renderNode(document.querySelector("#target"), {
 
 ## Modules
 
+The generated-site public browser API is intentionally small: clients should
+import the preview, data, and graph modules below from `-verso-data/api/`.
+The shared types page documents generated declarations and JSDoc typedefs for
+tooling; it is not a generated browser import target. The support modules
+beside the public browser entrypoints in `-verso-data/` are private
+implementation chunks for generated pages, Slides, and those entrypoints.
+
 - [preview API](module-blueprint-preview-api.html): render Blueprint nodes,
   hydrate generated fragments, resolve canonical generated-node shells, and
   provide call-scoped external-markup fallback renderers.
