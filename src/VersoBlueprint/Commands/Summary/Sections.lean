@@ -431,4 +431,183 @@ block_extension Block.summary (summary : Summary) where
   extraCss := summaryAssetBundle.css
   extraJs := summaryAssetBundle.js
 
+/-!
+Dashboard surface (`blueprint_dashboard`).
+
+`Block.dashboard` mirrors `Block.summary` but renders the landing dashboard:
+a server-rendered hero progress bar, per-chapter progress bars, status/owner/tag
+chart mounts (each carrying a server-rendered fallback that progressive
+enhancement augments with d3 charts), an embedded `chartData` JSON payload for
+those charts, and the full summary detail sections in a collapsed `<details>`.
+
+Its `traverse` decodes the `Summary` and writes it to the traversal-cached
+`Summary` store (`Informal.TraversalIndex.Summary.saveData`); this is the only
+producer for that store, so post-elaboration consumers (e.g. PM-page emission)
+can read it back via `cachedSummary?`.
+-/
+
+/-- Server-rendered fallback for the status donut: the coverage-split buckets. -/
+private def dashboardStatusFallback (data : Summary) : Output.Html :=
+  let cs := data.coverageSplit
+  let row (label : String) (value : Nat) : Output.Html :=
+    if value == 0 then .empty
+    else {{
+      <li>
+        <span class="bp_dashboard_stat_label">{{.text true label}}</span>
+        <span class="bp_dashboard_stat_value">{{.text true (toString value)}}</span>
+      </li>
+    }}
+  let rows : Array Output.Html := #[
+    row "Fully closed" cs.fullyClosed,
+    row "Formalized, ancestors open" cs.formalizedWithoutAncestors,
+    row "Ready to formalize" cs.readyToFormalize,
+    row "Informal only" cs.informalOnly,
+    row "Blocked / incomplete" cs.blockedOrIncomplete
+  ]
+  {{ <ul class="bp_dashboard_statlist">{{rows}}</ul> }}
+
+/-- A labelled chart mount carrying its server-rendered fallback content. -/
+private def dashboardChartMount (chart title : String) (wide : Bool)
+    (fallback : Output.Html) : Output.Html :=
+  let cls := if wide then "bp_dashboard_chart bp_dashboard_chart_wide" else "bp_dashboard_chart"
+  {{
+    <div class={{cls}} "data-bp-chart"={{chart}}>
+      <h3 class="bp_dashboard_chart_title">{{.text true title}}</h3>
+      <div class="bp_dashboard_chart_fallback">
+        {{fallback}}
+      </div>
+    </div>
+  }}
+
+def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
+  fun _goI _goB _id json _blocks => do
+    let some data ←
+        Informal.ExtensionDecode.decode?
+          (α := Summary)
+          json
+          (fun err => s!"Malformed data in Block.dashboard.toHtml ({err})")
+      | pure .empty
+    let s ← HtmlT.state
+    let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
+      match Informal.PreviewSource.traversalSelection? s label with
+      | some selection => keys.insert label selection.key
+      | Option.none => keys
+    let ctx : SummaryHtmlContext := {
+      entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
+      declHref? := fun label decl =>
+        Resolve.resolveInformalDeclHref? s label decl
+      previewLookupKey? := fun label => previewLookupKeys.get? label
+    }
+    let previewPanel := Informal.HoverRender.summaryPreviewPanel
+    let summaryAttrs :=
+      #[("class", "bp_summary")] ++
+        Informal.HoverRender.templatePreviewDescriptorAttrs
+          ".bp_summary_preview_panel"
+          "template.bp_summary_preview_tpl[data-bp-preview-label]"
+          ".bp_summary_preview_wrap_active[data-bp-preview-label]"
+          ".bp_summary_preview_panel_title"
+          ".bp_summary_preview_panel_body"
+          ".bp_summary_preview_panel_close"
+          (allowHtmlCache := true)
+    let rows ← SummaryRows.render ctx data
+    -- Hero: overall formalization progress = fullyClosed / max 1 total.
+    let total := data.totalEntries
+    let closed := data.coverageSplit.fullyClosed
+    let denom := Nat.max 1 total
+    let pct := closed * 100 / denom
+    let heroBarStyle := s!"width:{pct}%"
+    let heroCards : Output.Html := {{
+      <div class="bp_summary_grid">
+        {{summaryCard "Total entries" (toString total) (Option.some (statusCountsText data.totalStatus))}}
+        {{summaryCard "Fully closed" (toString closed)
+            (Option.some "Local code and prerequisite closure are both complete.")}}
+        {{summaryCard "Ready now" (toString data.coverageSplit.readyToFormalize)
+            (Option.some "Entries whose next formalization step is currently unblocked.")}}
+        {{summaryOptionalWarnCard (data.coverageSplit.blockedOrIncomplete > 0)
+            "Blocked / incomplete" (toString data.coverageSplit.blockedOrIncomplete)
+            (Option.some "Entries not covered by the readiness buckets above.")}}
+      </div>
+    }}
+    let hero : Output.Html := {{
+      <section class="bp_dashboard_hero">
+        <div class="bp_dashboard_hero_head">
+          <h2 class="bp_dashboard_title">"Formalization progress"</h2>
+          <span class="bp_dashboard_hero_pct">{{.text true s!"{pct}%"}}</span>
+        </div>
+        <div class="bp_progress bp_progress_hero">
+          <div class="bp_progress_track">
+            <span class="bp_progress_seg bp_progress_seg_closed" "style"={{heroBarStyle}}></span>
+          </div>
+          <div class="bp_progress_legend">
+            {{.text true s!"{closed} of {total} entries fully closed"}}
+          </div>
+        </div>
+        {{heroCards}}
+      </section>
+    }}
+    -- Per-chapter progress bars (the "chapters" chart fallback).
+    let chapterBars : Array Output.Html :=
+      data.groupHealth.toArray.map fun g =>
+        let label := if g.header.isEmpty then toString g.parent else g.header
+        summaryProgressBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
+    let chaptersFallback : Output.Html :=
+      if chapterBars.isEmpty then
+        {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}
+      else
+        {{<div class="bp_dashboard_chapters_list">{{chapterBars}}</div>}}
+    let ownersFallback : Output.Html :=
+      if rows.ownerRollupRows.isEmpty then
+        {{<p class="bp_summary_empty">"No owners recorded."</p>}}
+      else
+        {{<ul class="bp_summary_list">{{rows.ownerRollupRows}}</ul>}}
+    let tagsFallback : Output.Html :=
+      if rows.tagRollupRows.isEmpty then
+        {{<p class="bp_summary_empty">"No tags recorded."</p>}}
+      else
+        {{<ul class="bp_summary_list">{{rows.tagRollupRows}}</ul>}}
+    let ownerMount : Output.Html :=
+      if data.ownerRollups.isEmpty then .empty
+      else dashboardChartMount "owners" "Owners" false ownersFallback
+    let tagMount : Output.Html :=
+      if data.tagRollups.isEmpty then .empty
+      else dashboardChartMount "tags" "Tags" false tagsFallback
+    let chartJson : String := Lean.Json.compress (toJson data.chartData)
+    pure {{
+      <div class="bp_dashboard">
+        {{hero}}
+        <div class="bp_dashboard_charts">
+          {{dashboardChartMount "status" "Coverage by status" false (dashboardStatusFallback data)}}
+          {{dashboardChartMount "chapters" "Per-chapter progress" true chaptersFallback}}
+          {{ownerMount}}
+          {{tagMount}}
+        </div>
+        <script type="application/json" class="bp-dashboard-data">
+          {{.text false chartJson}}
+        </script>
+        <details class="bp_dashboard_detail">
+          <summary>"Full blueprint summary"</summary>
+          <div {{summaryAttrs}}>
+            {{previewPanel}}
+            {{renderSummaryDetailSections data rows}}
+          </div>
+        </details>
+      </div>
+    }}
+
+open Verso Doc Elab Genre Manual in
+block_extension Block.dashboard (summary : Summary) where
+  data := toJson summary
+  traverse _id data _contents := do
+    match ← Informal.ExtensionDecode.decode? (α := Summary) data
+        (fun _ => "Malformed data in Block.dashboard.traverse") with
+    | some summary =>
+      modify fun state => Informal.TraversalIndex.Summary.saveData state summary
+    | Option.none =>
+      pure ()
+    return none
+  toTeX := none
+  toHtml := some dashboardBlockToHtml
+  extraCss := dashboardAssetBundle.css
+  extraJs := dashboardAssetBundle.js
+
 end Informal.Commands

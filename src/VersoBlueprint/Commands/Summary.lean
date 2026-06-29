@@ -39,4 +39,22 @@ public meta def blueprintSummaryCmd : PartCommand
     addPart (← mkSummaryPart stx endPos)
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
+open Verso Doc Elab Syntax PartElabM in
+/--
+Inline dashboard command.
+
+Unlike `blueprint_summary` (which splits off its own page via
+`closePartsUntil`/`addPart`), this adds a `Block.dashboard` to the *current*
+part with `addBlock`. Placed at the top of the root `#doc` body it renders into
+`index.html`, making the dashboard the landing page.
+-/
+@[part_command Lean.Doc.Syntax.command]
+public meta def blueprintDashboardCmd : PartCommand
+  | `(block|command{blueprint_dashboard}) => do
+    let summary ← buildSummary
+    if verso.blueprint.debug.commands.get (← Lean.getOptions) then
+      logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
+    PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.dashboard $(quote summary)) #[]))
+  | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
+
 end Informal.Commands

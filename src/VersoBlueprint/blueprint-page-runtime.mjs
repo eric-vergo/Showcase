@@ -4,6 +4,7 @@ import { startGraphRuntime } from "./Commands/graph.mjs";
 import { startInlinePreview } from "./Commands/inline-preview.mjs";
 import { startRelationPanels } from "./Informal/Block/relation-panel.mjs";
 import { startCommandPalette } from "./Commands/command-palette.mjs";
+import { startDashboard } from "./Commands/dashboard.mjs";
 
 export function startBlueprintPageRuntime(options = {}) {
   const preview = createPreview(options);
@@ -12,6 +13,7 @@ export function startBlueprintPageRuntime(options = {}) {
   startRelationPanels(preview);
   startGraphRuntime(preview);
   startCommandPalette();
+  startDashboard();
   return preview;
 }
 

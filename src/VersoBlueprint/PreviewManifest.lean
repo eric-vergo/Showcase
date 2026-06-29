@@ -671,6 +671,8 @@ private def relationPanelModuleMjs : String := include_str "Informal/Block/relat
 
 private def commandPaletteModuleMjs : String := include_str "Commands/command-palette.mjs"
 
+private def dashboardModuleMjs : String := include_str "Commands/dashboard.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -723,7 +725,8 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("lib/d3.min.js", d3MinJs),
   ("lib/d3-graphviz.min.js", d3GraphvizMinJs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs),
-  ("Commands/command-palette.mjs", commandPaletteModuleMjs)
+  ("Commands/command-palette.mjs", commandPaletteModuleMjs),
+  ("Commands/dashboard.mjs", dashboardModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do

@@ -75,8 +75,18 @@ def Summary.previewLabels (data : Summary) : Array Name :=
 -- Keep this binding in Lean so summary CSS edits ride along with command module rebuilds.
 def summaryCss := include_str "../summary.css"
 
+-- Dashboard styling (hero/progress bars + chart layout) rides along with command
+-- module rebuilds; it themes via the same `--bp-color-*` tokens as the summary.
+def dashboardCss := include_str "../dashboard.css"
+
 def summaryAssetBundle : BlueprintAssetBundle :=
   previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss])
+
+-- The dashboard embeds the full summary detail sections (and their preview panel)
+-- inside a collapsed `<details>`, so it needs the summary CSS in addition to the
+-- dashboard layout CSS.
+def dashboardAssetBundle : BlueprintAssetBundle :=
+  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss, dashboardCss])
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
@@ -248,6 +258,45 @@ def summaryOptionalWarnCard (visible : Bool) (label value : String)
     summaryWarnCard label value status?
   else
     .empty
+
+/--
+A segmented horizontal progress bar with a numeric breakdown rendered beside it.
+
+The numeric breakdown (`closed` / `ready` / `blocked` / `total`) is plain
+server-rendered text and is the JS-off fallback: it is always present in the HTML
+regardless of whether any client chart enhancement runs. Segment widths are
+percentages of `max 1 total`, so an empty group never divides by zero. A trailing
+"other" segment fills whatever is left between the highlighted buckets and the
+total (e.g. informal-only / incomplete entries).
+-/
+def summaryProgressBar (label : String) (closed ready blocked total : Nat) : Output.Html :=
+  let denom := Nat.max 1 total
+  let closedPct := closed * 100 / denom
+  let readyPct := ready * 100 / denom
+  let blockedPct := blocked * 100 / denom
+  let otherPct := 100 - Nat.min 100 (closedPct + readyPct + blockedPct)
+  let seg (cls : String) (pct : Nat) : Output.Html :=
+    if pct == 0 then .empty
+    else {{ <span class={{cls}} "style"={{s!"width:{pct}%"}}></span> }}
+  let segs : Array Output.Html := #[
+    seg "bp_progress_seg bp_progress_seg_closed" closedPct,
+    seg "bp_progress_seg bp_progress_seg_ready" readyPct,
+    seg "bp_progress_seg bp_progress_seg_blocked" blockedPct,
+    seg "bp_progress_seg bp_progress_seg_other" otherPct
+  ]
+  let ariaLabel := s!"{label}: {closed} closed, {ready} ready, {blocked} blocked of {total} total"
+  {{ <div class="bp_progress" role="group" "aria-label"={{ariaLabel}}>
+      <div class="bp_progress_head">
+        <span class="bp_progress_label">{{.text true label}}</span>
+        <span class="bp_progress_pct">{{.text true s!"{closedPct}%"}}</span>
+      </div>
+      <div class="bp_progress_track">
+        {{segs}}
+      </div>
+      <div class="bp_progress_legend">
+        {{.text true s!"closed {closed} / ready {ready} / blocked {blocked} / total {total}"}}
+      </div>
+    </div> }}
 
 private def summaryCapRows (rows : Array Output.Html) (noun : String) : Array Output.Html :=
   let visible := (rows.toList.take triageVisibleLimit).toArray

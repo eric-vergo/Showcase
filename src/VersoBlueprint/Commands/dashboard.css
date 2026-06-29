@@ -1,0 +1,224 @@
+.bp_dashboard {
+  margin-top: 1rem;
+}
+
+.bp_dashboard_hero {
+  border: 1px solid var(--bp-color-border-muted);
+  border-radius: var(--bp-radius-2xl);
+  background: var(--bp-color-surface);
+  padding: 1rem 1.1rem 1.1rem;
+  margin-bottom: 1.1rem;
+  box-shadow: var(--bp-shadow-sm);
+}
+
+.bp_dashboard_hero_head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.bp_dashboard_title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_dashboard_hero_pct {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--bp-color-accent-success);
+  line-height: 1;
+}
+
+.bp_dashboard_charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+}
+
+.bp_dashboard_chart {
+  border: 1px solid var(--bp-color-border-muted);
+  border-radius: var(--bp-radius-lg);
+  background: var(--bp-color-surface);
+  padding: 0.75rem 0.85rem 0.85rem;
+}
+
+.bp_dashboard_chart_wide {
+  grid-column: 1 / -1;
+}
+
+.bp_dashboard_chart_title {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+/* JS enhancement: when a chart draws successfully it adds this class and the
+   server-rendered fallback is hidden. With JS off (or on any draw error) the
+   class is never added, so the fallback stays visible. */
+.bp_dashboard_chart_enhanced .bp_dashboard_chart_fallback {
+  display: none;
+}
+
+.bp_dashboard_chart_canvas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.bp_dashboard_svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  flex: 1 1 14rem;
+}
+
+.bp_dashboard_legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--bp-color-text-muted);
+  flex: 1 1 10rem;
+}
+
+.bp_dashboard_legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bp_dashboard_swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 0.2rem;
+  border: 1px solid var(--bp-color-border-soft);
+  flex: 0 0 auto;
+}
+
+.bp_dashboard_statlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.bp_dashboard_statlist li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.86rem;
+  color: var(--bp-color-text);
+  border-bottom: 1px dashed var(--bp-color-border-soft);
+  padding-bottom: 0.25rem;
+}
+
+.bp_dashboard_statlist .bp_dashboard_stat_value {
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_dashboard_detail {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--bp-color-border-soft);
+  padding-top: 0.6rem;
+}
+
+.bp_dashboard_detail > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--bp-color-text-muted);
+  padding: 0.3rem 0;
+}
+
+/* Progress bars (shared by the hero overall bar and per-chapter bars). */
+.bp_progress {
+  margin: 0.5rem 0;
+}
+
+.bp_progress_head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.bp_progress_label {
+  font-weight: 600;
+  color: var(--bp-color-text);
+  font-size: 0.9rem;
+}
+
+.bp_progress_pct {
+  font-weight: 700;
+  color: var(--bp-color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.bp_progress_track {
+  display: flex;
+  width: 100%;
+  height: 0.85rem;
+  border-radius: var(--bp-radius-pill);
+  overflow: hidden;
+  background: var(--bp-color-surface-muted);
+  border: 1px solid var(--bp-color-border-soft);
+}
+
+.bp_progress_hero .bp_progress_track {
+  height: 1.4rem;
+}
+
+.bp_progress_seg {
+  display: block;
+  height: 100%;
+}
+
+.bp_progress_seg_closed {
+  background: var(--bp-color-accent-success);
+}
+
+.bp_progress_seg_ready {
+  background: var(--bp-color-accent-info);
+}
+
+.bp_progress_seg_blocked {
+  background: var(--bp-color-accent-danger);
+}
+
+.bp_progress_seg_other {
+  background: var(--bp-color-border-strong);
+}
+
+.bp_progress_legend {
+  margin-top: 0.22rem;
+  font-size: 0.78rem;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_dashboard_chapters_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+@media (max-width: 700px) {
+  .bp_dashboard_charts {
+    grid-template-columns: 1fr;
+  }
+}
