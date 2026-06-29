@@ -172,6 +172,22 @@ structure WorklistItem where
   downstreamUses : Nat := 0
 deriving Inhabited, FromJson, ToJson, Quote
 
+/--
+One blueprint entry that the project formalizes locally *and* whose Lean
+declaration(s) now resolve into Mathlib (`Informal.Graph.nodeInMathlib`), i.e. an
+upstream-candidate the project could drop in favour of the Mathlib version.
+
+`mathlibDecls` lists the entry's external declarations that resolve to a Mathlib
+module. Friendly title / chapter / node-page href are resolved at emit time from
+the traversal state (this payload is environment-derived and carries none of
+that).
+-/
+structure MathlibCandidateItem where
+  label : Name
+  kind : String
+  mathlibDecls : List Name := []
+deriving Inhabited, FromJson, ToJson, Quote
+
 structure Summary where
   showDebugDiagnostics : Bool := false
   totalEntries : Nat := 0
@@ -216,6 +232,7 @@ structure Summary where
   missingEffort : List MetadataEntryItem := []
   untaggedEntries : List MetadataEntryItem := []
   worklist : List WorklistItem := []
+  mathlibCandidates : List MathlibCandidateItem := []
 deriving Inhabited, FromJson, ToJson, Quote
 
 /--

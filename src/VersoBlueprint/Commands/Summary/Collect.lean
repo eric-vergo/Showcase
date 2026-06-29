@@ -659,6 +659,21 @@ private def collectWorklistItems (ctx : SummaryBuildContext) : List WorklistItem
   (ctx.entries.foldl (init := #[]) fun acc (label, node) =>
     acc.push (worklistItem ctx label node)).toList
 
+/--
+Mathlib upstream candidates: entries whose Lean declaration(s) all resolve into a
+Mathlib module (`Informal.Graph.nodeInMathlib`, the same predicate that drives the
+`bp-status-mathlib` graph status). These are formalizations the project could drop
+or replace with the upstream Mathlib version. Registration order is preserved.
+-/
+private def collectMathlibUpstreamCandidates (ctx : SummaryBuildContext) : List MathlibCandidateItem :=
+  (ctx.entries.foldl (init := #[]) fun acc (label, node) =>
+    if Informal.Graph.nodeInMathlib ctx.external node then
+      let decls := (Informal.Graph.nodeExternalDecls node).filterMap fun decl =>
+        if ctx.external.inMathlib decl.canonical then some decl.canonical else none
+      acc.push { label, kind := toString node.kind, mathlibDecls := decls.toList }
+    else
+      acc).toList
+
 private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List DependencyLoadItem :=
   let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
     let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
@@ -800,6 +815,7 @@ def buildSummary : CoreM Summary := do
       missingEffort := metadataAudit.sortedMissingEffort
       untaggedEntries := metadataAudit.sortedUntaggedEntries
       worklist := collectWorklistItems ctx
+      mathlibCandidates := collectMathlibUpstreamCandidates ctx
   }
 
 end Informal.Commands

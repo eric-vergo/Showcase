@@ -27,6 +27,10 @@ Metadata panel body.
 :::
 :::::::
 
+-- Author/owner avatars are intentionally not rendered (the external image fetch
+-- broke offline builds): the owner keeps its display name and profile link only.
+-- This guard asserts the avatar-free render — name + link present, and both the
+-- avatar wrapper class and the external image URL absent.
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -36,8 +40,8 @@ Metadata panel body.
       hasSubstr out "class=\"bp_metadata_panel\"" &&
       hasSubstr out "Alice Example" &&
       hasSubstr out "https://example.com/alice" &&
-      hasSubstr out "class=\"bp_metadata_avatar\"" &&
-      hasSubstr out "https://example.com/alice.png" &&
+      !hasSubstr out "class=\"bp_metadata_avatar\"" &&
+      !hasSubstr out "https://example.com/alice.png" &&
       hasSubstr out "analysis" &&
       hasSubstr out "critical" &&
       hasSubstr out "Effort" &&

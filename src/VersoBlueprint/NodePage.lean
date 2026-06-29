@@ -6,6 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import Std.Data.HashSet
 import VersoBlueprint.Commands.Graph
+import VersoBlueprint.CopyButton
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.NodeRoute
@@ -158,6 +159,54 @@ def nodeSourceCss : String := r##"
 
 .bp_node_source_link:hover {
   border-color: var(--bp-color-accent, #2563eb);
+}
+"##
+
+/--
+Inline styling for the node-page breadcrumb trail (Book › Chapter › node) and the
+header action row that holds it alongside the copy-permalink button.
+
+Emitted once inside each node page header. Colors / fonts come from the
+`--bp-color-*` and `--font-mono-ui` design tokens, with light literal fallbacks,
+so the trail themes correctly in dark mode.
+-/
+def nodeBreadcrumbCss : String := r##"
+.bp_node_page_topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 0.6rem;
+}
+
+.bp_node_breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.35rem;
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--bp-color-text-muted, #5a6b7a);
+}
+
+.bp_node_breadcrumb a {
+  color: var(--bp-color-accent, #2563eb);
+  text-decoration: none;
+}
+
+.bp_node_breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.bp_node_breadcrumb_sep {
+  color: var(--bp-color-text-faint, #94a3b8);
+}
+
+.bp_node_breadcrumb_current {
+  color: var(--bp-color-text, #15212b);
+  font-weight: 600;
 }
 "##
 
@@ -315,6 +364,7 @@ private def renderNodePageBody
     (htmlIndex : Informal.PreviewManifest.HtmlCache.Index)
     (manifestIndex : Informal.PreviewManifest.Index)
     (editorTemplate : String)
+    (bookTitle : String)
     (entry0 : Entry) : Output.Html :=
   let entry := repointEntryRelations state entry0
   -- Statement block (with uses/usedBy/group panels + Lean-code panel).
@@ -384,24 +434,53 @@ private def renderNodePageBody
   let backHref? :=
     Informal.TraversalIndex.TraversalPreviews.hrefFor? state entry.label .statement
       <|> Informal.TraversalIndex.Nodes.href? state entry.label
-  let backLink : Output.Html :=
-    match backHref? with
-    | some href => {{
-        <p class="bp_node_page_backlink">
-          <a href={{href}}>"View in chapter context"</a>
-        </p>
-      }}
-    | none => .empty
   let parentContext : Output.Html :=
     match entry.parentTitle with
     | some pt => {{ <p class="bp_node_page_group">"Part of: " {{.text true pt}}</p> }}
     | none => .empty
+  -- Breadcrumb trail: Book › Chapter › this node. The chapter name is derived
+  -- from the chapter slug in the entry's in-chapter href, and the chapter crumb
+  -- links to the precise statement anchor (folding in "View in chapter context").
+  let sep : Output.Html := {{ <span class="bp_node_breadcrumb_sep">"›"</span> }}
+  let bookCrumb : Output.Html :=
+    if bookTitle.isEmpty then .empty
+    else {{ <a href="">{{.text true bookTitle}}</a> }}
+  let chapterName : String :=
+    match entry.href with
+    | some href => ((href.splitOn "/").headD "").replace "-" " "
+    | none => ""
+  let chapterCrumb : Output.Html :=
+    if chapterName.isEmpty then .empty
+    else
+      match backHref? with
+      | some href => {{ {{sep}} <a href={{href}}>{{.text true chapterName}}</a> }}
+      | none => {{ {{sep}} <span>{{.text true chapterName}}</span> }}
+  let breadcrumb : Output.Html :=
+    {{
+      <nav class="bp_node_breadcrumb" aria-label="Breadcrumb">
+        {{bookCrumb}}
+        {{chapterCrumb}}
+        {{sep}}
+        <span class="bp_node_breadcrumb_current">{{.text true entry.title}}</span>
+      </nav>
+    }}
+  let copyLink : Output.Html :=
+    {{
+      <button type="button" class="bp-permalink-button" data-bp-permalink=""
+          data-bp-label="Copy link" aria-label="Copy a link to this page">
+        "Copy link"
+      </button>
+    }}
   {{
     <div class="bp_node_page">
       <header class="bp_node_page_header">
+        <style>{{.text false nodeBreadcrumbCss}}</style>
+        <div class="bp_node_page_topbar">
+          {{breadcrumb}}
+          {{copyLink}}
+        </div>
         <h1>{{.text true entry.title}}</h1>
         {{parentContext}}
-        {{backLink}}
         {{renderNodeSource editorTemplate entry}}
         {{renderNodeMetrics metrics?}}
       </header>
@@ -545,7 +624,7 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
         usedSlugs := usedSlugs.insert slug
         let body :=
           renderNodePageBody state master (metrics.find? entry.label) htmlIndex manifestIndex
-            editorTemplate entry
+            editorTemplate text.titleString entry
         emitStaticBlueprintPage mode cfg state text
           (Informal.NodeRoute.nodePagePath entry.label) entry.title body
         searchRecords := searchRecords.push (nodeSearchRecord htmlIndex entry)

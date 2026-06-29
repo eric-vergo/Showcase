@@ -76,6 +76,33 @@ def css : String := r##"
   color: var(--bp-color-accent-success, #15803d);
   border-color: var(--bp-color-accent-success, #15803d);
 }
+
+/* Permalink ("Copy link") button used in the node-page header. Always visible
+   (no hover-reveal), themed with the same design tokens as the copy button. */
+.bp-permalink-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  font-family: inherit;
+  color: var(--bp-color-text, #15212b);
+  background: var(--bp-color-surface-muted, #f1f4f7);
+  border: 1px solid var(--bp-color-border, #dbe2ea);
+  border-radius: var(--bp-radius-pill, 999px);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.bp-permalink-button:hover {
+  border-color: var(--bp-color-accent, #2563eb);
+}
+
+.bp-permalink-button.bp-copied {
+  color: var(--bp-color-accent-success, #15803d);
+  border-color: var(--bp-color-accent-success, #15803d);
+}
 "##
 
 /--
@@ -103,10 +130,11 @@ def js : String := r##"(function () {
   }
 
   function showCopied(button) {
+    var original = button.dataset.bpLabel || "Copy";
     button.textContent = "Copied!";
     button.classList.add("bp-copied");
     setTimeout(function () {
-      button.textContent = "Copy";
+      button.textContent = original;
       button.classList.remove("bp-copied");
     }, 2000);
   }
@@ -174,10 +202,36 @@ def js : String := r##"(function () {
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", addCopyButtons);
-  } else {
+  // Permalink ("Copy link") buttons: any element carrying `data-bp-permalink`
+  // copies its value (or the current location.href when empty) to the clipboard.
+  function addPermalinkButtons() {
+    var buttons = document.querySelectorAll("[data-bp-permalink]");
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      if (!(button instanceof HTMLElement)) continue;
+      if (button.dataset.bpPermalinkWired === "1") continue;
+      button.dataset.bpPermalinkWired = "1";
+      button.addEventListener("click", (function (el) {
+        return function () {
+          var target = el.getAttribute("data-bp-permalink");
+          if (!target) {
+            target = window.location.href;
+          }
+          copyText(target, this);
+        };
+      })(button));
+    }
+  }
+
+  function init() {
     addCopyButtons();
+    addPermalinkButtons();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
   }
 })();"##
 

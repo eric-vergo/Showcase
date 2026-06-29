@@ -483,6 +483,29 @@ private def dashboardChartMount (chart title : String) (wide : Bool)
   }}
 
 /--
+Drop leading token-prefix segments from a `:`-split label, never dropping the
+final segment. A segment counts as a token prefix when it is non-empty and
+purely alphabetic (e.g. `code`, `lem`, `def`, `thm`, `cor`). Structural
+recursion on the list, so it always terminates.
+-/
+private def dropLabelTagPrefixes : List String → List String
+  | [] => []
+  | [last] => [last]
+  | (seg :: rest) =>
+    if seg ≠ "" && seg.all Char.isAlpha then dropLabelTagPrefixes rest
+    else seg :: rest
+
+/--
+Clean a raw graph-node label for display in the reading map: drop the Lean
+name-escape guillemets and any leading token-prefix tags, so a page-less
+Lean-code-backed node like `code:lem:RaRalpha` reads as `RaRalpha` and
+`def:noperthedron_main` as `noperthedron_main`. Pure/deterministic.
+-/
+private def cleanReadingMapLabel (raw : String) : String :=
+  let deg := Informal.NodeRoute.stripNameEscapes raw
+  String.intercalate ":" (dropLabelTagPrefixes (deg.splitOn ":"))
+
+/--
 "Start here" reading map: an orienting, clickable guided reading path computed
 from the master dependency graph's metrics.
 
@@ -501,30 +524,37 @@ private def dashboardReadingMap (state : TraverseState) : Output.Html :=
     let metrics := Informal.GraphMetrics.computeGraphMetrics master
     let nodeByLabel : Lean.NameMap Informal.Graph.NodeData :=
       master.nodes.foldl (init := {}) fun m n => m.insert n.label n
-    let linkFor := fun (label : Lean.Name) =>
-      let title :=
-        match nodeByLabel.find? label with
-        | Option.some n => if n.title.isEmpty then label.toString else n.title
-        | Option.none => label.toString
-      let href? :=
-        if Informal.NodeRoute.hasNodePage state label then
-          Option.some (Informal.NodeRoute.nodePageHref label)
-        else (nodeByLabel.find? label).bind (·.href)
-      match href? with
-      | Option.some href => {{ <a href={{href}}>{{.text true title}}</a> }}
-      | Option.none => {{ <span>{{.text true title}}</span> }}
+    -- Friendly display title for a label: the node's own title when present
+    -- (e.g. "Lemma 7.7"), otherwise the cleaned raw label (token-prefix and
+    -- guillemets stripped) so a raw `code:lem:…` never surfaces.
+    let friendlyTitle := fun (label : Lean.Name) =>
+      match nodeByLabel.find? label with
+      | Option.some n => if n.title.isEmpty then cleanReadingMapLabel label.toString else n.title
+      | Option.none => cleanReadingMapLabel label.toString
+    -- Navigable friendly-title link to a label's node page. Only meaningful for
+    -- labels that actually have a node page (`hasNodePage`).
+    let nodePageLink := fun (label : Lean.Name) =>
+      {{ <a href={{Informal.NodeRoute.nodePageHref label}}>{{.text true (friendlyTitle label)}}</a> }}
     let cap := 12
+    -- Foundations / Goals: include only entries that resolve to a node page,
+    -- rendered as friendly-title links; page-less code-only nodes are dropped.
     let bulletList := fun (labels : Array Lean.Name) =>
-      let shown := (labels.toList.take cap).toArray
-      {{ <ul class="bp_readingmap_list">{{shown.map (fun l => {{<li>{{linkFor l}}</li>}})}}</ul> }}
+      let withPage := labels.filter (Informal.NodeRoute.hasNodePage state ·)
+      let shown := (withPage.toList.take cap).toArray
+      {{ <ul class="bp_readingmap_list">{{shown.map (fun l => {{<li>{{nodePageLink l}}</li>}})}}</ul> }}
     let foundationLabels := (metrics.nodes.filter (·.fanIn == 0)).map (·.label)
     let goalLabels := (metrics.nodes.filter (·.fanOut == 0)).map (·.label)
     let spine := metrics.criticalPath
+    -- Critical path: keep the full ordered spine. Steps with a node page stay
+    -- friendly-title links; page-less steps render a cleaned, non-linked label.
+    let spineItem := fun (label : Lean.Name) =>
+      if Informal.NodeRoute.hasNodePage state label then nodePageLink label
+      else {{ <span>{{.text true (cleanReadingMapLabel label.toString)}}</span> }}
     let spineList : Output.Html :=
       if spine.isEmpty then
         {{<p class="bp_readingmap_col_hint">"No critical path in the current graph."</p>}}
       else
-        {{ <ol class="bp_readingmap_spine">{{spine.map (fun l => {{<li>{{linkFor l}}</li>}})}}</ol> }}
+        {{ <ol class="bp_readingmap_spine">{{spine.map (fun l => {{<li>{{spineItem l}}</li>}})}}</ol> }}
     if foundationLabels.isEmpty && goalLabels.isEmpty && spine.isEmpty then .empty
     else {{
       <section class="bp_readingmap">
@@ -602,6 +632,18 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
             (Option.some "Entries not covered by the readiness buckets above.")}}
       </div>
     }}
+    -- CTA to the Mathlib upstream-candidates page, shown only when at least one
+    -- entry now resolves into Mathlib (the page is always emitted, but an empty
+    -- queue gets no dashboard prompt).
+    let mathlibCandidateCount := data.mathlibCandidates.length
+    let mathlibCandidatesCta : Output.Html :=
+      if mathlibCandidateCount == 0 then .empty
+      else {{
+        <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary"
+            href={{Informal.NodeRoute.mathlibCandidatesHref}}>
+          {{.text true s!"{mathlibCandidateCount} {if mathlibCandidateCount == 1 then "entry" else "entries"} may now be available in Mathlib →"}}
+        </a>
+      }}
     let hero : Output.Html := {{
       <section class="bp_dashboard_hero">
         <div class="bp_dashboard_hero_head">
@@ -624,6 +666,7 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
           <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary" href={{Informal.NodeRoute.auditHref}}>
             "Audit and technical debt →"
           </a>
+          {{mathlibCandidatesCta}}
         </p>
       </section>
     }}

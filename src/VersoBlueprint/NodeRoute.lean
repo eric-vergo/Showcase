@@ -35,7 +35,7 @@ like `«thm:foo»`). Removing the wrapping markers *before* sluggifying turns th
 ugly `_FLQQ_thm___foo_FLQQ_` slug into the readable `thm___foo`. The unique inner
 label content is preserved, so distinct labels stay distinct. Pure/deterministic.
 -/
-private def stripNameEscapes (s : String) : String :=
+def stripNameEscapes (s : String) : String :=
   s.foldl (init := "") fun acc c =>
     if c == '«' || c == '»' || c == '‹' || c == '›' then acc else acc.push c
 
@@ -98,6 +98,12 @@ def auditHref : String := "audit/"
 
 /-- Multi-page output path for the audit page: `audit/index.html`. -/
 def auditPath : Verso.Multi.Path := #["audit"]
+
+/-- Root-relative href (no leading slash) to the Mathlib upstream-candidates page. -/
+def mathlibCandidatesHref : String := "mathlib-candidates/"
+
+/-- Multi-page output path for the candidates page: `mathlib-candidates/index.html`. -/
+def mathlibCandidatesPath : Verso.Multi.Path := #["mathlib-candidates"]
 
 /-- Slug for an owner page, derived from the owner's canonical `Name`. -/
 def ownerPageSlug (owner : Name) : String :=

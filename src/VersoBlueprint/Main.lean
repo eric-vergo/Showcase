@@ -51,6 +51,7 @@ def blueprintMainWithFeatures
       Informal.NodePage.emitBlueprintNodePages extensionImpls
         :: Informal.ExtraPages.emitBlueprintExtraPages
         :: Informal.ExtraPages.emitBlueprintAuditPage
+        :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: extraSteps)
 
 end Informal.PreviewManifest

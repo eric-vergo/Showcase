@@ -528,6 +528,147 @@ def emitBlueprintAuditPage : ExtraStep :=
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
           Informal.NodeRoute.auditPath "Audit and technical debt" (auditBody summary rows)
 
+/-! ## Mathlib upstream-candidates page -/
+
+/--
+Friendly display title for a node label, resolved from the traversal node index
+(`displayTitle`, e.g. "Lemma 3.1"); falls back to the de-guillemeted raw label.
+-/
+private def candidateTitle (state : TraverseState) (label : Name) : String :=
+  let raw :=
+    match (Informal.TraversalIndex.Nodes.data? state label).map (·.displayTitle state) with
+    | some t => if t.isEmpty then label.toString else t
+    | none => label.toString
+  Informal.NodeRoute.stripNameEscapes raw
+
+/--
+Human-readable chapter name for a node, derived from the chapter slug embedded in
+its in-chapter href (`The-Local-Theorem/#…` → `The Local Theorem`). Degrades to
+the empty string when no chapter href is known.
+-/
+private def candidateChapter (state : TraverseState) (label : Name) : String :=
+  match Informal.TraversalIndex.Nodes.href? state label with
+  | none => ""
+  | some href => ((href.splitOn "/").headD "").replace "-" " "
+
+/-- Inline styling for the Mathlib upstream-candidates list. -/
+private def mathlibCandidatesCss : String := r##"
+.bp_mathlib_candidates_list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.bp_mathlib_candidate {
+  padding: 0.7rem 0.9rem;
+  background: var(--bp-color-surface-muted, #f8fafc);
+  border: 1px solid var(--bp-color-border, #cbd5e1);
+  border-left: 3px solid var(--bp-color-status-mathlib, #6a4fba);
+  border-radius: var(--bp-radius-md, 8px);
+}
+.bp_mathlib_candidate_top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+  align-items: baseline;
+}
+.bp_mathlib_candidate_title { font-weight: 600; }
+.bp_mathlib_candidate_chapter {
+  font-size: 0.82rem;
+  color: var(--bp-color-text-muted, #475569);
+}
+.bp_mathlib_candidate_decls {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
+}
+.bp_mathlib_candidate_decls code {
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.8rem;
+  padding: 0.05rem 0.4rem;
+  background: var(--bp-color-status-mathlib-surface, rgba(106, 79, 186, 0.12));
+  border-radius: var(--bp-radius-sm, 4px);
+}
+"##
+
+/-- One candidate row: title (node-page link), chapter, and the Mathlib decl(s). -/
+private def mathlibCandidateRow (state : TraverseState) (item : MathlibCandidateItem) :
+    Output.Html :=
+  let title := candidateTitle state item.label
+  let chapter := candidateChapter state item.label
+  let titleNode : Output.Html :=
+    if Informal.NodeRoute.hasNodePage state item.label then
+      {{ <a class="bp_mathlib_candidate_title"
+            href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true title}}</a> }}
+    else
+      {{ <span class="bp_mathlib_candidate_title">{{.text true title}}</span> }}
+  let chapterNode : Output.Html :=
+    if chapter.isEmpty then .empty
+    else {{ <span class="bp_mathlib_candidate_chapter">{{.text true s!"in {chapter}"}}</span> }}
+  let kindNode : Output.Html :=
+    if item.kind.isEmpty then .empty
+    else {{ <span class="bp_mathlib_candidate_chapter">{{.text true s!"({item.kind})"}}</span> }}
+  let declNodes : Array Output.Html :=
+    item.mathlibDecls.toArray.map fun d => {{ <code>{{.text true d.toString}}</code> }}
+  {{
+    <li class="bp_mathlib_candidate">
+      <div class="bp_mathlib_candidate_top">
+        {{titleNode}}
+        {{kindNode}}
+        {{chapterNode}}
+      </div>
+      {{if declNodes.isEmpty then .empty
+        else {{ <div class="bp_mathlib_candidate_decls">"Now in Mathlib: " {{declNodes}}</div> }}}}
+    </li>
+  }}
+
+/-- Body of the Mathlib upstream-candidates page. -/
+private def mathlibCandidatesBody (state : TraverseState) (summary : Summary) : Output.Html :=
+  let items := summary.mathlibCandidates
+  let rows := items.toArray.map (mathlibCandidateRow state)
+  {{
+    <div class="bp_mathlib_candidates bp_pm_page">
+      <style>{{.text false mathlibCandidatesCss}}</style>
+      <header class="bp_node_page_header">
+        <h1>"Mathlib upstream candidates"</h1>
+        <p class="bp_pm_page_intro">
+          {{.text true s!"{items.length} blueprint {if items.length == 1 then "entry is" else "entries are"} now formalized in Mathlib. Each could be dropped from this project and replaced with the upstream Mathlib declaration."}}
+        </p>
+      </header>
+      {{if items.isEmpty then
+          {{<p class="bp_summary_empty">"No upstream candidates yet — no blueprint entry currently resolves entirely to Mathlib."</p>}}
+        else
+          {{<ul class="bp_mathlib_candidates_list">{{rows}}</ul>}}}}
+    </div>
+  }}
+
+/--
+`ExtraStep` that emits the Mathlib upstream-candidates page at
+`mathlib-candidates/index.html` from the traversal-cached `Summary`.
+
+Sibling to `emitBlueprintAuditPage`. The page is always emitted (with an
+empty-state when there are no candidates). Single-page mode is skipped; if no
+`Summary` was cached it logs and skips gracefully.
+-/
+def emitBlueprintMathlibCandidatesPage : ExtraStep :=
+  fun mode cfg state text => do
+    match mode with
+    | .single => pure ()
+    | .multi =>
+      let logger : Verso.Logger IO ← read
+      match Informal.TraversalIndex.Summary.cachedSummary? state with
+      | none =>
+        logger.reportWarning
+          "Blueprint Mathlib candidates page: no cached Summary in traversal state; skipping \
+           mathlib-candidates/index.html (is a `blueprint_dashboard` block present?)."
+      | some summary =>
+        Informal.NodePage.emitStaticBlueprintPage mode cfg state text
+          Informal.NodeRoute.mathlibCandidatesPath "Mathlib upstream candidates"
+          (mathlibCandidatesBody state summary)
+
 /-! ## The ExtraStep -/
 
 /--
