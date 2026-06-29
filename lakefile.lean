@@ -5,7 +5,7 @@ open Lake DSL
 -- the parent repo root, which remains a checkout of Verso.
 -- require verso from "../verso"
 require verso from git "https://github.com/leanprover/verso"@"v4.31.0"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"v4.31.0"
+require «verso-slides» from git "https://github.com/ejgallego/verso-slides.git"@"e6a5d54228eb21fd86b041ab786d2d03bfb46685"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
 package VersoBlueprint where
