@@ -13,6 +13,7 @@ import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
 import VersoBlueprint.ColorScheme
 import VersoBlueprint.CopyButton
+import VersoBlueprint.Commands.CommandPalette
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -21,6 +22,7 @@ import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Git
 import VersoBlueprint.Html
 import VersoBlueprint.NodeRoute
@@ -138,9 +140,20 @@ def copyButtonHtmlAssets : HtmlAssets where
   extraCss := ([Informal.CopyButton.css] : List String)
   extraJs := ([Informal.CopyButton.js] : List String)
 
+/--
+Global command-palette assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the palette behavior is
+an ESM module (`Commands/command-palette.mjs`) registered in `pageRuntimeModules`
+and started from `blueprint-page-runtime.mjs`. The styling uses `--bp-color-*`
+tokens so the overlay themes in dark mode, with no CDN/network dependency.
+-/
+def commandPaletteHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.CommandPalette.css] : List String)
+
 def blueprintHtmlAssets : HtmlAssets :=
-  ((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
-    colorSchemeHtmlAssets).combine copyButtonHtmlAssets
+  (((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
@@ -656,6 +669,8 @@ private def d3GraphvizMinJs : String := include_str "vendor/d3-graphviz.min.js"
 
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
 
+private def commandPaletteModuleMjs : String := include_str "Commands/command-palette.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -707,7 +722,8 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
   ("lib/d3.min.js", d3MinJs),
   ("lib/d3-graphviz.min.js", d3GraphvizMinJs),
-  ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
+  ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs),
+  ("Commands/command-palette.mjs", commandPaletteModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do
@@ -1867,6 +1883,10 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   IO.FS.createDirAll apiDir
   IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
   IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
+  -- Graph metrics contract artifact for the Wave 3 dashboard
+  -- (`{schemaVersion, criticalPath, nodes : [{label, fanIn, fanOut, depth, height, onCriticalPath}]}`).
+  IO.FS.writeFile (dataDir / "graph-metrics.json")
+    (toJson (Informal.GraphMetrics.computeGraphMetrics (Informal.GraphApi.masterGraph state))).compress
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
   IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
   IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs

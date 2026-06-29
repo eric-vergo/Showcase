@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Std.Data.HashSet
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphMetrics
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewManifest.BlockRender
@@ -33,6 +34,76 @@ open Verso Verso.Output Verso.Doc
 open Verso.Genre Manual
 open Verso.Code.Hover (State)
 open Informal.PreviewManifest (Entry)
+
+/--
+Inline styling for the per-node metrics line.
+
+Emitted once inside each node page body (node pages carry no dedicated CSS file).
+Colors come from the `--bp-color-*` design tokens, with light literal fallbacks,
+so the line themes correctly in dark mode.
+-/
+def nodeMetricsCss : String := r##"
+.bp_node_metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.bp_node_metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.1rem 0.55rem;
+  color: var(--bp-color-text-muted, #334155);
+  background: var(--bp-color-surface-muted, #f8fafc);
+  border: 1px solid var(--bp-color-border, #cbd5e1);
+  border-radius: var(--bp-radius-pill, 999px);
+}
+
+.bp_node_metric_value {
+  font-weight: 600;
+  color: var(--bp-color-text, #111827);
+}
+
+.bp_node_metric_critical {
+  color: var(--bp-color-status-success-text, #166534);
+  background: var(--bp-color-surface-muted, #f8fafc);
+  border-color: var(--bp-color-accent-success, #16a34a);
+  font-weight: 600;
+}
+"##
+
+open Verso.Output.Html in
+/--
+Render the per-node metrics line (depth / height / fan-in / fan-out and a
+critical-path badge) from the computed `NodeMetrics`, with the inline stylesheet.
+-/
+private def renderNodeMetrics (metrics? : Option Informal.GraphMetrics.NodeMetrics) : Output.Html :=
+  match metrics? with
+  | none => .empty
+  | some m =>
+    let metric (name : String) (value : Nat) : Output.Html := {{
+        <span class="bp_node_metric">
+          {{.text true name}}" "<span class="bp_node_metric_value">{{.text true (toString value)}}</span>
+        </span>
+      }}
+    let criticalBadge : Output.Html :=
+      if m.onCriticalPath then
+        {{ <span class="bp_node_metric bp_node_metric_critical">"On critical path"</span> }}
+      else .empty
+    {{
+      <div class="bp_node_metrics" role="group" aria-label="Graph metrics">
+        <style>{{.text false nodeMetricsCss}}</style>
+        {{metric "Depth" m.depth}}
+        {{metric "Height" m.height}}
+        {{metric "Fan-in" m.fanIn}}
+        {{metric "Fan-out" m.fanOut}}
+        {{criticalBadge}}
+      </div>
+    }}
 
 /--
 Emit one standalone Blueprint HTML page at `<outDir>/<path…>/index.html`,
@@ -99,13 +170,19 @@ open Verso.Output.Html in
 private def renderNodePageBody
     (state : TraverseState)
     (master : Informal.Graph.GraphData)
+    (metrics? : Option Informal.GraphMetrics.NodeMetrics)
     (htmlIndex : Informal.PreviewManifest.HtmlCache.Index)
     (manifestIndex : Informal.PreviewManifest.Index)
     (entry0 : Entry) : Output.Html :=
   let entry := repointEntryRelations state entry0
   -- Statement block (with uses/usedBy/group panels + Lean-code panel).
   let stmtHtml := (htmlIndex.findHtml? entry.key).getD ""
-  let codeHtmls := entry.leanCodePreviewKeys.filterMap htmlIndex.findHtml?
+  -- Deduplicate the Lean-code preview fragments by rendered HTML (mirrors the
+  -- chapter/graft path `HtmlCache.Index.codeHtmlBodies`). A raw
+  -- `leanCodePreviewKeys.filterMap findHtml?` can list the same rendered code
+  -- twice when several preview keys resolve to one fragment, which made the
+  -- "Lean code for …" panel render the code block twice on node pages.
+  let codeHtmls := htmlIndex.codeHtmlBodies entry
   let statementBlock :=
     Informal.PreviewManifest.BlockRender.renderWithRenderedContent {} entry
       (Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings stmtHtml codeHtmls)
@@ -116,7 +193,7 @@ private def renderNodePageBody
     | some proofEntry0 =>
       let proofEntry := repointEntryRelations state proofEntry0
       let proofHtml := (htmlIndex.findHtml? proofKey).getD ""
-      let proofCode := proofEntry.leanCodePreviewKeys.filterMap htmlIndex.findHtml?
+      let proofCode := htmlIndex.codeHtmlBodies proofEntry
       Informal.PreviewManifest.BlockRender.renderWithRenderedContent {} proofEntry
         (Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings proofHtml proofCode)
     | none => .empty
@@ -159,6 +236,7 @@ private def renderNodePageBody
         <h1>{{.text true entry.title}}</h1>
         {{parentContext}}
         {{backLink}}
+        {{renderNodeMetrics metrics?}}
       </header>
       <section class="bp_node_page_statement">{{statementBlock}}</section>
       <section class="bp_node_page_proof">{{proofBlock}}</section>
@@ -190,6 +268,9 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
       let htmlIndex := files.htmlCache.index
       let manifestIndex := files.manifest.index
       let master := Informal.GraphApi.masterGraph state
+      -- Compute graph metrics once for the whole master graph; node pages look
+      -- up their own metrics by label (Feature 4).
+      let metrics := Informal.GraphMetrics.computeGraphMetrics master
       let mut usedSlugs : Std.HashSet String := {}
       for entry in files.manifest.blockStatementEntries do
         let slug := Informal.NodeRoute.nodePageSlug entry.label
@@ -198,7 +279,7 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
             s!"Blueprint node pages: slug collision for {entry.label} (slug {slug}); " ++
             "node page may overwrite another node's page"
         usedSlugs := usedSlugs.insert slug
-        let body := renderNodePageBody state master htmlIndex manifestIndex entry
+        let body := renderNodePageBody state master (metrics.find? entry.label) htmlIndex manifestIndex entry
         emitStaticBlueprintPage mode cfg state text
           (Informal.NodeRoute.nodePagePath entry.label) entry.title body
 
