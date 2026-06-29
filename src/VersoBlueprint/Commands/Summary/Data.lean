@@ -151,6 +151,27 @@ structure MetadataEntryItem where
   leanObjects : List Name := []
 deriving Inhabited, FromJson, ToJson, Quote
 
+/--
+Per-entry worklist record covering every registered blueprint entry.
+
+`readiness` is one of `ready`, `blocked`, `closed`, `localOnly`, or
+`informalOnly`, mirroring `collectCoverageSplit`'s bucket logic.
+-/
+structure WorklistItem where
+  label : Name
+  kind : String
+  statementStatus : String
+  proofStatus : String := ""
+  readiness : String
+  ownerDisplayName : Option String := none
+  tags : List String := []
+  effort : Option String := none
+  priority : Option String := none
+  prUrl : Option String := none
+  directUses : Nat := 0
+  downstreamUses : Nat := 0
+deriving Inhabited, FromJson, ToJson, Quote
+
 structure Summary where
   showDebugDiagnostics : Bool := false
   totalEntries : Nat := 0
@@ -194,6 +215,31 @@ structure Summary where
   missingOwners : List MetadataEntryItem := []
   missingEffort : List MetadataEntryItem := []
   untaggedEntries : List MetadataEntryItem := []
+  worklist : List WorklistItem := []
 deriving Inhabited, FromJson, ToJson, Quote
+
+/--
+Lean-serializable projection of a `Summary` carrying only what dashboard charts
+need: status counts, the coverage split, per-group health, and owner/tag
+rollups.
+-/
+structure DashboardChartData where
+  totalEntries : Nat := 0
+  totalStatus : EntryStatusCounts := {}
+  coverageSplit : CoverageSplit := {}
+  groupHealth : List GroupHealthItem := []
+  ownerRollups : List OwnerRollupItem := []
+  tagRollups : List TagRollupItem := []
+deriving Inhabited, FromJson, ToJson
+
+/-- Pure projection of a `Summary` into the dashboard chart payload. -/
+def Summary.chartData (summary : Summary) : DashboardChartData := {
+  totalEntries := summary.totalEntries
+  totalStatus := summary.totalStatus
+  coverageSplit := summary.coverageSplit
+  groupHealth := summary.groupHealth
+  ownerRollups := summary.ownerRollups
+  tagRollups := summary.tagRollups
+}
 
 end Informal.Commands

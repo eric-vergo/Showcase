@@ -288,6 +288,9 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (!(graphBlock instanceof Element)) return;
       const graphRoot = graphBlock.querySelector(".bp_graph_canvas");
       if (!graphRoot) return;
+      // Static graphs (e.g. node-page localized graphs) opt out of zoom and
+      // variant-switching interactivity; still rendered client-side by d3.
+      const isStatic = graphRoot.getAttribute("data-bp-graph-static") === "true";
       if (opts.layout) {
         const layoutMode = graphLayoutMode(graphRoot, opts);
         graphBlock.setAttribute("data-bp-graph-layout", layoutMode);
@@ -650,16 +653,18 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             previewController,
             activeVariant.previewKeyByNodeId
           );
-          attachVariantSelectors(
-            graphContainer,
-            variantsByKey,
-            activeVariant,
-            switchVariant,
-            showGroupHoverPreview,
-            groupHoverBehavior.isHover && groupHoverController
-              ? function () { groupHoverLifetime.scheduleHide(); }
-              : null
-          );
+          if (!isStatic) {
+            attachVariantSelectors(
+              graphContainer,
+              variantsByKey,
+              activeVariant,
+              switchVariant,
+              showGroupHoverPreview,
+              groupHoverBehavior.isHover && groupHoverController
+                ? function () { groupHoverLifetime.scheduleHide(); }
+                : null
+            );
+          }
         };
 
         if (
@@ -677,7 +682,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         graphRoot.setAttribute("data-bp-active-direction", options.direction);
         graphRoot.setAttribute("data-bp-active-pack", graphPackAttr(options.pack));
         gv
-          .zoom(true)
+          .zoom(!isStatic)
           .width(width)
           .height(height)
           .fit(true)

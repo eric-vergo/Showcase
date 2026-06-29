@@ -75,6 +75,269 @@ def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : Str
 def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss])
 
+open Verso Verso.Output.Html in
+/--
+Render the fullwidth graph surface (canvas markup plus the three embedded
+`<script>` payloads).
+
+When `static` is `false` (the interactive default used by `Block.graph`) the
+legend, controls, options popover, and preview panels are included and the output
+is byte-identical to the historical inline markup. When `static` is `true` only
+the canvas (carrying `data-bp-graph-static="true"`) and its payloads are emitted;
+`graph.mjs` reads that attribute to skip zoom/variant interactivity.
+
+`idBase` is the resolved HTML id base for the block; control element ids are
+`idBase ++ "--<suffix>"`.
+-/
+def renderGraphFullwidth
+    (publicGraphData : Informal.Graph.GraphData)
+    (variants : Array Informal.Graph.GraphRenderVariant)
+    (options : Informal.Graph.GraphOptions)
+    (idBase : String)
+    (static : Bool := false)
+    (previewMode : Informal.HoverRender.PreviewMode := .pinned)
+    (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
+    Verso.Output.Html :=
+  let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
+  let hasGroupVariant := variants.any (fun variant => variant.key == groupVariantKey)
+  let graphVariantJson : String := Lean.Json.compress (toJson variants)
+  let graphVariantOptions : Array Output.Html :=
+    variants.map fun variant => {{
+      <option value={{variant.key}}>{{variant.label}}</option>
+    }}
+  let includeMathlibLegend :=
+    publicGraphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
+  let renderLegend (kind : String) (groups : Array Informal.Graph.LegendGroup)
+      (note? : Option String := none) (hidden : Bool := false) : Output.Html :=
+    let legendGroupHtml : Array Output.Html :=
+      groups.map fun group =>
+        let summaryHtml : Output.Html :=
+          match group.summary? with
+          | some summary => {{
+              <p class="bp_graph_legend_group_summary">
+                {{.text false summary}}
+              </p>
+            }}
+          | Option.none => .empty
+        let itemHtml : Array Output.Html :=
+          group.items.map fun item =>
+            match item.swatch? with
+            | some swatch => {{
+                <span class="bp_graph_legend_item">
+                  <span class="bp_graph_legend_swatch" "style"={{swatch.inlineStyle}}></span>
+                  {{.text false item.label}}
+                </span>
+              }}
+            | Option.none => {{
+                <span class="bp_graph_legend_item">
+                  {{.text false item.label}}
+                </span>
+              }}
+        {{
+          <section class="bp_graph_legend_group">
+            <div class="bp_graph_legend_group_header">
+              <span class="bp_graph_legend_group_title">{{.text false group.title}}</span>
+              {{summaryHtml}}
+            </div>
+            <div class="bp_graph_legend_items">
+              {{itemHtml}}
+            </div>
+          </section>
+        }}
+    let noteHtml : Output.Html :=
+      match note? with
+      | some note => {{
+          <p class="bp_graph_legend_note">
+            {{.text false note}}
+          </p>
+        }}
+      | Option.none => .empty
+    if hidden then
+      {{
+        <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}} hidden>
+          {{noteHtml}}
+          {{legendGroupHtml}}
+        </div>
+      }}
+    else
+      {{
+        <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}}>
+          {{noteHtml}}
+          {{legendGroupHtml}}
+        </div>
+      }}
+  let fullLegendHtml :=
+    renderLegend "full" (Informal.Graph.graphLegendGroups includeMathlibLegend)
+      (note? := some Informal.Graph.graphLegendFullViewNote)
+  let groupLegendHtml : Output.Html :=
+    if hasGroupVariant then
+      renderLegend "group" Informal.Graph.groupGraphLegendGroups
+        (note? := some Informal.Graph.graphLegendGroupViewNote) (hidden := true)
+    else
+      .empty
+  let graphViewSelectId : String := idBase ++ "--view"
+  let graphDirectionSelectId : String := idBase ++ "--direction"
+  let graphPackInputId : String := idBase ++ "--pack"
+  let graphPreviewModeSelectId : String := idBase ++ "--preview-mode"
+  let graphPreviewPlacementSelectId : String := idBase ++ "--preview-placement"
+  let graphLegendPanelId : String := idBase ++ "--legend"
+  let graphOptionsPanelId : String := idBase ++ "--options"
+  let graphDirectionOptions : Array Output.Html :=
+    allGraphDirections.map fun direction =>
+      if direction == options.direction then
+        {{ <option value={{direction.rankdir}} selected>{{direction.rankdir}}</option> }}
+      else
+        {{ <option value={{direction.rankdir}}>{{direction.rankdir}}</option> }}
+  let graphPackChecked : Array (String × String) :=
+    if options.pack then #[("checked", "checked")] else #[]
+  let graphPackDefault : String := if options.pack then "true" else "false"
+  let previewModeDefault : String := previewMode.dataValue
+  let graphPreviewModeOptions : Array Output.Html := #[
+    if previewMode == .pinned then
+      {{ <option value="pinned" selected>"Click to pin"</option> }}
+    else
+      {{ <option value="pinned">"Click to pin"</option> }},
+    if previewMode == .hover then
+      {{ <option value="hover" selected>"Hover"</option> }}
+    else
+      {{ <option value="hover">"Hover"</option> }}
+  ]
+  let previewPlacementDefault : String := previewPlacement.dataValue
+  let graphPreviewPlacementOptions : Array Output.Html := #[
+    if previewPlacement == .docked then
+      {{ <option value="docked" selected>"Docked"</option> }}
+    else
+      {{ <option value="docked">"Docked"</option> }},
+    if previewPlacement == .anchored then
+      {{ <option value="anchored" selected>"Near node"</option> }}
+    else
+      {{ <option value="anchored">"Near node"</option> }}
+  ]
+  let fallbackDot : String :=
+    match variants[0]? with
+    | some variant => variant.dot
+    | Option.none => publicGraphData.toDotWith options
+  let previewPanel :=
+    Informal.HoverRender.graphPreviewPanel previewMode previewPlacement
+  let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
+  let staticCanvasAttrs : Array (String × String) :=
+    if static then #[("data-bp-graph-static", "true")] else #[]
+  let controlsHtml : Output.Html :=
+    if static then .empty else {{
+      <div class="bp_graph_controls">
+        <div class="bp_graph_controls_primary">
+          <button
+            type="button"
+            class="bp_graph_controls_button bp_graph_legend_button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls={{graphLegendPanelId}}
+          >
+            "Legend"
+          </button>
+          <label class="bp_graph_controls_label" for={{graphViewSelectId}}>"View"</label>
+          <select id={{graphViewSelectId}} class="bp_graph_controls_select bp_graph_view_select">
+            {{graphVariantOptions}}
+          </select>
+        </div>
+        <div class="bp_graph_controls_actions">
+          <button
+            type="button"
+            class="bp_graph_controls_button bp_graph_options_button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls={{graphOptionsPanelId}}
+          >
+            "Graph options"
+          </button>
+        </div>
+      </div>
+    }}
+  let legendPopoverHtml : Output.Html :=
+    if static then .empty else {{
+      <div id={{graphLegendPanelId}} class="bp_graph_legend_popover" hidden>
+        <div class="bp_graph_legend_popover_header">
+          <span class="bp_graph_legend_popover_title">"Legend"</span>
+          <button type="button" class="bp_graph_legend_popover_close" aria-label="Close legend">"Close"</button>
+        </div>
+        <div class="bp_graph_legend_popover_body">
+          {{fullLegendHtml}}
+          {{groupLegendHtml}}
+        </div>
+      </div>
+    }}
+  let optionsPopoverHtml : Output.Html :=
+    if static then .empty else {{
+      <div id={{graphOptionsPanelId}} class="bp_graph_options_popover" hidden>
+        <div class="bp_graph_options_popover_header">
+          <span class="bp_graph_options_popover_title">"Graph options"</span>
+          <button type="button" class="bp_graph_options_popover_close" aria-label="Close graph options">"Close"</button>
+        </div>
+        <div class="bp_graph_options_popover_body">
+          <label class="bp_graph_controls_label" for={{graphDirectionSelectId}}>"Direction"</label>
+          <select
+            id={{graphDirectionSelectId}}
+            class="bp_graph_controls_select bp_graph_direction_select"
+            data-bp-graph-default-direction={{options.direction.rankdir}}
+          >
+            {{graphDirectionOptions}}
+          </select>
+          <label class="bp_graph_option_toggle" for={{graphPackInputId}}>
+            <input
+              id={{graphPackInputId}}
+              type="checkbox"
+              class="bp_graph_pack_input"
+              data-bp-graph-default-pack={{graphPackDefault}}
+              {{graphPackChecked}}/>
+            <span>"Pack disconnected components"</span>
+          </label>
+          <label class="bp_graph_controls_label" for={{graphPreviewModeSelectId}}>"Preview"</label>
+          <select
+            id={{graphPreviewModeSelectId}}
+            class="bp_graph_controls_select bp_graph_preview_mode_select"
+            data-bp-graph-default-preview-mode={{previewModeDefault}}
+          >
+            {{graphPreviewModeOptions}}
+          </select>
+          <label class="bp_graph_controls_label" for={{graphPreviewPlacementSelectId}}>"Position"</label>
+          <select
+            id={{graphPreviewPlacementSelectId}}
+            class="bp_graph_controls_select bp_graph_preview_placement_select"
+            data-bp-graph-default-preview-placement={{previewPlacementDefault}}
+          >
+            {{graphPreviewPlacementOptions}}
+          </select>
+        </div>
+      </div>
+    }}
+  let previewPanelHtml : Output.Html := if static then .empty else previewPanel
+  let groupHoverPanelHtml : Output.Html := if static then .empty else groupHoverPanel
+  {{
+    <div class="bp_graph_fullwidth">
+      {{controlsHtml}}
+      {{legendPopoverHtml}}
+      {{optionsPopoverHtml}}
+      <div
+        class="bp_graph_canvas"
+        "data-bp-graph-direction"={{options.direction.rankdir}}
+        "data-bp-graph-pack"={{graphPackDefault}}
+        {{staticCanvasAttrs}}
+      >
+        <script type="application/json" class="bp-graph-data">
+          {{.text false s!"{publicGraphDataJson}"}}
+        </script>
+        <script type="application/json" class="bp-graph-variants">
+          {{.text false s!"{graphVariantJson}"}}
+        </script>
+        <script type="text/plain" class="dot-source">
+          {{.text false s!"{fallbackDot}"}}
+        </script>
+      </div>
+      {{previewPanelHtml}}
+      {{groupHoverPanelHtml}}
+    </div>
+  }}
+
 open Verso Doc Elab Genre Manual in
 block_extension Block.graph (graphData : GraphBlockData) where
   -- for TOC
@@ -100,238 +363,18 @@ block_extension Block.graph (graphData : GraphBlockData) where
         | Option.none => pure { semanticGraphData := {}, options := {} }
       let s ← HtmlT.state
       let publicGraphData := Informal.GraphApi.finalDataForBlock s id graphData.semanticGraphData
-      let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
       let graphVariants := publicGraphData.renderVariants graphData.options
-      let hasGroupVariant := graphVariants.any (fun variant => variant.key == groupVariantKey)
-      let graphVariantJson : String := Lean.Json.compress (toJson graphVariants)
-      let graphVariantOptions : Array Output.Html :=
-        graphVariants.map fun variant => {{
-          <option value={{variant.key}}>{{variant.label}}</option>
-        }}
-      let includeMathlibLegend :=
-        publicGraphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
-      let renderLegend (kind : String) (groups : Array Informal.Graph.LegendGroup)
-          (note? : Option String := none) (hidden : Bool := false) : Output.Html :=
-        let legendGroupHtml : Array Output.Html :=
-          groups.map fun group =>
-            let summaryHtml : Output.Html :=
-              match group.summary? with
-              | some summary => {{
-                  <p class="bp_graph_legend_group_summary">
-                    {{.text false summary}}
-                  </p>
-                }}
-              | Option.none => .empty
-            let itemHtml : Array Output.Html :=
-              group.items.map fun item =>
-                match item.swatch? with
-                | some swatch => {{
-                    <span class="bp_graph_legend_item">
-                      <span class="bp_graph_legend_swatch" "style"={{swatch.inlineStyle}}></span>
-                      {{.text false item.label}}
-                    </span>
-                  }}
-                | Option.none => {{
-                    <span class="bp_graph_legend_item">
-                      {{.text false item.label}}
-                    </span>
-                  }}
-            {{
-              <section class="bp_graph_legend_group">
-                <div class="bp_graph_legend_group_header">
-                  <span class="bp_graph_legend_group_title">{{.text false group.title}}</span>
-                  {{summaryHtml}}
-                </div>
-                <div class="bp_graph_legend_items">
-                  {{itemHtml}}
-                </div>
-              </section>
-            }}
-        let noteHtml : Output.Html :=
-          match note? with
-          | some note => {{
-              <p class="bp_graph_legend_note">
-                {{.text false note}}
-              </p>
-            }}
-          | Option.none => .empty
-        if hidden then
-          {{
-            <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}} hidden>
-              {{noteHtml}}
-              {{legendGroupHtml}}
-            </div>
-          }}
-        else
-          {{
-            <div class="bp_graph_legend" "data-bp-legend-kind"={{kind}}>
-              {{noteHtml}}
-              {{legendGroupHtml}}
-            </div>
-          }}
-      let fullLegendHtml :=
-        renderLegend "full" (Informal.Graph.graphLegendGroups includeMathlibLegend)
-          (note? := some Informal.Graph.graphLegendFullViewNote)
-      let groupLegendHtml : Output.Html :=
-        if hasGroupVariant then
-          renderLegend "group" Informal.Graph.groupGraphLegendGroups
-            (note? := some Informal.Graph.graphLegendGroupViewNote) (hidden := true)
-        else
-          .empty
       let graphHtmlAttrs := s.htmlId id
-      let graphControlId (suffix : String) : String :=
+      let idBase : String :=
         match graphHtmlAttrs.findSome? fun
-            | ("id", value) => some s!"{value}{suffix}"
+            | ("id", value) => some value
             | _ => Option.none with
         | some value => value
-        | Option.none => fallbackGraphControlId id suffix
-      let graphViewSelectId : String := graphControlId "--view"
-      let graphDirectionSelectId : String := graphControlId "--direction"
-      let graphPackInputId : String := graphControlId "--pack"
-      let graphPreviewModeSelectId : String := graphControlId "--preview-mode"
-      let graphPreviewPlacementSelectId : String := graphControlId "--preview-placement"
-      let graphLegendPanelId : String := graphControlId "--legend"
-      let graphOptionsPanelId : String := graphControlId "--options"
-      let graphDirectionOptions : Array Output.Html :=
-        allGraphDirections.map fun direction =>
-          if direction == graphData.options.direction then
-            {{ <option value={{direction.rankdir}} selected>{{direction.rankdir}}</option> }}
-          else
-            {{ <option value={{direction.rankdir}}>{{direction.rankdir}}</option> }}
-      let graphPackChecked : Array (String × String) :=
-        if graphData.options.pack then #[("checked", "checked")] else #[]
-      let graphPackDefault : String := if graphData.options.pack then "true" else "false"
-      let previewModeDefault : String := graphData.previewMode.dataValue
-      let graphPreviewModeOptions : Array Output.Html := #[
-        if graphData.previewMode == .pinned then
-          {{ <option value="pinned" selected>"Click to pin"</option> }}
-        else
-          {{ <option value="pinned">"Click to pin"</option> }},
-        if graphData.previewMode == .hover then
-          {{ <option value="hover" selected>"Hover"</option> }}
-        else
-          {{ <option value="hover">"Hover"</option> }}
-      ]
-      let previewPlacementDefault : String := graphData.previewPlacement.dataValue
-      let graphPreviewPlacementOptions : Array Output.Html := #[
-        if graphData.previewPlacement == .docked then
-          {{ <option value="docked" selected>"Docked"</option> }}
-        else
-          {{ <option value="docked">"Docked"</option> }},
-        if graphData.previewPlacement == .anchored then
-          {{ <option value="anchored" selected>"Near node"</option> }}
-        else
-          {{ <option value="anchored">"Near node"</option> }}
-      ]
-      let fallbackDot : String :=
-        match graphVariants[0]? with
-        | some variant => variant.dot
-        | Option.none => publicGraphData.toDotWith graphData.options
-      let previewPanel :=
-        Informal.HoverRender.graphPreviewPanel
-          graphData.previewMode
-          graphData.previewPlacement
-      let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
-      return {{
-        <div class="bp_graph_fullwidth">
-          <div class="bp_graph_controls">
-            <div class="bp_graph_controls_primary">
-              <button
-                type="button"
-                class="bp_graph_controls_button bp_graph_legend_button"
-                aria-haspopup="dialog"
-                aria-expanded="false"
-                aria-controls={{graphLegendPanelId}}
-              >
-                "Legend"
-              </button>
-              <label class="bp_graph_controls_label" for={{graphViewSelectId}}>"View"</label>
-              <select id={{graphViewSelectId}} class="bp_graph_controls_select bp_graph_view_select">
-                {{graphVariantOptions}}
-              </select>
-            </div>
-            <div class="bp_graph_controls_actions">
-              <button
-                type="button"
-                class="bp_graph_controls_button bp_graph_options_button"
-                aria-haspopup="dialog"
-                aria-expanded="false"
-                aria-controls={{graphOptionsPanelId}}
-              >
-                "Graph options"
-              </button>
-            </div>
-          </div>
-          <div id={{graphLegendPanelId}} class="bp_graph_legend_popover" hidden>
-            <div class="bp_graph_legend_popover_header">
-              <span class="bp_graph_legend_popover_title">"Legend"</span>
-              <button type="button" class="bp_graph_legend_popover_close" aria-label="Close legend">"Close"</button>
-            </div>
-            <div class="bp_graph_legend_popover_body">
-              {{fullLegendHtml}}
-              {{groupLegendHtml}}
-            </div>
-          </div>
-          <div id={{graphOptionsPanelId}} class="bp_graph_options_popover" hidden>
-            <div class="bp_graph_options_popover_header">
-              <span class="bp_graph_options_popover_title">"Graph options"</span>
-              <button type="button" class="bp_graph_options_popover_close" aria-label="Close graph options">"Close"</button>
-            </div>
-            <div class="bp_graph_options_popover_body">
-              <label class="bp_graph_controls_label" for={{graphDirectionSelectId}}>"Direction"</label>
-              <select
-                id={{graphDirectionSelectId}}
-                class="bp_graph_controls_select bp_graph_direction_select"
-                data-bp-graph-default-direction={{graphData.options.direction.rankdir}}
-              >
-                {{graphDirectionOptions}}
-              </select>
-              <label class="bp_graph_option_toggle" for={{graphPackInputId}}>
-                <input
-                  id={{graphPackInputId}}
-                  type="checkbox"
-                  class="bp_graph_pack_input"
-                  data-bp-graph-default-pack={{graphPackDefault}}
-                  {{graphPackChecked}}/>
-                <span>"Pack disconnected components"</span>
-              </label>
-              <label class="bp_graph_controls_label" for={{graphPreviewModeSelectId}}>"Preview"</label>
-              <select
-                id={{graphPreviewModeSelectId}}
-                class="bp_graph_controls_select bp_graph_preview_mode_select"
-                data-bp-graph-default-preview-mode={{previewModeDefault}}
-              >
-                {{graphPreviewModeOptions}}
-              </select>
-              <label class="bp_graph_controls_label" for={{graphPreviewPlacementSelectId}}>"Position"</label>
-              <select
-                id={{graphPreviewPlacementSelectId}}
-                class="bp_graph_controls_select bp_graph_preview_placement_select"
-                data-bp-graph-default-preview-placement={{previewPlacementDefault}}
-              >
-                {{graphPreviewPlacementOptions}}
-              </select>
-            </div>
-          </div>
-          <div
-            class="bp_graph_canvas"
-            "data-bp-graph-direction"={{graphData.options.direction.rankdir}}
-            "data-bp-graph-pack"={{graphPackDefault}}
-          >
-            <script type="application/json" class="bp-graph-data">
-              {{.text false s!"{publicGraphDataJson}"}}
-            </script>
-            <script type="application/json" class="bp-graph-variants">
-              {{.text false s!"{graphVariantJson}"}}
-            </script>
-            <script type="text/plain" class="dot-source">
-              {{.text false s!"{fallbackDot}"}}
-            </script>
-          </div>
-          {{previewPanel}}
-          {{groupHoverPanel}}
-        </div>
-      }}
+        | Option.none => Informal.HtmlId.prefixed "bp-graph" (toString id)
+      return renderGraphFullwidth publicGraphData graphVariants graphData.options idBase
+        (static := false)
+        (previewMode := graphData.previewMode)
+        (previewPlacement := graphData.previewPlacement)
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
 
@@ -339,9 +382,12 @@ def buildAll : CoreM Informal.Graph.GraphData := do
   reportImportedConflicts
   let env ← getEnv
   let state := informalExt.getState env
+  let inMathlib ← Informal.Graph.mkInMathlibPredicate
+  let external : Informal.Graph.ExternalCodeStatus := { inMathlib }
   let roots : Array Name := state.data.toArray.map (·.1)
   let groupTitles := state.groups.toArray
-  let semanticGraphData := Informal.Graph.buildData state roots (groupTitles := groupTitles)
+  let semanticGraphData :=
+    Informal.Graph.buildDataWithExternal state roots external (groupTitles := groupTitles)
   return semanticGraphData
 
 open Verso.ArgParse

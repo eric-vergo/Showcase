@@ -111,4 +111,44 @@ emitted.
 def cachedData (state : TraverseState) : Array Informal.Graph.GraphData :=
   Informal.TraversalIndex.Graphs.allData state |>.map (finalData state)
 
+/--
+Union of every traversal-cached graph block into a single master `GraphData`.
+
+This is the whole-document dependency universe consumed by the ancestors /
+descendants traversals and (later) graph metrics. It folds over `cachedData`
+(already finalized: hrefs, titles, statuses):
+
+* nodes are deduplicated by `label`, keeping the first finalized occurrence;
+* edges are unioned and deduplicated by `(source, target)` (first occurrence
+  wins — the master graph block already carries each edge with its full axes);
+* groups are unioned by `label`, merging their `children`, `declared` flag, and
+  first non-empty `title`.
+
+Fallback choice: when there are no cached graph blocks this returns an empty
+`GraphData`. We deliberately do not synthesize adjacency from manifest entries.
+`masterGraph` is pure (`TraverseState → GraphData`) so it cannot log a note, an
+empty graph is the honest result when nothing was rendered, and every generated
+Blueprint renders at least one graph block in practice — so this fallback is
+effectively unreachable.
+-/
+def masterGraph (state : TraverseState) : Informal.Graph.GraphData :=
+  (cachedData state).foldl (init := ({} : Informal.Graph.GraphData)) fun acc data =>
+    let acc := data.nodes.foldl (init := acc) fun acc node =>
+      if acc.nodes.any (·.label == node.label) then acc
+      else { acc with nodes := acc.nodes.push node }
+    let acc := data.edges.foldl (init := acc) fun acc edge =>
+      if acc.edges.any (fun e => e.source == edge.source && e.target == edge.target) then acc
+      else { acc with edges := acc.edges.push edge }
+    data.groups.foldl (init := acc) fun acc group =>
+      match acc.groups.findIdx? (fun g => g.label == group.label) with
+      | some i =>
+        { acc with
+          groups := acc.groups.modify i fun existing =>
+            { existing with
+              children := group.children.foldl (init := existing.children) fun ch c =>
+                if ch.contains c then ch else ch.push c
+              declared := existing.declared || group.declared
+              title := if existing.title.isEmpty then group.title else existing.title } }
+      | none => { acc with groups := acc.groups.push group }
+
 end Informal.GraphApi

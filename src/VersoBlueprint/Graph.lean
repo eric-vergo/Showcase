@@ -475,6 +475,12 @@ def allDeps (node : Data.Node) : Array Name :=
 structure ExternalCodeStatus where
   isMissing : Name → Bool := fun _ => false
   provedStatus : Name → Data.ProvedStatus := fun _ => .proved
+  /--
+  Whether a resolved declaration lives in Mathlib. Defaults to `false` so every
+  existing `{}` call site keeps its previous behavior and the predicate degrades
+  gracefully when Mathlib membership cannot be determined.
+  -/
+  inMathlib : Name → Bool := fun _ => false
 
 structure CodeHealth where
   hasAssociatedCode : Bool := false
@@ -633,9 +639,36 @@ def nodeLocalFormalized (external : ExternalCodeStatus) (node : Data.Node) : Boo
 def eraseDups (xs : Array Name) : Array Name :=
   xs.foldl (init := #[]) fun acc x => if acc.contains x then acc else acc.push x
 
-/-- Placeholder branch for future `(lean := "...")` Mathlib integration. -/
-def nodeInMathlib (_state : Environment.State) (_label : Name) (_node : Data.Node) : Bool :=
-  false
+/--
+Whether a node is considered formalized in Mathlib.
+
+Consults `ExternalCodeStatus.inMathlib` over the node's resolved external
+declarations rather than the Blueprint environment state. A node counts as in
+Mathlib only when it has external declarations and every one of them resolves to
+a Mathlib module, so the default `inMathlib := fun _ => false` predicate keeps
+every node dark (graceful degradation when there is no Mathlib dependency).
+-/
+def nodeInMathlib (external : ExternalCodeStatus) (node : Data.Node) : Bool :=
+  let decls := nodeExternalDecls node
+  !decls.isEmpty && decls.all (fun decl => external.inMathlib decl.canonical)
+
+/--
+Build a Mathlib-membership predicate from the current `CoreM` environment.
+
+For each declaration name, looks up its defining module via
+`Environment.getModuleIdxFor?` and tests whether that module name has the
+`` `Mathlib `` prefix. Declarations that are not imported resolve to `false`.
+-/
+def mkInMathlibPredicate : Lean.CoreM (Name → Bool) := do
+  let env ← Lean.getEnv
+  let moduleNames := env.header.moduleNames
+  return fun declName =>
+    match env.getModuleIdxFor? declName with
+    | none => false
+    | some idx =>
+      match moduleNames[idx.toNat]? with
+      | none => false
+      | some moduleName => (`Mathlib).isPrefixOf moduleName
 
 inductive DepTraversal where
   | statement
@@ -667,9 +700,9 @@ partial def depsClosureComplete (external : ExternalCodeStatus) (state : Environ
 def nodeAncestorsFormalized (external : ExternalCodeStatus) (state : Environment.State) (node : Data.Node) : Bool :=
   depsClosureComplete external state .both (allDeps node)
 
-def statementStatus (external : ExternalCodeStatus) (state : Environment.State) (label : Name)
+def statementStatus (external : ExternalCodeStatus) (state : Environment.State) (_label : Name)
     (node : Data.Node) : StatementStatus :=
-  if nodeInMathlib state label node then
+  if nodeInMathlib external node then
     .mathlib
   else if nodeLocalStatementFormalized external node then
     .formalized
@@ -1467,6 +1500,72 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
         previewKeyByNodeId := previewKeyByNodeId parentSubgraph
       }
     #[fullVariant, groupVariant] ++ parentVariants
+
+/--
+Forward adjacency (dependency → dependents) derived from `GraphData.edges`.
+
+Edges point from a dependency source to the dependent target, so following the
+forward map walks toward downstream descendants.
+-/
+def GraphData.forwardAdj (data : GraphData) : Lean.NameMap (Array Name) :=
+  data.edges.foldl (init := ({} : Lean.NameMap (Array Name))) fun acc edge =>
+    let cur := acc.getD edge.source #[]
+    if cur.contains edge.target then acc
+    else acc.insert edge.source (cur.push edge.target)
+
+/--
+Reverse adjacency (dependent → dependencies) derived from `GraphData.edges`.
+
+Following the reverse map walks toward upstream ancestors.
+-/
+def GraphData.reverseAdj (data : GraphData) : Lean.NameMap (Array Name) :=
+  data.edges.foldl (init := ({} : Lean.NameMap (Array Name))) fun acc edge =>
+    let cur := acc.getD edge.target #[]
+    if cur.contains edge.source then acc
+    else acc.insert edge.target (cur.push edge.source)
+
+/-- Cycle-guarded reachability closure over an adjacency map. -/
+private partial def reachableClosure (adj : Lean.NameMap (Array Name)) :
+    List Name → Lean.NameSet → Lean.NameSet
+  | [], visited => visited
+  | n :: rest, visited =>
+    if visited.contains n then
+      reachableClosure adj rest visited
+    else
+      let visited := visited.insert n
+      reachableClosure adj ((adj.getD n #[]).toList ++ rest) visited
+
+/--
+All ancestors (transitive dependencies) of `label` via the reverse adjacency.
+
+The start node is not included unless it participates in a dependency cycle. The
+traversal is cycle-guarded with a visited set.
+-/
+def GraphData.ancestors (data : GraphData) (label : Name) : Lean.NameSet :=
+  reachableClosure data.reverseAdj (data.reverseAdj.getD label #[]).toList {}
+
+/--
+All descendants (transitive dependents) of `label` via the forward adjacency.
+
+The start node is not included unless it participates in a dependency cycle. The
+traversal is cycle-guarded with a visited set.
+-/
+def GraphData.descendants (data : GraphData) (label : Name) : Lean.NameSet :=
+  reachableClosure data.forwardAdj (data.forwardAdj.getD label #[]).toList {}
+
+/--
+Restrict graph data to the given label set.
+
+Mirrors `subgraphForParent`: nodes are filtered to the set, edges are kept only
+when both endpoints are in the set, and each group's `children` are filtered to
+the set.
+-/
+def GraphData.restrictTo (data : GraphData) (labels : Lean.NameSet) : GraphData :=
+  { data with
+    nodes := data.nodes.filter (fun node => labels.contains node.label)
+    edges := data.edges.filter (fun edge => labels.contains edge.source && labels.contains edge.target)
+    groups := data.groups.map (fun group =>
+      { group with children := group.children.filter (fun child => labels.contains child) }) }
 
 /-- Build the bundled renderer's DOT variants from finalized public graph data. -/
 def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array GraphRenderVariant :=

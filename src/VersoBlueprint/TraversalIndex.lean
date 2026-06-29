@@ -13,6 +13,7 @@ import VersoBlueprint.Graph
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
+import VersoBlueprint.Commands.Summary.Data
 
 /-!
 Typed accessors for Blueprint's traversal-time stores.
@@ -481,6 +482,43 @@ def hrefs (state : TraverseState) (label : String) : Array String :=
 
 end CitationUsages
 
+namespace Summary
+
+/--
+Singleton key under which the document's decoded blueprint `Summary` payload is
+cached for post-elaboration consumers (the dashboard block traverse saves it; the
+extra-page emission step reads it back).
+-/
+def summaryKey : String := "summary"
+
+def spec : StoreSpec := {
+  name := Name.mkSimple "Informal.Block.summary"
+  kind := .runtimeCache
+  key := "singleton summary key"
+  value := "decoded Summary dashboard/worklist payload"
+  summary := "Traversal-cached blueprint Summary payload reused by the dashboard and PM page emission."
+}
+
+def domainName : Name := spec.name
+
+def object? (state : TraverseState) : Option Verso.Multi.Object :=
+  state.getDomainObject? domainName summaryKey
+
+def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName summaryKey id
+
+def saveData (state : TraverseState) (data : Informal.Commands.Summary) : TraverseState :=
+  saveObjectData state domainName summaryKey (toJson data)
+
+/-- The cached document-wide blueprint summary, if one was saved during traversal. -/
+def cachedSummary? (state : TraverseState) : Option Informal.Commands.Summary :=
+  objectData? state domainName summaryKey
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+end Summary
+
 /--
 Code-side inventory of the traversal indexes owned by Blueprint.
 
@@ -500,7 +538,8 @@ def allSpecs : Array StoreSpec := #[
   ExternalDeclAnchors.spec,
   CitationPreviews.spec,
   Bibliography.spec,
-  CitationUsages.spec
+  CitationUsages.spec,
+  Summary.spec
 ]
 
 end Informal.TraversalIndex

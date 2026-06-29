@@ -327,10 +327,10 @@ private structure SummaryBuildContext where
   usageMap : NameMap UsageCounts
   reverseMap : NameMap (Array Name)
 
-private def mkSummaryBuildContext (state : Environment.State) : SummaryBuildContext :=
+private def mkSummaryBuildContext (state : Environment.State)
+    (external : Informal.Graph.ExternalCodeStatus := {}) : SummaryBuildContext :=
   let entries := state.data.toArray
   let parentChildren := state.data.parentChildren
-  let external : Informal.Graph.ExternalCodeStatus := {}
   let (usageMap, reverseMap) := buildUsageMaps entries
   {
     state
@@ -613,6 +613,52 @@ private def collectCoverageSplit (ctx : SummaryBuildContext) : CoverageSplit :=
     else
       { acc with blockedOrIncomplete := acc.blockedOrIncomplete + 1 }
 
+/--
+Readiness bucket for a single entry, mirroring the bucket order used by
+`collectCoverageSplit`. Returns one of `informalOnly`, `closed`, `localOnly`,
+`ready`, or `blocked`.
+-/
+private def worklistReadiness (ctx : SummaryBuildContext) (label : Name) (node : Data.Node) : String :=
+  let hasStatement := node.statement.isSome
+  let hasCode := Informal.Graph.nodeHasAssociatedCode node
+  let statusFlags := entryStatusFlags ctx.state ctx.external node
+  let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
+  let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
+  if hasStatement && !hasCode then
+    "informalOnly"
+  else if statusFlags.completed then
+    "closed"
+  else if statusFlags.completedDepsNo then
+    "localOnly"
+  else if (actionableStage? node statementStatus proofStatus).isSome then
+    "ready"
+  else
+    "blocked"
+
+private def worklistItem (ctx : SummaryBuildContext) (label : Name) (node : Data.Node) : WorklistItem :=
+  let statementStatus := Informal.Graph.statementStatus ctx.external ctx.state label node
+  let proofStatus := Informal.Graph.proofStatus ctx.external ctx.state label node
+  let usage := ctx.usageMap.getD label {}
+  {
+    label
+    kind := toString node.kind
+    statementStatus := Informal.Graph.StatementStatus.toText statementStatus
+    proofStatus := if node.kind.isTheoremLike then Informal.Graph.ProofStatus.toText proofStatus else ""
+    readiness := worklistReadiness ctx label node
+    ownerDisplayName := ownerDisplayName ctx.state node
+    tags := node.tags.toList
+    effort := node.effort
+    priority := node.priority
+    prUrl := node.prUrl
+    directUses := usage.directUses
+    downstreamUses := ctx.downstreamUses label
+  }
+
+/-- One `WorklistItem` per registered blueprint entry, in registration order. -/
+private def collectWorklistItems (ctx : SummaryBuildContext) : List WorklistItem :=
+  (ctx.entries.foldl (init := #[]) fun acc (label, node) =>
+    acc.push (worklistItem ctx label node)).toList
+
 private def collectDependencyLoadItems (ctx : SummaryBuildContext) : List DependencyLoadItem :=
   let items := ctx.entries.foldl (init := #[]) fun acc (label, node) =>
     let statementDeps := Informal.Graph.eraseDups (Informal.Graph.statementDeps node)
@@ -726,7 +772,9 @@ def buildSummary : CoreM Summary := do
       verso.blueprint.summary.debugDiagnostics.defValue
   let env ← getEnv
   let state := informalExt.getState env
-  let ctx := mkSummaryBuildContext state
+  let inMathlib ← Informal.Graph.mkInMathlibPredicate
+  let external : Informal.Graph.ExternalCodeStatus := { inMathlib }
+  let ctx := mkSummaryBuildContext state external
   let summary := collectSummaryOverview ctx
   let topPriorities := collectPriorityItems ctx
   let metadataAudit := collectMetadataAudit ctx
@@ -751,6 +799,7 @@ def buildSummary : CoreM Summary := do
       missingOwners := metadataAudit.sortedMissingOwners
       missingEffort := metadataAudit.sortedMissingEffort
       untaggedEntries := metadataAudit.sortedUntaggedEntries
+      worklist := collectWorklistItems ctx
   }
 
 end Informal.Commands

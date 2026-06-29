@@ -366,6 +366,23 @@ private def summaryStructureSection (data : Summary) (rows : SummaryRows) : Outp
             "bp_summary_subsection bp_summary_subsection_warn"}}
       }}
 
+/--
+The six blueprint summary detail sections, composed in document order.
+
+Factored out of `summaryBlockToHtml` so the future dashboard surface can embed
+the same detail sections. The individual `summary*Section` builders stay
+`private`; this exposes only their composition. The output is byte-equivalent to
+inlining the six section calls directly in a parent element.
+-/
+def renderSummaryDetailSections (data : Summary) (rows : SummaryRows) : Output.Html := {{
+    {{summaryOverviewSection data rows}}
+    {{summaryEntryIndexSection data rows}}
+    {{summaryDependencyInsightsSection rows}}
+    {{summaryMetadataSection data rows}}
+    {{summaryDiagnosticsSection data rows}}
+    {{summaryStructureSection data rows}}
+  }}
+
 private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
@@ -400,12 +417,7 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
     pure {{
       <div {{summaryAttrs}}>
         {{previewPanel}}
-        {{summaryOverviewSection data rows}}
-        {{summaryEntryIndexSection data rows}}
-        {{summaryDependencyInsightsSection rows}}
-        {{summaryMetadataSection data rows}}
-        {{summaryDiagnosticsSection data rows}}
-        {{summaryStructureSection data rows}}
+        {{renderSummaryDetailSections data rows}}
       </div>
     }}
 
