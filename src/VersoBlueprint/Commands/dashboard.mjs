@@ -57,15 +57,15 @@ function cssVar(name, fallback) {
 // dark themes automatically (the tokens are redefined per color scheme).
 function readPalette() {
   return {
-    closed: cssVar("--bp-color-accent-success", "#16a34a"),
-    ready: cssVar("--bp-color-accent-info", "#7c3aed"),
-    blocked: cssVar("--bp-color-accent-danger", "#dc2626"),
-    warning: cssVar("--bp-color-accent-warning", "#ca8a04"),
-    other: cssVar("--bp-color-border-strong", "#94a3b8"),
-    text: cssVar("--bp-color-text", "#111827"),
-    textMuted: cssVar("--bp-color-text-muted", "#334155"),
-    grid: cssVar("--bp-color-border-soft", "#e2e8f0"),
-    track: cssVar("--bp-color-surface-muted", "#f8fafc")
+    closed: cssVar("--bp-color-status-formalized", "#1c8c57"),
+    ready: cssVar("--bp-color-status-ready", "#1c5fb8"),
+    blocked: cssVar("--bp-color-status-blocked", "#b86b2e"),
+    warning: cssVar("--bp-color-accent-warning", "#b86b2e"),
+    other: cssVar("--bp-color-border-strong", "#b4c0cc"),
+    text: cssVar("--bp-color-text", "#15212b"),
+    textMuted: cssVar("--bp-color-text-muted", "#5a6b7a"),
+    grid: cssVar("--bp-color-border-soft", "#e6ebf1"),
+    track: cssVar("--bp-color-surface-muted", "#f1f4f7")
   };
 }
 

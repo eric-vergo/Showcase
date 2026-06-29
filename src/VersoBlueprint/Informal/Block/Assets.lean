@@ -68,15 +68,18 @@ span[class$="_thmlabel"]::after {
 }
 
 .bp_extras {
-  --bp-extra-group-col: minmax(5rem, max-content);
-  --bp-extra-uses-col: minmax(5.2rem, max-content);
-  --bp-extra-used-by-col: minmax(7.2rem, max-content);
+  /* Apparatus metadata groups tightly: each slot is content-sized and they sit
+     in one tidy cluster (right-aligned) with a single consistent gap, rather
+     than reserving wide fixed columns that spread the cluster across the row. */
+  --bp-extra-group-col: max-content;
+  --bp-extra-uses-col: max-content;
+  --bp-extra-used-by-col: max-content;
   --bp-extra-code-col: max-content;
-  --bp-extra-code-placeholder-col: minmax(3.35rem, max-content);
+  --bp-extra-code-placeholder-col: max-content;
   display: inline-grid;
   align-items: baseline;
   justify-content: end;
-  column-gap: 0.55rem;
+  column-gap: 0.75rem;
   grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
   grid-template-areas: "used code";
   margin-left: auto;
@@ -615,7 +618,10 @@ span[class$="_thmlabel"]::after {
   font: inherit;
   line-height: inherit;
   text-align: left;
-  font-size: 0.78rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--bp-color-text-muted);
   white-space: nowrap;
@@ -1414,10 +1420,22 @@ a.bp_external_decl_source_path:hover {
 
 details.bp_kind_proof_wrapper > summary.bp_heading {
   cursor: pointer;
+  border-radius: var(--bp-radius-sm);
+  padding: 0.1rem 0.3rem;
+  margin-left: -0.3rem;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+details.bp_kind_proof_wrapper > summary.bp_heading:hover {
+  background: var(--bp-color-surface-subtle);
 }
 
 details.bp_kind_proof_wrapper > summary.bp_heading::marker {
   color: var(--bp-color-text-faint);
+}
+
+.bp-proof-by-toggle {
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
 }
 
 .bp_wrapper.bp_style_plain .bp_heading,
@@ -1438,29 +1456,31 @@ div.theorem-style-definition div[class$="_thmheading"] {
   font-weight: bold;
 }
 
+/* Entry blocks carry no per-status class, so the left rule uses the structural
+   blueprint-blue accent uniformly (statements) with a quieter hairline for proofs. */
 .bp_kind_theorem_content,
 div.theorem_thmcontent {
-  border-left: 0.15rem solid black;
+  border-left: 3px solid var(--bp-color-accent);
 }
 
 .bp_kind_proposition_content,
 div.proposition_thmcontent {
-  border-left: 0.15rem solid black;
+  border-left: 3px solid var(--bp-color-accent);
 }
 
 .bp_kind_lemma_content,
 div.lemma_thmcontent {
-  border-left: 0.1rem solid black;
+  border-left: 3px solid var(--bp-color-accent);
 }
 
 .bp_kind_corollary_content,
 div.corollary_thmcontent {
-  border-left: 0.1rem solid black;
+  border-left: 3px solid var(--bp-color-accent);
 }
 
 .bp_kind_proof_content,
 div.proof_content {
-  border-left: 0.08rem solid grey;
+  border-left: 3px solid var(--bp-color-border-strong);
 }
 
 .bp_wrapper:target {
@@ -1478,6 +1498,65 @@ div.proof_content {
     background-color: transparent;
     box-shadow: 0 0 0 0.18rem var(--bp-color-target-ring);
   }
+}
+
+/* ---- Typography roles ---------------------------------------------------- */
+
+/* Informal mathematical prose: serif body for the statement/proof content so it
+   harmonizes with inline KaTeX. Scoped to the math content only (not nav, ToC,
+   UI labels, headings, code or identifiers). */
+.bp_content p,
+.bp_content li,
+.bp_content dd,
+.bp_content dt,
+.bp_content blockquote {
+  font-family: var(--font-prose);
+  line-height: 1.6;
+}
+
+/* Cap the reading measure for the serif body (~68ch) so multi-line prose wraps
+   at a comfortable width. Statements/proofs read tighter than the full content
+   column; cards, code blocks, tables, the dashboard and display math keep the
+   full width — display-math paragraphs are explicitly opted back out. */
+.bp_content p,
+.bp_content li,
+.bp_content dd,
+.bp_content dt,
+.bp_content blockquote {
+  max-width: 42rem;
+}
+
+.bp_content p:has(.bp_math.display),
+.bp_content li:has(.bp_math.display),
+.bp_content dd:has(.bp_math.display) {
+  max-width: none;
+}
+
+/* "Apparatus": the kind caption ("Definition") and number label render as a
+   quiet monospace eyebrow. Identifiers/math in the content are untouched. */
+.bp_caption,
+.bp_label,
+span[class$="_thmcaption"],
+span[class$="_thmlabel"] {
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82em;
+  font-weight: 700;
+  color: var(--bp-color-text-muted);
+}
+
+/* Links inside informal prose: blueprint-blue with a subtle underline. */
+.bp_content a:not([class]) {
+  color: var(--bp-color-link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+  text-decoration-color: color-mix(in srgb, var(--bp-color-link) 45%, transparent);
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
+}
+
+.bp_content a:not([class]):hover {
+  text-decoration-color: currentColor;
 }
 "##
 

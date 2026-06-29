@@ -55,24 +55,28 @@ def nodeMetricsCss : String := r##"
 .bp_node_metric {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.25rem;
+  gap: 0.35rem;
   padding: 0.1rem 0.55rem;
-  color: var(--bp-color-text-muted, #334155);
-  background: var(--bp-color-surface-muted, #f8fafc);
-  border: 1px solid var(--bp-color-border, #cbd5e1);
+  color: var(--bp-color-text-muted, #5a6b7a);
+  background: var(--bp-color-surface-muted, #f1f4f7);
+  border: 1px solid var(--bp-color-border, #dbe2ea);
   border-radius: var(--bp-radius-pill, 999px);
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
 }
 
 .bp_node_metric_value {
-  font-weight: 600;
-  color: var(--bp-color-text, #111827);
+  font-weight: 700;
+  color: var(--bp-color-text, #15212b);
 }
 
 .bp_node_metric_critical {
-  color: var(--bp-color-status-success-text, #166534);
-  background: var(--bp-color-surface-muted, #f8fafc);
-  border-color: var(--bp-color-accent-success, #16a34a);
-  font-weight: 600;
+  color: var(--bp-color-status-mathlib, #6a4fba);
+  background: var(--bp-color-status-mathlib-surface, rgba(106, 79, 186, 0.12));
+  border-color: var(--bp-color-status-mathlib, #6a4fba);
+  font-weight: 700;
 }
 "##
 

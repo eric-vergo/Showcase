@@ -47,6 +47,12 @@ def css : String := r##"
   background: var(--bp-color-surface);
   font-size: 0.82rem;
   padding: 0.1rem 0.25rem;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
+}
+
+#bp-style-switcher select:hover {
+  border-color: var(--bp-color-border-strong);
 }
 
 html[data-bp-style="blueprint"] .bp_wrapper {

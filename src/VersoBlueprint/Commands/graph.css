@@ -129,7 +129,7 @@
   height: min(42vh, 24rem);
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-xl);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--bp-color-surface);
   box-shadow: var(--bp-shadow-lg);
   padding: 0.55rem 0.65rem;
   pointer-events: auto;
@@ -262,6 +262,12 @@
   padding: 0.35rem 0.55rem;
   font-size: 0.87rem;
   line-height: 1.2;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.bp_graph_controls_select:hover {
+  border-color: var(--bp-color-border-strong);
 }
 
 .bp_graph_view_select {
@@ -294,16 +300,16 @@
 .bp_graph_pack_input {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--bp-color-accent, #0f766e);
+  accent-color: var(--bp-color-accent, #1c5fb8);
 }
 
 .bp_graph_pack_input:focus-visible {
-  outline: 2px solid var(--bp-color-accent, #0f766e);
+  outline: 2px solid var(--bp-color-accent, #1c5fb8);
   outline-offset: 2px;
 }
 
 .bp_graph_controls_select:focus-visible {
-  outline: 2px solid var(--bp-color-accent, #0f766e);
+  outline: 2px solid var(--bp-color-accent, #1c5fb8);
   outline-offset: 2px;
 }
 
@@ -321,14 +327,17 @@
   line-height: 1.2;
   cursor: pointer;
   box-shadow: var(--bp-shadow-sm);
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .bp_graph_controls_button:hover {
   background: var(--bp-color-surface-subtle);
+  border-color: var(--bp-color-border-strong);
 }
 
 .bp_graph_controls_button:focus-visible {
-  outline: 2px solid var(--bp-color-accent, #0f766e);
+  outline: 2px solid var(--bp-color-accent, #1c5fb8);
   outline-offset: 2px;
 }
 
@@ -349,7 +358,7 @@
   max-height: min(70vh, 34rem);
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-xl);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--bp-color-surface);
   box-shadow: var(--bp-shadow-lg);
   overflow: auto;
   backdrop-filter: blur(3px);
@@ -365,7 +374,7 @@
   max-width: min(18rem, calc(100% - 1.8rem));
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-xl);
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--bp-color-surface);
   box-shadow: var(--bp-shadow-lg);
   overflow: auto;
   backdrop-filter: blur(3px);

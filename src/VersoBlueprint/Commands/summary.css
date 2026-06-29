@@ -3,17 +3,68 @@
 }
 
 .bp_summary_section {
-  border: 1px solid var(--bp-color-border-muted);
-  border-radius: 0.6rem;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg);
   padding: 0.2rem 0.8rem 0.75rem;
   margin-bottom: 0.8rem;
   background: var(--bp-color-surface);
+  box-shadow: var(--bp-shadow-sm);
 }
 
 .bp_summary_section > summary {
   cursor: pointer;
   font-weight: 700;
-  padding: 0.6rem 0;
+  padding: 0.6rem 0.4rem;
+}
+
+/* Tidy, consistent disclosure marker (a rotating chevron) + smooth hover across
+   the summary's collapsible sections. */
+.bp_summary_section > summary,
+.bp_summary_subsection > summary,
+.bp_summary_nested > summary,
+.bp_summary_decls > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--bp-radius-sm);
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.bp_summary_section > summary::-webkit-details-marker,
+.bp_summary_subsection > summary::-webkit-details-marker,
+.bp_summary_nested > summary::-webkit-details-marker,
+.bp_summary_decls > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bp_summary_section > summary::before,
+.bp_summary_subsection > summary::before,
+.bp_summary_nested > summary::before,
+.bp_summary_decls > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease;
+  opacity: 0.5;
+}
+
+.bp_summary_section[open] > summary::before,
+.bp_summary_subsection[open] > summary::before,
+.bp_summary_nested[open] > summary::before,
+.bp_summary_decls[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.bp_summary_section > summary:hover,
+.bp_summary_subsection > summary:hover,
+.bp_summary_nested > summary:hover,
+.bp_summary_decls > summary:hover {
+  background: var(--bp-color-surface-subtle);
 }
 
 .bp_summary_subsection {
@@ -38,13 +89,20 @@
 }
 
 .bp_summary_card {
-  border: 1px solid var(--bp-color-border-muted);
+  border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-md);
-  background: var(--bp-color-surface-subtle);
+  background: var(--bp-color-surface);
   padding: 0.65rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  box-shadow: var(--bp-shadow-sm);
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.bp_summary_card:hover {
+  border-color: var(--bp-color-border-strong);
 }
 
 .bp_summary_card_warn {
@@ -59,7 +117,10 @@
 }
 
 .bp_summary_label {
-  font-size: 0.82rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
   color: var(--bp-color-text-subtle);
 }
 

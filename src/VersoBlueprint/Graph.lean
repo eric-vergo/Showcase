@@ -338,16 +338,16 @@ def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
     s!"border-radius: {swatch.borderRadius}"
   ]
 
-def statementBorderBlockedColor : String := "#f59e0b"
-def statementBorderReadyColor : String := "#2563eb"
-def statementBorderFormalizedColor : String := "#16a34a"
-def statementBorderMathlibColor : String := "#14532d"
+def statementBorderBlockedColor : String := "#b86b2e"
+def statementBorderReadyColor : String := "#1c5fb8"
+def statementBorderFormalizedColor : String := "#1c8c57"
+def statementBorderMathlibColor : String := "#6a4fba"
 
-def proofBackgroundNeutralColor : String := "#f8fafc"
-def proofBackgroundReadyColor : String := "#dbeafe"
-def proofBackgroundIncompleteColor : String := "#fef3c7"
-def proofBackgroundFormalizedColor : String := "#dcfce7"
-def proofBackgroundFormalizedAncColor : String := "#166534"
+def proofBackgroundNeutralColor : String := "#f4f6f8"
+def proofBackgroundReadyColor : String := "#dbe8f7"
+def proofBackgroundIncompleteColor : String := "#f5e6d2"
+def proofBackgroundFormalizedColor : String := "#d7ede0"
+def proofBackgroundFormalizedAncColor : String := "#1c8c57"
 
 def definitionBackgroundColor : String := "#ffffff"
 
@@ -376,7 +376,7 @@ def groupEdgeMixedText : String := "Thicker solid: statement + proof deps"
 def edgeAuxiliaryColor : String := "#94a3b8"
 def edgeTechnicalColor : String := "#94a3b8"
 /-- Distinct hue for automatically-inferred (non-manual) dependency edges. -/
-def edgeAutomaticColor : String := "#a855f7"
+def edgeAutomaticColor : String := "#6a4fba"
 
 def edgeAuxiliaryText : String := "Dashed (slate): auxiliary dependency"
 def edgeTechnicalText : String := "Dotted (slate): technical dependency"

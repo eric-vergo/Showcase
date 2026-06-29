@@ -1,14 +1,28 @@
+/* The dashboard is one cohesive surface: a single content column whose every
+   top-level card (hero, charts, owners/tags) fills the same left/right edges,
+   separated by one uniform vertical gap. The landing surface reads a touch wider
+   than the prose measure; scope the widening strictly to the section that hosts
+   it so content/reading pages keep the standard measure. */
+main section:has(.bp_dashboard) {
+  max-width: var(--bp-dashboard-column, 58rem);
+}
+
 .bp_dashboard {
   margin-top: 1rem;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
 .bp_dashboard_hero {
-  border: 1px solid var(--bp-color-border-muted);
+  border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-2xl);
   background: var(--bp-color-surface);
-  padding: 1rem 1.1rem 1.1rem;
-  margin-bottom: 1.1rem;
+  padding: 1rem 1.15rem 1.15rem;
   box-shadow: var(--bp-shadow-sm);
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .bp_dashboard_hero_head {
@@ -48,35 +62,50 @@
   background: var(--bp-color-accent, #2563eb);
   border-radius: var(--bp-radius-pill, 999px);
   box-shadow: var(--bp-shadow-sm);
+  transition: background-color 0.14s ease, color 0.14s ease,
+    box-shadow 0.14s ease, filter 0.14s ease;
 }
 
 .bp_dashboard_worklist_cta:hover {
   filter: brightness(1.07);
+  box-shadow: var(--bp-shadow-md);
 }
 
+/* Owners + tags share a clean two-equal-column row; the status and per-chapter
+   cards span the full column. On narrow screens everything collapses to one. */
 .bp_dashboard_charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: 0.9rem;
-  margin-bottom: 1.1rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
 }
 
 .bp_dashboard_chart {
-  border: 1px solid var(--bp-color-border-muted);
-  border-radius: var(--bp-radius-lg);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-xl);
   background: var(--bp-color-surface);
-  padding: 0.75rem 0.85rem 0.85rem;
+  padding: 1rem 1.15rem 1.1rem;
+  box-shadow: var(--bp-shadow-sm);
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.bp_dashboard_chart_wide {
+.bp_dashboard_chart:hover {
+  border-color: var(--bp-color-border-strong);
+}
+
+.bp_dashboard_chart_wide,
+.bp_dashboard_chart[data-bp-chart="status"] {
   grid-column: 1 / -1;
 }
 
 .bp_dashboard_chart_title {
   margin: 0 0 0.55rem;
-  font-size: 0.95rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.74rem;
   font-weight: 700;
-  color: var(--bp-color-text-strong);
+  color: var(--bp-color-text-subtle);
 }
 
 /* JS enhancement: when a chart draws successfully it adds this class and the
@@ -101,6 +130,25 @@
   flex: 1 1 14rem;
 }
 
+/* Coverage-by-status spans the full column: pin the donut to a fixed size on the
+   left so it stays crisp and never stretches, and let the legend fill the space
+   to its right (no dead gap). They wrap to a stack only on narrow screens. */
+.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_chart_canvas {
+  align-items: center;
+  gap: 1.1rem 1.75rem;
+}
+
+.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_svg {
+  flex: 0 0 auto;
+  width: 16rem;
+  max-width: 16rem;
+}
+
+.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_legend {
+  flex: 1 1 16rem;
+  font-size: 0.76rem;
+}
+
 .bp_dashboard_legend {
   list-style: none;
   margin: 0;
@@ -108,7 +156,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.82rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
   color: var(--bp-color-text-muted);
   flex: 1 1 10rem;
 }
@@ -142,19 +193,24 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  font-size: 0.86rem;
-  color: var(--bp-color-text);
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  color: var(--bp-color-text-subtle);
   border-bottom: 1px dashed var(--bp-color-border-soft);
   padding-bottom: 0.25rem;
 }
 
 .bp_dashboard_statlist .bp_dashboard_stat_value {
+  text-transform: none;
   font-weight: 700;
+  font-size: 0.86rem;
   color: var(--bp-color-text-strong);
 }
 
 .bp_dashboard_detail {
-  margin-top: 0.5rem;
+  margin-top: 0;
   border-top: 1px solid var(--bp-color-border-soft);
   padding-top: 0.6rem;
 }
@@ -163,7 +219,38 @@
   cursor: pointer;
   font-weight: 700;
   color: var(--bp-color-text-muted);
-  padding: 0.3rem 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--bp-radius-md);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.bp_dashboard_detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bp_dashboard_detail > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.46rem;
+  height: 0.46rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease;
+  opacity: 0.6;
+}
+
+.bp_dashboard_detail[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.bp_dashboard_detail > summary:hover {
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-strong);
 }
 
 /* Progress bars (shared by the hero overall bar and per-chapter bars). */
@@ -211,15 +298,15 @@
 }
 
 .bp_progress_seg_closed {
-  background: var(--bp-color-accent-success);
+  background: var(--bp-color-status-formalized);
 }
 
 .bp_progress_seg_ready {
-  background: var(--bp-color-accent-info);
+  background: var(--bp-color-status-ready);
 }
 
 .bp_progress_seg_blocked {
-  background: var(--bp-color-accent-danger);
+  background: var(--bp-color-status-blocked);
 }
 
 .bp_progress_seg_other {
@@ -241,5 +328,10 @@
 @media (max-width: 700px) {
   .bp_dashboard_charts {
     grid-template-columns: 1fr;
+  }
+
+  .bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_svg {
+    width: 13rem;
+    max-width: 13rem;
   }
 }
