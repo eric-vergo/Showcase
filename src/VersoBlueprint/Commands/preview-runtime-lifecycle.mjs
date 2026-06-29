@@ -297,7 +297,6 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     const bindWindow = opts.bindWindow !== false;
     const activateOnClick = opts.activateOnClick === true;
     const activateOnKeydown = opts.activateOnKeydown === true;
-    const enterRequiresHover = opts.enterRequiresHover === true;
     let hideTimer = null;
 
     function behavior() {
@@ -362,7 +361,10 @@ import { normalizePanelBehavior, readElementOption, readFunctionOption, readNumb
     function showTrigger(trigger, ev, force) {
       if (!(trigger instanceof Element)) return;
       if (!filterTrigger(trigger, ev, controls)) return;
-      if (!force && enterRequiresHover && !behavior().isHover) return;
+      // Pinned (non-hover) panels are click-only: hover/focus must never auto-open
+      // them. Only a forced activation (click/keydown via activateTrigger) opens a
+      // pinned panel. Hover-mode panels continue to open on hover/focus.
+      if (!force && !behavior().isHover) return;
       cancelHide();
       show(trigger, ev, controls);
     }

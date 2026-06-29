@@ -467,7 +467,7 @@ def previewHeaderCss : String := r##"
 
 def inlinePreviewCss : String := r##"
 .bp_inline_preview_ref {
-  cursor: help;
+  cursor: pointer;
 }
 
 .bp_inline_preview_panel {

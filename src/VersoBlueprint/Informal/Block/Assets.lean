@@ -286,7 +286,7 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_summary_preview_wrap_active {
   border-radius: var(--bp-radius-sm);
-  cursor: help;
+  cursor: pointer;
 }
 
 .bp_code_summary_preview_wrap_active[tabindex="0"] {
@@ -304,6 +304,12 @@ span[class$="_thmlabel"]::after {
   width: min(32rem, calc(100vw - 1.25rem));
   max-height: min(24rem, 78vh);
   overflow: hidden;
+}
+
+.bp_code_summary_preview_panel[data-bp-preview-placement="docked"] {
+  top: 0.9rem;
+  right: 0.9rem;
+  left: auto;
 }
 
 .bp_code_summary_preview_header {
@@ -642,10 +648,6 @@ span[class$="_thmlabel"]::after {
   display: none;
   font-style: normal;
   font-weight: 400;
-}
-
-.bp_relation_wrap:is(:hover, :focus-within) > .bp_relation_panel {
-  display: block;
 }
 
 .bp_relation_wrap.bp_relation_wrap_open > .bp_relation_panel {

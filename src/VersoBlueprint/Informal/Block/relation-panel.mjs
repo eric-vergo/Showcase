@@ -21,7 +21,7 @@
       titleSelector: ".bp_relation_preview_title",
       headerLabelSelector: ".bp_relation_preview_header_label",
       bodySelector: ".bp_relation_preview_body",
-      defaults: { mode: "hover", placement: "anchored" }
+      defaults: { mode: "pinned", placement: "docked" }
     });
     if (!surface || !(surface.headerLabel instanceof Element)) return;
 
@@ -123,7 +123,9 @@
 
     items.forEach(function (item) {
       if (!(item instanceof Element)) return;
-      item.addEventListener("mouseenter", function () {
+      // Click-only: switch the previewed relation on explicit click (and on
+      // keyboard focus for accessibility), never on passive hover.
+      item.addEventListener("click", function () {
         activate(item);
       });
       item.addEventListener("focusin", function () {

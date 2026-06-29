@@ -34,8 +34,8 @@ export function getPanel(previewUtils, id, extraClass) {
     id: id,
     rootClass: "bp_inline_preview_panel",
     extraClass: extraClass,
-    mode: "hover",
-    placement: "anchored",
+    mode: "pinned",
+    placement: "docked",
     headerClass: "bp_inline_preview_panel_header",
     headingClass: "bp_inline_preview_panel_heading bp_preview_header_heading",
     titleClass: "bp_inline_preview_panel_title",
@@ -52,17 +52,17 @@ export function defaultInlinePreviewHostPolicies(makeBehavior) {
     {
       selector: ".bp_relation_panel",
       kind: "relation",
-      behavior: makeBehavior("hover", "anchored")
+      behavior: makeBehavior("pinned", "docked")
     },
     {
       selector: ".bp_graph_preview",
       kind: "graph",
-      behavior: makeBehavior("hover", "anchored")
+      behavior: makeBehavior("pinned", "docked")
     },
     {
       selector: ".bp_group_hover_preview",
       kind: "graph-group",
-      behavior: makeBehavior("hover", "anchored")
+      behavior: makeBehavior("pinned", "docked")
     }
   ];
 }
@@ -81,7 +81,7 @@ export function readInlinePreviewHost(trigger, panel, hostPolicies) {
       kind: typeof policy.kind === "string" && policy.kind ? policy.kind : "generic",
       behavior: policy.behavior && typeof policy.behavior === "object"
         ? policy.behavior
-        : { mode: "hover", placement: "anchored" }
+        : { mode: "pinned", placement: "docked" }
     };
   }
   return null;
@@ -110,7 +110,7 @@ export function bindInlinePreview(previewUtils) {
     footerSelector: ".bp_inline_preview_panel_footer",
     closeSelector: ".bp_inline_preview_panel_close",
     footerHtmlAttr: "data-bp-preview-footer-html",
-    defaults: { mode: "hover", placement: "anchored" },
+    defaults: { mode: "pinned", placement: "docked" },
     onClose: hidePanel
   });
   const childSurface = previewUtils.createPreviewSurface({
@@ -125,14 +125,14 @@ export function bindInlinePreview(previewUtils) {
     footerSelector: ".bp_inline_preview_panel_footer",
     closeSelector: ".bp_inline_preview_panel_close",
     footerHtmlAttr: "data-bp-preview-footer-html",
-    defaults: { mode: "hover", placement: "anchored" },
+    defaults: { mode: "pinned", placement: "docked" },
     onClose: hideChildPanel
   });
   if (!mainSurface || !childSurface) return;
   const panel = mainSurface.panel;
   const childPanel = childSurface.panel;
 
-  let behavior = mainSurface.setBehavior(makeBehavior("hover", "anchored"));
+  let behavior = mainSurface.setBehavior(makeBehavior("pinned", "docked"));
   let activeTrigger = null;
   let activeHost = null;
   let activePreviewKey = "";
@@ -143,7 +143,7 @@ export function bindInlinePreview(previewUtils) {
   let childShowRequestToken = 0;
   let mainLifecycle = null;
   let childLifecycle = null;
-  const childBehavior = childSurface.setBehavior(makeBehavior("hover", "anchored"));
+  const childBehavior = childSurface.setBehavior(makeBehavior("pinned", "docked"));
 
   function clearPanelSizeLock() {
     panel.style.width = "";
@@ -188,7 +188,7 @@ export function bindInlinePreview(previewUtils) {
   }
 
   function applyBehavior(nextBehavior, hostInfo) {
-    behavior = mainSurface.setBehavior(nextBehavior || makeBehavior("hover", "anchored"));
+    behavior = mainSurface.setBehavior(nextBehavior || makeBehavior("pinned", "docked"));
     activeHost = hostInfo || null;
     if (activeHost && activeHost.kind) {
       panel.setAttribute("data-bp-inline-host", activeHost.kind);
@@ -227,7 +227,7 @@ export function bindInlinePreview(previewUtils) {
     activeTrigger = null;
     activeHost = null;
     activePreviewKey = "";
-    applyBehavior(makeBehavior("hover", "anchored"), null);
+    applyBehavior(makeBehavior("pinned", "docked"), null);
   }
 
   function hideChildPanel() {
@@ -303,7 +303,7 @@ export function bindInlinePreview(previewUtils) {
     const hostInfo = inPanel
       ? activeHost
       : readInlinePreviewHost(trigger, panel, inlineHostPolicies);
-    applyBehavior(hostInfo ? hostInfo.behavior : makeBehavior("hover", "anchored"), hostInfo);
+    applyBehavior(hostInfo ? hostInfo.behavior : makeBehavior("pinned", "docked"), hostInfo);
     updatingPanel = inPanel;
     previewDebug("inline.show", {
       key: key,
@@ -419,6 +419,8 @@ export function bindInlinePreview(previewUtils) {
     getActiveTrigger: function () { return activeTrigger; },
     onLeave: mainTriggerLeaveHandled,
     onPanelLeave: mainPanelLeaveHandled,
+    activateOnClick: true,
+    activateOnKeydown: true,
     bindWindow: false
   });
   childLifecycle = childSurface.bindTriggers({
@@ -431,6 +433,8 @@ export function bindInlinePreview(previewUtils) {
     getActiveTrigger: function () { return childActiveTrigger; },
     onLeave: childTriggerLeaveHandled,
     onPanelLeave: childPanelLeaveHandled,
+    activateOnClick: true,
+    activateOnKeydown: true,
     bindEscape: false,
     bindWindow: false
   });

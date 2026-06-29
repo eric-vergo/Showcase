@@ -110,8 +110,8 @@ def templatePreviewDescriptorAttrs
     (titleAttr? : Option String := none)
     (triggerBoundAttr : String := "data-bp-bound")
     (allowHtmlCache : Bool := false)
-    (mode : PreviewMode := .hover)
-    (placement : PreviewPlacement := .anchored) : Array (String × String) :=
+    (mode : PreviewMode := .pinned)
+    (placement : PreviewPlacement := .docked) : Array (String × String) :=
   let attrs := #[
     ("data-bp-template-preview-root", "true"),
     ("data-bp-template-preview-panel-selector", panelSelector),
@@ -188,7 +188,7 @@ def graphPreviewPanel
     mode placement
 
 def summaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
+    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
     Verso.Output.Html :=
   mkPreviewPanel
     "bp_summary_preview_panel bp_preview_panel"
@@ -200,7 +200,7 @@ def summaryPreviewPanel
     mode placement
 
 def codeSummaryPreviewPanel
-    (mode : PreviewMode := .hover) (placement : PreviewPlacement := .anchored) :
+    (mode : PreviewMode := .pinned) (placement : PreviewPlacement := .docked) :
     Verso.Output.Html :=
   mkPreviewPanel
     "bp_code_summary_preview_panel bp_preview_panel"

@@ -114,7 +114,9 @@ import { createPreviewSurface } from "./preview-runtime-surface.mjs";
       triggerBoundAttr: triggerBoundAttr,
       show: showFromTrigger,
       hide: hidePanel,
-      getActiveTrigger: function () { return activeTrigger; }
+      getActiveTrigger: function () { return activeTrigger; },
+      activateOnClick: true,
+      activateOnKeydown: true
     });
 
     return {
