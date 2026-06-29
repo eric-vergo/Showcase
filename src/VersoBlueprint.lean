@@ -57,6 +57,7 @@ import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.StyleSwitcher
 import VersoBlueprint.ColorScheme
+import VersoBlueprint.CopyButton
 import VersoBlueprint.Profiling
 
 set_option doc.verso true

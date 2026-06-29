@@ -12,6 +12,7 @@ import VersoManual
 import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
 import VersoBlueprint.ColorScheme
+import VersoBlueprint.CopyButton
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -124,9 +125,21 @@ def colorSchemeHtmlAssets : HtmlAssets where
   extraCss := ([Informal.Commands.blueprintTokensCss, Informal.ColorScheme.css] : List String)
   extraJs := ([Informal.ColorScheme.applierJs] : List String)
 
+/--
+Global copy-to-clipboard assets for Lean code blocks, applied to *every* page.
+
+The CSS rides `extraCss` and the dependency-free installer rides `extraJs` (the same
+inline-`<head>` channel as the dark-mode applier), so the button targets every
+`code.hl.lean.block` site-wide while skipping `.lean-output` blocks. No CDN/network
+dependency; the styling uses `--bp-color-*` tokens so it themes in dark mode.
+-/
+def copyButtonHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.CopyButton.css] : List String)
+  extraJs := ([Informal.CopyButton.js] : List String)
+
 def blueprintHtmlAssets : HtmlAssets :=
-  (Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
-    colorSchemeHtmlAssets
+  ((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets).combine copyButtonHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
