@@ -98,6 +98,10 @@ structure SummaryHtmlContext where
   entryHref? : Name → Option String
   declHref? : Name → Name → Option String
   previewLookupKey? : Name → Option String
+  /-- Friendly display label for an entry (e.g. "Lemma 7.7"), matching the
+      dashboard reading map. Populated at the call sites from
+      `Informal.NodeRoute.friendlyEntryLabel`. -/
+  displayLabel : Name → String
 
 structure SummaryRows where
   pendingInformalRows : Array Output.Html := #[]
@@ -140,10 +144,11 @@ private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
 private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name) : Output.Html :=
   let previewLookupKey? := ctx.previewLookupKey? label
   let previewLabel? : Option Name := previewLookupKey?.map (fun _ => label)
+  let labelText := ctx.displayLabel label
   let labelNode : Output.Html :=
     match ctx.entryHref? label with
-    | Option.some href => {{ <a href={{href}}> <code>s!"{label}"</code> </a> }}
-    | Option.none => {{ <code>s!"{label}"</code> }}
+    | Option.some href => {{ <a href={{href}}>{{.text true labelText}}</a> }}
+    | Option.none => {{ <span>{{.text true labelText}}</span> }}
   Informal.HoverRender.summaryPreviewWrap labelNode previewLabel? previewLookupKey?
 
 private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Name)

@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.TraversalIndex
+import VersoBlueprint.Informal.Block.Store
 
 /-!
 Per-node page routing.
@@ -136,6 +137,39 @@ exactly "is there an informal node for this label".
 -/
 def hasNodePage (state : TraverseState) (label : Name) : Bool :=
   (Informal.TraversalIndex.Nodes.data? state label).isSome
+
+/--
+Drop leading token-prefix segments from a `:`-split label, never dropping the
+final segment. A segment counts as a token prefix when it is non-empty and purely
+alphabetic (e.g. `code`, `lem`, `def`, `thm`, `cor`). Structural recursion on the
+list, so it always terminates.
+-/
+private def dropLabelTagPrefixes : List String → List String
+  | [] => []
+  | [last] => [last]
+  | (seg :: rest) =>
+    if seg ≠ "" && seg.all Char.isAlpha then dropLabelTagPrefixes rest
+    else seg :: rest
+
+/--
+Clean a raw graph-node/label string for display: drop the Lean name-escape
+guillemets and any leading token-prefix tags, so a page-less Lean-code-backed
+node like `code:lem:RaRalpha` reads as `RaRalpha` and `def:noperthedron_main` as
+`noperthedron_main`. Pure/deterministic; mirrors the dashboard reading map.
+-/
+def cleanLabelForDisplay (raw : String) : String :=
+  String.intercalate ":" (dropLabelTagPrefixes ((stripNameEscapes raw).splitOn ":"))
+
+/--
+Friendly display label for an entry, shared by every PM/summary/audit surface so
+they read the same as the dashboard reading map: the node's resolved display
+title (e.g. "Lemma 7.7") when available, otherwise the cleaned raw label (with
+guillemets and token-prefix tags stripped). Pure/deterministic.
+-/
+def friendlyEntryLabel (state : TraverseState) (label : Name) : String :=
+  match (Informal.TraversalIndex.Nodes.data? state label).map (·.displayTitle state) with
+  | some t => if t.isEmpty then cleanLabelForDisplay label.toString else t
+  | none => cleanLabelForDisplay label.toString
 
 /-!
 Lean const → blueprint-node cross-links.

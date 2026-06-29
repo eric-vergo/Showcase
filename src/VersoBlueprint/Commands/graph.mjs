@@ -466,7 +466,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           const height = Math.max(220, body.clientHeight || 0);
           const container = d3.select(body);
           if (!groupHoverGraphviz) {
-            groupHoverGraphviz = container.graphviz().fit(true);
+            groupHoverGraphviz = container.graphviz({ useWorker: false }).fit(true);
           }
           groupHoverGraphviz
             .width(width)
@@ -676,7 +676,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         ) {
           resetGraphvizForVariant(graphRoot, graphState);
         }
-        const gv = graphState.graphviz || graphContainer.graphviz();
+        const gv = graphState.graphviz || graphContainer.graphviz({ useWorker: false });
         graphState.graphviz = gv;
         graphState.renderedVariantKey = activeVariant.key;
         graphState.renderedOptionsKey = optionsKey;

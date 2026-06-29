@@ -404,6 +404,7 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
       declHref? := fun label decl =>
         Resolve.resolveInformalDeclHref? s label decl
       previewLookupKey? := fun label => previewLookupKeys.get? label
+      displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel s label
     }
     let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let summaryAttrs :=
@@ -601,6 +602,7 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
       declHref? := fun label decl =>
         Resolve.resolveInformalDeclHref? s label decl
       previewLookupKey? := fun label => previewLookupKeys.get? label
+      displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel s label
     }
     let previewPanel := Informal.HoverRender.summaryPreviewPanel
     let summaryAttrs :=
@@ -632,18 +634,20 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
             (Option.some "Entries not covered by the readiness buckets above.")}}
       </div>
     }}
-    -- CTA to the Mathlib upstream-candidates page, shown only when at least one
-    -- entry now resolves into Mathlib (the page is always emitted, but an empty
-    -- queue gets no dashboard prompt).
+    -- CTA to the Mathlib upstream-candidates page. The page is always emitted, so
+    -- the link is always shown (keeping the page reachable rather than orphaned);
+    -- when entries now resolve into Mathlib it also surfaces that count as an
+    -- actionable prompt.
     let mathlibCandidateCount := data.mathlibCandidates.length
-    let mathlibCandidatesCta : Output.Html :=
-      if mathlibCandidateCount == 0 then .empty
-      else {{
-        <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary"
-            href={{Informal.NodeRoute.mathlibCandidatesHref}}>
-          {{.text true s!"{mathlibCandidateCount} {if mathlibCandidateCount == 1 then "entry" else "entries"} may now be available in Mathlib →"}}
-        </a>
-      }}
+    let mathlibCandidatesLabel : String :=
+      if mathlibCandidateCount == 0 then "Mathlib upstream candidates →"
+      else s!"{mathlibCandidateCount} {if mathlibCandidateCount == 1 then "entry" else "entries"} may now be available in Mathlib →"
+    let mathlibCandidatesCta : Output.Html := {{
+      <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary"
+          href={{Informal.NodeRoute.mathlibCandidatesHref}}>
+        {{.text true mathlibCandidatesLabel}}
+      </a>
+    }}
     let hero : Output.Html := {{
       <section class="bp_dashboard_hero">
         <div class="bp_dashboard_hero_head">

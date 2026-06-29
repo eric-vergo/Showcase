@@ -64,12 +64,12 @@ kind, and carries `data-*` attributes (`data-status` / `data-owner` /
 `data-effort` / `data-tags`) so the client filter can toggle its `hidden` flag.
 -/
 private def worklistRow (state : TraverseState) (item : WorklistItem) : Output.Html :=
-  let labelStr := item.label.toString
+  let labelStr := Informal.NodeRoute.friendlyEntryLabel state item.label
   let labelNode : Output.Html :=
     if Informal.NodeRoute.hasNodePage state item.label then
-      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}><code>{{.text true labelStr}}</code></a> }}
+      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true labelStr}}</a> }}
     else
-      {{ <code>{{.text true labelStr}}</code> }}
+      {{ <span>{{.text true labelStr}}</span> }}
   let owner := item.ownerDisplayName.getD ""
   let effort := item.effort.getD ""
   let tagsAttr := String.intercalate " " item.tags
@@ -448,6 +448,7 @@ private def auditHtmlContext (state : TraverseState) : SummaryHtmlContext := {
       Informal.TraversalIndex.Nodes.href? state label
   declHref? := fun label decl => Informal.Resolve.resolveInformalDeclHref? state label decl
   previewLookupKey? := fun _ => none
+  displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel state label
 }
 
 /-- Summary cards quantifying the outstanding technical debt. -/
