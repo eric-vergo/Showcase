@@ -8,6 +8,8 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Commands.Summary.Html
+import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
@@ -480,6 +482,77 @@ private def dashboardChartMount (chart title : String) (wide : Bool)
     </div>
   }}
 
+/--
+"Start here" reading map: an orienting, clickable guided reading path computed
+from the master dependency graph's metrics.
+
+* **Foundations** — roots with no prerequisites (`fanIn = 0`);
+* **Critical path** — the single longest dependency chain (the development's
+  spine), rendered as an ordered path;
+* **Goals** — sinks nothing else depends on (`fanOut = 0`).
+
+Each item links to the entry's node page when it has one (falling back to its
+chapter anchor). Pure presentation derived from `masterGraph` + `computeGraphMetrics`.
+-/
+private def dashboardReadingMap (state : TraverseState) : Output.Html :=
+  let master := Informal.GraphApi.masterGraph state
+  if master.nodes.isEmpty then .empty
+  else
+    let metrics := Informal.GraphMetrics.computeGraphMetrics master
+    let nodeByLabel : Lean.NameMap Informal.Graph.NodeData :=
+      master.nodes.foldl (init := {}) fun m n => m.insert n.label n
+    let linkFor := fun (label : Lean.Name) =>
+      let title :=
+        match nodeByLabel.find? label with
+        | Option.some n => if n.title.isEmpty then label.toString else n.title
+        | Option.none => label.toString
+      let href? :=
+        if Informal.NodeRoute.hasNodePage state label then
+          Option.some (Informal.NodeRoute.nodePageHref label)
+        else (nodeByLabel.find? label).bind (·.href)
+      match href? with
+      | Option.some href => {{ <a href={{href}}>{{.text true title}}</a> }}
+      | Option.none => {{ <span>{{.text true title}}</span> }}
+    let cap := 12
+    let bulletList := fun (labels : Array Lean.Name) =>
+      let shown := (labels.toList.take cap).toArray
+      {{ <ul class="bp_readingmap_list">{{shown.map (fun l => {{<li>{{linkFor l}}</li>}})}}</ul> }}
+    let foundationLabels := (metrics.nodes.filter (·.fanIn == 0)).map (·.label)
+    let goalLabels := (metrics.nodes.filter (·.fanOut == 0)).map (·.label)
+    let spine := metrics.criticalPath
+    let spineList : Output.Html :=
+      if spine.isEmpty then
+        {{<p class="bp_readingmap_col_hint">"No critical path in the current graph."</p>}}
+      else
+        {{ <ol class="bp_readingmap_spine">{{spine.map (fun l => {{<li>{{linkFor l}}</li>}})}}</ol> }}
+    if foundationLabels.isEmpty && goalLabels.isEmpty && spine.isEmpty then .empty
+    else {{
+      <section class="bp_readingmap">
+        <h2 class="bp_readingmap_title">"Start here"</h2>
+        <p class="bp_readingmap_intro">
+          "A guided reading path through the blueprint: start from the foundations, \
+           follow the critical-path spine, and aim for the goals."
+        </p>
+        <div class="bp_readingmap_cols">
+          <div>
+            <h3 class="bp_readingmap_col_title">"Foundations"</h3>
+            <p class="bp_readingmap_col_hint">"Entries with no prerequisites."</p>
+            {{bulletList foundationLabels}}
+          </div>
+          <div>
+            <h3 class="bp_readingmap_col_title">"Critical path"</h3>
+            <p class="bp_readingmap_col_hint">"The longest dependency chain — the spine of the development."</p>
+            {{spineList}}
+          </div>
+          <div>
+            <h3 class="bp_readingmap_col_title">"Goals"</h3>
+            <p class="bp_readingmap_col_hint">"Entries nothing else depends on."</p>
+            {{bulletList goalLabels}}
+          </div>
+        </div>
+      </section>
+    }}
+
 def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
   fun _goI _goB _id json _blocks => do
     let some data ←
@@ -548,9 +621,13 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
           <a class="bp_dashboard_worklist_cta" href={{Informal.NodeRoute.worklistHref}}>
             "Open worklist →"
           </a>
+          <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary" href={{Informal.NodeRoute.auditHref}}>
+            "Audit and technical debt →"
+          </a>
         </p>
       </section>
     }}
+    let readingMap := dashboardReadingMap s
     -- Per-chapter progress bars (the "chapters" chart fallback).
     let chapterBars : Array Output.Html :=
       data.groupHealth.toArray.map fun g =>
@@ -594,6 +671,7 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
     pure {{
       <div class="bp_dashboard">
         {{hero}}
+        {{readingMap}}
         <div class="bp_dashboard_charts">
           {{dashboardChartMount "status" "Coverage by status" false (dashboardStatusFallback data)}}
           {{dashboardChartMount "chapters" "Per-chapter progress" true chaptersFallback}}

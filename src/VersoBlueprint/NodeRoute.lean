@@ -93,6 +93,12 @@ def worklistHref : String := "worklist/"
 /-- Multi-page output path for the worklist page: `worklist/index.html`. -/
 def worklistPath : Verso.Multi.Path := #["worklist"]
 
+/-- Root-relative href (no leading slash) to the audit / technical-debt page. -/
+def auditHref : String := "audit/"
+
+/-- Multi-page output path for the audit page: `audit/index.html`. -/
+def auditPath : Verso.Multi.Path := #["audit"]
+
 /-- Slug for an owner page, derived from the owner's canonical `Name`. -/
 def ownerPageSlug (owner : Name) : String :=
   nodePageSlugOfString owner.toString

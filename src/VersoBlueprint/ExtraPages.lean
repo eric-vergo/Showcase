@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Std.Data.HashSet
 import VersoBlueprint.NodePage
 import VersoBlueprint.NodeRoute
+import VersoBlueprint.Resolve
 import VersoBlueprint.Commands.Summary.Html
 
 /-!
@@ -367,6 +368,166 @@ private def writeProgressBadge (mode : Manual.Mode) (cfg : Manual.Config) (summa
   IO.FS.createDirAll dataDir
   IO.FS.writeFile (dataDir.join "progress-badge.svg") (progressBadgeSvg summary)
 
+/--
+Write two slim machine-readable progress feeds into `-verso-data`:
+
+* `progress.json` — a stable snapshot `{schemaVersion, total, coverageSplit,
+  totalStatus, pct, commit}` for dashboards / CI;
+* `progress-shields.json` — a Shields.io endpoint-badge payload
+  `{schemaVersion, label, message, color}`.
+
+Both are self-contained (no network). `commit` is read from the `GIT_COMMIT`
+environment variable when present and degrades to the empty string otherwise, so
+the writer never shells out and stays offline-safe.
+-/
+private def writeProgressFeeds (mode : Manual.Mode) (cfg : Manual.Config) (summary : Summary) :
+    IO Unit := do
+  let outDir := cfg.destination.join (match mode with | .single => "html-single" | .multi => "html-multi")
+  let dataDir := outDir.join "-verso-data"
+  IO.FS.createDirAll dataDir
+  let total := summary.totalEntries
+  let closed := summary.coverageSplit.fullyClosed
+  let denom := Nat.max 1 total
+  let pct := closed * 100 / denom
+  let commit := (← IO.getEnv "GIT_COMMIT").getD ""
+  let progress : Json := Json.mkObj [
+    ("schemaVersion", toJson (1 : Nat)),
+    ("total", toJson total),
+    ("coverageSplit", toJson summary.coverageSplit),
+    ("totalStatus", toJson summary.totalStatus),
+    ("pct", toJson pct),
+    ("commit", Json.str commit)
+  ]
+  IO.FS.writeFile (dataDir.join "progress.json") (progress.pretty ++ "\n")
+  let shields : Json := Json.mkObj [
+    ("schemaVersion", toJson (1 : Nat)),
+    ("label", Json.str "formalized"),
+    ("message", Json.str s!"{pct}%"),
+    ("color", Json.str (badgeColor pct))
+  ]
+  IO.FS.writeFile (dataDir.join "progress-shields.json") (shields.pretty ++ "\n")
+
+/-! ## Audit / technical-debt page -/
+
+/--
+Run a `SummaryHtmlM` rendering action to completion in plain `IO`.
+
+Rebuilds the minimal HTML-emit context exactly like `emitStaticBlueprintPage`
+(empty `AllRemotes`, default options, link targets that also surface Lean
+const → blueprint-node cross-links), so the summary row renderers produce the
+same markup they do inside the dashboard block.
+-/
+private def runSummaryHtml (state : TraverseState) {α : Type} (act : SummaryHtmlM α) : IO α := do
+  let extensionImpls : ExtensionImpls := extension_impls%
+  let logger ← Verso.Logger.new
+  let remotes : Verso.Multi.AllRemotes := {}
+  let ctxt : Manual.TraverseContext := {}
+  let htmlCtx : Verso.Doc.Html.HtmlT.Context Manual := {
+    options := {}
+    traverseContext := ctxt
+    traverseState := state
+    definitionIds := state.definitionIds ctxt
+    linkTargets :=
+      state.localTargets ++ remotes.remoteTargets ++ Informal.NodeRoute.blueprintNodeTargets state
+    codeOptions := {}
+  }
+  let (a, _) ← (act.run htmlCtx).run {} |>.run remotes |>.run extensionImpls |>.run logger
+  pure a
+
+/--
+`SummaryHtmlContext` for the audit page: entry references link to the entry's
+dedicated node page (falling back to its chapter anchor), and decl references
+resolve to their Lean source. Hover previews are intentionally disabled (no
+preview panel ships on this page).
+-/
+private def auditHtmlContext (state : TraverseState) : SummaryHtmlContext := {
+  entryHref? := fun label =>
+    if Informal.NodeRoute.hasNodePage state label then
+      some (Informal.NodeRoute.nodePageHref label)
+    else
+      Informal.TraversalIndex.Nodes.href? state label
+  declHref? := fun label decl => Informal.Resolve.resolveInformalDeclHref? state label decl
+  previewLookupKey? := fun _ => none
+}
+
+/-- Summary cards quantifying the outstanding technical debt. -/
+private def auditSummaryCards (data : Summary) : Output.Html := {{
+  <div class="bp_summary_grid">
+    {{summaryCard "Sorries" (toString data.sorryDetails.length)
+        (some "Declarations whose proof still contains `sorry`.")}}
+    {{summaryCard "Missing declarations" (toString data.missingLeanDecls.length)
+        (some "Referenced Lean declarations absent from the environment.")}}
+    {{summaryCard "Axiom-like entries" (toString data.axiomIndex.length)
+        (some "Entries discharged by an axiom rather than a proof.")}}
+    {{summaryCard "Render failures" (toString data.renderFailures.length)
+        (some "External declarations that checked but failed HTML rendering.")}}
+    {{summaryCard "Proof-debt hotspots" (toString data.proofDebtHotspots.length)
+        (some "Parents accumulating the most incomplete or missing declarations.")}}
+  </div>
+}}
+
+/-- Body of the audit / technical-debt page. -/
+private def auditBody (data : Summary) (rows : SummaryRows) : Output.Html :=
+  let warnClass := "bp_summary_subsection bp_summary_subsection_warn"
+  let nothing :=
+    data.sorryDetails.isEmpty && data.missingLeanDecls.isEmpty && data.axiomIndex.isEmpty &&
+      data.renderFailures.isEmpty && data.proofDebtHotspots.isEmpty
+  {{
+    <div class="bp_summary bp_pm_page">
+      <header class="bp_node_page_header">
+        <h1>"Audit and technical debt"</h1>
+        <p class="bp_pm_page_intro">
+          "Every open obligation in the blueprint in one place: sorries, missing or \
+           axiom-backed declarations, render failures, and the parents carrying the most \
+           proof debt. Each row links to that entry's node page."
+        </p>
+      </header>
+      {{auditSummaryCards data}}
+      {{if nothing then
+          {{<p class="bp_summary_empty">
+              "No outstanding sorries, missing declarations, axiom-like entries, render \
+               failures, or proof-debt hotspots."
+            </p>}}
+        else .empty}}
+      {{summaryOptionalDetailsList (!rows.sorryRows.isEmpty)
+          s!"Sorries ({data.sorryDetails.length})" rows.sorryRows warnClass true}}
+      {{summaryOptionalDetailsList (!rows.missingRows.isEmpty)
+          s!"Missing declarations ({data.missingLeanDecls.length})" rows.missingRows warnClass true}}
+      {{summaryOptionalDetailsList (!rows.axiomRows.isEmpty)
+          s!"Axiom-like entries ({data.axiomIndex.length})" rows.axiomRows warnClass true}}
+      {{summaryOptionalDetailsList (!rows.proofDebtHotspotRows.isEmpty)
+          s!"Proof-debt hotspots ({data.proofDebtHotspots.length})" rows.proofDebtHotspotRows warnClass true}}
+      {{summaryOptionalDetailsList (!rows.renderFailureRows.isEmpty)
+          s!"Render failures ({data.renderFailures.length})" rows.renderFailureRows warnClass true}}
+    </div>
+  }}
+
+/--
+`ExtraStep` that emits a first-class audit / technical-debt page at
+`audit/index.html` from the traversal-cached `Summary`.
+
+Sibling to `emitBlueprintExtraPages`: it reads the same cached `Summary`, renders
+the summary debt rows (sorries / missing decls / axioms / proof-debt hotspots /
+render failures) with the shared row renderers, and writes a standalone page via
+`emitStaticBlueprintPage`. Single-page mode is skipped; if no `Summary` was cached
+it logs and skips gracefully.
+-/
+def emitBlueprintAuditPage : ExtraStep :=
+  fun mode cfg state text => do
+    match mode with
+    | .single => pure ()
+    | .multi =>
+      let logger : Verso.Logger IO ← read
+      match Informal.TraversalIndex.Summary.cachedSummary? state with
+      | none =>
+        logger.reportWarning
+          "Blueprint audit page: no cached Summary in traversal state; skipping \
+           audit/index.html (is a `blueprint_dashboard` block present?)."
+      | some summary =>
+        let rows ← runSummaryHtml state (SummaryRows.render (auditHtmlContext state) summary)
+        Informal.NodePage.emitStaticBlueprintPage mode cfg state text
+          Informal.NodeRoute.auditPath "Audit and technical debt" (auditBody summary rows)
+
 /-! ## The ExtraStep -/
 
 /--
@@ -423,7 +584,8 @@ def emitBlueprintExtraPages : ExtraStep :=
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             (Informal.NodeRoute.tagPagePath tag.tag)
             s!"Tag: {tag.tag}" (tagBody state tag items)
-        -- README progress badge.
+        -- README progress badge + machine-readable progress feeds.
         writeProgressBadge mode cfg summary
+        writeProgressFeeds mode cfg summary
 
 end Informal.ExtraPages

@@ -80,6 +80,53 @@ def nodeMetricsCss : String := r##"
 }
 "##
 
+/--
+Inline styling for the per-node downstream-impact panel.
+
+Emitted once inside each node page body that has downstream dependents (node pages
+carry no dedicated CSS file). Colors come from the `--bp-color-*` design tokens so
+the panel themes correctly in light and dark mode.
+-/
+def nodeDownstreamCss : String := r##"
+.bp_node_page_downstream {
+  margin: 1.5rem 0 0;
+}
+
+.bp_node_downstream_count {
+  margin: 0 0 0.5rem;
+  color: var(--bp-color-text-muted, #5a6b7a);
+  font-size: 0.9rem;
+}
+
+.bp_node_downstream_list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.bp_node_downstream_list li {
+  margin: 0;
+}
+
+.bp_node_downstream_list a {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  color: var(--bp-color-text, #15212b);
+  background: var(--bp-color-surface-muted, #f1f4f7);
+  border: 1px solid var(--bp-color-border, #dbe2ea);
+  border-radius: var(--bp-radius-pill, 999px);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.bp_node_downstream_list a:hover {
+  border-color: var(--bp-color-accent, #2563eb);
+}
+"##
+
 open Verso.Output.Html in
 /--
 Render the per-node metrics line (depth / height / fan-in / fan-out and a
@@ -204,10 +251,34 @@ private def renderNodePageBody
       Informal.PreviewManifest.BlockRender.renderWithRenderedContent {} proofEntry
         (Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings proofHtml proofCode)
     | none => .empty
+  -- Downstream-impact panel: the entries that (transitively) depend on this one,
+  -- restricted to those with their own node page so every item is clickable.
+  let descendantSet := master.descendants entry.label
+  let downstreamLabels :=
+    descendantSet.toList.filter (fun l => Informal.NodeRoute.hasNodePage state l)
+  let downstreamPanel : Output.Html :=
+    if downstreamLabels.isEmpty then .empty
+    else
+      let titleOf := fun (l : Name) =>
+        match master.nodes.find? (fun n => n.label == l) with
+        | some n => if n.title.isEmpty then l.toString else n.title
+        | none => l.toString
+      let items := downstreamLabels.toArray.map fun l =>
+        {{ <li><a href={{Informal.NodeRoute.nodePageHref l}}>{{.text true (titleOf l)}}</a></li> }}
+      {{
+        <section class="bp_node_page_downstream">
+          <style>{{.text false nodeDownstreamCss}}</style>
+          <h2>"Downstream impact"</h2>
+          <p class="bp_node_downstream_count">
+            {{.text true s!"{downstreamLabels.length} entries depend on this."}}
+          </p>
+          <ul class="bp_node_downstream_list">{{items}}</ul>
+        </section>
+      }}
   -- Localized dependency graph: this node ∪ all ancestors ∪ all descendants.
   let labelSet : Lean.NameSet :=
     let base := (master.ancestors entry.label).insert entry.label
-    (master.descendants entry.label).toList.foldl (·.insert ·) base
+    descendantSet.toList.foldl (·.insert ·) base
   let sub := master.restrictTo labelSet
   let slug := Informal.NodeRoute.nodePageSlug entry.label
   let localVariant : Informal.Graph.GraphRenderVariant := {
@@ -247,6 +318,7 @@ private def renderNodePageBody
       </header>
       <section class="bp_node_page_statement">{{statementBlock}}</section>
       <section class="bp_node_page_proof">{{proofBlock}}</section>
+      {{downstreamPanel}}
       <section class="bp_node_page_graph">
         <h2>"Local dependency graph"</h2>
         {{graphHtml}}

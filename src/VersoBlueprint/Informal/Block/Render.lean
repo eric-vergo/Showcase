@@ -272,19 +272,17 @@ private def renderMetadataCodeLinkValue (href : String) (value : Data.AuthorId) 
 
 private def renderOwnerMetadataItem (data : BlockData) : Verso.Output.Html :=
   open Verso.Output.Html in
-  let avatar : Verso.Output.Html :=
-    match data.ownerImageUrl with
-    | some href => {{ <img class="bp_metadata_avatar" src={{href}} alt="" /> }}
-    | none => .empty
+  -- Author/owner avatars are intentionally not rendered: they keep their name and
+  -- link only. (Avatar images were an external fetch that broke offline builds.)
   match data.ownerDisplayName, data.owner, data.ownerUrl with
   | some displayName, _, some href =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataLinkValue href displayName]) "bp_metadata_owner"
+    renderMetadataItem "Owner" (renderMetadataLinkValue href displayName) "bp_metadata_owner"
   | some displayName, _, none =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataTextValue displayName]) "bp_metadata_owner"
+    renderMetadataItem "Owner" (renderMetadataTextValue displayName) "bp_metadata_owner"
   | none, some owner, some href =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeLinkValue href owner]) "bp_metadata_owner"
+    renderMetadataItem "Owner" (renderMetadataCodeLinkValue href owner) "bp_metadata_owner"
   | none, some owner, none =>
-    renderMetadataItem "Owner" (.seq #[avatar, renderMetadataCodeValue owner]) "bp_metadata_owner"
+    renderMetadataItem "Owner" (renderMetadataCodeValue owner) "bp_metadata_owner"
   | _, _, _ => .empty
 
 private def renderStatementMetadataPanel (data : BlockData) : Verso.Output.Html :=

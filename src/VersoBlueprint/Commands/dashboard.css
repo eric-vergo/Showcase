@@ -49,6 +49,15 @@ main section:has(.bp_dashboard) {
 
 .bp_dashboard_worklist_link {
   margin: 0.9rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.6rem;
+}
+
+.bp_dashboard_worklist_cta.bp_dashboard_cta_secondary {
+  color: var(--bp-color-accent, #2563eb);
+  background: var(--bp-color-surface, #ffffff);
+  border: 1px solid var(--bp-color-accent, #2563eb);
 }
 
 .bp_dashboard_worklist_cta {
@@ -334,4 +343,73 @@ main section:has(.bp_dashboard) {
     width: 13rem;
     max-width: 13rem;
   }
+}
+
+/* "Start here" reading map: foundations / critical-path spine / goals, computed
+   from the graph metrics and shown above the charts as a guided reading path. */
+.bp_readingmap {
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.15rem;
+  background: var(--bp-color-surface-muted, #f8fafc);
+  border: 1px solid var(--bp-color-border, #cbd5e1);
+  border-radius: var(--bp-radius-md, 8px);
+}
+
+.bp_readingmap_title {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.bp_readingmap_intro {
+  margin: 0 0 0.85rem;
+  font-size: 0.85rem;
+  color: var(--bp-color-text-muted, #475569);
+}
+
+.bp_readingmap_cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1.2rem;
+}
+
+.bp_readingmap_col_title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bp-color-text-muted, #475569);
+}
+
+.bp_readingmap_col_hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--bp-color-text-faint, #64748b);
+}
+
+.bp_readingmap_list,
+.bp_readingmap_spine {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.bp_readingmap_list {
+  list-style: disc;
+}
+
+.bp_readingmap_spine {
+  list-style: decimal;
+}
+
+.bp_readingmap a {
+  color: var(--bp-color-accent, #2563eb);
+  text-decoration: none;
+}
+
+.bp_readingmap a:hover {
+  text-decoration: underline;
 }

@@ -50,6 +50,7 @@ def blueprintMainWithFeatures
     (extraSteps :=
       Informal.NodePage.emitBlueprintNodePages extensionImpls
         :: Informal.ExtraPages.emitBlueprintExtraPages
+        :: Informal.ExtraPages.emitBlueprintAuditPage
         :: extraSteps)
 
 end Informal.PreviewManifest

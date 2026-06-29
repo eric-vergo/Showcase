@@ -151,9 +151,82 @@ tokens so the overlay themes in dark mode, with no CDN/network dependency.
 def commandPaletteHtmlAssets : HtmlAssets where
   extraCss := ([Informal.CommandPalette.css] : List String)
 
+/--
+Print / PDF stylesheet, applied to *every* page via the global `extraCss` channel.
+
+Everything is scoped inside `@media print`, so it never affects on-screen
+rendering. It (1) forces the light design tokens (so a page saved in dark mode
+still prints on white paper), (2) hides interactive chrome that is meaningless on
+paper — the ToC sidebar, prev/next nav, theme switcher, graph controls/legend,
+copy buttons, command palette, and dashboard CTAs — and (3) expands collapsed
+`<details>` so their content is included in the printout. No network dependency.
+-/
+def printCss : String := r##"
+@media print {
+  :root {
+    --bp-color-surface: #ffffff;
+    --bp-color-surface-muted: #f1f4f7;
+    --bp-color-surface-subtle: #f7f9fb;
+    --bp-color-surface-modern: #f5f8fc;
+    --bp-color-surface-warn: #fbf2e9;
+    --bp-color-surface-warn-soft: #f5e4d2;
+    --bp-color-surface-note: #fbf6ea;
+    --bp-color-border: #dbe2ea;
+    --bp-color-border-soft: #e6ebf1;
+    --bp-color-border-muted: #dbe2ea;
+    --bp-color-border-panel: #dbe2ea;
+    --bp-color-border-strong: #b4c0cc;
+    --bp-color-text-strong: #15212b;
+    --bp-color-text: #15212b;
+    --bp-color-text-muted: #4d5e6d;
+    --bp-color-text-subtle: #5a6b7a;
+    --bp-color-text-faint: #7e8d9b;
+    --bp-color-accent: #1c5fb8;
+    --bp-color-on-accent: #ffffff;
+    --bp-color-link: #1c5fb8;
+    color-scheme: light;
+  }
+
+  nav#toc,
+  .split-tocs,
+  .toc-backdrop,
+  .toc-resize-handle,
+  .toggle-split-toc,
+  #toggle-toc-click,
+  label[for="toggle-toc"],
+  .prev-next-buttons,
+  #bp-color-scheme-switcher,
+  .bp-copy-button,
+  .bp_graph_controls,
+  .bp_graph_legend,
+  .bp_command_palette,
+  .bp_dashboard_worklist_link {
+    display: none !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #15212b !important;
+  }
+
+  .with-toc {
+    margin-left: 0 !important;
+  }
+
+  /* Expand collapsed disclosure widgets so their content prints. */
+  details > summary { list-style: none; }
+  details:not([open]) > *:not(summary) { display: block !important; }
+}
+"##
+
+/-- Print / PDF stylesheet assets, applied to every page. -/
+def printHtmlAssets : HtmlAssets where
+  extraCss := ([printCss] : List String)
+
 def blueprintHtmlAssets : HtmlAssets :=
-  (((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
-    colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets
+  ((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets).combine
+    printHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 

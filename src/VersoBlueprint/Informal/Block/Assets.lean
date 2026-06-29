@@ -210,15 +210,6 @@ span[class$="_thmlabel"]::after {
   text-decoration: underline;
 }
 
-.bp_metadata_avatar {
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 999px;
-  object-fit: cover;
-  border: 1px solid var(--bp-color-border);
-  background: var(--bp-color-surface);
-}
-
 .bp_code_link {
   display: inline-flex;
   align-items: center;
