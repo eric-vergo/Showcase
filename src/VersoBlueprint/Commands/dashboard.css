@@ -33,6 +33,27 @@
   line-height: 1;
 }
 
+.bp_dashboard_worklist_link {
+  margin: 0.9rem 0 0;
+}
+
+.bp_dashboard_worklist_cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--bp-color-on-accent, #ffffff);
+  background: var(--bp-color-accent, #2563eb);
+  border-radius: var(--bp-radius-pill, 999px);
+  box-shadow: var(--bp-shadow-sm);
+}
+
+.bp_dashboard_worklist_cta:hover {
+  filter: brightness(1.07);
+}
+
 .bp_dashboard_charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));

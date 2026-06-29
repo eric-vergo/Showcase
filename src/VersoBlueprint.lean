@@ -32,6 +32,7 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.NodePage
+import VersoBlueprint.ExtraPages
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Informal.Block.Assets

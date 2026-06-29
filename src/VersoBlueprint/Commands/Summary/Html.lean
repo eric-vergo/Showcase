@@ -585,6 +585,38 @@ private def summaryTagRollupRow (item : TagRollupItem) : Output.Html :=
     badges
     #[]
 
+/--
+Owner rollup row whose head links to the owner's dedicated PM page (`href`).
+
+Identical to `summaryOwnerRollupRow` except the display name is wrapped in an
+anchor. Used by the dashboard cross-links; the plain (unlinked) variant remains
+the default for the standalone summary block.
+-/
+def summaryOwnerRollupRowLinked (item : OwnerRollupItem) (href : String) : Output.Html :=
+  let badges :=
+    summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
+  summaryItemShell
+    {{ <a href={{href}}>{{.text true item.displayName}}</a> }}
+    (some {{<code>s!"{item.owner}"</code>}})
+    .empty
+    badges
+    #[]
+
+/--
+Tag rollup row whose head links to the tag's dedicated PM page (`href`).
+
+Identical to `summaryTagRollupRow` except the tag badge is wrapped in an anchor.
+-/
+def summaryTagRollupRowLinked (item : TagRollupItem) (href : String) : Output.Html :=
+  let badges :=
+    summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
+  summaryItemShell
+    {{ <a href={{href}}>{{summaryWarnMetricBadge "tag" item.tag}}</a> }}
+    Option.none
+    .empty
+    badges
+    #[]
+
 private def SummaryHtmlContext.metadataEntryRow (ctx : SummaryHtmlContext) (item : MetadataEntryItem)
     (bodyText : String) : Output.Html :=
   let entryRef := ctx.entryRef item.label

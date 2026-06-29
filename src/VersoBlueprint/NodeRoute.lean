@@ -55,6 +55,46 @@ def nodePageHref (label : Name) : String :=
 def nodePagePath (label : Name) : Verso.Multi.Path :=
   #["node", nodePageSlug label]
 
+/-!
+Project-management page routes (worklist / owners / tags).
+
+These share the same root-relative, leading-slash-free convention as the node
+routes so that they resolve against each page's `<base href>` at any output
+depth. They are the single source of truth shared by the dashboard cross-links
+(`Commands/Summary/Sections.lean`) and the extra-page emitter
+(`ExtraPages.lean`), so both agree on every URL without sharing state.
+-/
+
+/-- Root-relative href (no leading slash) to the worklist page. -/
+def worklistHref : String := "worklist/"
+
+/-- Multi-page output path for the worklist page: `worklist/index.html`. -/
+def worklistPath : Verso.Multi.Path := #["worklist"]
+
+/-- Slug for an owner page, derived from the owner's canonical `Name`. -/
+def ownerPageSlug (owner : Name) : String :=
+  nodePageSlugOfString owner.toString
+
+/-- Root-relative href (no leading slash) to an owner page. -/
+def ownerPageHref (owner : Name) : String :=
+  "owners/" ++ ownerPageSlug owner ++ "/"
+
+/-- Multi-page output path for an owner page: `owners/<slug>/index.html`. -/
+def ownerPagePath (owner : Name) : Verso.Multi.Path :=
+  #["owners", ownerPageSlug owner]
+
+/-- Slug for a tag page, derived from the tag string. -/
+def tagPageSlug (tag : String) : String :=
+  nodePageSlugOfString tag
+
+/-- Root-relative href (no leading slash) to a tag page. -/
+def tagPageHref (tag : String) : String :=
+  "tags/" ++ tagPageSlug tag ++ "/"
+
+/-- Multi-page output path for a tag page: `tags/<slug>/index.html`. -/
+def tagPagePath (tag : String) : Verso.Multi.Path :=
+  #["tags", tagPageSlug tag]
+
 /--
 Whether `label` has a dedicated node page. Node pages are emitted for every
 informal node (statement-facet) recorded in the traversal node index, so this is

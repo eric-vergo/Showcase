@@ -11,6 +11,7 @@ import VersoBlueprint.Commands.Summary.Html
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 
@@ -543,6 +544,11 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
           </div>
         </div>
         {{heroCards}}
+        <p class="bp_dashboard_worklist_link">
+          <a class="bp_dashboard_worklist_cta" href={{Informal.NodeRoute.worklistHref}}>
+            "Open worklist →"
+          </a>
+        </p>
       </section>
     }}
     -- Per-chapter progress bars (the "chapters" chart fallback).
@@ -555,16 +561,26 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
         {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}
       else
         {{<div class="bp_dashboard_chapters_list">{{chapterBars}}</div>}}
+    -- Cross-link the dashboard owner/tag rollups to their dedicated PM pages
+    -- (emitted by `Informal.ExtraPages.emitBlueprintExtraPages`). These linked
+    -- rows are the server-rendered fallback content, so they remain usable when
+    -- the d3 enhancement does not run.
+    let ownerRollupLinkedRows : Array Output.Html :=
+      data.ownerRollups.toArray.map fun o =>
+        summaryOwnerRollupRowLinked o (Informal.NodeRoute.ownerPageHref o.owner)
+    let tagRollupLinkedRows : Array Output.Html :=
+      data.tagRollups.toArray.map fun t =>
+        summaryTagRollupRowLinked t (Informal.NodeRoute.tagPageHref t.tag)
     let ownersFallback : Output.Html :=
-      if rows.ownerRollupRows.isEmpty then
+      if ownerRollupLinkedRows.isEmpty then
         {{<p class="bp_summary_empty">"No owners recorded."</p>}}
       else
-        {{<ul class="bp_summary_list">{{rows.ownerRollupRows}}</ul>}}
+        {{<ul class="bp_summary_list">{{ownerRollupLinkedRows}}</ul>}}
     let tagsFallback : Output.Html :=
-      if rows.tagRollupRows.isEmpty then
+      if tagRollupLinkedRows.isEmpty then
         {{<p class="bp_summary_empty">"No tags recorded."</p>}}
       else
-        {{<ul class="bp_summary_list">{{rows.tagRollupRows}}</ul>}}
+        {{<ul class="bp_summary_list">{{tagRollupLinkedRows}}</ul>}}
     let ownerMount : Output.Html :=
       if data.ownerRollups.isEmpty then .empty
       else dashboardChartMount "owners" "Owners" false ownersFallback
