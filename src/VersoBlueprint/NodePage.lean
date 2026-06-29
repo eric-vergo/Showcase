@@ -330,7 +330,15 @@ def emitStaticBlueprintPage
       Verso.Genre.Manual.toc cfg.htmlDepth opts (ctxt.inPart p) state definitionIds linkTargets p
   let (sidebarToc, _) ←
     tocAction.run {} |>.run remotes |>.run extensionImpls |>.run logger
-  let bookTitle : Output.Html := .text true text.titleString
+  -- Match the chapter-page header band exactly: core `emitContent` shows the
+  -- book's `shortTitle` as the header/ToC title when present, falling back to the
+  -- full title. Mirror that here so the static (node / worklist / owner / tag /
+  -- audit / mathlib-candidates) pages carry the *same* header title, not the raw
+  -- full title.
+  let bookTitle : Output.Html :=
+    match text.metadata.bind (·.shortTitle) with
+    | some short => .text true short
+    | none => .text true text.titleString
   let rendered :=
     relativizeLinks <|
       page sidebarToc path title bookTitle contents state cfg #[] (showNavButtons := false)
