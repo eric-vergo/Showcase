@@ -3,8 +3,13 @@ open Lake DSL
 
 -- Our Verso fork, which self-hosts `marked` for offline / strict-CSP viewing instead of
 -- loading it from a CDN. Required before verso-slides' transitive (upstream) verso so this
--- fork wins resolution. A fork branch isn't in Lake's prebuilt cache, so it builds from source.
-require verso from git "https://github.com/eric-vergo/verso"@"viewer-integration"
+-- fork wins resolution. Local-wired to the sibling working tree (matching blueprint/) so the
+-- forked verso + subverso build together from source and stay consistent for standalone builds.
+require verso from "../verso"
+-- SubVerso fork (sibling working tree) for VSCode-faithful highlighting (const type/function split
+-- + bracket-pair depth). Root-level require so it wins over verso's transitive subverso pin and all
+-- manifests stay consistent (see consistent-subverso-manifests.yml).
+require subverso from "../subverso"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides.git"@"v4.31.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.98"
 
