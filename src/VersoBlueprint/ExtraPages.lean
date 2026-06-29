@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
 -/
 
+import Std.Data.HashSet
 import VersoBlueprint.NodePage
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Commands.Summary.Html
@@ -393,13 +394,31 @@ def emitBlueprintExtraPages : ExtraStep :=
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
           Informal.NodeRoute.worklistPath "Worklist" (worklistBody state summary)
         -- One page per owner rollup, filtered to that owner's worklist items.
+        -- Guard against two distinct owners that sluggify to the same slug
+        -- silently overwriting each other's page (mirrors the node-slug guard in
+        -- `NodePage.emitBlueprintNodePages`).
+        let mut seenOwnerSlugs : Std.HashSet String := {}
         for owner in summary.ownerRollups do
+          let slug := Informal.NodeRoute.ownerPageSlug owner.owner
+          if seenOwnerSlugs.contains slug then
+            logger.reportWarning <|
+              s!"Blueprint owner pages: slug collision for owner {owner.owner} (slug {slug}); " ++
+              "this owner page may overwrite another owner's page"
+          seenOwnerSlugs := seenOwnerSlugs.insert slug
           let items := summary.worklist.filter (fun i => i.ownerDisplayName == some owner.displayName)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             (Informal.NodeRoute.ownerPagePath owner.owner)
             s!"Owner: {owner.displayName}" (ownerBody state owner items)
         -- One page per tag rollup, filtered to that tag's worklist items.
+        -- Same slug-collision guard as the owner pages above.
+        let mut seenTagSlugs : Std.HashSet String := {}
         for tag in summary.tagRollups do
+          let slug := Informal.NodeRoute.tagPageSlug tag.tag
+          if seenTagSlugs.contains slug then
+            logger.reportWarning <|
+              s!"Blueprint tag pages: slug collision for tag {tag.tag} (slug {slug}); " ++
+              "this tag page may overwrite another tag's page"
+          seenTagSlugs := seenTagSlugs.insert slug
           let items := summary.worklist.filter (fun i => i.tags.contains tag.tag)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             (Informal.NodeRoute.tagPagePath tag.tag)

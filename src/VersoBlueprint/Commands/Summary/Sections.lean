@@ -587,7 +587,10 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
     let tagMount : Output.Html :=
       if data.tagRollups.isEmpty then .empty
       else dashboardChartMount "tags" "Tags" false tagsFallback
-    let chartJson : String := Lean.Json.compress (toJson data.chartData)
+    -- Escape `</script>`-style breakouts in author-supplied strings (owner/tag/
+    -- chapter/titles) before embedding the JSON verbatim in the `<script>` payload.
+    let chartJson : String :=
+      escapeJsonForScriptEmbed (Lean.Json.compress (toJson data.chartData))
     pure {{
       <div class="bp_dashboard">
         {{hero}}

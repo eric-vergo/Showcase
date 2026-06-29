@@ -98,9 +98,13 @@ def renderGraphFullwidth
     (previewMode : Informal.HoverRender.PreviewMode := .pinned)
     (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
     Verso.Output.Html :=
-  let publicGraphDataJson : String := Lean.Json.compress (toJson publicGraphData)
+  -- Escape `</script>`-style breakouts in author-supplied strings (owner/tag/
+  -- chapter/titles) before embedding the JSON verbatim in `<script>` payloads.
+  let publicGraphDataJson : String :=
+    escapeJsonForScriptEmbed (Lean.Json.compress (toJson publicGraphData))
   let hasGroupVariant := variants.any (fun variant => variant.key == groupVariantKey)
-  let graphVariantJson : String := Lean.Json.compress (toJson variants)
+  let graphVariantJson : String :=
+    escapeJsonForScriptEmbed (Lean.Json.compress (toJson variants))
   let graphVariantOptions : Array Output.Html :=
     variants.map fun variant => {{
       <option value={{variant.key}}>{{variant.label}}</option>

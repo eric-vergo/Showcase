@@ -29,6 +29,28 @@
 }
 
 /*
+ * NODE-5: the per-node "Local dependency graph" is static (no zoom controls), so
+ * tall / chain-shaped neighborhoods used to render squished into a sliver. Give
+ * the static canvas a comfortable minimum height and let its rendered SVG scale
+ * to the container width while preserving aspect ratio (so small graphs fill the
+ * space instead of collapsing, and large ones shrink to fit and scroll rather
+ * than clip). Scoped to `[data-bp-graph-static="true"]`, so the interactive main
+ * Dependency Graph -- and its light-mode appearance -- is unaffected.
+ */
+.bp_graph_canvas[data-bp-graph-static="true"] {
+  min-height: 360px;
+  resize: none;
+  overflow: auto;
+}
+
+.bp_graph_canvas[data-bp-graph-static="true"] svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/*
  * Node status highlight/filter. When the canvas carries a
  * `data-bp-status-filter`, dim every graph node that does not match the selected
  * status. Uses opacity (not color) so it is theme-safe in light and dark modes,

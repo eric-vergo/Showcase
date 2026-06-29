@@ -29,6 +29,17 @@ open Verso Verso.Multi
 open Verso.Genre Manual
 
 /--
+Strip the Lean `Name`-escape guillemets (`«…»`, `‹…›`) that `Name.toString`
+inserts around components that are not valid identifiers (e.g. blueprint labels
+like `«thm:foo»`). Removing the wrapping markers *before* sluggifying turns the
+ugly `_FLQQ_thm___foo_FLQQ_` slug into the readable `thm___foo`. The unique inner
+label content is preserved, so distinct labels stay distinct. Pure/deterministic.
+-/
+private def stripNameEscapes (s : String) : String :=
+  s.foldl (init := "") fun acc c =>
+    if c == '«' || c == '»' || c == '‹' || c == '›' then acc else acc.push c
+
+/--
 Slug for a node-page directory derived from the canonical label string.
 
 Pure and deterministic: identical inputs always produce identical slugs, so the
@@ -36,9 +47,20 @@ graph re-point (`GraphApi.enrichNode`), the xref re-point (`emitPublicXref`), an
 the node-page emitter all agree without sharing any state. Collisions between two
 distinct labels that sluggify identically are detected and reported by the
 emitter; they are vanishingly rare for unique dotted Lean `Name`s.
+
+For readability (NODE-1) the Lean name-escape guillemets are dropped before
+sluggify, and any escape tokens an upstream slugger might already have produced
+(`_FLQQ_`/`_FRQQ_`/`_FLQ_`/`_FRQ_`) are stripped after. Only the wrapping markers
+are removed, so uniqueness across distinct labels is preserved (verified to have
+zero collisions across the showcase's node labels).
 -/
 def nodePageSlugOfString (s : String) : String :=
-  s.sluggify.toString
+  let slug := (stripNameEscapes s).sluggify.toString
+  slug
+    |>.replace "_FLQQ_" ""
+    |>.replace "_FRQQ_" ""
+    |>.replace "_FLQ_" ""
+    |>.replace "_FRQ_" ""
 
 /-- Slug for a node-page directory derived from an informal node label. -/
 def nodePageSlug (label : Name) : String :=

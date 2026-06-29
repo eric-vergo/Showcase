@@ -15,6 +15,22 @@ register_option verso.blueprint.debug.commands : Bool := {
   descr := "Emit debug info logs for blueprint graph, summary, and bibliography commands"
 }
 
+/--
+Escape `&`, `<`, and `>` as JSON `\uXXXX` escapes so a compressed JSON document is
+safe to embed verbatim inside an HTML `<script type="application/json">` element.
+
+The escapes are valid JSON and decode to the identical characters, so consumers
+parse byte-identical data; they only prevent an author-supplied `</script>`,
+`<!--`, or `<![CDATA[` inside a JSON *string value* from terminating (or
+re-opening) the script element early. In a compressed JSON document `&`/`<`/`>`
+only ever occur inside string literals, so the structural JSON is untouched.
+-/
+def escapeJsonForScriptEmbed (json : String) : String :=
+  json
+    |>.replace "&" "\\u0026"
+    |>.replace "<" "\\u003c"
+    |>.replace ">" "\\u003e"
+
 def blueprintTokensCss : String := r##"
 :root {
   --bp-color-surface: #ffffff;
