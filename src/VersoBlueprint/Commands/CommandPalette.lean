@@ -82,11 +82,27 @@ def css : String := r##"
 
 .bp-cmdk-item {
   display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.2rem;
   padding: 0.5rem 0.7rem;
   border-radius: var(--bp-radius-md, 0.45rem);
   cursor: pointer;
+}
+
+.bp-cmdk-item-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.bp-cmdk-item-snippet {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--bp-color-text-faint, #64748b);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .bp-cmdk-item-active {

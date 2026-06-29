@@ -1,9 +1,15 @@
 // Command palette: a Ctrl/Cmd-K fuzzy "jump to node" overlay.
 //
-// Offline & self-contained: the only network access is a single same-origin
-// `fetch("xref.json")` (resolved against the page `<base href>`), lazily on the
-// first open. The fuzzy matcher is hand-rolled (subsequence scorer with
-// contiguity / word-boundary bonuses) — no external dependency, no CDN.
+// Offline & self-contained: the only network access is two same-origin lazy
+// fetches resolved against the page `<base href>` — `xref.json` (the navigable
+// node list) and `-verso-data/node-search.json` (the plain-text informal
+// statements, for full-text search). Both load on first open. The fuzzy matcher
+// is hand-rolled (subsequence scorer with contiguity / word-boundary bonuses) —
+// no external dependency, no CDN.
+//
+// Search covers both node names/labels/titles AND the informal statement text;
+// title/label matches always rank above statement-body matches, and body-only
+// hits show a snippet of the matching statement for context.
 //
 // The overlay DOM is created on demand and themed entirely with the
 // `--bp-color-*` design tokens (see `Commands/CommandPalette.lean`), so it works
@@ -12,7 +18,13 @@
 
 const INFORMAL_DOMAIN = "«Informal.Block.informal»";
 
+// Any title/label match outranks any statement-body match (added to the title
+// score so the two pools never interleave).
+const TITLE_RANK_BONUS = 1e6;
+
 let indexPromise = null;
+let searchPromise = null;
+let combinedPromise = null;
 let overlay = null;
 let inputEl = null;
 let resultsEl = null;
@@ -101,6 +113,59 @@ function loadIndex() {
   return indexPromise;
 }
 
+/**
+ * Fetch the offline full-text statement index (`-verso-data/node-search.json`),
+ * once. Returns a Map keyed by node href → record `{label, display, kind,
+ * chapter, href, text}`. Same-origin only; failures degrade to an empty map so
+ * name/label search keeps working without the statement bodies.
+ */
+function loadSearchText() {
+  if (searchPromise) return searchPromise;
+  searchPromise = fetch("-verso-data/node-search.json", { credentials: "same-origin" })
+    .then((resp) => {
+      if (!resp.ok) throw new Error("node-search.json: " + resp.status);
+      return resp.json();
+    })
+    .then((records) => {
+      const map = new Map();
+      if (Array.isArray(records)) {
+        for (const r of records) {
+          const href = stripLeadingSlash(r && r.href);
+          if (href) map.set(href, r);
+        }
+      }
+      return map;
+    })
+    .catch((err) => {
+      console.warn("command palette: failed to load node-search.json", err);
+      return new Map();
+    });
+  return searchPromise;
+}
+
+/**
+ * Load both indexes and fold the statement text + chapter onto each navigable
+ * item (matched by href). Cached after the first resolve.
+ */
+function loadAll() {
+  if (combinedPromise) return combinedPromise;
+  combinedPromise = Promise.all([loadIndex(), loadSearchText()]).then(([list, textMap]) => {
+    for (const it of list) {
+      const rec = textMap.get(it.href);
+      if (rec) {
+        if (typeof rec.text === "string" && rec.text) {
+          it.text = rec.text;
+          it.textLower = rec.text.toLowerCase();
+        }
+        if (!it.detail && rec.chapter) it.detail = String(rec.chapter);
+        it.chapter = rec.chapter || "";
+      }
+    }
+    return list;
+  });
+  return combinedPromise;
+}
+
 const BOUNDARY = /[\s._\-/:]/;
 
 /**
@@ -146,6 +211,28 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/**
+ * Build a short context snippet from a statement body around the first place the
+ * query (or its first word) appears, with ellipses when truncated.
+ */
+function snippetFor(text, query) {
+  if (!text) return "";
+  const lc = text.toLowerCase();
+  const q = query.toLowerCase();
+  let idx = lc.indexOf(q);
+  if (idx < 0) {
+    const first = q.split(/\s+/)[0];
+    idx = first ? lc.indexOf(first) : -1;
+  }
+  if (idx < 0) idx = 0;
+  const start = Math.max(0, idx - 32);
+  const end = Math.min(text.length, idx + 96);
+  let s = text.slice(start, end).trim();
+  if (start > 0) s = "… " + s;
+  if (end < text.length) s = s + " …";
+  return s;
+}
+
 function render() {
   if (!resultsEl) return;
   if (filtered.length === 0) {
@@ -158,11 +245,17 @@ function render() {
     const detail = it.detail
       ? '<span class="bp-cmdk-item-detail">' + escapeHtml(it.detail) + "</span>"
       : "";
+    const snippet = it.snippet
+      ? '<span class="bp-cmdk-item-snippet">' + escapeHtml(it.snippet) + "</span>"
+      : "";
     return (
       '<li class="bp-cmdk-item' + active + '" role="option" id="bp-cmdk-opt-' + i +
       '" aria-selected="' + (i === activeIndex) + '" data-index="' + i + '">' +
+      '<span class="bp-cmdk-item-main">' +
       '<span class="bp-cmdk-item-label">' + escapeHtml(it.display) + "</span>" +
       detail +
+      "</span>" +
+      snippet +
       "</li>"
     );
   }).join("");
@@ -179,11 +272,23 @@ function applyFilter() {
   } else {
     const scored = [];
     for (const it of items) {
-      const s = fuzzyScore(query, it.haystack);
-      if (s !== null) scored.push({ it, s });
+      const titleScore = fuzzyScore(query, it.haystack);
+      const bodyScore = it.textLower ? fuzzyScore(query, it.textLower) : null;
+      let best = null;
+      let bodyHit = false;
+      if (titleScore !== null) best = titleScore + TITLE_RANK_BONUS;
+      if (bodyScore !== null && (best === null || bodyScore > best)) {
+        best = bodyScore;
+        bodyHit = true;
+      }
+      if (best === null) continue;
+      scored.push({ it, s: best, bodyHit });
     }
     scored.sort((a, b) => b.s - a.s);
-    filtered = scored.slice(0, 50).map((x) => x.it);
+    filtered = scored.slice(0, 50).map((x) =>
+      x.bodyHit
+        ? Object.assign({}, x.it, { snippet: snippetFor(x.it.text, query) })
+        : x.it);
   }
   activeIndex = 0;
   render();
@@ -197,9 +302,9 @@ function buildOverlay() {
     '<div class="bp-cmdk-panel" role="dialog" aria-modal="true" aria-label="Jump to node">' +
     '<input class="bp-cmdk-input" type="text" autocomplete="off" spellcheck="false" ' +
     'role="combobox" aria-expanded="true" aria-controls="bp-cmdk-results" ' +
-    'aria-autocomplete="list" placeholder="Jump to a node…" />' +
+    'aria-autocomplete="list" placeholder="Search nodes & statements…" />' +
     '<ul class="bp-cmdk-results" id="bp-cmdk-results" role="listbox"></ul>' +
-    '<div class="bp-cmdk-hint">↑↓ navigate · ↵ open · esc close</div>' +
+    '<div class="bp-cmdk-hint">search names &amp; statement text · ↑↓ navigate · ↵ open · esc close</div>' +
     "</div>";
   document.body.appendChild(overlay);
   inputEl = overlay.querySelector(".bp-cmdk-input");
@@ -263,7 +368,7 @@ function openPalette() {
   filtered = items.slice(0, 50);
   render();
   inputEl.focus();
-  loadIndex().then((loaded) => {
+  loadAll().then((loaded) => {
     items = loaded;
     if (!overlay.hasAttribute("hidden")) applyFilter();
   });
