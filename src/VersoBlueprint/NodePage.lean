@@ -130,7 +130,10 @@ def emitStaticBlueprintPage
   let opts : Html.Options := {}
   let ctxt : Manual.TraverseContext := {}
   let definitionIds := state.definitionIds ctxt
-  let linkTargets := state.localTargets ++ remotes.remoteTargets
+  -- Match the chapter-page render config: also surface Lean const → blueprint-node
+  -- cross-links in code rendered on the static (node / worklist / owner / tag) pages.
+  let linkTargets :=
+    state.localTargets ++ remotes.remoteTargets ++ Informal.NodeRoute.blueprintNodeTargets state
   -- Rebuild the sidebar ToC in the full Manual HTML-emit monad stack.
   let tocAction :
       StateT (State Output.Html)

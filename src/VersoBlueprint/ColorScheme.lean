@@ -114,6 +114,12 @@ def applierJs : String := r##"(function () {
     } else {
       root.setAttribute(attrName, s);
     }
+    // Notify theme-aware widgets (e.g. the dashboard d3 charts, which read the
+    // `--bp-color-*` tokens via getComputedStyle) so they can redraw with the new
+    // palette. Fired on every apply, including the synchronous pre-paint call.
+    try {
+      window.dispatchEvent(new CustomEvent("bp-color-scheme-change", { detail: { scheme: s } }));
+    } catch (_err) {}
   }
 
   function getSavedScheme() {

@@ -63,6 +63,7 @@ import VersoBlueprint.StyleSwitcher
 import VersoBlueprint.ColorScheme
 import VersoBlueprint.CopyButton
 import VersoBlueprint.Tikz
+import VersoBlueprint.Main
 import VersoBlueprint.Profiling
 
 set_option doc.verso true

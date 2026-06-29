@@ -103,4 +103,90 @@ exactly "is there an informal node for this label".
 def hasNodePage (state : TraverseState) (label : Name) : Bool :=
   (Informal.TraversalIndex.Nodes.data? state label).isSome
 
+/-!
+Lean const → blueprint-node cross-links.
+
+`blueprintNodeTargets` builds a `Code.LinkTargets` whose `const` arm maps a Lean
+declaration to the node page of the blueprint entry that formalizes it. It is
+injected into the genre render config (`linkTargets`) alongside the ordinary
+`localTargets`/`remoteTargets`, so a const that is *both* a Lean declaration and a
+blueprint node renders the existing multi-link `data-verso-links` menu — no client
+JS change is needed.
+
+The decl→label index is rebuilt purely from the traversal state (no environment
+access at emit time): inline-defined declarations come from the per-label
+`InlineCode` store (each `InlineCodeData` carries its label plus the names it
+defines), and external `(lean := "…")` declarations come from the
+`ExternalDeclAnchors` store, whose object keys encode the owning `(label, decl)`
+pair. Both sources degrade safely: an entry only yields a link when the resolved
+label actually `hasNodePage`.
+-/
+
+private def pushNameUnique (names : Array Name) (n : Name) : Array Name :=
+  if names.contains n then names else names.push n
+
+private def addDeclLabel (m : Lean.NameMap (Array Name)) (decl label : Name) :
+    Lean.NameMap (Array Name) :=
+  let decl := decl.eraseMacroScopes
+  m.insert decl (pushNameUnique (m.getD decl #[]) label)
+
+/-- Parse one `"{len}:{str}"` length-prefixed token, returning it and the rest. -/
+private def readLenPrefixed (cs : List Char) : Option (String × List Char) := do
+  let digits := cs.takeWhile Char.isDigit
+  let rest := cs.dropWhile Char.isDigit
+  match rest with
+  | ':' :: rest' =>
+    let n ← (String.ofList digits).toNat?
+    let taken := rest'.take n
+    if taken.length == n then some (String.ofList taken, rest'.drop n) else none
+  | _ => none
+
+/--
+Parse an `ExternalDeclAnchors` object key (`"{n}:{label}|{m}:{decl}"`, see
+`Resolve.externalRenderedDeclTargetKey`) back into its `(label, decl)` pair.
+-/
+private def parseExternalAnchorKey (key : String) : Option (Name × Name) := do
+  let (labelStr, rest) ← readLenPrefixed key.toList
+  match rest with
+  | '|' :: rest2 =>
+    let (declStr, _) ← readLenPrefixed rest2
+    some (labelStr.toName, declStr.toName)
+  | _ => none
+
+/-- Decl → node-labels index, rebuilt purely from the traversal state. -/
+def declNodeLabels (state : TraverseState) : Lean.NameMap (Array Name) := Id.run do
+  let mut m : Lean.NameMap (Array Name) := {}
+  -- Inline-defined declarations (literate ```lean blocks).
+  for entry in Informal.TraversalIndex.decodeStoreEntries (α := Informal.InlineCodeData)
+      state Informal.TraversalIndex.InlineCode.domainName do
+    if let .ok stored := entry then
+      let data := stored.data
+      for decl in data.definedDefs ++ data.definedTheorems do
+        m := addDeclLabel m decl.name data.label
+  -- External `(lean := "…")` declarations: keys encode (label, decl).
+  if let some dom := state.domains.get? Informal.TraversalIndex.ExternalDeclAnchors.domainName then
+    for (key, _obj) in dom.objects.toArray do
+      if let some (label, decl) := parseExternalAnchorKey key then
+        m := addDeclLabel m decl label
+  return m
+
+/--
+Link targets mapping a Lean const to the blueprint node page(s) that formalize it.
+
+Pairs with `TraverseState.localTargets`/`AllRemotes.remoteTargets` in the genre
+render config. Only the `const` arm is populated; all other arms keep their empty
+defaults.
+-/
+def blueprintNodeTargets (state : TraverseState) : Verso.Code.LinkTargets Manual.TraverseContext :=
+  let declMap := declNodeLabels state
+  { const := fun name _ctxt =>
+      let name := name.eraseMacroScopes
+      (declMap.getD name #[]).filterMap fun label =>
+        if hasNodePage state label then
+          some {
+            shortDescription := "blueprint"
+            description := s!"Blueprint entry for {name}"
+            href := nodePageHref label }
+        else none }
+
 end Informal.NodeRoute

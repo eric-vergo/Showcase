@@ -266,6 +266,26 @@ function drawRollupBars(d3, mount, items, pal, kind) {
   return drawStackedBars(d3, mount, rows, keys, pal);
 }
 
+// Draw (or redraw) every mount. `chartHost` removes any previous canvas before
+// appending a fresh one, so calling this again on a theme change replaces the
+// charts in place — no duplicate SVGs or leaked legends.
+function drawAll(d3, mounts, data) {
+  const pal = readPalette();
+  mounts.forEach(function (mount) {
+    try {
+      const kind = mount.getAttribute("data-bp-chart");
+      let drew = false;
+      if (kind === "status") drew = drawStatusDonut(d3, mount, data, pal);
+      else if (kind === "chapters") drew = drawChapterBars(d3, mount, data, pal);
+      else if (kind === "owners") drew = drawRollupBars(d3, mount, data.ownerRollups || [], pal, "owner");
+      else if (kind === "tags") drew = drawRollupBars(d3, mount, data.tagRollups || [], pal, "tag");
+      if (drew) mount.classList.add("bp_dashboard_chart_enhanced");
+    } catch (_err) {
+      // Leave this mount's server-rendered fallback in place.
+    }
+  });
+}
+
 export function startDashboard() {
   let mounts;
   try {
@@ -280,19 +300,25 @@ export function startDashboard() {
   ensureD3()
     .then(function (d3) {
       if (!d3) return;
-      const pal = readPalette();
-      mounts.forEach(function (mount) {
-        try {
-          const kind = mount.getAttribute("data-bp-chart");
-          let drew = false;
-          if (kind === "status") drew = drawStatusDonut(d3, mount, data, pal);
-          else if (kind === "chapters") drew = drawChapterBars(d3, mount, data, pal);
-          else if (kind === "owners") drew = drawRollupBars(d3, mount, data.ownerRollups || [], pal, "owner");
-          else if (kind === "tags") drew = drawRollupBars(d3, mount, data.tagRollups || [], pal, "tag");
-          if (drew) mount.classList.add("bp_dashboard_chart_enhanced");
-        } catch (_err) {
-          // Leave this mount's server-rendered fallback in place.
-        }
+      drawAll(d3, mounts, data);
+
+      // Redraw when the color scheme toggles so the charts pick up the new
+      // `--bp-color-*` palette. Coalesce bursts and defer to the next frame so the
+      // updated CSS variables are in effect before `getComputedStyle` reads them.
+      const raf =
+        window.requestAnimationFrame || function (cb) { return setTimeout(cb, 0); };
+      let pending = false;
+      window.addEventListener("bp-color-scheme-change", function () {
+        if (pending) return;
+        pending = true;
+        raf(function () {
+          pending = false;
+          try {
+            drawAll(d3, mounts, data);
+          } catch (_err) {
+            // Keep the existing charts on a redraw failure.
+          }
+        });
       });
     })
     .catch(function () {

@@ -185,6 +185,11 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
       toHtmlAssets := htmlAssets
       extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
     }
+    -- Add Lean const → blueprint-node cross-links to the ordinary
+    -- local/remote targets. A const that is both a Lean decl and a blueprint node
+    -- now renders the existing multi-link `data-verso-links` menu (no JS change).
+    linkTargets := fun st remotes =>
+      st.localTargets ++ remotes.remoteTargets ++ Informal.NodeRoute.blueprintNodeTargets st
   }
 
 structure GitCommitMetadata where
