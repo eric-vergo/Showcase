@@ -11,6 +11,7 @@ import Std.Data.HashSet
 import VersoManual
 import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
+import VersoBlueprint.ColorScheme
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -108,8 +109,24 @@ private def buildMetadataCss : String := r##"
 def buildMetadataHtmlAssets : HtmlAssets :=
   { extraCss := [buildMetadataCss] }
 
+/--
+Global color-scheme (dark mode) assets, applied to *every* page.
+
+* `extraCss` carries the blueprint design tokens (so the `--bp-color-*` palette and
+  its dark overrides reach pages without a blueprint content block — index, ToC,
+  bibliography) plus the standalone color-scheme switcher box styling.
+* `extraJs` carries the pre-paint applier, which Verso emits as an inline
+  non-module `<script>` in `<head>`, so the saved scheme is applied before first
+  paint (no flash). The core dark CSS itself rides along on the always-linked
+  `verso-vars.css` / `book.css`, so OS-auto dark works with zero JS.
+-/
+def colorSchemeHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.Commands.blueprintTokensCss, Informal.ColorScheme.css] : List String)
+  extraJs := ([Informal.ColorScheme.applierJs] : List String)
+
 def blueprintHtmlAssets : HtmlAssets :=
-  Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets
+  (Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 

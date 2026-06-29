@@ -88,6 +88,208 @@ def blueprintTokensCss : String := r##"
   --bp-shadow-bold: 0 7px 0 var(--bp-color-text-strong);
   --bp-shadow-bold-lg: 0 9px 0 var(--bp-color-text-strong);
 }
+
+/*
+  Dark color scheme for the blueprint design tokens. Purely additive: the :root
+  block above keeps the original light palette, so light mode is unchanged. The
+  dual `@media (prefers-color-scheme: dark)` + `[data-bp-color-scheme="dark"]`
+  form mirrors the core verso-vars.css convention; the explicit
+  `[data-bp-color-scheme="light"]` block restores the light palette so a forced
+  light choice overrides an OS dark preference. Keep the two dark lists in sync.
+*/
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bp-color-surface: #16213e;
+    --bp-color-surface-muted: #1b2742;
+    --bp-color-surface-subtle: #1a2540;
+    --bp-color-surface-modern: #18233f;
+    --bp-color-surface-warn: #2e2410;
+    --bp-color-surface-warn-soft: #3a2c12;
+    --bp-color-surface-note: #2c2710;
+    --bp-color-border: #2f3a59;
+    --bp-color-border-soft: #283350;
+    --bp-color-border-muted: #2b3552;
+    --bp-color-border-panel: #2c3754;
+    --bp-color-border-strong: #46537a;
+    --bp-color-text-strong: #f1f5f9;
+    --bp-color-text: #e2e8f0;
+    --bp-color-text-muted: #b6c2d9;
+    --bp-color-text-subtle: #9aa7c2;
+    --bp-color-text-faint: #8492ad;
+    --bp-color-accent-success: #4ade80;
+    --bp-color-accent-warning: #fbbf24;
+    --bp-color-accent-danger: #f87171;
+    --bp-color-accent-info: #a78bfa;
+    --bp-color-status-success-text: #86efac;
+    --bp-color-status-warning-text: #fcd34d;
+    --bp-color-status-warning-strong: #fdba74;
+    --bp-color-status-warning-border: #7c5314;
+    --bp-color-status-warning-border-soft: #5e3f12;
+    --bp-color-status-error-text: #fca5a5;
+    --bp-color-status-error-strong: #fecaca;
+    --bp-color-status-error-border-soft: #6b2230;
+    --bp-color-status-note-border: #6b561a;
+    --bp-color-status-note-text: #fcd34d;
+    --bp-color-focus-border: #3b82f6;
+    --bp-color-focus-surface: #16263f;
+    --bp-color-focus-ring: rgba(96, 165, 250, 0.2);
+    --bp-color-selection: rgba(96, 165, 250, 0.26);
+    --bp-color-selection-ring: rgba(96, 165, 250, 0.3);
+    --bp-color-selection-surface-strong: rgba(96, 165, 250, 0.36);
+    --bp-color-selection-surface-soft: rgba(96, 165, 250, 0.2);
+    --bp-color-selection-surface-faint: rgba(96, 165, 250, 0.14);
+    --bp-color-selection-shadow-strong: rgba(96, 165, 250, 0.4);
+    --bp-color-selection-shadow-soft: rgba(96, 165, 250, 0.32);
+    --bp-color-selection-shadow-faint: rgba(96, 165, 250, 0.22);
+    --bp-color-target-ring: rgba(96, 165, 250, 0.3);
+    --bp-color-target-surface: rgba(96, 165, 250, 0.2);
+    --bp-color-target-ring-strong: rgba(96, 165, 250, 0.38);
+    --bp-color-modern-border: #2c3754;
+    --bp-color-modern-surface-alt: #18233f;
+    --bp-color-modern-caption: #213253;
+    --bp-color-bold-surface-glow-1: rgba(251, 191, 36, 0.16);
+    --bp-color-bold-surface-glow-2: rgba(16, 185, 129, 0.16);
+    --bp-color-bold-link: #fdba74;
+    --bp-color-bold-label: #f59e0b;
+    --bp-color-biblio-border: #3a2f63;
+    --bp-color-biblio-surface: #1e1838;
+    --bp-color-biblio-border-soft: #322a55;
+    --bp-color-biblio-surface-soft: #1b1633;
+    --bp-color-biblio-link: #c4b5fd;
+    --bp-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --bp-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.55);
+    --bp-shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6);
+    --bp-shadow-modern: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+}
+
+:root[data-bp-color-scheme="dark"] {
+  --bp-color-surface: #16213e;
+  --bp-color-surface-muted: #1b2742;
+  --bp-color-surface-subtle: #1a2540;
+  --bp-color-surface-modern: #18233f;
+  --bp-color-surface-warn: #2e2410;
+  --bp-color-surface-warn-soft: #3a2c12;
+  --bp-color-surface-note: #2c2710;
+  --bp-color-border: #2f3a59;
+  --bp-color-border-soft: #283350;
+  --bp-color-border-muted: #2b3552;
+  --bp-color-border-panel: #2c3754;
+  --bp-color-border-strong: #46537a;
+  --bp-color-text-strong: #f1f5f9;
+  --bp-color-text: #e2e8f0;
+  --bp-color-text-muted: #b6c2d9;
+  --bp-color-text-subtle: #9aa7c2;
+  --bp-color-text-faint: #8492ad;
+  --bp-color-accent-success: #4ade80;
+  --bp-color-accent-warning: #fbbf24;
+  --bp-color-accent-danger: #f87171;
+  --bp-color-accent-info: #a78bfa;
+  --bp-color-status-success-text: #86efac;
+  --bp-color-status-warning-text: #fcd34d;
+  --bp-color-status-warning-strong: #fdba74;
+  --bp-color-status-warning-border: #7c5314;
+  --bp-color-status-warning-border-soft: #5e3f12;
+  --bp-color-status-error-text: #fca5a5;
+  --bp-color-status-error-strong: #fecaca;
+  --bp-color-status-error-border-soft: #6b2230;
+  --bp-color-status-note-border: #6b561a;
+  --bp-color-status-note-text: #fcd34d;
+  --bp-color-focus-border: #3b82f6;
+  --bp-color-focus-surface: #16263f;
+  --bp-color-focus-ring: rgba(96, 165, 250, 0.2);
+  --bp-color-selection: rgba(96, 165, 250, 0.26);
+  --bp-color-selection-ring: rgba(96, 165, 250, 0.3);
+  --bp-color-selection-surface-strong: rgba(96, 165, 250, 0.36);
+  --bp-color-selection-surface-soft: rgba(96, 165, 250, 0.2);
+  --bp-color-selection-surface-faint: rgba(96, 165, 250, 0.14);
+  --bp-color-selection-shadow-strong: rgba(96, 165, 250, 0.4);
+  --bp-color-selection-shadow-soft: rgba(96, 165, 250, 0.32);
+  --bp-color-selection-shadow-faint: rgba(96, 165, 250, 0.22);
+  --bp-color-target-ring: rgba(96, 165, 250, 0.3);
+  --bp-color-target-surface: rgba(96, 165, 250, 0.2);
+  --bp-color-target-ring-strong: rgba(96, 165, 250, 0.38);
+  --bp-color-modern-border: #2c3754;
+  --bp-color-modern-surface-alt: #18233f;
+  --bp-color-modern-caption: #213253;
+  --bp-color-bold-surface-glow-1: rgba(251, 191, 36, 0.16);
+  --bp-color-bold-surface-glow-2: rgba(16, 185, 129, 0.16);
+  --bp-color-bold-link: #fdba74;
+  --bp-color-bold-label: #f59e0b;
+  --bp-color-biblio-border: #3a2f63;
+  --bp-color-biblio-surface: #1e1838;
+  --bp-color-biblio-border-soft: #322a55;
+  --bp-color-biblio-surface-soft: #1b1633;
+  --bp-color-biblio-link: #c4b5fd;
+  --bp-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --bp-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.55);
+  --bp-shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6);
+  --bp-shadow-modern: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-bp-color-scheme="light"] {
+  --bp-color-surface: #ffffff;
+  --bp-color-surface-muted: #f8fafc;
+  --bp-color-surface-subtle: #f9fafb;
+  --bp-color-surface-modern: #f8fbff;
+  --bp-color-surface-warn: #fff7ed;
+  --bp-color-surface-warn-soft: #ffedd5;
+  --bp-color-surface-note: #fffbeb;
+  --bp-color-border: #cbd5e1;
+  --bp-color-border-soft: #e2e8f0;
+  --bp-color-border-muted: #d1d5db;
+  --bp-color-border-panel: #dbe4ee;
+  --bp-color-border-strong: #94a3b8;
+  --bp-color-text-strong: #0f172a;
+  --bp-color-text: #111827;
+  --bp-color-text-muted: #334155;
+  --bp-color-text-subtle: #475569;
+  --bp-color-text-faint: #64748b;
+  --bp-color-accent-success: #16a34a;
+  --bp-color-accent-warning: #ca8a04;
+  --bp-color-accent-danger: #dc2626;
+  --bp-color-accent-info: #7c3aed;
+  --bp-color-status-success-text: #166534;
+  --bp-color-status-warning-text: #a16207;
+  --bp-color-status-warning-strong: #9a3412;
+  --bp-color-status-warning-border: #fdba74;
+  --bp-color-status-warning-border-soft: #fed7aa;
+  --bp-color-status-error-text: #b91c1c;
+  --bp-color-status-error-strong: #991b1b;
+  --bp-color-status-error-border-soft: #fecaca;
+  --bp-color-status-note-border: #fcd34d;
+  --bp-color-status-note-text: #92400e;
+  --bp-color-focus-border: #93c5fd;
+  --bp-color-focus-surface: #eff6ff;
+  --bp-color-focus-ring: rgba(59, 130, 246, 0.12);
+  --bp-color-selection: rgba(59, 130, 246, 0.18);
+  --bp-color-selection-ring: rgba(59, 130, 246, 0.22);
+  --bp-color-selection-surface-strong: rgba(59, 130, 246, 0.28);
+  --bp-color-selection-surface-soft: rgba(59, 130, 246, 0.14);
+  --bp-color-selection-surface-faint: rgba(59, 130, 246, 0.1);
+  --bp-color-selection-shadow-strong: rgba(59, 130, 246, 0.3);
+  --bp-color-selection-shadow-soft: rgba(59, 130, 246, 0.24);
+  --bp-color-selection-shadow-faint: rgba(59, 130, 246, 0.16);
+  --bp-color-target-ring: rgba(37, 99, 235, 0.22);
+  --bp-color-target-surface: rgba(37, 99, 235, 0.14);
+  --bp-color-target-ring-strong: rgba(37, 99, 235, 0.28);
+  --bp-color-modern-border: #d6deea;
+  --bp-color-modern-surface-alt: #f5f9ff;
+  --bp-color-modern-caption: #e0ecff;
+  --bp-color-bold-surface-glow-1: rgba(251, 191, 36, 0.2);
+  --bp-color-bold-surface-glow-2: rgba(16, 185, 129, 0.2);
+  --bp-color-bold-link: #7c2d12;
+  --bp-color-bold-label: #f59e0b;
+  --bp-color-biblio-border: #d6ccff;
+  --bp-color-biblio-surface: #faf7ff;
+  --bp-color-biblio-border-soft: #e9ddff;
+  --bp-color-biblio-surface-soft: #fdfbff;
+  --bp-color-biblio-link: #4c1d95;
+  --bp-shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.1);
+  --bp-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.16);
+  --bp-shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.18);
+  --bp-shadow-modern: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
 "##
 
 def previewPanelCss : String := r##"
