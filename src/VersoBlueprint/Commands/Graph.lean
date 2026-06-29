@@ -176,6 +176,7 @@ def renderGraphFullwidth
     else
       .empty
   let graphViewSelectId : String := idBase ++ "--view"
+  let graphStatusSelectId : String := idBase ++ "--status"
   let graphDirectionSelectId : String := idBase ++ "--direction"
   let graphPackInputId : String := idBase ++ "--pack"
   let graphPreviewModeSelectId : String := idBase ++ "--preview-mode"
@@ -291,6 +292,17 @@ def renderGraphFullwidth
               {{graphPackChecked}}/>
             <span>"Pack disconnected components"</span>
           </label>
+          <label class="bp_graph_controls_label" for={{graphStatusSelectId}}>"Status"</label>
+          <select
+            id={{graphStatusSelectId}}
+            class="bp_graph_controls_select bp_graph_status_select"
+          >
+            <option value="all">"All statuses"</option>
+            <option value="ready">"Ready to formalize"</option>
+            <option value="blocked">"Blocked"</option>
+            <option value="formalized">"Formalized"</option>
+            <option value="mathlib">"In Mathlib"</option>
+          </select>
           <label class="bp_graph_controls_label" for={{graphPreviewModeSelectId}}>"Preview"</label>
           <select
             id={{graphPreviewModeSelectId}}

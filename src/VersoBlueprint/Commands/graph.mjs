@@ -315,6 +315,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         graphBlock.__bpGraphData = graphApiData;
       }
       const selector = graphBlock.querySelector(".bp_graph_view_select");
+      const statusSelector = graphBlock.querySelector(".bp_graph_status_select");
       const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
@@ -698,6 +699,22 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (selector) {
         selector.addEventListener("change", function () {
           switchVariant(selector.value);
+        });
+      }
+      if (statusSelector) {
+        // Status highlight/filter: toggle a data attribute on the canvas; CSS
+        // dims nodes that do not match the selected status. Pure class toggling,
+        // composes with all variants, no traversal or network.
+        const applyStatusFilter = function (value) {
+          if (!value || value === "all") {
+            graphRoot.removeAttribute("data-bp-status-filter");
+          } else {
+            graphRoot.setAttribute("data-bp-status-filter", value);
+          }
+        };
+        applyStatusFilter(statusSelector.value);
+        statusSelector.addEventListener("change", function () {
+          applyStatusFilter(statusSelector.value);
         });
       }
       if (directionSelector) {

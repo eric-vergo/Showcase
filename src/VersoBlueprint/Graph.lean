@@ -59,6 +59,12 @@ structure GraphNode (Ref : Type) where
   gradientangle? : Option String := none
   tooltip? : Option String := none
   ref? : Option Ref := none
+  /-- Optional CSS class emitted on the rendered DOT node (e.g. status highlight). -/
+  cssClass? : Option String := none
+  /-- Statement dependency use-refs carrying per-edge origin/intent metadata. -/
+  statementUses : Array Data.UseRef := #[]
+  /-- Proof dependency use-refs carrying per-edge origin/intent metadata. -/
+  proofUses : Array Data.UseRef := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 instance [Quote Ref] : Quote (GraphNode Ref) where
@@ -66,7 +72,7 @@ instance [Quote Ref] : Quote (GraphNode Ref) where
     #[
       quote n.label, quote n.displayLabel?, quote n.deps, quote n.proofDeps, quote n.parent?, quote n.shape,
       quote n.style, quote n.fillcolor, quote n.color, quote n.penwidth, quote n.fontcolor, quote n.peripheries,
-      quote n.gradientangle?, quote n.tooltip?, quote n.ref?
+      quote n.gradientangle?, quote n.tooltip?, quote n.ref?, quote n.cssClass?, quote n.statementUses, quote n.proofUses
     ]
 
 abbrev Graph (Ref : Type) := Array (GraphNode Ref)
@@ -218,6 +224,10 @@ structure EdgeData where
   source : Name
   target : Name
   axes : Array EdgeAxis := #[]
+  /-- Whether this edge was user-authored (`manual`) or introduced by automation. -/
+  origin : Data.UseOrigin := .manual
+  /-- Semantic classification of this dependency edge (regular/auxiliary/technical). -/
+  intent : Data.UseIntent := .regular
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 
 /-- Public group/parent metadata for graph consumers. -/
@@ -264,6 +274,13 @@ structure GraphData where
   groups : Array GroupData := #[]
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
+/-- Stable status CSS class emitted on DOT nodes, used by the status highlight/filter. -/
+def statusCssClass : StatementStatus → String
+  | .blocked => "bp-status-blocked"
+  | .ready => "bp-status-ready"
+  | .formalized => "bp-status-formalized"
+  | .mathlib => "bp-status-mathlib"
+
 def NodeData.toGraphNode (node : NodeData) : GraphNode String := {
   label := node.label
   displayLabel? := some node.displayLabel
@@ -280,6 +297,9 @@ def NodeData.toGraphNode (node : NodeData) : GraphNode String := {
   gradientangle? := node.visual.gradientangle?
   tooltip? := node.visual.tooltip?
   ref? := node.href
+  cssClass? := some (statusCssClass node.statementStatus)
+  statementUses := node.statementUses
+  proofUses := node.proofUses
 }
 
 def GraphData.toGraph (data : GraphData) : Graph String :=
@@ -351,6 +371,16 @@ def warningMissingExternalText : String := "Associated Lean declaration is missi
 def warningHiddenInGroupViewText : String := "Warning markers are not shown individually in Group View"
 def edgeMixedText : String := "Thicker solid/dashed: statement + proof deps"
 def groupEdgeMixedText : String := "Thicker solid: statement + proof deps"
+
+/-- Edge color/style tokens keyed by dependency intent and origin. -/
+def edgeAuxiliaryColor : String := "#94a3b8"
+def edgeTechnicalColor : String := "#94a3b8"
+/-- Distinct hue for automatically-inferred (non-manual) dependency edges. -/
+def edgeAutomaticColor : String := "#a855f7"
+
+def edgeAuxiliaryText : String := "Dashed (slate): auxiliary dependency"
+def edgeTechnicalText : String := "Dotted (slate): technical dependency"
+def edgeAutomaticText : String := "Purple: automatically inferred dependency"
 def graphLegendFullViewNote : String :=
   "Shape shows declaration kind, border shows statement status, fill shows proof status, and edge style separates statement from proof dependencies."
 
@@ -420,12 +450,15 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
     {
       key := "edge"
       title := "Edges"
-      summary? := some "Line style distinguishes statement dependencies from proof-only dependencies."
+      summary? := some "Line style distinguishes statement dependencies from proof-only dependencies; intent and origin add further styling."
       items := #[
         legendItem "Solid: statement deps from theorem-like sources",
         legendItem "Dashed: statement deps from box-shaped sources",
         legendItem "Dotted: proof-only deps",
-        legendItem edgeMixedText
+        legendItem edgeMixedText,
+        legendItem edgeAuxiliaryText,
+        legendItem edgeTechnicalText,
+        legendItem edgeAutomaticText
       ]
     }
   ]
@@ -790,7 +823,8 @@ private def styleTokensForWarnings (warnings : WarningFlags) : Array String :=
 def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array Name)
     (parent? : Option Name)
     (statement : StatementStatus) (proof : ProofStatus) (warnings : WarningFlags)
-    (ref? : Option Ref) : GraphNode Ref :=
+    (ref? : Option Ref)
+    (stmtUseRefs proofUseRefs : Array Data.UseRef := #[]) : GraphNode Ref :=
   if warnings.unknownRef then
     {
       label
@@ -807,6 +841,9 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       gradientangle? := none
       tooltip? := some s!"Unknown reference: {label}"
       ref?
+      cssClass? := some (statusCssClass statement)
+      statementUses := stmtUseRefs
+      proofUses := proofUseRefs
     }
   else
     let shape := kindShape kind
@@ -832,6 +869,9 @@ def mkStyledNode (kind : Data.NodeKind) (label : Name) (deps proofDeps : Array N
       gradientangle? := none
       tooltip?
       ref?
+      cssClass? := some (statusCssClass statement)
+      statementUses := stmtUseRefs
+      proofUses := proofUseRefs
     }
 
 def expandLabels (state : Environment.State) (roots : Array Name) : Array Name :=
@@ -866,6 +906,7 @@ def mkNode (external : ExternalCodeStatus) (state : Environment.State)
     let warnings := nodeWarnings external state label node
     let ref? := resolveRef? label
     mkStyledNode node.kind label deps nodeProofDeps node.parent statement proof warnings ref?
+      (statementUses node) (proofUses node)
   | none =>
     let unresolvedWarnings : WarningFlags := { unknownRef := true }
     mkStyledNode Data.NodeKind.definition label #[] #[] none .blocked .none unresolvedWarnings none
@@ -891,11 +932,21 @@ def edgesForNode (node : GraphNode Ref) : Array EdgeData :=
   let proofDeps := eraseDups node.proofDeps
   let deps := proofDeps.foldl (init := stmtDeps) fun deps dep =>
     if deps.contains dep then deps else deps.push dep
-  deps.map fun dep => {
-    source := dep
-    target := node.label
-    axes := edgeAxes (stmtDeps.contains dep) (proofDeps.contains dep)
-  }
+  -- Merge the statement and proof use-refs by label so each edge carries the
+  -- intended origin/intent (a manual ref wins over an automatic duplicate).
+  let mergedUses : Array Data.UseRef :=
+    Data.UseRef.mergeByLabel node.statementUses node.proofUses
+  let useRefFor (dep : Name) : Option Data.UseRef :=
+    mergedUses.find? (fun useRef => (useRef.label : Name) == dep)
+  deps.map fun dep =>
+    let useRef? := useRefFor dep
+    {
+      source := dep
+      target := node.label
+      axes := edgeAxes (stmtDeps.contains dep) (proofDeps.contains dep)
+      origin := (useRef?.map (·.origin)).getD .manual
+      intent := (useRef?.map (·.intent)).getD .regular
+    }
 
 def edgesForGraph (graph : Graph Ref) : Array EdgeData :=
   let known : NameSet := graph.foldl (init := {}) fun acc node => acc.insert node.label
@@ -1017,6 +1068,32 @@ def escapeDotString (s : String) : String :=
 
 def dotIndent (n : Nat) : String := String.ofList (List.replicate n ' ')
 
+/--
+Extra DOT edge attributes derived from a dependency edge's intent/origin.
+
+Returns `#[]` for the default (`regular` intent, `manual` origin) so existing
+graph output is byte-identical when no richer metadata is present. Non-regular
+intent adds a style + slate color; automatic origin overrides the color hue.
+-/
+def edgeStyleAttrs (origin : Data.UseOrigin) (intent : Data.UseIntent) : Array String :=
+  let attrs : Array String :=
+    match intent with
+    | .regular => #[]
+    | .auxiliary => #["style=dashed", s!"color=\"{edgeAuxiliaryColor}\""]
+    | .technical => #["style=dotted", s!"color=\"{edgeTechnicalColor}\""]
+  match origin with
+  | .manual => attrs
+  | .automatic => attrs.push s!"color=\"{edgeAutomaticColor}\""
+
+/-- Build a DOT edge line, layering intent/origin styling after the base attrs. -/
+def edgeLineWithStyle (src tgt : Name) (baseAttrs : Array String)
+    (origin : Data.UseOrigin) (intent : Data.UseIntent) : String :=
+  let attrs := baseAttrs ++ edgeStyleAttrs origin intent
+  if attrs.isEmpty then
+    s!"  \"{src}\" -> \"{tgt}\";"
+  else
+    s!"  \"{src}\" -> \"{tgt}\" [{String.intercalate ", " attrs.toList}];"
+
 def graphNodeSvgId (label : Name) : String :=
   Informal.HtmlId.prefixed "bp-node" (toString label)
 
@@ -1087,6 +1164,10 @@ def Graph.toDot (g : Graph Ref) (header : String)
             match node.tooltip? with
             | some tooltip => base.push s!"tooltip=\"{escapeDotString tooltip}\""
             | none => base
+          let base :=
+            match node.cssClass? with
+            | some cls => base.push s!"class=\"{escapeDotString cls}\""
+            | none => base
           match node.ref?, refAttrs? with
           | some ref, some mkAttrs =>
             match mkAttrs ref with
@@ -1106,23 +1187,30 @@ def Graph.toDot (g : Graph Ref) (header : String)
           stmtDeps.foldl (init := ({} : NameSet)) fun acc dep => acc.insert dep
         let proofDepSet : NameSet :=
           proofDeps.foldl (init := ({} : NameSet)) fun acc dep => acc.insert dep
+        -- Per-edge intent/origin from the dependent node's merged use-refs.
+        let mergedUses : Array Data.UseRef :=
+          Data.UseRef.mergeByLabel node.statementUses node.proofUses
+        let intentOriginFor (dep : Name) : Data.UseOrigin × Data.UseIntent :=
+          match mergedUses.find? (fun useRef => (useRef.label : Name) == dep) with
+          | some useRef => (useRef.origin, useRef.intent)
+          | none => (.manual, .regular)
         let edges := stmtDeps.foldl (init := edges) fun edges dep =>
           if known.contains dep then
             let mixed := proofDepSet.contains dep
-            if defLike.contains dep then
-              if mixed then
-                edges.push s!"  \"{dep}\" -> \"{node.label}\" [style=dashed, penwidth=1.7];"
-              else
-                edges.push s!"  \"{dep}\" -> \"{node.label}\" [style=dashed, penwidth=1.2];"
-            else if mixed then
-              edges.push s!"  \"{dep}\" -> \"{node.label}\" [penwidth=1.7];"
-            else
-              edges.push s!"  \"{dep}\" -> \"{node.label}\";"
+            let baseAttrs : Array String :=
+              if defLike.contains dep then
+                if mixed then #["style=dashed", "penwidth=1.7"]
+                else #["style=dashed", "penwidth=1.2"]
+              else if mixed then #["penwidth=1.7"]
+              else #[]
+            let (origin, intent) := intentOriginFor dep
+            edges.push (edgeLineWithStyle dep node.label baseAttrs origin intent)
           else
             edges
         let edges := proofDeps.foldl (init := edges) fun edges dep =>
           if known.contains dep && !stmtDepSet.contains dep then
-            edges.push s!"  \"{dep}\" -> \"{node.label}\" [style=dotted, penwidth=1.2];"
+            let (origin, intent) := intentOriginFor dep
+            edges.push (edgeLineWithStyle dep node.label #["style=dotted", "penwidth=1.2"] origin intent)
           else
             edges
         (nodeDefs, groupMembers, edges)
@@ -1234,6 +1322,8 @@ def GraphData.toDotWith (data : GraphData) (options : GraphOptions := {})
 
 /-- Stable key for the synthetic group overview variant. -/
 def groupVariantKey : String := "group"
+/-- Stable key for the precomputed "essential dependencies" variant. -/
+def essentialVariantKey : String := "essential"
 private def parentVariantKey (parent : Name) : String := s!"parent:{parent}"
 
 private partial def wrapGraphLabelWords (words : List String) (lineWidth maxLines : Nat)
@@ -1436,11 +1526,32 @@ def mkParentOverviewGraph (graph : Graph String) (parents : Array Name)
     }
 
 /--
+Drop auxiliary and technical dependencies, keeping only `regular`-intent edges.
+
+Each node's `deps`/`proofDeps` and `statementUses`/`proofUses` are filtered to the
+regular use-refs, so the rendered DOT shows only the essential dependency spine.
+-/
+def essentialGraph (graph : Graph Ref) : Graph Ref :=
+  graph.map fun node =>
+    let keepRef (useRef : Data.UseRef) : Bool :=
+      match useRef.intent with
+      | .regular => true
+      | _ => false
+    let stmtRefs := node.statementUses.filter keepRef
+    let proofRefs := node.proofUses.filter keepRef
+    { node with
+      deps := stmtRefs.map (fun useRef => (useRef.label : Name))
+      proofDeps := proofRefs.map (fun useRef => (useRef.label : Name))
+      statementUses := stmtRefs
+      proofUses := proofRefs }
+
+/--
 Build the render variants for the bundled graph UI.
 
-Graphs without multi-child groups produce just the full graph variant. Grouped
-graphs additionally produce a synthetic group overview and one focused subgraph
-per parent group.
+All graphs produce a full graph variant plus a precomputed "essential
+dependencies" variant (auxiliary/technical edges dropped). Grouped graphs
+additionally produce a synthetic group overview and one focused subgraph per
+parent group.
 -/
 def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
@@ -1451,6 +1562,25 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
       (graphNodeSvgId node.label, previewKeyForLabel node.label)
   let resolveGroupTitle : Name → Option String := fun group =>
     groupTitles.get? group
+  let essential := essentialGraph graph
+  let fullVariant : GraphRenderVariant := {
+    key := "full"
+    label := "Full Graph"
+    dot := graphToDot graph options resolveGroupTitle
+    options
+    selectOnNodeId := #[]
+    hoverOnNodeId := #[]
+    previewKeyByNodeId := previewKeyByNodeId graph
+  }
+  let essentialVariant : GraphRenderVariant := {
+    key := essentialVariantKey
+    label := "Essential dependencies"
+    dot := graphToDot essential options resolveGroupTitle
+    options
+    selectOnNodeId := #[]
+    hoverOnNodeId := #[]
+    previewKeyByNodeId := previewKeyByNodeId essential
+  }
   let parentChildren := graphParentChildren graph
   let parents :=
     parentChildren.toArray
@@ -1458,15 +1588,7 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
       |>.map (·.1)
       |>.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
   if parents.isEmpty then
-    #[{
-      key := "full"
-      label := "Full Graph"
-      dot := graphToDot graph options resolveGroupTitle
-      options
-      selectOnNodeId := #[]
-      hoverOnNodeId := #[]
-      previewKeyByNodeId := previewKeyByNodeId graph
-    }]
+    #[fullVariant, essentialVariant]
   else
     let parentVariantRefs := parents.map (fun parent => (graphNodeSvgId parent, parentVariantKey parent))
     let groupVariant : GraphRenderVariant := {
@@ -1477,15 +1599,6 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
       selectOnNodeId := parentVariantRefs
       hoverOnNodeId := parentVariantRefs
       previewKeyByNodeId := #[]
-    }
-    let fullVariant : GraphRenderVariant := {
-      key := "full"
-      label := "Full Graph"
-      dot := graphToDot graph options resolveGroupTitle
-      options
-      selectOnNodeId := #[]
-      hoverOnNodeId := #[]
-      previewKeyByNodeId := previewKeyByNodeId graph
     }
     let parentVariants := parents.map fun parent =>
       let parentSubgraph := subgraphForParent graph parent
@@ -1499,7 +1612,7 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
         hoverOnNodeId := #[]
         previewKeyByNodeId := previewKeyByNodeId parentSubgraph
       }
-    #[fullVariant, groupVariant] ++ parentVariants
+    #[fullVariant, essentialVariant, groupVariant] ++ parentVariants
 
 /--
 Forward adjacency (dependency → dependents) derived from `GraphData.edges`.

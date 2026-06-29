@@ -28,6 +28,23 @@
   overflow: hidden;
 }
 
+/*
+ * Node status highlight/filter. When the canvas carries a
+ * `data-bp-status-filter`, dim every graph node that does not match the selected
+ * status. Uses opacity (not color) so it is theme-safe in light and dark modes,
+ * and composes with every precomputed graph variant.
+ */
+.bp_graph_canvas[data-bp-status-filter] g.node {
+  transition: opacity 0.15s ease;
+}
+
+.bp_graph_canvas[data-bp-status-filter="ready"] g.node:not(.bp-status-ready),
+.bp_graph_canvas[data-bp-status-filter="blocked"] g.node:not(.bp-status-blocked),
+.bp_graph_canvas[data-bp-status-filter="formalized"] g.node:not(.bp-status-formalized),
+.bp_graph_canvas[data-bp-status-filter="mathlib"] g.node:not(.bp-status-mathlib) {
+  opacity: 0.18;
+}
+
 .bp_graph_fullwidth[data-bp-graph-layout="fill"] {
   height: 100%;
   min-height: 0;
