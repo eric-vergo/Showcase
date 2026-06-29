@@ -29,6 +29,8 @@ import VersoBlueprint.Attribute
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.GraphApi
+import VersoBlueprint.NodeRoute
+import VersoBlueprint.NodePage
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Informal.Block.Assets

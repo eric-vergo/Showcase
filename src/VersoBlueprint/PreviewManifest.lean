@@ -23,6 +23,7 @@ import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
 import VersoBlueprint.Git
 import VersoBlueprint.Html
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -1299,6 +1300,37 @@ private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
 def buildPublicXrefJson (state : TraverseState) : Json :=
   Verso.Multi.xrefJson (publicXrefDomains state.domains) state.externalTags
 
+/--
+Re-point the public-xref permalinks for the informal-node domain to the
+dedicated per-node pages.
+
+For every object in the `«Informal.Block.informal»` domain we replace its
+reference list with a single entry whose `address` is the absolute node-page URL
+(`/node/<slug>/`, with leading slash — `find.js` strips it before resolving
+against `<base>`) and whose `id` is cleared. The rich `data` block (origin,
+intent, etc.) is preserved verbatim so the command palette and other tooling can
+still consume it. All other domains are left untouched.
+-/
+private def rewriteInformalXref (state : TraverseState) (json : Json) : Json :=
+  let domainName := Resolve.informalDomainName
+  match state.domains.get? domainName with
+  | none => json
+  | some dom =>
+    let key := domainName.toString
+    match json.getObjVal? key with
+    | .error _ => json
+    | .ok domainJson =>
+      let newContents : Json :=
+        dom.objects.toArray.foldl (init := Json.mkObj []) fun acc (canonicalName, obj) =>
+          let slug := Informal.NodeRoute.nodePageSlugOfString canonicalName
+          let entry := Json.mkObj [
+            ("address", Json.str s!"/node/{slug}/"),
+            ("id", Json.str ""),
+            ("data", obj.data)]
+          acc.setObjVal! canonicalName (Json.arr #[entry])
+      let domainJson := domainJson.setObjVal! "contents" newContents
+      json.setObjVal! key domainJson
+
 private def replaceFindPageXref (html xrefJson : String) : Option String :=
   let marker := "window.xref = "
   match html.splitOn marker with
@@ -1316,7 +1348,7 @@ private def replaceFindPageXref (html xrefJson : String) : Option String :=
 def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
     (state : TraverseState) : IO Unit := do
   let outDir := outDirForMode cfg mode
-  let json := (buildPublicXrefJson state).compress
+  let json := (rewriteInformalXref state (buildPublicXrefJson state)).compress
   IO.FS.writeFile (outDir / "xref.json") json
   let findIndex := outDir / "find" / "index.html"
   if ← findIndex.pathExists then

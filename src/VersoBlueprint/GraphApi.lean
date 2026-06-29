@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -49,7 +50,17 @@ private def groupTitle? (state : TraverseState) (label : Name) : Option String :
 private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) :
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
-  let href := nodeHref? state node.label <|> node.href
+  -- Re-point nodes that have a dedicated per-node page to that page (the node
+  -- page is now canonical and links back to the chapter). Nodes without a node
+  -- page (e.g. external/Mathlib dependencies) keep their existing chapter anchor
+  -- so we never emit a dangling node-page link. The href is root-relative with
+  -- no leading slash, so it resolves via the per-page `<base href>` exactly like
+  -- the chapter anchors it replaces (DOT/JSON payloads are not relativized).
+  let href :=
+    if Informal.NodeRoute.hasNodePage state node.label then
+      some (Informal.NodeRoute.nodePageHref node.label)
+    else
+      nodeHref? state node.label <|> node.href
   let previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state node.label
   { node with title, href, previewKey }
 
