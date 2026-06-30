@@ -180,7 +180,7 @@ def printCss : String := r##"
     --bp-color-text: #15212b;
     --bp-color-text-muted: #4d5e6d;
     --bp-color-text-subtle: #5a6b7a;
-    --bp-color-text-faint: #7e8d9b;
+    --bp-color-text-faint: #5f6f7e;
     --bp-color-accent: #1c5fb8;
     --bp-color-on-accent: #ffffff;
     --bp-color-link: #1c5fb8;

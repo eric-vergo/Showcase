@@ -49,7 +49,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-text: #15212b;
   --bp-color-text-muted: #4d5e6d;
   --bp-color-text-subtle: #5a6b7a;
-  --bp-color-text-faint: #7e8d9b;
+  --bp-color-text-faint: #5f6f7e;
   --bp-color-accent-success: #1c8c57;
   --bp-color-accent-warning: #b86b2e;
   --bp-color-accent-danger: #dc2626;
@@ -142,7 +142,7 @@ def blueprintTokensCss : String := r##"
     --bp-color-text: #dbe7f2;
     --bp-color-text-muted: #93a4b5;
     --bp-color-text-subtle: #93a4b5;
-    --bp-color-text-faint: #75879a;
+    --bp-color-text-faint: #8d9eb0;
     --bp-color-accent-success: #36c485;
     --bp-color-accent-warning: #e2974e;
     --bp-color-accent-danger: #f87171;
@@ -218,7 +218,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-text: #dbe7f2;
   --bp-color-text-muted: #93a4b5;
   --bp-color-text-subtle: #93a4b5;
-  --bp-color-text-faint: #75879a;
+  --bp-color-text-faint: #8d9eb0;
   --bp-color-accent-success: #36c485;
   --bp-color-accent-warning: #e2974e;
   --bp-color-accent-danger: #f87171;
@@ -293,7 +293,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-text: #15212b;
   --bp-color-text-muted: #4d5e6d;
   --bp-color-text-subtle: #5a6b7a;
-  --bp-color-text-faint: #7e8d9b;
+  --bp-color-text-faint: #5f6f7e;
   --bp-color-accent-success: #1c8c57;
   --bp-color-accent-warning: #b86b2e;
   --bp-color-accent-danger: #dc2626;
