@@ -347,7 +347,13 @@ def proofBackgroundNeutralColor : String := "#f4f6f8"
 def proofBackgroundReadyColor : String := "#dbe8f7"
 def proofBackgroundIncompleteColor : String := "#f5e6d2"
 def proofBackgroundFormalizedColor : String := "#d7ede0"
-def proofBackgroundFormalizedAncColor : String := "#1c8c57"
+-- STY-GRAPH-02 (#32b): this fill carries a white label (`proofStatusFontColor
+-- .formalizedWithAncestors`) on ~62/79 nodes. The previous `#1c8c57` computed
+-- white-on-fill ≈4.25:1 (below AA 4.5:1); darkened to `#1a8351` which computes
+-- ≈4.76:1. Kept distinct from the lighter `statementBorderFormalizedColor`
+-- (#1c8c57) border so the green stays semantic. The `--bp-color-accent-success`
+-- token is intentionally left at #1c8c57 (different, non-white-text context).
+def proofBackgroundFormalizedAncColor : String := "#1a8351"
 
 def definitionBackgroundColor : String := "#ffffff"
 
@@ -1199,8 +1205,11 @@ def Graph.toDot (g : Graph Ref) (header : String)
             let mixed := proofDepSet.contains dep
             let baseAttrs : Array String :=
               if defLike.contains dep then
+                -- STY-GRAPH-09 (#32c): give dashed statement-from-box edges a
+                -- heavier stroke than the dotted proof-only edges below
+                -- (1.0pt) so the two patterns are easier to tell apart.
                 if mixed then #["style=dashed", "penwidth=1.7"]
-                else #["style=dashed", "penwidth=1.2"]
+                else #["style=dashed", "penwidth=1.4"]
               else if mixed then #["penwidth=1.7"]
               else #[]
             let (origin, intent) := intentOriginFor dep
@@ -1210,7 +1219,9 @@ def Graph.toDot (g : Graph Ref) (header : String)
         let edges := proofDeps.foldl (init := edges) fun edges dep =>
           if known.contains dep && !stmtDepSet.contains dep then
             let (origin, intent) := intentOriginFor dep
-            edges.push (edgeLineWithStyle dep node.label #["style=dotted", "penwidth=1.2"] origin intent)
+            -- STY-GRAPH-09 (#32c): finer dotted stroke (proof-only) reads as
+            -- clearly dotted versus the heavier dashed statement edges above.
+            edges.push (edgeLineWithStyle dep node.label #["style=dotted", "penwidth=1.0"] origin intent)
           else
             edges
         (nodeDefs, groupMembers, edges)
@@ -1284,7 +1295,12 @@ placed far from the top of the viewport after variant or direction switches.
 def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {}) : String :=
   "strict digraph \"\" {\n" ++
   s!"    rankdir={options.direction.rankdir};\n" ++
-  "    bgcolor=\"white\";\n" ++
+  -- STY-GRAPH-01 (#32a): emit a transparent SVG background so the canvas
+  -- container's CSS "figure card" surface shows through instead of a baked-in
+  -- white block. Node fills + edge strokes are baked light-tuned, so the card is
+  -- a deliberate (theme-invariant) light surface; see `.bp_graph_canvas` in
+  -- graph.css.
+  "    bgcolor=\"transparent\";\n" ++
   (if style.includePack then s!"    pack={graphPackAttr options.pack};\n" else "") ++
   "    splines=true;\n" ++
   "    nodesep=0.35;\n" ++

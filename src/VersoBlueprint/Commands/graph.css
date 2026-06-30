@@ -26,6 +26,26 @@
   min-height: 24rem;
   resize: vertical;
   overflow: hidden;
+  /*
+   * STY-GRAPH-01 (#32a): the graph's node fills and edge strokes are baked into
+   * the SVG at build time tuned for a light background (the DOT `bgcolor` is now
+   * `transparent`, see Graph.lean), so the canvas contents cannot theme-switch
+   * at runtime. Give the canvas a deliberate, theme-invariant light "figure
+   * card" -- soft off-white fill + hairline frame + radius + soft shadow -- so
+   * the graph reads as an intentional framed figure in dark mode instead of a
+   * raw white bleed, and stays clean in light mode. The fill is intentionally
+   * NOT themed: the baked SVG is only legible on a light surface.
+   *
+   * No element padding on purpose: the SVG is sized from `clientWidth`
+   * (graph.mjs), which includes padding, so internal padding would overflow and
+   * clip the rendered graph; d3-graphviz `.fit(true)` already insets content
+   * from the frame.
+   */
+  box-sizing: border-box;
+  background: #f7f9fb;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--bp-radius-lg);
+  box-shadow: var(--bp-shadow-sm);
 }
 
 /*
@@ -200,7 +220,14 @@
   overflow: hidden;
   border: 1px solid var(--bp-color-border-soft);
   border-radius: 0.4rem;
-  background: var(--bp-color-surface);
+  /*
+   * STY-GRAPH-01 (#32a): this is a graphviz render target (group-hover mini
+   * graph). It previously relied on the SVG's baked white `bgcolor`; with the
+   * DOT background now transparent, give it the same theme-invariant light
+   * "figure card" fill as `.bp_graph_canvas` so the light-tuned baked nodes stay
+   * legible on the dark preview panel.
+   */
+  background: #f7f9fb;
 }
 
 .bp_graph_legend {
@@ -586,5 +613,19 @@ html[data-bp-style="bold"] .bp_graph_legend_swatch {
     left: 0;
     right: 0;
     width: auto;
+  }
+}
+
+/*
+ * STY-GRAPH-14 (#32c): respect reduced-motion preferences on the graph page.
+ * The graph render itself is instant (d3-graphviz uses no tween here), but the
+ * status highlight/filter and the control affordances animate via CSS
+ * transitions; disable those for users who prefer reduced motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .bp_graph_canvas[data-bp-status-filter] g.node,
+  .bp_graph_controls_select,
+  .bp_graph_controls_button {
+    transition: none;
   }
 }
