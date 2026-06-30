@@ -7,6 +7,8 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoManual.Markdown
+import MD4Lean
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.HoverInline
 
@@ -178,12 +180,92 @@ private def signatureToHtml (keywordText : String) (sig : Verso.Genre.Manual.Sig
     </div>
   }}
 
+/--
+Render the subset of Verso `Doc` inline nodes that the pure Markdown pipeline
+(`Markdown.inlineFromMarkdown'`) can produce. This mirrors Verso's core
+`Inline.toHtml`, but runs purely here because the only `GenreHtml` instance able
+to drive `Block.toHtml` lives in the heavy traverse/`BuildLogT IO` monad, which
+is not available at this pre-page snapshot render site.
+
+Inline `$…$` and display `$$…$$` math become `<code class="math …">`, exactly as
+Verso core does, so the already-shipped offline KaTeX assets
+(`-verso-data/katex/{katex.js,katex.css,math.js}`) render them client-side with
+no new assets. Markdown never yields `.other`; that case degrades to its
+children to keep the function total.
+-/
+private partial def docstringInlineToHtml {g} (inline : Verso.Doc.Inline g) : ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match inline with
+  | .text str => .text true str
+  | .linebreak str => .text false str
+  | .emph content => {{ <em>{{content.map docstringInlineToHtml}}</em> }}
+  | .bold content => {{ <strong>{{content.map docstringInlineToHtml}}</strong> }}
+  | .code str => {{ <code>{{.text true str}}</code> }}
+  | .math mode str =>
+    let classes := "math " ++ match mode with | .inline => "inline" | .display => "display"
+    {{ <code class={{classes}}>{{.text true str}}</code> }}
+  | .link content dest => {{ <a href={{dest}}>{{content.map docstringInlineToHtml}}</a> }}
+  | .image alt dest => {{ <img src={{dest}} alt={{alt}}/> }}
+  | .footnote name content =>
+    {{ <details class="footnote"><summary>"["{{.text true name}}"]"</summary>{{content.map docstringInlineToHtml}}</details> }}
+  | .concat content => .seq (content.map docstringInlineToHtml)
+  | .other _ content => .seq (content.map docstringInlineToHtml)
+
+/-- Render the core Verso `Doc` block nodes produced by `Markdown.blockFromMarkdown'`. Mirrors Verso's core `Block.toHtml`; see `docstringInlineToHtml`. -/
+private partial def docstringBlockToHtml {g} (block : Verso.Doc.Block g) : ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match block with
+  | .para contents => {{ <p>{{contents.map docstringInlineToHtml}}</p> }}
+  | .blockquote contents => {{ <blockquote>{{contents.map docstringBlockToHtml}}</blockquote> }}
+  | .code content => {{ <pre>{{.text true content}}</pre> }}
+  | .ul items =>
+    {{ <ul>{{items.map fun li => {{ <li>{{li.contents.map docstringBlockToHtml}}</li> }} }}</ul> }}
+  | .ol start items =>
+    {{ <ol start={{toString (max start 0)}}>{{items.map fun li => {{ <li>{{li.contents.map docstringBlockToHtml}}</li> }} }}</ol> }}
+  | .dl items =>
+    {{ <dl>{{items.map fun ⟨t, d⟩ => {{ <dt>{{t.map docstringInlineToHtml}}</dt><dd>{{d.map docstringBlockToHtml}}</dd> }} }}</dl> }}
+  | .concat contents => .seq (contents.map docstringBlockToHtml)
+  | .other _ contents => .seq (contents.map docstringBlockToHtml)
+
+/--
+Markdown parser flags for docstrings. Enables `$…$`/`$$…$$` LaTeX math (off by
+default in `MD_DIALECT_COMMONMARK`) and disables raw HTML so docstring angle
+brackets render as text rather than tripping the pure pipeline's HTML guard
+(and so no raw HTML from a docstring can reach the offline site).
+-/
+private def docstringMdParserFlags : UInt32 :=
+  MD4Lean.MD_FLAG_LATEXMATHSPANS ||| MD4Lean.MD_FLAG_NOHTMLSPANS ||| MD4Lean.MD_FLAG_NOHTMLBLOCKS
+
+/--
+Render a docstring through Verso's pure Markdown pipeline (markdown structure +
+`$…$` math). Returns `none` if the parser fails or produces a node the pure
+pipeline rejects (e.g. headers deeper than two levels, tables), so the caller
+can fall back to escaped plain text.
+-/
+private def renderDocstringMarkdown? (docs : String) : Option ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match MD4Lean.parse docs (parserFlags := docstringMdParserFlags) with
+  | none => none
+  | some ast =>
+    match ast.blocks.mapM (fun b =>
+        Verso.Genre.Manual.Markdown.blockFromMarkdown' (g := Verso.Doc.Genre.none) b
+          (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders')) with
+    | .error _ => none
+    | .ok blocks => some {{ <div class="docstring">{{blocks.map docstringBlockToHtml}}</div> }}
+
+/--
+Render a Lean docstring for a code panel. Routes the prose through Verso's
+Markdown pipeline so markdown and inline/display `$…$` math render, falling back
+to the original escaped `<pre>` for docstrings the pipeline can't handle.
+-/
 private def plainDocstringHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
   match docs? with
   | none => .empty
   | some docs =>
-    {{<pre class="docstring">{{.text true docs}}</pre>}}
+    match renderDocstringMarkdown? docs with
+    | some html => html
+    | none => {{<pre class="docstring">{{.text true docs}}</pre>}}
 
 private def docsHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
