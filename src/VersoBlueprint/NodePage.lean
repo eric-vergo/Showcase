@@ -50,7 +50,7 @@ def nodeMetricsCss : String := r##"
   gap: 0.4rem 0.6rem;
   align-items: center;
   margin: 0.5rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small, 0.875rem);
 }
 
 .bp_node_metric {
@@ -58,14 +58,14 @@ def nodeMetricsCss : String := r##"
   align-items: baseline;
   gap: 0.35rem;
   padding: 0.1rem 0.55rem;
-  color: var(--bp-color-text-muted, #5a6b7a);
+  color: var(--bp-color-text-muted, #4d5e6d);
   background: var(--bp-color-surface-muted, #f1f4f7);
   border: 1px solid var(--bp-color-border, #dbe2ea);
   border-radius: var(--bp-radius-pill, 999px);
   font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.72rem;
+  font-size: var(--bp-fs-badge, 0.72rem);
 }
 
 .bp_node_metric_value {
@@ -89,14 +89,10 @@ carry no dedicated CSS file). Colors come from the `--bp-color-*` design tokens 
 the panel themes correctly in light and dark mode.
 -/
 def nodeDownstreamCss : String := r##"
-.bp_node_page_downstream {
-  margin: 1.5rem 0 0;
-}
-
 .bp_node_downstream_count {
   margin: 0 0 0.5rem;
-  color: var(--bp-color-text-muted, #5a6b7a);
-  font-size: 0.9rem;
+  color: var(--bp-color-text-muted, #4d5e6d);
+  font-size: var(--bp-fs-small, 0.875rem);
 }
 
 .bp_node_downstream_list {
@@ -120,11 +116,12 @@ def nodeDownstreamCss : String := r##"
   border: 1px solid var(--bp-color-border, #dbe2ea);
   border-radius: var(--bp-radius-pill, 999px);
   text-decoration: none;
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small, 0.875rem);
+  transition: border-color var(--bp-duration-fast, 0.12s) ease;
 }
 
 .bp_node_downstream_list a:hover {
-  border-color: var(--bp-color-accent, #2563eb);
+  border-color: var(--bp-color-accent, #1c5fb8);
 }
 "##
 
@@ -142,7 +139,7 @@ def nodeSourceCss : String := r##"
   gap: 0.4rem 0.6rem;
   align-items: center;
   margin: 0.5rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small, 0.875rem);
 }
 
 .bp_node_source_link {
@@ -155,10 +152,11 @@ def nodeSourceCss : String := r##"
   border: 1px solid var(--bp-color-border, #dbe2ea);
   border-radius: var(--bp-radius-pill, 999px);
   text-decoration: none;
+  transition: border-color var(--bp-duration-fast, 0.12s) ease;
 }
 
 .bp_node_source_link:hover {
-  border-color: var(--bp-color-accent, #2563eb);
+  border-color: var(--bp-color-accent, #1c5fb8);
 }
 "##
 
@@ -186,13 +184,13 @@ def nodeBreadcrumbCss : String := r##"
   align-items: center;
   gap: 0.1rem 0.35rem;
   font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption, 0.78rem);
   letter-spacing: 0.02em;
-  color: var(--bp-color-text-muted, #5a6b7a);
+  color: var(--bp-color-text-muted, #4d5e6d);
 }
 
 .bp_node_breadcrumb a {
-  color: var(--bp-color-accent, #2563eb);
+  color: var(--bp-color-accent, #1c5fb8);
   text-decoration: none;
 }
 
@@ -201,12 +199,27 @@ def nodeBreadcrumbCss : String := r##"
 }
 
 .bp_node_breadcrumb_sep {
-  color: var(--bp-color-text-faint, #94a3b8);
+  color: var(--bp-color-text-faint, #5f6f7e);
 }
 
 .bp_node_breadcrumb_current {
   color: var(--bp-color-text, #15212b);
   font-weight: 600;
+}
+
+.bp_node_page_group {
+  color: var(--bp-color-text-muted, #4d5e6d);
+  font-size: var(--bp-fs-small, 0.875rem);
+  margin: 0.25rem 0 0;
+}
+
+.bp_node_page h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.bp_node_page > section {
+  margin-top: var(--bp-space-5, 1.5rem);
 }
 "##
 

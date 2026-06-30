@@ -4,21 +4,33 @@
 
 .bp_bibliography_section {
   border: 1px solid var(--bp-color-biblio-border);
-  border-radius: 0.6rem;
-  padding: 0.2rem 0.8rem 0.75rem;
-  margin-bottom: 0.8rem;
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-biblio-surface));
+  border-radius: var(--bp-radius-lg);
+  padding: 0.25rem 0.75rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--bp-color-surface);
+}
+
+.bp_bibliography_lead {
+  margin: 0.25rem 0 0;
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-caption, 0.78rem);
 }
 
 .bp_bibliography_section > summary {
   cursor: pointer;
   font-weight: 700;
-  padding: 0.6rem 0;
+  padding: 0.5rem 0;
 }
 
 .bp_bibliography_list {
-  margin: 0.25rem 0 0.15rem;
-  padding-left: 1.2rem;
+  list-style: none;
+  margin: 0.25rem 0;
+  padding-left: 0;
+}
+
+.bp_bibliography_list > li {
+  padding-left: 1.5rem;
+  text-indent: -1.5rem;
 }
 
 .bp_bibliography_empty {
@@ -27,30 +39,36 @@
 }
 
 .bp_bibliography_uses {
-  margin-top: 0.3rem;
+  margin-top: 0.25rem;
   border: 1px solid var(--bp-color-biblio-border-soft);
   border-radius: var(--bp-radius-md);
-  padding: 0.2rem 0.5rem 0.4rem;
+  padding: 0.25rem 0.5rem 0.5rem;
   background: var(--bp-color-biblio-surface-soft);
+  /* Reset the parent entry's hanging indent inside the nested disclosure. */
+  text-indent: 0;
 }
 
 .bp_bibliography_uses > summary {
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: var(--bp-fs-control, 0.82rem);
   color: var(--bp-color-biblio-link);
 }
 
 .bp_bibliography_uses_list {
-  margin: 0.2rem 0 0;
-  padding-left: 1.2rem;
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
 }
 
 .bp_bibliography_use_item {
-  margin-top: 0.18rem;
+  margin-top: 0.25rem;
 }
 
 .bp_bibliography_use_line {
-  color: inherit;
+  color: var(--bp-color-text);
+}
+
+.bp_bibliography_use_line:hover {
+  text-decoration-color: currentColor;
 }
 
 .bp_bibliography_use_inline_meta {
@@ -58,9 +76,24 @@
   font-style: normal;
 }
 
+/* One coherent link affordance: reference titles and backref links share the
+   system link color, decoration weight and offset (STY-BIB-06). The "Cited from"
+   summary uses --bp-color-biblio-link, which is also blue after the token retint. */
+.bp_bibliography_list a,
+.bp_bibliography_use_line a {
+  color: var(--bp-color-link, #1c5fb8);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+}
+
+.bp_bibliography_list a:hover,
+.bp_bibliography_use_line a:hover {
+  text-decoration-color: currentColor;
+}
+
 html[data-bp-style="modern"] .bp_bibliography_section {
   border-color: var(--bp-color-biblio-border);
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-biblio-surface));
+  background: var(--bp-color-surface);
 }
 
 html[data-bp-style="modern"] .bp_bibliography_uses {
@@ -70,11 +103,9 @@ html[data-bp-style="modern"] .bp_bibliography_uses {
 
 html[data-bp-style="bold"] .bp_bibliography_section {
   border: 2px solid var(--bp-color-text-strong);
-  border-radius: 0.9rem;
+  border-radius: var(--bp-radius-lg);
   box-shadow: var(--bp-shadow-bold);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(167, 139, 250, 0.18), transparent 40%),
-    var(--bp-color-surface);
+  background: var(--bp-color-surface);
 }
 
 html[data-bp-style="bold"] .bp_bibliography_uses {

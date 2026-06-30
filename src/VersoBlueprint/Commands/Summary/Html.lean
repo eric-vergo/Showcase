@@ -174,14 +174,6 @@ private def summaryWarnBadge (text : String) : Output.Html :=
 private def summaryErrorBadge (text : String) : Output.Html :=
   summaryBadge text summaryBadgeErrorClass
 
-private def summaryBadgeClassForStatus (status : Data.ProvedStatus) : String :=
-  if status.isMissing then
-    summaryBadgeErrorClass
-  else if status.isIncomplete then
-    summaryBadgeWarnClass
-  else
-    summaryBadgeClass
-
 private def summaryBadgeRow (badges : Array Output.Html) : Output.Html :=
   if badges.isEmpty then
     .empty
@@ -239,9 +231,11 @@ def summaryCard (label value : String) (status? : Option String := Option.none)
     match status? with
     | Option.some status => {{<span class="bp_summary_status">{{.text true status}}</span>}}
     | Option.none => .empty
+  -- De-emphasise a zero count so live, actionable numbers dominate the card row.
+  let valueClass := if value == "0" then "bp_summary_value bp_summary_value_zero" else "bp_summary_value"
   {{ <div class={{className}}>
       <span class="bp_summary_label">{{.text true label}}</span>
-      <span class="bp_summary_value">{{.text true value}}</span>
+      <span class={{valueClass}}>{{.text true value}}</span>
       {{statusNode}}
     </div> }}
 
@@ -416,7 +410,6 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
   let entryRef := ctx.entryRef item.label
   let declLink :=
     summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}} (ctx.declHref? item.label item.decl)
-  let view := item.status.presentation
   let declPrefix ←
     match item.status with
     | .missing => pure "Missing declaration: "
@@ -425,34 +418,30 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     | .proved =>
       Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
       pure "Declaration: "
-  let refsTxt :=
+  -- Discrete, scannable pills instead of one bracketed semicolon-run-on blob.
+  -- The severity pill (the headline fact) carries the warn tint; the kind /
+  -- location / refs pills stay neutral (lead-metric-only convention, AUDIT-05).
+  -- The "refs: N" pill is emitted only when the count is actually known, so the
+  -- internal "unknown" sentinel never leaks.
+  let kindBadge := summaryBadge (if item.isTheorem then "theorem/lemma" else "definition")
+  let severityBadge := summaryWarnBadge item.status.statusLabel
+  let locationText := item.status.sorryLocationText
+  let locationBadges : Array Output.Html :=
+    if locationText == "location unknown" then #[] else #[summaryBadge locationText]
+  let refsBadges : Array Output.Html :=
     match item.status with
     | .containsSorry _ =>
       let (typeSorryRefs, proofSorryRefs) := item.status.sorryRefCounts
       let sorryRefs := typeSorryRefs + proofSorryRefs
-      if sorryRefs > 0 then toString sorryRefs else "unknown"
-    | .proved => "0"
-    | _ => "n/a"
-  let statusLabel :=
-    if item.status.isProved then
-      item.status.statusLabel
-    else
-      view.externalHeaderText
-  let whereTxt :=
-    if item.status.isProved then
-      item.status.statusLabel
-    else
-      item.status.sorryLocationText
-  let badgeClass := summaryBadgeClassForStatus item.status
+      if sorryRefs > 0 then #[summaryMetricBadge "refs" sorryRefs] else #[]
+    | _ => #[]
+  let badges := #[kindBadge, severityBadge] ++ locationBadges ++ refsBadges
   let body := {{
     <div class="bp_summary_item_body">
-      {{.text true declPrefix}} {{declLink}} " "
-      <span class={{badgeClass}}>
-        s!"[{if item.isTheorem then "theorem/lemma" else "definition"}; {statusLabel}; {whereTxt}; refs: {refsTxt}]"
-      </span>
+      {{.text true declPrefix}} {{declLink}}
     </div>
   }}
-  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body #[] #[]
+  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body badges #[]
 
 private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (label written canonical : Name) :
     Output.Html :=

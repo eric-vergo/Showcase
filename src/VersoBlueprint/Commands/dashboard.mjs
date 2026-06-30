@@ -60,6 +60,7 @@ function readPalette() {
     closed: cssVar("--bp-color-status-formalized", "#1c8c57"),
     ready: cssVar("--bp-color-status-ready", "#1c5fb8"),
     blocked: cssVar("--bp-color-status-blocked", "#b86b2e"),
+    danger: cssVar("--bp-color-accent-danger", "#c0462b"),
     warning: cssVar("--bp-color-accent-warning", "#b86b2e"),
     other: cssVar("--bp-color-border-strong", "#b4c0cc"),
     text: cssVar("--bp-color-text", "#15212b"),
@@ -100,7 +101,7 @@ function drawStatusDonut(d3, mount, data, pal) {
     { label: "Formalized, ancestors open", value: cs.formalizedWithoutAncestors || 0, color: pal.warning },
     { label: "Ready to formalize", value: cs.readyToFormalize || 0, color: pal.ready },
     { label: "Informal only", value: cs.informalOnly || 0, color: pal.other },
-    { label: "Blocked / incomplete", value: cs.blockedOrIncomplete || 0, color: pal.blocked }
+    { label: "Blocked / incomplete", value: cs.blockedOrIncomplete || 0, color: pal.danger }
   ].filter(function (d) { return d.value > 0; });
   const total = slices.reduce(function (a, d) { return a + d.value; }, 0);
   if (total === 0) return false;

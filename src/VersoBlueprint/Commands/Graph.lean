@@ -72,6 +72,39 @@ def graphCss := include_str "graph.css"
 def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : String :=
   s!"{Informal.HtmlId.prefixed "bp-graph" (toString id)}{suffix}"
 
+/--
+STY-GRAPH-11: condense a per-subgraph variant label (often a full descriptive
+sentence) into a scannable fragment for the grouped View `<optgroup>`.
+
+Keeps the first clause (cut at the first sentence/clause boundary), strips a
+trailing period, and word-truncates anything still longer than `maxLen` with an
+ellipsis. Purely cosmetic — the underlying `<option value>` (the variant key) is
+unchanged, so selection behavior is identical.
+-/
+def shortenVariantLabel (label : String) (maxLen : Nat := 42) : String :=
+  -- Cut at the first clause boundary so a leading sentence becomes the label.
+  -- `splitOn` returns the whole string as the sole element when the separator is
+  -- absent, so the `head` is always safe.
+  let firstSeg (sep : String) (s : String) : String :=
+    (s.splitOn sep).headD s |>.trimAscii.toString
+  let label := label.trimAscii.toString
+  let firstClause := firstSeg "." label
+  let firstClause := firstSeg ";" firstClause
+  let firstClause := firstSeg ":" firstClause
+  let firstClause := firstSeg " — " firstClause
+  let firstClause := if firstClause.isEmpty then label else firstClause
+  if firstClause.length <= maxLen then
+    firstClause
+  else
+    -- Word-truncate at the last whole word inside `maxLen`, then add an ellipsis.
+    let truncated := (firstClause.take maxLen).toString
+    let words := truncated.splitOn " "
+    let kept :=
+      match words.reverse with
+      | _last :: rest@(_ :: _) => " ".intercalate rest.reverse
+      | _ => truncated
+    kept.trimAscii.toString ++ "…"
+
 def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss])
 
@@ -105,10 +138,28 @@ def renderGraphFullwidth
   let hasGroupVariant := variants.any (fun variant => variant.key == groupVariantKey)
   let graphVariantJson : String :=
     escapeJsonForScriptEmbed (Lean.Json.compress (toJson variants))
-  let graphVariantOptions : Array Output.Html :=
-    variants.map fun variant => {{
+  -- STY-GRAPH-11: surface the three primary views (Full / Essential / Group) as
+  -- top-level options and tuck the per-subgraph `parent:*` variants into a
+  -- labelled <optgroup> with condensed labels so the dropdown stays scannable.
+  let isParentVariant := fun (variant : Informal.Graph.GraphRenderVariant) =>
+    variant.key.startsWith "parent:"
+  let primaryOptions : Array Output.Html :=
+    (variants.filter (fun variant => !isParentVariant variant)).map fun variant => {{
       <option value={{variant.key}}>{{variant.label}}</option>
     }}
+  let subgraphOptions : Array Output.Html :=
+    (variants.filter isParentVariant).map fun variant => {{
+      <option value={{variant.key}}>{{shortenVariantLabel variant.label}}</option>
+    }}
+  let graphVariantOptions : Array Output.Html :=
+    if subgraphOptions.isEmpty then
+      primaryOptions
+    else
+      primaryOptions.push {{
+        <optgroup label="Subgraphs">
+          {{subgraphOptions}}
+        </optgroup>
+      }}
   let includeMathlibLegend :=
     publicGraphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
   let renderLegend (kind : String) (groups : Array Informal.Graph.LegendGroup)
@@ -125,14 +176,20 @@ def renderGraphFullwidth
           | Option.none => .empty
         let itemHtml : Array Output.Html :=
           group.items.map fun item =>
-            match item.swatch? with
-            | some swatch => {{
+            match item.swatch?, item.edgeSwatch? with
+            | some swatch, _ => {{
                 <span class="bp_graph_legend_item">
                   <span class="bp_graph_legend_swatch" "style"={{swatch.inlineStyle}}></span>
                   {{.text false item.label}}
                 </span>
               }}
-            | Option.none => {{
+            | Option.none, some edgeSwatch => {{
+                <span class="bp_graph_legend_item">
+                  <span class="bp_graph_legend_edge_swatch" aria-hidden="true" "style"={{edgeSwatch.inlineStyle}}></span>
+                  {{.text false item.label}}
+                </span>
+              }}
+            | Option.none, Option.none => {{
                 <span class="bp_graph_legend_item">
                   {{.text false item.label}}
                 </span>
@@ -246,6 +303,29 @@ def renderGraphFullwidth
           </select>
         </div>
         <div class="bp_graph_controls_actions">
+          <div class="bp_graph_zoom_controls" role="group" aria-label="Zoom">
+            <button
+              type="button"
+              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_out"
+              aria-label="Zoom out"
+            >
+              <span aria-hidden="true">"−"</span>
+            </button>
+            <button
+              type="button"
+              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_in"
+              aria-label="Zoom in"
+            >
+              <span aria-hidden="true">"+"</span>
+            </button>
+            <button
+              type="button"
+              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_fit"
+              aria-label="Fit graph to view"
+            >
+              "Fit"
+            </button>
+          </div>
           <button
             type="button"
             class="bp_graph_controls_button bp_graph_options_button"

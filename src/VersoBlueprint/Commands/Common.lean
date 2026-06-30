@@ -85,11 +85,11 @@ def blueprintTokensCss : String := r##"
   --bp-color-bold-surface-glow-2: rgba(28, 140, 87, 0.2);
   --bp-color-bold-link: #8f4e1e;
   --bp-color-bold-label: #b86b2e;
-  --bp-color-biblio-border: #d6ccff;
-  --bp-color-biblio-surface: #faf7ff;
-  --bp-color-biblio-border-soft: #e9ddff;
-  --bp-color-biblio-surface-soft: #fdfbff;
-  --bp-color-biblio-link: #574099;
+  --bp-color-biblio-border: #cdd9ea;
+  --bp-color-biblio-surface: #f7f9fc;
+  --bp-color-biblio-border-soft: #dde6f1;
+  --bp-color-biblio-surface-soft: #fbfcfe;
+  --bp-color-biblio-link: #1c5fb8;
   --bp-color-status-blocked: #b86b2e;
   --bp-color-status-ready: #1c5fb8;
   --bp-color-status-formalized: #1c8c57;
@@ -114,6 +114,20 @@ def blueprintTokensCss : String := r##"
   --bp-shadow-modern: 0 4px 16px -6px rgba(21, 33, 43, 0.1);
   --bp-shadow-bold: 0 7px 0 var(--bp-color-text-strong);
   --bp-shadow-bold-lg: 0 9px 0 var(--bp-color-text-strong);
+  --bp-space-1: 0.25rem;
+  --bp-space-2: 0.5rem;
+  --bp-space-3: 0.75rem;
+  --bp-space-4: 1rem;
+  --bp-space-5: 1.5rem;
+  --bp-space-6: 2rem;
+  --bp-duration-fast: 0.12s;
+  --bp-duration-base: 0.16s;
+  --bp-duration-slow: 0.24s;
+  --bp-ease: ease;
+  --bp-fs-badge: 0.72rem;
+  --bp-fs-caption: 0.78rem;
+  --bp-fs-control: 0.82rem;
+  --bp-fs-small: 0.875rem;
 }
 
 /*
@@ -178,11 +192,11 @@ def blueprintTokensCss : String := r##"
     --bp-color-bold-surface-glow-2: rgba(54, 196, 133, 0.16);
     --bp-color-bold-link: #f0b888;
     --bp-color-bold-label: #e2974e;
-    --bp-color-biblio-border: #3a2f63;
-    --bp-color-biblio-surface: #1e1838;
-    --bp-color-biblio-border-soft: #322a55;
-    --bp-color-biblio-surface-soft: #1b1633;
-    --bp-color-biblio-link: #c4b5fd;
+    --bp-color-biblio-border: #2a3a4f;
+    --bp-color-biblio-surface: #15212e;
+    --bp-color-biblio-border-soft: #243240;
+    --bp-color-biblio-surface-soft: #18242f;
+    --bp-color-biblio-link: #5aa0ff;
     --bp-color-status-blocked: #e2974e;
     --bp-color-status-ready: #5aa0ff;
     --bp-color-status-formalized: #36c485;
@@ -254,11 +268,11 @@ def blueprintTokensCss : String := r##"
   --bp-color-bold-surface-glow-2: rgba(54, 196, 133, 0.16);
   --bp-color-bold-link: #f0b888;
   --bp-color-bold-label: #e2974e;
-  --bp-color-biblio-border: #3a2f63;
-  --bp-color-biblio-surface: #1e1838;
-  --bp-color-biblio-border-soft: #322a55;
-  --bp-color-biblio-surface-soft: #1b1633;
-  --bp-color-biblio-link: #c4b5fd;
+  --bp-color-biblio-border: #2a3a4f;
+  --bp-color-biblio-surface: #15212e;
+  --bp-color-biblio-border-soft: #243240;
+  --bp-color-biblio-surface-soft: #18242f;
+  --bp-color-biblio-link: #5aa0ff;
   --bp-color-status-blocked: #e2974e;
   --bp-color-status-ready: #5aa0ff;
   --bp-color-status-formalized: #36c485;
@@ -329,11 +343,11 @@ def blueprintTokensCss : String := r##"
   --bp-color-bold-surface-glow-2: rgba(28, 140, 87, 0.2);
   --bp-color-bold-link: #8f4e1e;
   --bp-color-bold-label: #b86b2e;
-  --bp-color-biblio-border: #d6ccff;
-  --bp-color-biblio-surface: #faf7ff;
-  --bp-color-biblio-border-soft: #e9ddff;
-  --bp-color-biblio-surface-soft: #fdfbff;
-  --bp-color-biblio-link: #574099;
+  --bp-color-biblio-border: #cdd9ea;
+  --bp-color-biblio-surface: #f7f9fc;
+  --bp-color-biblio-border-soft: #dde6f1;
+  --bp-color-biblio-surface-soft: #fbfcfe;
+  --bp-color-biblio-link: #1c5fb8;
   --bp-color-status-blocked: #b86b2e;
   --bp-color-status-ready: #1c5fb8;
   --bp-color-status-formalized: #1c8c57;

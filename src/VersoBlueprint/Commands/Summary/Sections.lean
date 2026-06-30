@@ -619,9 +619,26 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
     -- Hero: overall formalization progress = fullyClosed / max 1 total.
     let total := data.totalEntries
     let closed := data.coverageSplit.fullyClosed
+    let heroReady := data.coverageSplit.readyToFormalize
+    let heroBlocked := data.coverageSplit.blockedOrIncomplete
     let denom := Nat.max 1 total
     let pct := closed * 100 / denom
-    let heroBarStyle := s!"width:{pct}%"
+    -- Mirror the per-chapter multi-segment breakdown (closed / ready / blocked /
+    -- other) so the hero encodes the same thing the chapter bars do. Segment
+    -- widths are percentages of `max 1 total`, matching `summaryProgressBar`.
+    let heroClosedPct := closed * 100 / denom
+    let heroReadyPct := heroReady * 100 / denom
+    let heroBlockedPct := heroBlocked * 100 / denom
+    let heroOtherPct := 100 - Nat.min 100 (heroClosedPct + heroReadyPct + heroBlockedPct)
+    let heroSeg := fun (cls : String) (segPct : Nat) =>
+      if segPct == 0 then (.empty : Output.Html)
+      else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
+    let heroSegs : Array Output.Html := #[
+      heroSeg "bp_progress_seg bp_progress_seg_closed" heroClosedPct,
+      heroSeg "bp_progress_seg bp_progress_seg_ready" heroReadyPct,
+      heroSeg "bp_progress_seg bp_progress_seg_blocked" heroBlockedPct,
+      heroSeg "bp_progress_seg bp_progress_seg_other" heroOtherPct
+    ]
     let heroCards : Output.Html := {{
       <div class="bp_summary_grid">
         {{summaryCard "Total entries" (toString total) (Option.some (statusCountsText data.totalStatus))}}
@@ -656,7 +673,7 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
         </div>
         <div class="bp_progress bp_progress_hero">
           <div class="bp_progress_track">
-            <span class="bp_progress_seg bp_progress_seg_closed" "style"={{heroBarStyle}}></span>
+            {{heroSegs}}
           </div>
           <div class="bp_progress_legend">
             {{.text true s!"{closed} of {total} entries fully closed"}}
@@ -675,11 +692,41 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
       </section>
     }}
     let readingMap := dashboardReadingMap s
-    -- Per-chapter progress bars (the "chapters" chart fallback).
+    -- Per-chapter progress bars (the "chapters" chart fallback). This mirrors the
+    -- segment/percentage logic of `summaryProgressBar`, but drops the repeated
+    -- visible `.bp_progress_legend` text line per chapter (low signal-to-noise
+    -- across ~18 near-identical bars). The closed/ready/blocked/total counts stay
+    -- accessible via the bar's `aria-label` and `title`.
+    let chapterBar := fun (label : String) (cClosed cReady cBlocked cTotal : Nat) =>
+      let cDenom := Nat.max 1 cTotal
+      let cClosedPct := cClosed * 100 / cDenom
+      let cReadyPct := cReady * 100 / cDenom
+      let cBlockedPct := cBlocked * 100 / cDenom
+      let cOtherPct := 100 - Nat.min 100 (cClosedPct + cReadyPct + cBlockedPct)
+      let cSeg := fun (cls : String) (segPct : Nat) =>
+        if segPct == 0 then (.empty : Output.Html)
+        else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
+      let cSegs : Array Output.Html := #[
+        cSeg "bp_progress_seg bp_progress_seg_closed" cClosedPct,
+        cSeg "bp_progress_seg bp_progress_seg_ready" cReadyPct,
+        cSeg "bp_progress_seg bp_progress_seg_blocked" cBlockedPct,
+        cSeg "bp_progress_seg bp_progress_seg_other" cOtherPct
+      ]
+      let counts := s!"closed {cClosed} / ready {cReady} / blocked {cBlocked} / total {cTotal}"
+      let cAria := s!"{label}: {cClosed} closed, {cReady} ready, {cBlocked} blocked of {cTotal} total"
+      {{ <div class="bp_progress" role="group" "aria-label"={{cAria}} "title"={{counts}}>
+          <div class="bp_progress_head">
+            <span class="bp_progress_label">{{.text true label}}</span>
+            <span class="bp_progress_pct">{{.text true s!"{cClosedPct}%"}}</span>
+          </div>
+          <div class="bp_progress_track">
+            {{cSegs}}
+          </div>
+        </div> }}
     let chapterBars : Array Output.Html :=
       data.groupHealth.toArray.map fun g =>
         let label := if g.header.isEmpty then toString g.parent else g.header
-        summaryProgressBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
+        chapterBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
     let chaptersFallback : Output.Html :=
       if chapterBars.isEmpty then
         {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}

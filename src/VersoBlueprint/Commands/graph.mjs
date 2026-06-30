@@ -41,6 +41,28 @@ function readPublicGraphVariants(root) {
   return [];
 }
 
+// STY-GRAPH-11: condense a per-subgraph variant label (often a full sentence)
+// into a scannable fragment for the View <optgroup>. Mirrors the Lean-side
+// `shortenVariantLabel`; only used by the client-side fallback that rebuilds the
+// selector when SSR markup is absent. Cosmetic — option values are unchanged.
+function shortenVariantLabel(label, maxLen) {
+  const limit = typeof maxLen === "number" ? maxLen : 42;
+  const firstSeg = function (sep, s) {
+    const idx = s.indexOf(sep);
+    return (idx >= 0 ? s.slice(0, idx) : s).trim();
+  };
+  let clause = String(label == null ? "" : label).trim();
+  clause = firstSeg(".", clause);
+  clause = firstSeg(";", clause);
+  clause = firstSeg(":", clause);
+  clause = firstSeg(" — ", clause);
+  if (!clause) clause = String(label == null ? "" : label).trim();
+  if (clause.length <= limit) return clause;
+  const words = clause.slice(0, limit).split(" ");
+  if (words.length > 1) words.pop();
+  return words.join(" ").trim() + "…";
+}
+
 function dotWithGraphAttribute(dot, name, value) {
   const source = String(dot || "");
   if (!source) return "";
@@ -411,12 +433,31 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (variants.length === 0) return;
       graphBlock.__bpGraphVariants = variants;
 
+      // STY-GRAPH-11: the SSR markup already renders primary views as top-level
+      // options and per-subgraph (`parent:*`) variants inside an
+      // <optgroup label="Subgraphs">. Only re-append client-side when that markup
+      // is missing entirely (.options counts options nested in optgroups too, so
+      // a populated selector — grouped or not — short-circuits here). When we do
+      // rebuild, mirror the optgroup grouping and condensed subgraph labels.
       if (selector && selector.options.length === 0) {
-        variants.forEach(function (variant) {
+        const makeOption = function (value, text) {
           const option = document.createElement("option");
-          option.value = variant.key;
-          option.textContent = variant.label;
-          selector.appendChild(option);
+          option.value = value;
+          option.textContent = text;
+          return option;
+        };
+        let subgroup = null;
+        variants.forEach(function (variant) {
+          if (String(variant.key).indexOf("parent:") === 0) {
+            if (!subgroup) {
+              subgroup = document.createElement("optgroup");
+              subgroup.label = "Subgraphs";
+              selector.appendChild(subgroup);
+            }
+            subgroup.appendChild(makeOption(variant.key, shortenVariantLabel(variant.label)));
+          } else {
+            selector.appendChild(makeOption(variant.key, variant.label));
+          }
         });
       }
 
@@ -737,6 +778,69 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         previewPlacementSelector.addEventListener("change", function () {
           setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);
         });
+      }
+
+      // STY-GRAPH-12: visible zoom +/- and fit/reset affordances for the
+      // interactive canvas (scroll-zoom + drag are otherwise undiscoverable).
+      // Static graphs omit the controls in markup, so these queries no-op there.
+      if (!isStatic) {
+        const zoomInBtn = graphBlock.querySelector(".bp_graph_zoom_in");
+        const zoomOutBtn = graphBlock.querySelector(".bp_graph_zoom_out");
+        const zoomFitBtn = graphBlock.querySelector(".bp_graph_zoom_fit");
+        // Scale the rendered graph about its center by `factor`, driving the same
+        // d3-zoom behavior d3-graphviz wired up for scroll/drag so button zoom and
+        // gesture zoom stay in sync. Falls back to a manual transform if the
+        // graphviz zoom accessors are unavailable in the vendored build.
+        const applyZoomScale = function (factor) {
+          const gv = graphState.graphviz;
+          if (!gv) return;
+          let zoomBehavior = null;
+          let zoomSelection = null;
+          try {
+            if (typeof gv.zoomBehavior === "function") zoomBehavior = gv.zoomBehavior();
+          } catch (_e) { zoomBehavior = null; }
+          try {
+            if (typeof gv.zoomSelection === "function") zoomSelection = gv.zoomSelection();
+          } catch (_e) { zoomSelection = null; }
+          if (zoomBehavior && zoomSelection && typeof zoomBehavior.scaleBy === "function") {
+            zoomBehavior.scaleBy(zoomSelection.transition().duration(160), factor);
+            return;
+          }
+          // Fallback: scale the <g> transform group directly via d3-zoom.
+          const svg = graphContainer.select("svg");
+          if (svg.empty() || typeof d3.zoom !== "function") return;
+          const g = svg.select("g");
+          if (g.empty()) return;
+          const current = (typeof d3.zoomTransform === "function")
+            ? d3.zoomTransform(svg.node())
+            : { k: 1, x: 0, y: 0 };
+          const nextK = (current.k || 1) * factor;
+          if (typeof d3.zoomIdentity !== "undefined") {
+            const t = d3.zoomIdentity.translate(current.x || 0, current.y || 0).scale(nextK);
+            g.transition().duration(160).attr("transform", t.toString());
+          }
+        };
+        const fitGraph = function () {
+          const gv = graphState.graphviz;
+          if (gv && typeof gv.resetZoom === "function") {
+            try {
+              gv.resetZoom(d3.transition ? d3.transition().duration(160) : undefined);
+              return;
+            } catch (_e) { /* fall through to a full re-render below */ }
+          }
+          // No resetZoom available: re-render the active variant, which is built
+          // with `.fit(true)` and recenters the graph in the canvas.
+          renderGraph();
+        };
+        if (zoomInBtn) {
+          zoomInBtn.addEventListener("click", function () { applyZoomScale(1.2); });
+        }
+        if (zoomOutBtn) {
+          zoomOutBtn.addEventListener("click", function () { applyZoomScale(0.8); });
+        }
+        if (zoomFitBtn) {
+          zoomFitBtn.addEventListener("click", function () { fitGraph(); });
+        }
       }
 
       const controller = {

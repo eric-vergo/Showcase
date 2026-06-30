@@ -126,6 +126,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
         <div class="bp_bibliography">
           <details class="bp_bibliography_section" open>
             <summary>s!"Bibliography ({entries.size})"</summary>
+            <p class="bp_bibliography_lead">"References cited in this blueprint."</p>
             <ul class="bp_bibliography_list">
               {{if rows.isEmpty then {{<li class="bp_bibliography_empty">"No bibliography entries registered."</li>}} else rows}}
             </ul>

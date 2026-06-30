@@ -21,20 +21,20 @@ def css : String := r##"
   z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 0.4rem 0.6rem;
+  gap: 0.5rem 0.5rem;
   flex-wrap: wrap;
   background: var(--bp-color-surface);
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-md);
   box-shadow: var(--bp-shadow-sm);
-  padding: 0.4rem 0.55rem;
-  font-size: 0.82rem;
+  padding: 0.5rem 0.5rem;
+  font-size: var(--bp-fs-control, 0.82rem);
 }
 
 #bp-style-switcher .bp-style-switcher-control {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
 #bp-style-switcher label {
@@ -45,7 +45,7 @@ def css : String := r##"
   border: 1px solid var(--bp-color-border);
   border-radius: 0.3rem;
   background: var(--bp-color-surface);
-  font-size: 0.82rem;
+  font-size: var(--bp-fs-control, 0.82rem);
   padding: 0.1rem 0.25rem;
   transition: background-color 0.14s ease, border-color 0.14s ease,
     color 0.14s ease, box-shadow 0.14s ease;
@@ -58,18 +58,18 @@ def css : String := r##"
 html[data-bp-style="blueprint"] .bp_wrapper {
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-sm);
-  padding: 0.45rem 0.6rem 0.55rem;
+  padding: 0.5rem 0.5rem 0.5rem;
   background: var(--bp-color-surface);
 }
 
 html[data-bp-style="blueprint"] .bp_heading {
   border-bottom: 1px solid var(--bp-color-border-soft);
-  padding-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
 }
 
 html[data-bp-style="blueprint"] .bp_content {
-  margin-top: 0.35rem;
-  padding-left: 0.45rem;
+  margin-top: 0.25rem;
+  padding-left: 0.5rem;
 }
 
 html[data-bp-style="blueprint"] .bp_kind_theorem_content,
@@ -88,14 +88,14 @@ html[data-bp-style="blueprint"] div.proof_content {
 html[data-bp-style="modern"] .bp_wrapper {
   border: 1px solid var(--bp-color-modern-border);
   border-radius: var(--bp-radius-2xl);
-  padding: 0.6rem 0.7rem 0.68rem;
+  padding: 0.5rem 0.75rem 0.75rem;
   background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-surface-modern));
   box-shadow: var(--bp-shadow-modern);
 }
 
 html[data-bp-style="modern"] .bp_heading {
   border-bottom: 1px solid var(--bp-color-border-soft);
-  padding-bottom: 0.4rem;
+  padding-bottom: 0.5rem;
 }
 
 html[data-bp-style="modern"] .bp_caption {
@@ -105,7 +105,7 @@ html[data-bp-style="modern"] .bp_caption {
 }
 
 html[data-bp-style="modern"] .bp_content {
-  margin-top: 0.45rem;
+  margin-top: 0.5rem;
   padding-left: 0.5rem;
 }
 
@@ -125,7 +125,7 @@ html[data-bp-style="modern"] .bp_wrapper div.proof_content {
 html[data-bp-style="bold"] .bp_wrapper {
   border: 2px solid var(--bp-color-text-strong);
   border-radius: var(--bp-radius-3xl);
-  padding: 0.6rem 0.75rem 0.75rem;
+  padding: 0.5rem 0.75rem 0.75rem;
   background:
     radial-gradient(circle at 100% 0%, var(--bp-color-bold-surface-glow-1), transparent 36%),
     radial-gradient(circle at 0% 100%, var(--bp-color-bold-surface-glow-2), transparent 32%),
@@ -135,7 +135,7 @@ html[data-bp-style="bold"] .bp_wrapper {
 
 html[data-bp-style="bold"] .bp_heading {
   border-bottom: 2px solid var(--bp-color-text-strong);
-  padding-bottom: 0.45rem;
+  padding-bottom: 0.5rem;
   letter-spacing: 0.01em;
 }
 
@@ -143,7 +143,7 @@ html[data-bp-style="bold"] .bp_caption {
   background: var(--bp-color-text-strong);
   color: var(--bp-color-surface-muted);
   border-radius: 0.25rem;
-  padding: 0.08rem 0.45rem;
+  padding: 0.08rem 0.5rem;
   text-transform: uppercase;
 }
 
@@ -151,7 +151,7 @@ html[data-bp-style="bold"] .bp_label {
   background: var(--bp-color-bold-label);
   color: var(--bp-color-text);
   border-radius: var(--bp-radius-pill);
-  padding: 0.06rem 0.42rem;
+  padding: 0.06rem 0.5rem;
 }
 
 html[data-bp-style="bold"] .bp_code_link {
@@ -167,7 +167,7 @@ html[data-bp-style="bold"] .bp_code_hover {
 
 html[data-bp-style="bold"] .bp_content {
   margin-top: 0.5rem;
-  padding-left: 0.6rem;
+  padding-left: 0.5rem;
 }
 
 html[data-bp-style="bold"] .bp_kind_theorem_content,

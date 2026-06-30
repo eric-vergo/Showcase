@@ -2,6 +2,23 @@
   margin-top: 1rem;
 }
 
+/* Classless content anchors inside the summary/PM surfaces (entry-title links on
+   the worklist/owner/tag pages and decl links on the audit page) fall back to the
+   UA-default link blue, which fails AA on the dark surface. Bind them to the
+   brand link token (defined light + dark) with a restrained underline. */
+.bp_summary a:not([class]),
+.bp_pm_page a:not([class]) {
+  color: var(--bp-color-link, #1c5fb8);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+  transition: color var(--bp-duration-fast, 0.14s);
+}
+
+.bp_summary a:not([class]):hover,
+.bp_pm_page a:not([class]):hover {
+  text-decoration-color: currentColor;
+}
+
 .bp_summary_section {
   border: 1px solid var(--bp-color-border);
   border-radius: var(--bp-radius-lg);
@@ -68,10 +85,10 @@
 }
 
 .bp_summary_subsection {
-  margin-top: 0.45rem;
+  margin-top: 0.5rem;
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-md);
-  padding: 0.25rem 0.55rem 0.45rem;
+  padding: 0.25rem 0.5rem 0.5rem;
   background: var(--bp-color-surface-subtle);
 }
 
@@ -120,7 +137,7 @@
   font-family: var(--font-mono-ui);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.72rem;
+  font-size: var(--bp-fs-badge);
   color: var(--bp-color-text-subtle);
 }
 
@@ -130,8 +147,13 @@
   color: var(--bp-color-text);
 }
 
+/* De-emphasise a zero count so live, actionable numbers dominate the card row. */
+.bp_summary_value_zero {
+  color: var(--bp-color-text-faint, #5f6f7e);
+}
+
 .bp_summary_status {
-  font-size: 0.76rem;
+  font-size: var(--bp-fs-caption);
   line-height: 1.3;
   color: var(--bp-color-text-subtle);
 }
@@ -143,8 +165,8 @@
 }
 
 .bp_summary_item {
-  margin: 0.4rem 0;
-  padding: 0.45rem 0.55rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.5rem;
   border: 1px solid var(--bp-color-border-soft);
   border-radius: var(--bp-radius-md);
   background: var(--bp-color-surface);
@@ -159,7 +181,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.45rem;
+  gap: 0.5rem 0.5rem;
 }
 
 .bp_summary_item_head {
@@ -171,7 +193,7 @@
   border: 1px solid var(--bp-color-border-panel);
   border-radius: var(--bp-radius-pill);
   padding: 0.03rem 0.45rem;
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption);
 }
 
 .bp_summary_preview_wrap {
@@ -197,7 +219,7 @@
 }
 
 .bp_summary_preview_panel_title {
-  font-size: 0.84rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_summary_preview_panel_body {
@@ -208,13 +230,13 @@
 .bp_summary_item_body {
   margin-top: 0.22rem;
   color: var(--bp-color-text-strong);
-  font-size: 0.9rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_summary_item_actions {
   margin-top: 0.2rem;
   color: var(--bp-color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_summary_sep {
@@ -232,7 +254,7 @@
 
 .bp_summary_decls > summary {
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: var(--bp-fs-small);
   color: var(--bp-color-text-muted);
 }
 
@@ -243,7 +265,7 @@
   padding: 0.05rem 0.35rem;
   background: var(--bp-color-surface-muted);
   color: var(--bp-color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption);
 }
 
 .bp_summary_badge_warn {
@@ -258,11 +280,23 @@
   color: var(--bp-color-status-error-strong);
 }
 
+.bp_summary_badge_success {
+  border-color: color-mix(in srgb, var(--bp-color-accent-success) 45%, transparent);
+  background: color-mix(in srgb, var(--bp-color-accent-success) 12%, transparent);
+  color: var(--bp-color-status-success-text);
+}
+
+.bp_summary_badge_accent {
+  border-color: color-mix(in srgb, var(--bp-color-link) 45%, transparent);
+  background: color-mix(in srgb, var(--bp-color-link) 12%, transparent);
+  color: var(--bp-color-link);
+}
+
 .bp_summary_badge_row {
-  margin-top: 0.28rem;
+  margin-top: 0.25rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.5rem;
 }
 
 .bp_summary_item_nested {
@@ -271,13 +305,77 @@
 
 .bp_summary_nested > summary {
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: var(--bp-fs-small);
   font-weight: 600;
   color: var(--bp-color-text-muted);
 }
 
 .bp_summary_nested .bp_summary_list {
   margin-top: 0.45rem;
+}
+
+/* PM / roll-up / audit page chrome (worklist, owner, tag, audit). The body sits
+   directly in `.content-wrapper` with no `<section>` wrapper, so cap its measure
+   to the dashboard data column and centre it (these pages carry no margin notes)
+   so it doesn't over-stretch or sit left-heavy on mid/wide viewports. */
+.bp_pm_page {
+  max-width: var(--bp-dashboard-column, 58rem);
+  margin-inline: auto;
+}
+
+/* The core centres `.content-wrapper` at the prose measure (44rem) only at
+   >=1212px; for wrappers hosting a dashboard or a PM page, widen that cap to the
+   data column so the centred data surface isn't clamped back to the prose measure
+   there. Below 1212px the wrapper is uncapped, so the column-level rules above
+   centre the surface directly. */
+@container main (width >= 1212px) {
+  .content-wrapper:has(.bp_dashboard, .bp_pm_page) {
+    max-width: var(--bp-dashboard-column, 58rem);
+  }
+}
+
+.bp_pm_page .bp_summary_grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+/* Small uppercase eyebrow above the roll-up h1 (the "Owner" / "Tag" qualifier). */
+.bp_pm_page_eyebrow {
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--bp-fs-badge, 0.72rem);
+  color: var(--bp-color-text-subtle);
+  margin: 0 0 0.25rem;
+}
+
+/* Breadcrumb-style back link, placed above the title. */
+.bp_pm_page_back {
+  font-family: var(--font-mono-ui);
+  font-size: 0.8rem;
+  color: var(--bp-color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.bp_pm_page_back a {
+  color: var(--bp-color-link);
+}
+
+.bp_pm_page_back a:hover {
+  text-decoration: underline;
+}
+
+/* Quiet trailing entry-count line that grounds the bottom of short roll-ups. */
+.bp_pm_page_count {
+  color: var(--bp-color-text-faint);
+  font-size: 0.8rem;
+  margin-top: 1rem;
+}
+
+/* The audit page ships no preview script, so the decl-ref wrapper must not
+   advertise a (non-existent) preview interaction via a pointer cursor. */
+.bp_audit_page .bp_inline_preview_ref,
+.bp_audit_page .bp_summary_preview_wrap {
+  cursor: auto;
 }
 
 @media (max-width: 700px) {

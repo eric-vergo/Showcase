@@ -317,9 +317,20 @@ structure LegendSwatch where
   borderRadius : String := "0.2rem"
 deriving Inhabited, Repr, ToJson, FromJson
 
+/-- STY-GRAPH-05 (#32a): a horizontal-rule sample mirroring DOT edge styling so
+the Edges legend exemplifies each line variant the way node groups show fill/
+border swatches. `borderStyle` is a CSS `border-top-style` (`solid`/`dashed`/
+`dotted`); `borderWidth` is in px and tracks the DOT `penwidth`. -/
+structure EdgeLegendSwatch where
+  color : String := "#6b7280"
+  borderStyle : String := "solid"
+  borderWidth : String := "1.6"
+deriving Inhabited, Repr, ToJson, FromJson
+
 structure LegendItem where
   label : String
   swatch? : Option LegendSwatch := none
+  edgeSwatch? : Option EdgeLegendSwatch := none
 deriving Inhabited, Repr, ToJson, FromJson
 
 structure LegendGroup where
@@ -336,6 +347,15 @@ def LegendSwatch.inlineStyle (swatch : LegendSwatch) : String :=
     s!"border-width: {swatch.borderWidth}px",
     s!"border-style: {swatch.borderStyle}",
     s!"border-radius: {swatch.borderRadius}"
+  ]
+
+/-- STY-GRAPH-05 (#32a): inline style for an edge line-style sample, drawn as a
+top border on a short fixed-width span (see `.bp_graph_legend_edge_swatch`). -/
+def EdgeLegendSwatch.inlineStyle (swatch : EdgeLegendSwatch) : String :=
+  String.intercalate "; " [
+    s!"border-top-color: {swatch.color}",
+    s!"border-top-width: {swatch.borderWidth}px",
+    s!"border-top-style: {swatch.borderStyle}"
   ]
 
 def statementBorderBlockedColor : String := "#b86b2e"
@@ -383,6 +403,10 @@ def edgeAuxiliaryColor : String := "#94a3b8"
 def edgeTechnicalColor : String := "#94a3b8"
 /-- Distinct hue for automatically-inferred (non-manual) dependency edges. -/
 def edgeAutomaticColor : String := "#6a4fba"
+/-- STY-GRAPH-14 (#32d): darker slate-grey for the dense proof-only (dotted,
+    regular-intent) edges so they keep contrast at fit-zoom without matching the
+    heavier dashed statement edges. Slightly darker than the default `#6b7280`. -/
+def edgeProofOnlyColor : String := "#576070"
 
 def edgeAuxiliaryText : String := "Dashed (slate): auxiliary dependency"
 def edgeTechnicalText : String := "Dotted (slate): technical dependency"
@@ -392,6 +416,11 @@ def graphLegendFullViewNote : String :=
 
 private def legendItem (label : String) (swatch? : Option LegendSwatch := none) : LegendItem :=
   { label, swatch? }
+
+/-- STY-GRAPH-05 (#32a): build an Edges legend item carrying a line-style sample
+mirroring the DOT edge styling (color/weight/dash pattern). -/
+private def edgeLegendItem (label : String) (swatch : EdgeLegendSwatch) : LegendItem :=
+  { label, edgeSwatch? := some swatch }
 
 def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
   let statementItems :=
@@ -458,13 +487,20 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
       title := "Edges"
       summary? := some "Line style distinguishes statement dependencies from proof-only dependencies; intent and origin add further styling."
       items := #[
-        legendItem "Solid: statement deps from theorem-like sources",
-        legendItem "Dashed: statement deps from box-shaped sources",
-        legendItem "Dotted: proof-only deps",
-        legendItem edgeMixedText,
-        legendItem edgeAuxiliaryText,
-        legendItem edgeTechnicalText,
-        legendItem edgeAutomaticText
+        edgeLegendItem "Solid: statement deps from theorem-like sources"
+          { borderStyle := "solid", borderWidth := "1.6" },
+        edgeLegendItem "Dashed: statement deps from box-shaped sources"
+          { borderStyle := "dashed", borderWidth := "2" },
+        edgeLegendItem "Dotted: proof-only deps"
+          { color := edgeProofOnlyColor, borderStyle := "dotted", borderWidth := "1.8" },
+        edgeLegendItem edgeMixedText
+          { borderStyle := "solid", borderWidth := "2.6" },
+        edgeLegendItem edgeAuxiliaryText
+          { color := edgeAuxiliaryColor, borderStyle := "dashed", borderWidth := "2" },
+        edgeLegendItem edgeTechnicalText
+          { color := edgeTechnicalColor, borderStyle := "dotted", borderWidth := "1.8" },
+        edgeLegendItem edgeAutomaticText
+          { color := edgeAutomaticColor, borderStyle := "solid", borderWidth := "1.8" }
       ]
     }
   ]
@@ -489,9 +525,12 @@ def groupGraphLegendGroups : Array LegendGroup :=
       title := "Edges"
       summary? := some "Grouped edges compress many child edges into one aggregate connection."
       items := #[
-        legendItem "Solid: at least one statement dep",
-        legendItem "Dotted: proof-only deps",
-        legendItem groupEdgeMixedText
+        edgeLegendItem "Solid: at least one statement dep"
+          { borderStyle := "solid", borderWidth := "1.6" },
+        edgeLegendItem "Dotted: proof-only deps"
+          { color := edgeProofOnlyColor, borderStyle := "dotted", borderWidth := "1.8" },
+        edgeLegendItem groupEdgeMixedText
+          { borderStyle := "solid", borderWidth := "2.6" }
       ]
     }
   ]
@@ -1221,7 +1260,15 @@ def Graph.toDot (g : Graph Ref) (header : String)
             let (origin, intent) := intentOriginFor dep
             -- STY-GRAPH-09 (#32c): finer dotted stroke (proof-only) reads as
             -- clearly dotted versus the heavier dashed statement edges above.
-            edges.push (edgeLineWithStyle dep node.label #["style=dotted", "penwidth=1.0"] origin intent)
+            -- STY-GRAPH-14 (#32d): with hundreds of these in a dense fan-in the
+            -- 1.0pt default-grey (#6b7280) dotted edges read as low-contrast
+            -- noise at fit-zoom. Nudge to 1.2pt in a darker slate-grey so they
+            -- stay legible while remaining lighter/finer than the dashed
+            -- statement edges (1.4-1.7pt). Auxiliary/technical/automatic intents
+            -- still win their own hue: `edgeStyleAttrs` color attrs are appended
+            -- after these base attrs, so the later DOT value overrides this one.
+            edges.push (edgeLineWithStyle dep node.label
+              #["style=dotted", "penwidth=1.2", s!"color=\"{edgeProofOnlyColor}\""] origin intent)
           else
             edges
         (nodeDefs, groupMembers, edges)

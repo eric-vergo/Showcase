@@ -368,6 +368,30 @@
   outline-offset: 2px;
 }
 
+/* STY-GRAPH-12: zoom/fit control cluster. Buttons reuse .bp_graph_controls_button
+   styling; the +/- buttons are compact squares, Fit keeps its text width. */
+.bp_graph_zoom_controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.bp_graph_zoom_button {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.bp_graph_zoom_in,
+.bp_graph_zoom_out {
+  min-width: 2rem;
+  font-size: 1.05rem;
+}
+
+.bp_graph_zoom_fit {
+  font-size: 0.78rem;
+}
+
 .bp_graph_legend_button[aria-expanded="true"] {
   background: var(--bp-color-surface-subtle);
 }
@@ -538,6 +562,23 @@
   border-radius: 0.2rem;
   border: 1px solid var(--bp-color-text-faint);
   background: var(--bp-color-surface);
+}
+
+/* STY-GRAPH-05 (#32a): horizontal-rule sample for the Edges legend, mirroring
+   the node swatch pattern. The line is drawn via border-top (color/weight/dash
+   set inline per item); explicit colors come from the DOT edge palette and are
+   theme-invariant, matching the light-tuned canvas. */
+.bp_graph_legend_edge_swatch {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 0;
+  margin-top: 0.62rem;
+  border-top: 1.6px solid var(--bp-color-text-faint);
+}
+
+html[data-bp-style="bold"] .bp_graph_legend_edge_swatch {
+  width: 1.6rem;
 }
 
 html[data-bp-style="blueprint"] .bp_graph_legend_item {

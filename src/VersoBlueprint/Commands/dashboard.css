@@ -2,9 +2,12 @@
    top-level card (hero, charts, owners/tags) fills the same left/right edges,
    separated by one uniform vertical gap. The landing surface reads a touch wider
    than the prose measure; scope the widening strictly to the section that hosts
-   it so content/reading pages keep the standard measure. */
+   it so content/reading pages keep the standard measure. The dashboard carries
+   no margin notes, so centre the column (rather than left-aligning it like the
+   note-bearing prose) so it doesn't sit left-heavy on mid/wide viewports. */
 main section:has(.bp_dashboard) {
   max-width: var(--bp-dashboard-column, 58rem);
+  margin-inline: auto;
 }
 
 .bp_dashboard {
@@ -17,9 +20,9 @@ main section:has(.bp_dashboard) {
 
 .bp_dashboard_hero {
   border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-2xl);
+  border-radius: var(--bp-radius-xl, 12px);
   background: var(--bp-color-surface);
-  padding: 1rem 1.15rem 1.15rem;
+  padding: 1rem 1.25rem;
   box-shadow: var(--bp-shadow-sm);
   transition: background-color 0.14s ease, border-color 0.14s ease,
     color 0.14s ease, box-shadow 0.14s ease;
@@ -90,9 +93,9 @@ main section:has(.bp_dashboard) {
 
 .bp_dashboard_chart {
   border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-xl);
+  border-radius: var(--bp-radius-xl, 12px);
   background: var(--bp-color-surface);
-  padding: 1rem 1.15rem 1.1rem;
+  padding: 1rem 1.25rem;
   box-shadow: var(--bp-shadow-sm);
   transition: background-color 0.14s ease, border-color 0.14s ease,
     color 0.14s ease, box-shadow 0.14s ease;
@@ -112,7 +115,7 @@ main section:has(.bp_dashboard) {
   font-family: var(--font-mono-ui);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.74rem;
+  font-size: var(--bp-fs-caption, 0.78rem);
   font-weight: 700;
   color: var(--bp-color-text-subtle);
 }
@@ -155,7 +158,7 @@ main section:has(.bp_dashboard) {
 
 .bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_legend {
   flex: 1 1 16rem;
-  font-size: 0.76rem;
+  font-size: var(--bp-fs-caption, 0.78rem);
 }
 
 .bp_dashboard_legend {
@@ -168,7 +171,7 @@ main section:has(.bp_dashboard) {
   font-family: var(--font-mono-ui);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: 0.72rem;
+  font-size: var(--bp-fs-caption, 0.78rem);
   color: var(--bp-color-text-muted);
   flex: 1 1 10rem;
 }
@@ -205,7 +208,7 @@ main section:has(.bp_dashboard) {
   font-family: var(--font-mono-ui);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: 0.72rem;
+  font-size: var(--bp-fs-caption, 0.78rem);
   color: var(--bp-color-text-subtle);
   border-bottom: 1px dashed var(--bp-color-border-soft);
   padding-bottom: 0.25rem;
@@ -214,7 +217,7 @@ main section:has(.bp_dashboard) {
 .bp_dashboard_statlist .bp_dashboard_stat_value {
   text-transform: none;
   font-weight: 700;
-  font-size: 0.86rem;
+  font-size: var(--bp-fs-small);
   color: var(--bp-color-text-strong);
 }
 
@@ -278,13 +281,13 @@ main section:has(.bp_dashboard) {
 .bp_progress_label {
   font-weight: 600;
   color: var(--bp-color-text);
-  font-size: 0.9rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_progress_pct {
   font-weight: 700;
   color: var(--bp-color-text-subtle);
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_progress_track {
@@ -324,7 +327,7 @@ main section:has(.bp_dashboard) {
 
 .bp_progress_legend {
   margin-top: 0.22rem;
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption);
   color: var(--bp-color-text-faint);
 }
 
@@ -348,11 +351,11 @@ main section:has(.bp_dashboard) {
 /* "Start here" reading map: foundations / critical-path spine / goals, computed
    from the graph metrics and shown above the charts as a guided reading path. */
 .bp_readingmap {
-  margin: 1.25rem 0 0;
-  padding: 1rem 1.15rem;
+  margin: 0;
+  padding: 1rem 1.25rem;
   background: var(--bp-color-surface-muted, #f8fafc);
   border: 1px solid var(--bp-color-border, #cbd5e1);
-  border-radius: var(--bp-radius-md, 8px);
+  border-radius: var(--bp-radius-xl, 12px);
 }
 
 .bp_readingmap_title {
@@ -362,7 +365,7 @@ main section:has(.bp_dashboard) {
 
 .bp_readingmap_intro {
   margin: 0 0 0.85rem;
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small);
   color: var(--bp-color-text-muted, #475569);
 }
 
@@ -374,7 +377,7 @@ main section:has(.bp_dashboard) {
 
 .bp_readingmap_col_title {
   margin: 0 0 0.35rem;
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -383,7 +386,7 @@ main section:has(.bp_dashboard) {
 
 .bp_readingmap_col_hint {
   margin: 0 0 0.5rem;
-  font-size: 0.78rem;
+  font-size: var(--bp-fs-caption);
   color: var(--bp-color-text-faint, #64748b);
 }
 
@@ -394,7 +397,7 @@ main section:has(.bp_dashboard) {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.88rem;
+  font-size: var(--bp-fs-small);
 }
 
 .bp_readingmap_list {

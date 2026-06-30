@@ -54,9 +54,56 @@ private def bucketOrder : List (String × String) := [
   ("closed", "Fully closed")
 ]
 
-/-- A small pill badge reusing the global summary badge styling. -/
-private def wlBadge (text : String) : Output.Html :=
-  {{ <span class="bp_summary_badge">{{.text true text}}</span> }}
+/--
+A small pill badge reusing the global summary badge styling. `variant` selects a
+semantic tint suffix (e.g. `"_success"`, `"_warn"`, `"_accent"`) so a row reads
+by hue; the default empty variant is the neutral grey pill. `title?` carries an
+optional full-phrase tooltip for compacted labels (accessibility).
+-/
+private def wlBadge (text : String) (variant : String := "") (title? : Option String := none) :
+    Output.Html :=
+  let cls := if variant.isEmpty then "bp_summary_badge" else s!"bp_summary_badge bp_summary_badge{variant}"
+  match title? with
+  | some t => {{ <span class={{cls}} title={{t}}>{{.text true text}}</span> }}
+  | none => {{ <span class={{cls}}>{{.text true text}}</span> }}
+
+/--
+Humanize a raw Lean identifier for display: split snake_case / camelCase into
+words and Title-Case them (`c1_c2_c3_norms` → "C1 C2 C3 Norms"). Used as the
+worklist label fallback when no friendly "Kind N.N" title exists, so the scan
+column never drops to a bare snake_case identifier.
+-/
+private def humanizeIdentifier (s : String) : String :=
+  -- Split each `_`-chunk at lower→upper boundaries (camelCase), tracking the
+  -- previous char so we never call the partial `String.back`.
+  let splitCamel (chunk : String) : List String :=
+    let step := chunk.toList.foldl (init := (([] : List String), "", (none : Option Char)))
+      fun (words, cur, prev?) c =>
+        match prev? with
+        | some p =>
+          if c.isUpper && !p.isUpper then
+            (words ++ [cur], String.singleton c, some c)
+          else
+            (words, cur.push c, some c)
+        | none => (words, cur.push c, some c)
+    let (words, cur, _) := step
+    if cur.isEmpty then words else words ++ [cur]
+  let titleCase (w : String) : String :=
+    match w.toList with
+    | [] => ""
+    | c :: rest => String.singleton c.toUpper ++ String.ofList rest
+  let words := ((s.splitOn "_").filter (·.length > 0)).flatMap splitCamel
+  String.intercalate " " (words.map titleCase)
+
+/-- Semantic tint variant for a statement-status badge. -/
+private def statementBadgeVariant (status : String) : String :=
+  if status == "formalized" || status == "in Mathlib" then "_success" else ""
+
+/-- Semantic tint variant for a proof-status badge. -/
+private def proofBadgeVariant (status : String) : String :=
+  if status == "Lean code incomplete" then "_warn"
+  else if status == "locally formalized" || status == "locally formalized + dependencies complete" then "_success"
+  else ""
 
 /--
 One worklist row: links to the entry's node page (when it has one), shows its
@@ -65,29 +112,44 @@ kind, and carries `data-*` attributes (`data-status` / `data-owner` /
 -/
 private def worklistRow (state : TraverseState) (item : WorklistItem) : Output.Html :=
   let labelStr := Informal.NodeRoute.friendlyEntryLabel state item.label
+  -- When no friendly "Kind N.N" title exists the label is a raw identifier; show
+  -- a humanized form rather than bare snake_case/camelCase.
+  let displayLabel :=
+    if labelStr.toList.any (· == ' ') then labelStr else humanizeIdentifier labelStr
   let labelNode : Output.Html :=
     if Informal.NodeRoute.hasNodePage state item.label then
-      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true labelStr}}</a> }}
+      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true displayLabel}}</a> }}
     else
-      {{ <span>{{.text true labelStr}}</span> }}
+      {{ <span>{{.text true displayLabel}}</span> }}
   let owner := item.ownerDisplayName.getD ""
   let effort := item.effort.getD ""
   let tagsAttr := String.intercalate " " item.tags
+  -- Compact, self-evident badges: drop the redundant "statement:"/"proof:"/etc.
+  -- key prefixes (the value is unambiguous) but keep the full phrase in `title`.
+  let statementBadge : Output.Html :=
+    wlBadge item.statementStatus (statementBadgeVariant item.statementStatus)
+      (some s!"statement: {item.statementStatus}")
   let proofBadge : Output.Html :=
-    if item.proofStatus.isEmpty then .empty else wlBadge s!"proof: {item.proofStatus}"
+    if item.proofStatus.isEmpty then .empty
+    else wlBadge item.proofStatus (proofBadgeVariant item.proofStatus) (some s!"proof: {item.proofStatus}")
   let ownerBadge : Output.Html :=
-    if owner.isEmpty then .empty else wlBadge s!"owner: {owner}"
+    if owner.isEmpty then .empty else wlBadge owner "" (some s!"owner: {owner}")
   let effortBadge : Output.Html :=
-    match item.effort with | some e => wlBadge s!"effort: {e}" | none => .empty
+    match item.effort with | some e => wlBadge e "" (some s!"effort: {e}") | none => .empty
   let priorityBadge : Output.Html :=
-    match item.priority with | some p => wlBadge s!"priority: {p}" | none => .empty
-  let tagBadges : Array Output.Html := item.tags.toArray.map (fun t => wlBadge s!"#{t}")
+    match item.priority with
+    | some p =>
+      let variant := if p == "high" then "_accent" else ""
+      wlBadge p variant (some s!"priority: {p}")
+    | none => .empty
+  let tagBadges : Array Output.Html :=
+    item.tags.toArray.map (fun t => wlBadge s!"#{t}" "_accent" (some s!"tag: {t}"))
   let badges : Array Output.Html :=
-    #[ wlBadge s!"statement: {item.statementStatus}", proofBadge, ownerBadge ]
+    #[ statementBadge, proofBadge, ownerBadge ]
       ++ tagBadges
       ++ #[ effortBadge, priorityBadge,
-            wlBadge s!"downstream unlocks: {item.downstreamUses}",
-            wlBadge s!"direct uses: {item.directUses}" ]
+            wlBadge s!"↓{item.downstreamUses}" "" (some s!"downstream unlocks: {item.downstreamUses}"),
+            wlBadge s!"→{item.directUses}" "" (some s!"direct uses: {item.directUses}") ]
   let liAttrs : Array (String × String) := #[
     ("class", "bp_summary_item bp_worklist_item"),
     ("data-bp-worklist-row", "true"),
@@ -106,9 +168,13 @@ private def worklistRow (state : TraverseState) (item : WorklistItem) : Output.H
     </li>
   }}
 
-/-- Render a single readiness bucket as a `<details>` list, omitted if empty. -/
+/--
+Render a single readiness bucket as a `<details>` list, omitted if empty. The
+actionable buckets open by default; a completed bucket (e.g. "Fully closed") can
+start collapsed via `open? = false` so the page opens on the actionable work.
+-/
 private def renderBucket (state : TraverseState) (items : List WorklistItem)
-    (key title : String) : Output.Html :=
+    (key title : String) (open? : Bool := true) : Output.Html :=
   let bucketItems := items.filter (fun i => i.readiness == key)
   if bucketItems.isEmpty then .empty
   else
@@ -116,12 +182,13 @@ private def renderBucket (state : TraverseState) (items : List WorklistItem)
     let sectionAttrs : Array (String × String) :=
       #[("class", "bp_worklist_bucket"), ("data-bp-worklist-bucket", key)]
     {{ <section {{sectionAttrs}}>
-        {{summaryDetailsList s!"{title} ({bucketItems.length})" rows "bp_summary_subsection" true}}
+        {{summaryDetailsList s!"{title} ({bucketItems.length})" rows "bp_summary_subsection" open?}}
       </section> }}
 
-/-- All readiness buckets, in canonical order, for the given items. -/
+/-- All readiness buckets, in canonical order, for the given items. The completed
+    `closed` bucket starts collapsed so the page opens focused on actionable work. -/
 private def renderWorklistBuckets (state : TraverseState) (items : List WorklistItem) : Output.Html :=
-  let buckets := bucketOrder.toArray.map (fun p => renderBucket state items p.1 p.2)
+  let buckets := bucketOrder.toArray.map (fun p => renderBucket state items p.1 p.2 (open? := p.1 != "closed"))
   {{ <div class="bp_worklist_buckets">{{buckets}}</div> }}
 
 /-! ## Worklist page (filterable) -/
@@ -174,7 +241,7 @@ private def worklistCss : String := r##"
 .bp_worklist_count {
   margin-left: auto;
   align-self: center;
-  font-size: 0.85rem;
+  font-size: var(--bp-fs-small, 0.875rem);
   color: var(--bp-color-text-muted, #334155);
 }
 .bp_worklist_bucket[hidden],
@@ -200,6 +267,22 @@ private def worklistJs : String := r##"
   var rows = Array.prototype.slice.call(root.querySelectorAll('[data-bp-worklist-row]'));
   var buckets = Array.prototype.slice.call(root.querySelectorAll('[data-bp-worklist-bucket]'));
   var countEl = root.querySelector('[data-bp-worklist-count]');
+  var bucketsRoot = root.querySelector('.bp_worklist_buckets') || root;
+  var emptyEl = null;
+  function setEmpty(on) {
+    if (on) {
+      if (!emptyEl) {
+        emptyEl = document.createElement('p');
+        emptyEl.className = 'bp_summary_empty';
+        emptyEl.setAttribute('data-bp-worklist-empty', 'true');
+        emptyEl.textContent = 'No entries match these filters.';
+        bucketsRoot.appendChild(emptyEl);
+      }
+    } else if (emptyEl) {
+      emptyEl.remove();
+      emptyEl = null;
+    }
+  }
   function apply() {
     var crit = {};
     selects.forEach(function (s) { crit[s.getAttribute('data-bp-filter')] = s.value; });
@@ -219,6 +302,7 @@ private def worklistJs : String := r##"
     buckets.forEach(function (b) {
       b.hidden = !b.querySelector('[data-bp-worklist-row]:not([hidden])');
     });
+    setEmpty(shown === 0);
     if (countEl) { countEl.textContent = shown + ' of ' + rows.length + ' shown'; }
   }
   selects.forEach(function (s) { s.addEventListener('change', apply); });
@@ -277,18 +361,24 @@ private def rollupCards (totalEntries actionableEntries quickWins linkedPrs : Na
   </div>
 }}
 
+/-- A quiet trailing count line that grounds the bottom of a short roll-up. -/
+private def rollupCountLine (count : Nat) : Output.Html :=
+  {{ <p class="bp_pm_page_count">{{.text true s!"{count} {if count == 1 then "entry" else "entries"}"}}</p> }}
+
 /-- Body of an owner page: rollup cards + that owner's worklist items by bucket. -/
 private def ownerBody (state : TraverseState) (owner : OwnerRollupItem)
     (items : List WorklistItem) : Output.Html := {{
   <div class="bp_worklist bp_pm_page">
     <header class="bp_node_page_header">
-      <h1>{{.text true s!"Owner: {owner.displayName}"}}</h1>
       <p class="bp_pm_page_back">
         <a href={{Informal.NodeRoute.worklistHref}}>"← Full worklist"</a>
       </p>
+      <p class="bp_pm_page_eyebrow">"Owner"</p>
+      <h1>{{.text true owner.displayName}}</h1>
     </header>
     {{rollupCards owner.totalEntries owner.actionableEntries owner.quickWins owner.linkedPrs}}
     {{renderWorklistBuckets state items}}
+    {{rollupCountLine owner.totalEntries}}
   </div>
 }}
 
@@ -297,13 +387,15 @@ private def tagBody (state : TraverseState) (tag : TagRollupItem)
     (items : List WorklistItem) : Output.Html := {{
   <div class="bp_worklist bp_pm_page">
     <header class="bp_node_page_header">
-      <h1>{{.text true s!"Tag: {tag.tag}"}}</h1>
       <p class="bp_pm_page_back">
         <a href={{Informal.NodeRoute.worklistHref}}>"← Full worklist"</a>
       </p>
+      <p class="bp_pm_page_eyebrow">"Tag"</p>
+      <h1>{{.text true tag.tag}}</h1>
     </header>
     {{rollupCards tag.totalEntries tag.actionableEntries tag.quickWins tag.linkedPrs}}
     {{renderWorklistBuckets state items}}
+    {{rollupCountLine tag.totalEntries}}
   </div>
 }}
 
@@ -451,19 +543,29 @@ private def auditHtmlContext (state : TraverseState) : SummaryHtmlContext := {
   displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel state label
 }
 
-/-- Summary cards quantifying the outstanding technical debt. -/
-private def auditSummaryCards (data : Summary) : Output.Html := {{
+/--
+Summary cards quantifying the outstanding technical debt. A non-zero count adopts
+the warn variant so the row carries at-a-glance severity; a clean zero stays
+neutral.
+-/
+private def auditSummaryCards (data : Summary) : Output.Html :=
+  let debtCard (label : String) (count : Nat) (status : String) : Output.Html :=
+    if count == 0 then
+      summaryCard label (toString count) (some status)
+    else
+      summaryWarnCard label (toString count) (some status)
+  {{
   <div class="bp_summary_grid">
-    {{summaryCard "Sorries" (toString data.sorryDetails.length)
-        (some "Declarations whose proof still contains `sorry`.")}}
-    {{summaryCard "Missing declarations" (toString data.missingLeanDecls.length)
-        (some "Referenced Lean declarations absent from the environment.")}}
-    {{summaryCard "Axiom-like entries" (toString data.axiomIndex.length)
-        (some "Entries discharged by an axiom rather than a proof.")}}
-    {{summaryCard "Render failures" (toString data.renderFailures.length)
-        (some "External declarations that checked but failed HTML rendering.")}}
-    {{summaryCard "Proof-debt hotspots" (toString data.proofDebtHotspots.length)
-        (some "Parents accumulating the most incomplete or missing declarations.")}}
+    {{debtCard "Sorries" data.sorryDetails.length
+        "Declarations whose proof still contains `sorry`."}}
+    {{debtCard "Missing declarations" data.missingLeanDecls.length
+        "Referenced Lean declarations absent from the environment."}}
+    {{debtCard "Axiom-like entries" data.axiomIndex.length
+        "Entries discharged by an axiom rather than a proof."}}
+    {{debtCard "Render failures" data.renderFailures.length
+        "External declarations that checked but failed HTML rendering."}}
+    {{debtCard "Proof-debt hotspots" data.proofDebtHotspots.length
+        "Parents accumulating the most incomplete or missing declarations."}}
   </div>
 }}
 
@@ -474,7 +576,7 @@ private def auditBody (data : Summary) (rows : SummaryRows) : Output.Html :=
     data.sorryDetails.isEmpty && data.missingLeanDecls.isEmpty && data.axiomIndex.isEmpty &&
       data.renderFailures.isEmpty && data.proofDebtHotspots.isEmpty
   {{
-    <div class="bp_summary bp_pm_page">
+    <div class="bp_summary bp_pm_page bp_audit_page">
       <header class="bp_node_page_header">
         <h1>"Audit and technical debt"</h1>
         <p class="bp_pm_page_intro">
@@ -577,7 +679,7 @@ private def mathlibCandidatesCss : String := r##"
 }
 .bp_mathlib_candidate_title { font-weight: 600; }
 .bp_mathlib_candidate_chapter {
-  font-size: 0.82rem;
+  font-size: var(--bp-fs-control, 0.82rem);
   color: var(--bp-color-text-muted, #475569);
 }
 .bp_mathlib_candidate_decls {

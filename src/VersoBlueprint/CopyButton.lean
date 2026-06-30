@@ -68,7 +68,7 @@ def css : String := r##"
 
 .bp-copy-button:hover {
   color: var(--bp-color-text, #111827);
-  border-color: var(--bp-color-accent-info, #2563eb);
+  border-color: var(--bp-color-accent-info, #6a4fba);
 }
 
 .bp-copy-button.bp-copied {
@@ -96,7 +96,7 @@ def css : String := r##"
 }
 
 .bp-permalink-button:hover {
-  border-color: var(--bp-color-accent, #2563eb);
+  border-color: var(--bp-color-accent, #1c5fb8);
 }
 
 .bp-permalink-button.bp-copied {
