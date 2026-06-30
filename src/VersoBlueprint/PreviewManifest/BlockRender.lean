@@ -8,6 +8,7 @@ import Verso.Output.Html
 import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Render
 import VersoBlueprint.Informal.CodeSummary
+import VersoBlueprint.NodeCard
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewManifest.RelatedPanel
 
@@ -242,5 +243,99 @@ def renderWithRenderedContent
       wrapperClass? := some cfg.wrapperClass
       showHeader := opts.showHeader
     }
+
+/--
+Build the heading band and prose body for one Blueprint entry as separate pieces.
+
+This reuses the shared informal-block shell so the card heading matches the
+single-column heading exactly: the returned `header` is the heading band and
+`contentInner` is the `bp_content` body.
+-/
+private def renderShellParts
+    (cfg : RenderConfig)
+    (entry : Entry)
+    (content : RenderedContent)
+    (displayLabelOverride? : Option String := none) :
+    Informal.InformalBlockShellParts :=
+  let blockData := entry.blockData
+  let title := entry.heading displayLabelOverride?
+  Informal.renderInformalBlockHtmlParts
+    blockData
+    (Informal.InformalBlockRenderContext.forBlock blockData
+      title.label
+      (statementCaption? := some title.caption)
+      (proofCaption? := some entry.title)
+      (titleRowAttrs? := cfg.titleRowAttrs? entry)
+      (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData))
+    #[content.body]
+
+/-- Card id stem derived from a manifest entry label. -/
+private def cardIdOf (entry : Entry) : String :=
+  s!"bp-card-{entry.label}"
+
+/--
+Build the two-column node card parts for one statement entry, optionally folding
+in a resolved proof facet.
+
+This is additive: it reuses `renderHeaderExtras`, `entry.heading`, and
+`renderCodePanel` (an empty `codeBodies` yields a blank right cell). The
+single-column compositor `renderWithRenderedContent` is untouched.
+-/
+def renderCardParts
+    (cfg : RenderConfig)
+    (entry : Entry)
+    (content : RenderedContent)
+    (proof? : Option (Entry × RenderedContent))
+    (opts : RenderOptions := {}) :
+    Informal.NodeCard.Parts :=
+  -- The graft `displayLabel := "Step"` override (and any other embedding surface
+  -- that relabels a node) flows through `opts.displayLabelOverride?` onto the
+  -- statement card's heading and Lean-panel caption, mirroring how
+  -- `renderWithRenderedContent` applies it. The folded proof facet keeps its own
+  -- label.
+  let title := entry.heading opts.displayLabelOverride?
+  let stmtParts := renderShellParts cfg entry content opts.displayLabelOverride?
+  let formalStmt := renderCodePanel cfg title entry content.codeBodies
+  let proofParts? : Option Informal.NodeCard.ProofParts :=
+    proof?.map fun (pEntry, pContent) =>
+      let pShell := renderShellParts cfg pEntry pContent
+      let proofUses :=
+        match renderUsesExtra? cfg.relationPanels pEntry with
+        | some extra => extra.html
+        | none => .empty
+      {
+        informalProof := pShell.contentInner
+        -- The statement's single code block (signature in the top cell + the
+        -- JS-relocated tactic tail in the proof cell) already covers the Lean
+        -- proof, so the proof facet's own code panel is always either empty
+        -- (external decls) or a duplicate of the statement's code (inline-authored
+        -- theorems). Mirror the already-correct inline path (`Informal/Block.lean`)
+        -- and never render it as a separate panel.
+        formalProof := .empty
+        proofUses
+        cardId := cardIdOf entry
+      }
+  {
+    cardId := cardIdOf entry
+    header := stmtParts.header
+    informalStmt := stmtParts.contentInner
+    formalStmt
+    proof? := proofParts?
+  }
+
+/--
+Convenience compositor: render a statement entry directly to a two-column node
+card. Thin wrapper over `renderCardParts` + `NodeCard.render`; no surface calls
+it yet (the surfaces are wired in a later wave).
+-/
+def renderTwoColumnCard
+    (cfg : RenderConfig)
+    (entry : Entry)
+    (content : RenderedContent)
+    (proof? : Option (Entry × RenderedContent))
+    (opts : RenderOptions := {})
+    (cardOpts : Informal.NodeCard.Options := {}) :
+    Html :=
+  Informal.NodeCard.render (renderCardParts cfg entry content proof? opts) cardOpts
 
 end Informal.PreviewManifest.BlockRender

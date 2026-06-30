@@ -410,8 +410,35 @@ private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html
   | some attrs => .tag "a" attrs titleRow
   | none => titleRow
 
-def renderInformalBlockShell (shell : InformalBlockShell)
-    (content : Verso.Output.Html) : Verso.Output.Html :=
+/--
+The heading band, metadata, and prose body of an informal block shell, exposed
+separately so card-style renderers can place the heading and the prose body in
+different layout cells.
+
+`renderInformalBlockShell` re-assembles these into byte-identical single-column
+output; `header` here is the non-folded heading band (cards always use the
+non-folded, header-on shell), while folded / header-off variants are rebuilt from
+the same sub-pieces in `renderInformalBlockShell`.
+-/
+structure InformalBlockShellParts where
+  /-- Wrapper class string for the block. -/
+  wrapperClass : String
+  /-- The non-folded heading band (`<div class="bp_heading …">` with title + extras). -/
+  header : Verso.Output.Html
+  /-- The metadata panel (or `.empty`). -/
+  metadata : Verso.Output.Html
+  /-- The prose body container (`<div class="bp_content …"> … </div>`). -/
+  contentInner : Verso.Output.Html
+
+/--
+Expose the heading band, metadata, and prose body of an informal block shell as
+separate pieces.
+
+This is additive: `renderInformalBlockShell` calls it and re-assembles the
+single-column output identically.
+-/
+def renderInformalBlockShellParts (shell : InformalBlockShell)
+    (content : Verso.Output.Html) : InformalBlockShellParts :=
   open Verso.Output.Html in
   let style := shell.style
   let wrapperClass := s!"bp_wrapper bp_kind_{style.kindCss}_wrapper {style.kindCss}_thmwrapper {style.wrapperCss}"
@@ -419,35 +446,75 @@ def renderInformalBlockShell (shell : InformalBlockShell)
   let contentClass := s!"bp_content bp_kind_{style.kindCss}_content {style.contentCss}"
   let titleRow := renderShellTitleRow shell
   let extras := renderHeaderExtras shell.headerExtras
+  {
+    wrapperClass
+    header := {{
+      <div class={{headingClass}}>
+        {{titleRow}}
+        {{extras}}
+      </div>
+    }}
+    metadata := shell.metadataPanel
+    contentInner := {{ <div class={{contentClass}}> {{content}} </div> }}
+  }
+
+def renderInformalBlockShell (shell : InformalBlockShell)
+    (content : Verso.Output.Html) : Verso.Output.Html :=
+  open Verso.Output.Html in
+  let parts := renderInformalBlockShellParts shell content
+  let wrapperClass := parts.wrapperClass
   if !shell.showHeader then
     {{
       <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
-        {{shell.metadataPanel}}
-        <div class={{contentClass}}> {{content}} </div>
+        {{parts.metadata}}
+        {{parts.contentInner}}
       </div>
     }}
   else if shell.folded then
+    let style := shell.style
+    let headingClass := s!"bp_heading bp_kind_{style.kindCss}_heading {style.headingCss}"
+    let titleRow := renderShellTitleRow shell
+    let extras := renderHeaderExtras shell.headerExtras
     {{
       <details class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
         <summary class={{headingClass}}>
           {{titleRow}}
           {{extras}}
         </summary>
-        {{shell.metadataPanel}}
-        <div class={{contentClass}}> {{content}} </div>
+        {{parts.metadata}}
+        {{parts.contentInner}}
       </details>
     }}
   else
     {{
       <div class={{wrapperClass}} title={{shell.labelText}} {{shell.attrs}}>
-        <div class={{headingClass}}>
-          {{titleRow}}
-          {{extras}}
-        </div>
-        {{shell.metadataPanel}}
-        <div class={{contentClass}}> {{content}} </div>
+        {{parts.header}}
+        {{parts.metadata}}
+        {{parts.contentInner}}
       </div>
     }}
+
+/-- Build the `InformalBlockShell` for a concrete informal block. -/
+private def informalBlockShell (data : BlockData) (ctx : InformalBlockRenderContext)
+    (showHeader : Bool := true) : InformalBlockShell :=
+  let style := blockKindRenderStyle data
+  let labelText := s!"{data.label}"
+  let metadataPanel : Verso.Output.Html :=
+    match data.kind with
+    | .proof => .empty
+    | .statement _ => renderStatementMetadataPanel data
+  {
+    style
+    labelText
+    numberText := ctx.numberText
+    captionText := ctx.captionText?.getD style.kindText
+    attrs := ctx.attrs
+    titleRowAttrs? := ctx.titleRowAttrs?
+    headerExtras := ctx.headerExtras
+    metadataPanel
+    folded := ctx.folded
+    showHeader
+  }
 
 /--
 Render the reusable HTML shell for an informal Blueprint block.
@@ -459,26 +526,20 @@ already-rendered content plus the resolved metadata in
 def renderInformalBlockHtml (data : BlockData) (ctx : InformalBlockRenderContext)
     (content : Array Verso.Output.Html) (showHeader : Bool := true) : Verso.Output.Html :=
   open Verso.Output.Html in
-  let style := blockKindRenderStyle data
-  let labelText := s!"{data.label}"
-  let metadataPanel : Verso.Output.Html :=
-    match data.kind with
-    | .proof => .empty
-    | .statement _ => renderStatementMetadataPanel data
-  renderInformalBlockShell
-    {
-      style
-      labelText
-      numberText := ctx.numberText
-      captionText := ctx.captionText?.getD style.kindText
-      attrs := ctx.attrs
-      titleRowAttrs? := ctx.titleRowAttrs?
-      headerExtras := ctx.headerExtras
-      metadataPanel
-      folded := ctx.folded
-      showHeader
-    }
-    (.seq content)
+  renderInformalBlockShell (informalBlockShell data ctx showHeader) (.seq content)
+
+/--
+Expose the heading band, metadata, and prose body of an informal block as
+separate pieces, for card-style renderers.
+
+Additive sibling of `renderInformalBlockHtml`: it builds the same shell and
+returns its parts instead of assembling the single-column output.
+-/
+def renderInformalBlockHtmlParts (data : BlockData) (ctx : InformalBlockRenderContext)
+    (content : Array Verso.Output.Html) (showHeader : Bool := true) :
+    InformalBlockShellParts :=
+  open Verso.Output.Html in
+  renderInformalBlockShellParts (informalBlockShell data ctx showHeader) (.seq content)
 
 /-- HTML attributes for an optional CSS class string. -/
 def htmlClassAttrs (className : String) : Array (String × String) :=

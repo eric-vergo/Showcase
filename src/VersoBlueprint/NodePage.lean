@@ -411,20 +411,22 @@ private def renderNodePageBody
   -- twice when several preview keys resolve to one fragment, which made the
   -- "Lean code for …" panel render the code block twice on node pages.
   let codeHtmls := htmlIndex.codeHtmlBodies entry
-  let statementBlock :=
-    Informal.PreviewManifest.BlockRender.renderWithRenderedContent {} entry
-      (Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings stmtHtml codeHtmls)
-  -- Proof block, rendered inline on the same page when a proof facet exists.
+  let stmtContent :=
+    Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings stmtHtml codeHtmls
+  -- Proof facet, folded into the same card when it exists, as `(entry, content)`.
   let proofKey := Informal.PreviewCache.proofKey entry.label
-  let proofBlock : Output.Html :=
+  let proof? : Option (Entry × Informal.PreviewManifest.BlockRender.RenderedContent) :=
     match manifestIndex.findEntry? proofKey with
     | some proofEntry0 =>
       let proofEntry := repointEntryRelations state proofEntry0
       let proofHtml := (htmlIndex.findHtml? proofKey).getD ""
       let proofCode := htmlIndex.codeHtmlBodies proofEntry
-      Informal.PreviewManifest.BlockRender.renderWithRenderedContent {} proofEntry
-        (Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings proofHtml proofCode)
-    | none => .empty
+      some (proofEntry,
+        Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings proofHtml proofCode)
+    | none => none
+  -- Single two-column node card: informal prose left, Lean right, proof folded.
+  let nodeCard :=
+    Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry stmtContent proof?
   -- Downstream-impact panel: the entries that (transitively) depend on this one,
   -- restricted to those with their own node page so every item is clickable.
   let descendantSet := master.descendants entry.label
@@ -535,8 +537,7 @@ private def renderNodePageBody
         {{renderNodeSource editorTemplate entry}}
         {{renderNodeMetrics metrics?}}
       </header>
-      <section class="bp_node_page_statement">{{statementBlock}}</section>
-      <section class="bp_node_page_proof">{{proofBlock}}</section>
+      <section class="bp_node_page_statement bp_node_page_card2">{{nodeCard}}</section>
       {{downstreamPanel}}
       <section class="bp_node_page_graph">
         <h2>"Local dependency graph"</h2>

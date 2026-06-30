@@ -45,6 +45,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-border-muted: #dbe2ea;
   --bp-color-border-panel: #dbe2ea;
   --bp-color-border-strong: #b4c0cc;
+  --bp-color-card-divider: #e6ebf1;
   --bp-color-text-strong: #15212b;
   --bp-color-text: #15212b;
   --bp-color-text-muted: #4d5e6d;
@@ -152,6 +153,7 @@ def blueprintTokensCss : String := r##"
     --bp-color-border-muted: #22303f;
     --bp-color-border-panel: #243340;
     --bp-color-border-strong: #3a4b5c;
+    --bp-color-card-divider: #243340;
     --bp-color-text-strong: #eaf2fb;
     --bp-color-text: #dbe7f2;
     --bp-color-text-muted: #93a4b5;
@@ -228,6 +230,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-border-muted: #22303f;
   --bp-color-border-panel: #243340;
   --bp-color-border-strong: #3a4b5c;
+  --bp-color-card-divider: #243340;
   --bp-color-text-strong: #eaf2fb;
   --bp-color-text: #dbe7f2;
   --bp-color-text-muted: #93a4b5;
@@ -303,6 +306,7 @@ def blueprintTokensCss : String := r##"
   --bp-color-border-muted: #dbe2ea;
   --bp-color-border-panel: #dbe2ea;
   --bp-color-border-strong: #b4c0cc;
+  --bp-color-card-divider: #e6ebf1;
   --bp-color-text-strong: #15212b;
   --bp-color-text: #15212b;
   --bp-color-text-muted: #4d5e6d;

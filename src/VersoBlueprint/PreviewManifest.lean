@@ -176,6 +176,7 @@ def printCss : String := r##"
     --bp-color-border-muted: #dbe2ea;
     --bp-color-border-panel: #dbe2ea;
     --bp-color-border-strong: #b4c0cc;
+    --bp-color-card-divider: #e6ebf1;
     --bp-color-text-strong: #15212b;
     --bp-color-text: #15212b;
     --bp-color-text-muted: #4d5e6d;
@@ -216,6 +217,13 @@ def printCss : String := r##"
   /* Expand collapsed disclosure widgets so their content prints. */
   details > summary { list-style: none; }
   details:not([open]) > *:not(summary) { display: block !important; }
+
+  /* Force every node card's proof row open so proofs print (the relocated
+     tactic tail lives inside this collapsible region; the per-card toggle and
+     the screen-only collapse animation are bypassed on paper). */
+  .bp_card2_proof_anim { grid-template-rows: 1fr !important; }
+  .bp_card2_proof_anim > * { overflow: visible !important; }
+  .bp_card2_proof_toggle { display: none !important; }
 }
 "##
 
@@ -751,6 +759,8 @@ private def commandPaletteModuleMjs : String := include_str "Commands/command-pa
 
 private def dashboardModuleMjs : String := include_str "Commands/dashboard.mjs"
 
+private def proofToggleModuleMjs : String := include_str "Commands/proof-toggle.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -804,7 +814,8 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("lib/d3-graphviz.min.js", d3GraphvizMinJs),
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs),
   ("Commands/command-palette.mjs", commandPaletteModuleMjs),
-  ("Commands/dashboard.mjs", dashboardModuleMjs)
+  ("Commands/dashboard.mjs", dashboardModuleMjs),
+  ("Commands/proof-toggle.mjs", proofToggleModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do

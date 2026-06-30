@@ -139,11 +139,44 @@ private def renderManualGraftNode
           body
           codeBodies
         }
-        pure <| Informal.Graft.renderNodeWithContent
-          manualManifestRenderConfig
-          node
-          entry
-          content
+        -- The two-column node card is the default for non-compact statement
+        -- facets: fold in the proof facet (if any) and render both columns. The
+        -- compact and standalone-proof paths keep the single-column renderer so
+        -- `+compact` and `(facet := "proof")` behave exactly as before.
+        if node.facet == "statement" && !node.compact then
+          let label := Informal.LabelNameParsing.parse node.label
+          let proof? ←
+            match Informal.PreviewManifest.findTraversalBlockEntry? state
+                (Informal.PreviewCache.proofKey label) with
+            | none => pure none
+            | some (proofPreview, proofEntry) =>
+              if proofPreview.blocks.isEmpty then
+                pure none
+              else
+                let proofBody ← renderManualBlocks goB proofPreview.blocks
+                let proofCodeBodies ← renderLeanCodeBodies goB state proofEntry
+                pure <| some (proofEntry,
+                  ({ body := proofBody, codeBodies := proofCodeBodies } :
+                    Informal.PreviewManifest.BlockRender.RenderedContent))
+          let card :=
+            Informal.PreviewManifest.BlockRender.renderTwoColumnCard
+              manualBlockRenderConfig
+              entry
+              content
+              proof?
+              {
+                displayLabelOverride? := node.displayLabel?
+                compact := node.compact
+                showHeader := node.showHeader
+              }
+              { showHeader := node.showHeader }
+          pure <| Html.tag "div" (manualNodeAttrs node) card
+        else
+          pure <| Informal.Graft.renderNodeWithContent
+            manualManifestRenderConfig
+            node
+            entry
+            content
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where

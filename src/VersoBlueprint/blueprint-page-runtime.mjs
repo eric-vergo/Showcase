@@ -5,6 +5,7 @@ import { startInlinePreview } from "./Commands/inline-preview.mjs";
 import { startRelationPanels } from "./Informal/Block/relation-panel.mjs";
 import { startCommandPalette } from "./Commands/command-palette.mjs";
 import { startDashboard } from "./Commands/dashboard.mjs";
+import { startProofToggle } from "./Commands/proof-toggle.mjs";
 
 export function startBlueprintPageRuntime(options = {}) {
   const preview = createPreview(options);
@@ -14,6 +15,7 @@ export function startBlueprintPageRuntime(options = {}) {
   startGraphRuntime(preview);
   startCommandPalette();
   startDashboard();
+  startProofToggle();
   return preview;
 }
 

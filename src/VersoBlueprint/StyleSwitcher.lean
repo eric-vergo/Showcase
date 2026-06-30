@@ -262,6 +262,36 @@ private def jsTemplate : String := r##"(function () {
       saveStyle(value);
     });
 
+    // Global "Proofs: hidden / shown" bulk control. Sets the single per-card
+    // source of truth -- `data-bp-proof-open` on every `.bp_card2` -- and keeps
+    // each card's own toggle (aria-expanded + label) in sync. Not persisted:
+    // every load starts hidden, and the per-card toggles override individually
+    // (the select does not re-assert itself after a manual per-card change).
+    function setAllProofs(open) {
+      const cards = document.querySelectorAll(".bp_card2");
+      cards.forEach(function (card) {
+        if (!(card instanceof HTMLElement)) return;
+        card.setAttribute("data-bp-proof-open", open ? "true" : "false");
+        const toggle = card.querySelector(".bp_card2_proof_toggle");
+        if (toggle instanceof HTMLElement) {
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.textContent = open ? "Hide proof" : "Show proof";
+        }
+      });
+    }
+
+    const hasCards = document.querySelector(".bp_card2_proof_toggle");
+    if (hasCards) {
+      const proofsSelect = appendControl("Proofs", "bp-proofs-select", [
+        "hidden",
+        "shown"
+      ]);
+      proofsSelect.value = "hidden";
+      proofsSelect.addEventListener("change", function () {
+        setAllProofs(proofsSelect.value === "shown");
+      });
+    }
+
     document.body.appendChild(host);
   }
 
@@ -329,6 +359,12 @@ private def jsTemplate : String := r##"(function () {
 
     blocks.forEach((block) => {
       if (!(block instanceof HTMLElement)) return;
+      // Card code blocks are owned solely by Commands/proof-toggle.mjs, which
+      // relocates the tactic tail into the card's aligned proof cell under a
+      // single per-card toggle. Skip them here so the standalone `by`-click
+      // fold never double-processes a card block; non-card blocks (source-entry
+      // pages, standalone code) keep the original behavior.
+      if (block.closest(".bp_card2")) return;
       const details = block.closest("details.bp_code_block");
       if (details instanceof HTMLElement && details.dataset.bpProofFold === "off") return;
       if (block.dataset.bpProofHider === "1") return;

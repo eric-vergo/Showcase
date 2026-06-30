@@ -26,6 +26,7 @@ import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Lib.ExtensionDecode
+import VersoBlueprint.NodeCard
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -151,17 +152,84 @@ block_extension Block.informal (data : BlockData) where
               usedBy? := some <| HeaderExtra.usedBy usedByEntry
               code? := some <| HeaderExtra.code codeEntry
             }
-        return renderInformalBlockModel {
-          data
-          context := InformalBlockRenderContext.forBlock data
-            (data.displayNumber s)
-            (proofCaption? := some (data.displayTitle s))
-            (attrs := attrs)
-            (headerExtras := headerExtras)
-            (folded := foldInformalBlock)
-          content
-          companionPanels := #[externalPanel]
-        }
+        match data.kind with
+        | .statement _ =>
+          -- Default the inline statement to the two-column node card: informal
+          -- prose left, the statement's Lean code panel right, and the proof
+          -- facet folded in (resolved from the traversal preview cache). The
+          -- standalone `:::proof` card is suppressed below to avoid a double
+          -- render of the proof prose.
+          let stmtParts := renderInformalBlockHtmlParts data
+            (InformalBlockRenderContext.forBlock data
+              (data.displayNumber s)
+              (proofCaption? := some (data.displayTitle s))
+              (attrs := attrs)
+              (headerExtras := headerExtras))
+            content
+          -- Statement metadata lives in the informal statement cell, above prose.
+          let informalStmt := Verso.Output.Html.seq #[stmtParts.metadata, stmtParts.contentInner]
+          -- Fold the proof facet's prose (if it exists) into the proof region.
+          let proofKey := Informal.PreviewCache.proofKey data.label
+          let proof? : Option NodeCard.ProofParts ←
+            match Informal.TraversalIndex.TraversalPreviews.entry? s proofKey with
+            | none => pure none
+            | some pEntry =>
+              let informalProof := Verso.Output.Html.seq (← pEntry.blocks.mapM goB)
+              -- Proof-side uses: reuse the statement's `proofUses` by rendering
+              -- the uses panel against a proof-kind view of this block.
+              let proofUses ← RelatedPanel.renderUsesExtra relatedPanelContext
+                { data with kind := .proof }
+              pure <| some {
+                informalProof
+                formalProof := .empty
+                proofUses
+                cardId := s!"bp-card-{data.label}"
+              }
+          let card := NodeCard.render {
+            cardId := s!"bp-card-{data.label}"
+            header := stmtParts.header
+            informalStmt
+            formalStmt := externalPanel
+            proof?
+          } { showHeader := true }
+          -- Preserve the block's anchor `id` (carried in `attrs`) so in-chapter
+          -- links still resolve: the single-column shell put it on the wrapper,
+          -- but the card builds its own wrapper, so wrap it in an id-bearing div.
+          return Verso.Output.Html.tag "div"
+            (#[("class", "bp_card2_anchor")] ++ attrs) card
+        | .proof =>
+          -- When a statement facet exists for this label, the proof prose has
+          -- already been folded into the statement card above; suppress the
+          -- standalone proof card so the proof renders exactly once. Orphan
+          -- proofs (no statement facet) still render standalone as before.
+          match resolveStoredNodeData? s data.label with
+          | some stored =>
+            match stored.kind with
+            | .statement _ => return .empty
+            | .proof =>
+              return renderInformalBlockModel {
+                data
+                context := InformalBlockRenderContext.forBlock data
+                  (data.displayNumber s)
+                  (proofCaption? := some (data.displayTitle s))
+                  (attrs := attrs)
+                  (headerExtras := headerExtras)
+                  (folded := foldInformalBlock)
+                content
+                companionPanels := #[externalPanel]
+              }
+          | none =>
+            return renderInformalBlockModel {
+              data
+              context := InformalBlockRenderContext.forBlock data
+                (data.displayNumber s)
+                (proofCaption? := some (data.displayTitle s))
+                (attrs := attrs)
+                (headerExtras := headerExtras)
+                (folded := foldInformalBlock)
+              content
+              companionPanels := #[externalPanel]
+            }
 
 private def expanderImpl (kind : Data.NodeKind) (isProof : Bool := false) : DirectiveExpanderOf Config
   | cfg, contents => do
