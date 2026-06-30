@@ -51,7 +51,13 @@
 .bp_bibliography_uses > summary {
   cursor: pointer;
   font-size: var(--bp-fs-control, 0.82rem);
-  color: var(--bp-color-biblio-link);
+  color: var(--bp-color-link, #1c5fb8);
+}
+
+.bp_bibliography_uses > summary:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
 }
 
 .bp_bibliography_uses_list {
@@ -63,31 +69,26 @@
   margin-top: 0.25rem;
 }
 
-.bp_bibliography_use_line {
-  color: var(--bp-color-text);
-}
-
-.bp_bibliography_use_line:hover {
-  text-decoration-color: currentColor;
-}
-
 .bp_bibliography_use_inline_meta {
+  /* Inherit the link color from the enclosing backref anchor. */
   color: inherit;
   font-style: normal;
 }
 
-/* One coherent link affordance: reference titles and backref links share the
-   system link color, decoration weight and offset (STY-BIB-06). The "Cited from"
-   summary uses --bp-color-biblio-link, which is also blue after the token retint. */
-.bp_bibliography_list a,
-.bp_bibliography_use_line a {
+/* One coherent brand-link affordance for every bibliography link: the reference
+   titles (`.citation a`) and the backref lines (`.bp_bibliography_use_line`, which
+   is itself the anchor) share the system link color and the site-wide content-link
+   treatment — a faint underline that firms up to full on hover (STY-BIB-06).
+   Themes via --bp-color-link, which carries both light and dark values. */
+.bp_bibliography_list a {
   color: var(--bp-color-link, #1c5fb8);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.14em;
+  text-decoration-color: color-mix(in srgb, var(--bp-color-link, #1c5fb8) 45%, transparent);
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
 }
 
-.bp_bibliography_list a:hover,
-.bp_bibliography_use_line a:hover {
+.bp_bibliography_list a:hover {
   text-decoration-color: currentColor;
 }
 

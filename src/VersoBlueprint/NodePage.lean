@@ -213,6 +213,21 @@ def nodeBreadcrumbCss : String := r##"
   margin: 0.25rem 0 0;
 }
 
+.bp_node_page_title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.55rem;
+}
+
+.bp_node_title_name {
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.62em;
+  font-weight: 500;
+  color: var(--bp-color-text-muted, #4d5e6d);
+  word-break: break-word;
+}
+
 .bp_node_page h2 {
   font-size: 1.15rem;
   font-weight: 600;
@@ -492,6 +507,21 @@ private def renderNodePageBody
         "Copy link"
       </button>
     }}
+  -- Entity-detail page title: the catalog "Kind N.N" (which already sits in the
+  -- final breadcrumb crumb) plus the node's primary Lean declaration name when it
+  -- formalizes one, so the H1 reads as a real page title rather than a bare number
+  -- echoing the breadcrumb. Purely informal nodes (no external decl) fall back to
+  -- just the catalog title — the statement's own display title.
+  let pageTitle : Output.Html :=
+    match (primaryExternalDecl? entry).map (·.written.toString) with
+    | some declName =>
+      {{
+        <h1 class="bp_node_page_title">
+          <span class="bp_node_title_kind">{{.text true entry.title}}</span>
+          <span class="bp_node_title_name">{{.text true declName}}</span>
+        </h1>
+      }}
+    | none => {{ <h1 class="bp_node_page_title">{{.text true entry.title}}</h1> }}
   {{
     <div class="bp_node_page">
       <header class="bp_node_page_header">
@@ -500,7 +530,7 @@ private def renderNodePageBody
           {{breadcrumb}}
           {{copyLink}}
         </div>
-        <h1>{{.text true entry.title}}</h1>
+        {{pageTitle}}
         {{parentContext}}
         {{renderNodeSource editorTemplate entry}}
         {{renderNodeMetrics metrics?}}

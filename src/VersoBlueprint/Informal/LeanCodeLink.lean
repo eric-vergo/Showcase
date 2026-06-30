@@ -60,10 +60,17 @@ def renderResolved
     (href? : Option String := none)
     (linkTitle? : Option String := none)
     (previewTitle : String := s!"Lean declaration {decl}")
-    (previewDetail? : Option String := none) : Verso.Output.Html :=
+    (previewDetail? : Option String := none)
+    (withPreview : Bool := true) : Verso.Output.Html :=
   let linkNode := renderLinkNode node href? className linkTitle?
-  Informal.HoverRender.inlinePreviewTargetNode
+  -- Surfaces that ship no inline-preview runtime (e.g. the audit page) pass
+  -- `withPreview := false` so the decl span carries no inert `data-bp-preview-*`
+  -- hook (and no preview pointer affordance) for an interaction that can't fire.
+  if withPreview then
+    Informal.HoverRender.inlinePreviewTargetNode
+      linkNode
+      (previewTarget decl previewTitle previewDetail?)
+  else
     linkNode
-    (previewTarget decl previewTitle previewDetail?)
 
 end Informal.LeanCodeLink

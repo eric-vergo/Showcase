@@ -102,6 +102,10 @@ structure SummaryHtmlContext where
       dashboard reading map. Populated at the call sites from
       `Informal.NodeRoute.friendlyEntryLabel`. -/
   displayLabel : Name → String
+  /-- Whether Lean decl spans carry their inline hover-preview hook. Disabled on
+      surfaces that ship no preview runtime (e.g. the audit page) so decl spans
+      don't advertise a preview interaction that does nothing (STY-AUDIT-13). -/
+  declPreviews : Bool := true
 
 structure SummaryRows where
   pendingInformalRows : Array Output.Html := #[]
@@ -133,12 +137,14 @@ structure SummaryRows where
   blockerRows : Array Output.Html := #[]
 
 private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
-    (href? : Option String) (linkTitle? : Option String := Option.none) : Output.Html :=
+    (href? : Option String) (linkTitle? : Option String := Option.none)
+    (withPreview : Bool := true) : Output.Html :=
   match href? with
   | some href =>
     Informal.LeanCodeLink.renderResolved
       target node "" (some href) linkTitle?
       (previewTitle := Informal.LeanCodePreview.title target)
+      (withPreview := withPreview)
   | Option.none => node
 
 private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name) : Output.Html :=
@@ -155,6 +161,7 @@ private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Nam
     (decls : List Name) : Array Output.Html :=
   decls.toArray.map fun decl =>
     let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}} (ctx.declHref? label decl)
+      (withPreview := ctx.declPreviews)
     {{ <li>{{declNode}}</li> }}
 
 private def summaryBadgeClass : String := "bp_summary_badge"
@@ -410,6 +417,7 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
   let entryRef := ctx.entryRef item.label
   let declLink :=
     summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}} (ctx.declHref? item.label item.decl)
+      (withPreview := ctx.declPreviews)
   let declPrefix ←
     match item.status with
     | .missing => pure "Missing declaration: "
@@ -450,6 +458,7 @@ private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (labe
       canonical
       {{<code>s!"{canonical}"</code>}}
       (ctx.declHref? label canonical)
+      (withPreview := ctx.declPreviews)
   if written == canonical then
     canonicalNode
   else

@@ -371,13 +371,6 @@
   margin-top: 1rem;
 }
 
-/* The audit page ships no preview script, so the decl-ref wrapper must not
-   advertise a (non-existent) preview interaction via a pointer cursor. */
-.bp_audit_page .bp_inline_preview_ref,
-.bp_audit_page .bp_summary_preview_wrap {
-  cursor: auto;
-}
-
 @media (max-width: 700px) {
   .bp_summary_section {
     padding-left: 0.6rem;

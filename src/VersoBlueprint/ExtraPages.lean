@@ -541,6 +541,9 @@ private def auditHtmlContext (state : TraverseState) : SummaryHtmlContext := {
   declHref? := fun label decl => Informal.Resolve.resolveInformalDeclHref? state label decl
   previewLookupKey? := fun _ => none
   displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel state label
+  -- No preview runtime ships on the audit page, so decl spans must not carry the
+  -- inline-preview hook (cursor + inert `data-bp-preview-*`); see STY-AUDIT-13.
+  declPreviews := false
 }
 
 /--
