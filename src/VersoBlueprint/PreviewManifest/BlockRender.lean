@@ -274,6 +274,31 @@ private def cardIdOf (entry : Entry) : String :=
   s!"bp-card-{entry.label}"
 
 /--
+Formal-proof cell HTML for a two-column node card.
+
+Renders the captured proof/value source of the statement's associated Lean
+declaration(s) (`Data.ExternalRef.proofSource?`, snapshotted from the source file
+in `ExternalRefSnapshot`) as a Lean code block, so the proof body shows
+server-side for both tactic-mode (`:= by …`) and term-mode (`:= term`) proofs.
+
+Empty when the statement has no external declaration or no captured proof source:
+inline-code nodes keep `formalStmt`'s single signature+tactic block and rely on
+the runtime tactic-tail relocation (`Commands/proof-toggle.mjs`), and nodes with
+no associated Lean keep a blank proof cell (no stray divider).
+-/
+private def formalProofFromEntry (entry : Entry) : Html :=
+  match entry.codeData with
+  | some (.external refs) =>
+    let bodies : Array Html := refs.filterMap fun ref =>
+      if ref.present then
+        ref.proofSource?.map fun src =>
+          {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{.text true src}}</code></pre> }}
+      else
+        none
+    if bodies.isEmpty then .empty else .seq bodies
+  | _ => .empty
+
+/--
 Build the two-column node card parts for one statement entry, optionally folding
 in a resolved proof facet.
 
@@ -305,13 +330,12 @@ def renderCardParts
         | none => .empty
       {
         informalProof := pShell.contentInner
-        -- The statement's single code block (signature in the top cell + the
-        -- JS-relocated tactic tail in the proof cell) already covers the Lean
-        -- proof, so the proof facet's own code panel is always either empty
-        -- (external decls) or a duplicate of the statement's code (inline-authored
-        -- theorems). Mirror the already-correct inline path (`Informal/Block.lean`)
-        -- and never render it as a separate panel.
-        formalProof := .empty
+        -- Formal proof cell: the captured proof/value source of the statement's
+        -- associated Lean declaration (external `(lean := …)` refs). For
+        -- inline-authored theorems this stays empty and the runtime relocates the
+        -- statement block's tactic tail into the cell instead; nodes with no Lean
+        -- keep a blank proof cell. See `formalProofFromEntry`.
+        formalProof := formalProofFromEntry entry
         proofUses
         cardId := cardIdOf entry
       }

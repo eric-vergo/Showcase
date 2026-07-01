@@ -259,6 +259,12 @@ structure NodeData where
   proofStatus : ProofStatus := .none
   warnings : WarningFlags := {}
   visual : NodeVisual
+  /-- Whether this is a subordinate "supporting" node: a project declaration
+  surfaced on the dependency graph without an authored blueprint node. Renders
+  with the muted supporting visual, adds the `bp-node-supporting` DOT class, and
+  surfaces a supporting legend entry. Never `true` in the semantic master graph
+  (supporting nodes live only on the rendered Dependency-Graph block). -/
+  supporting : Bool := false
 deriving Inhabited, Repr, ToJson, FromJson, Quote
 
 /--
@@ -297,7 +303,9 @@ def NodeData.toGraphNode (node : NodeData) : GraphNode String := {
   gradientangle? := node.visual.gradientangle?
   tooltip? := node.visual.tooltip?
   ref? := node.href
-  cssClass? := some (statusCssClass node.statementStatus)
+  cssClass? := some <|
+    if node.supporting then s!"{statusCssClass node.statementStatus} bp-node-supporting"
+    else statusCssClass node.statementStatus
   statementUses := node.statementUses
   proofUses := node.proofUses
 }
@@ -377,6 +385,14 @@ def proofBackgroundFormalizedAncColor : String := "#1a8351"
 
 def definitionBackgroundColor : String := "#ffffff"
 
+/-- Supporting (un-annotated project) node colors. Muted grey fill + hairline
+border + slate label, tuned — like every other baked graph-node color — for the
+theme-invariant light graph canvas (see `graph.css`), so supporting nodes read as
+subordinate to the authored blueprint nodes in both light and dark. -/
+def supportingFillColor : String := "#eef1f5"
+def supportingBorderColor : String := "#c3ccd6"
+def supportingFontColor : String := "#586170"
+
 def unresolvedFillColor : String := "#fee2e2"
 def unresolvedBorderColor : String := "#b91c1c"
 def unresolvedFontColor : String := "#7f1d1d"
@@ -422,7 +438,8 @@ mirroring the DOT edge styling (color/weight/dash pattern). -/
 private def edgeLegendItem (label : String) (swatch : EdgeLegendSwatch) : LegendItem :=
   { label, edgeSwatch? := some swatch }
 
-def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
+def graphLegendGroups (includeMathlib : Bool := false) (includeSupporting : Bool := false) :
+    Array LegendGroup :=
   let statementItems :=
     #[
       legendItem "Blocked" (some { borderColor := statementBorderBlockedColor }),
@@ -434,7 +451,20 @@ def graphLegendGroups (includeMathlib : Bool := false) : Array LegendGroup :=
       statementItems.push (legendItem "In Mathlib" (some { borderColor := statementBorderMathlibColor }))
     else
       statementItems
-  #[
+  let supportingGroup : Array LegendGroup :=
+    if includeSupporting then
+      #[{
+        key := "supporting"
+        title := "Supporting Declarations"
+        summary? := some "Muted nodes are project declarations without an authored blueprint node, shown with their real Lean dependencies."
+        items := #[
+          legendItem "Supporting declaration"
+            (some { background := supportingFillColor, borderColor := supportingBorderColor })
+        ]
+      }]
+    else
+      #[]
+  supportingGroup ++ #[
     {
       key := "shape"
       title := "Shapes"
@@ -1104,6 +1134,72 @@ def buildData
     (resolveTitle? : Name → Option String := fun _ => none)
     (groupTitles : Array (Name × String) := #[]) : GraphData :=
   buildDataWithExternal state roots {} resolveHref? resolveTitle? groupTitles
+
+/--
+In-namespace const-level dependencies of a declaration, split into statement deps
+(constants in its type) and proof deps (constants in its value), restricted to
+`projectDeclSet` and excluding the declaration itself. Proof deps drop any label
+already present as a statement dep. This is the real Lean dependency structure the
+supporting-node graph is built from. -/
+def projectConstDeps (projectDeclSet : NameSet) (root : Name) (info : ConstantInfo) :
+    Array Name × Array Name :=
+  let keep := fun (consts : Array Name) =>
+    consts.foldl (init := (#[] : Array Name)) fun acc c =>
+      let c := c.eraseMacroScopes
+      if c != root && projectDeclSet.contains c && !acc.contains c then acc.push c else acc
+  let typeDeps := keep info.type.getUsedConstants
+  let valueConsts : Array Name :=
+    match info with
+    | .defnInfo i => i.value.getUsedConstants
+    | .thmInfo i => i.value.getUsedConstants
+    | .opaqueInfo i => i.value.getUsedConstants
+    | _ => #[]
+  let valueDeps := (keep valueConsts).filter (fun c => !typeDeps.contains c)
+  (typeDeps, valueDeps)
+
+/-- Short display label for a supporting node: the declaration's last name
+component (namespace stripped), falling back to the full name. -/
+private def supportingDisplayLabel (label : Name) : String :=
+  match label.components.getLast? with
+  | some c => c.toString
+  | none => label.toString
+
+/--
+Build a subordinate "supporting" graph node for an un-annotated project
+declaration.
+
+Supporting nodes carry the muted supporting visual, mark themselves via
+`supporting := true`, and count as formalized (they are real Lean declarations).
+`statementUses`/`proofUses` are supplied by the caller from the declaration's
+in-namespace const dependencies (`projectConstDeps`). -/
+def mkSupportingNodeData (kind : Data.NodeKind) (label : Name)
+    (statementUses proofUses : Array Data.UseRef) : NodeData :=
+  {
+    label
+    title := supportingDisplayLabel label
+    displayLabel := supportingDisplayLabel label
+    kind := some kind
+    parent := none
+    href := none
+    previewKey := PreviewCache.statementKey label
+    statementUses
+    proofUses
+    statementStatus := .formalized
+    proofStatus := .none
+    warnings := {}
+    visual := {
+      shape := kindShape kind
+      style := "filled"
+      fillcolor := supportingFillColor
+      color := supportingBorderColor
+      penwidth := "1.1"
+      fontcolor := supportingFontColor
+      peripheries := 1
+      gradientangle? := none
+      tooltip? := some s!"Supporting declaration: {label}"
+    }
+    supporting := true
+  }
 
 def escapeDotString (s : String) : String :=
   let s := s.replace "\\" "\\\\"

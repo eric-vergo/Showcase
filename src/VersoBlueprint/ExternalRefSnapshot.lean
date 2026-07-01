@@ -239,6 +239,74 @@ private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclH
   { className := view.externalDeclClass, text := view.externalHeaderText }
 
 /--
+Slice the proof/value source out of a full declaration source snippet: return the
+text after the first top-level `:=` (the tactic block or defining term), trimmed.
+
+The scan tracks bracket nesting (`()`, `[]`, `{}`, `⟨⟩`) and skips string literals
+and `--` / `/- -/` comments so a `:=` inside a binder default, an anonymous
+constructor, or a comment in the signature does not get mistaken for the body
+separator. Returns `none` when there is no top-level `:=` (e.g. `example`s the
+range does not cover, or a declaration with no body).
+-/
+private def sliceProofSource (declSrc : String) : Option String := Id.run do
+  let cs := declSrc.data.toArray
+  let n := cs.size
+  let mut depth : Nat := 0
+  let mut i : Nat := 0
+  let mut inString := false
+  let mut inLineComment := false
+  let mut blockDepth : Nat := 0
+  while i < n do
+    let c := cs[i]!
+    let next? := cs[i + 1]?
+    if inLineComment then
+      if c == '\n' then inLineComment := false
+      i := i + 1
+    else if blockDepth > 0 then
+      if c == '-' && next? == some '/' then blockDepth := blockDepth - 1; i := i + 2
+      else if c == '/' && next? == some '-' then blockDepth := blockDepth + 1; i := i + 2
+      else i := i + 1
+    else if inString then
+      if c == '\\' then i := i + 2
+      else if c == '"' then inString := false; i := i + 1
+      else i := i + 1
+    else if c == '"' then inString := true; i := i + 1
+    else if c == '-' && next? == some '-' then inLineComment := true; i := i + 2
+    else if c == '/' && next? == some '-' then blockDepth := 1; i := i + 2
+    else if depth == 0 && c == ':' && next? == some '=' then
+      let tail := (String.ofList (cs.toList.drop (i + 2))).trim
+      return (if tail.isEmpty then none else some tail)
+    else if c == '(' || c == '[' || c == '{' || c == '⟨' then depth := depth + 1; i := i + 1
+    else if c == ')' || c == ']' || c == '}' || c == '⟩' then
+      depth := (if depth == 0 then 0 else depth - 1); i := i + 1
+    else i := i + 1
+  return none
+
+/--
+Read the proof/value source of one declaration from its source file and range.
+
+Reads the file, extracts the declaration substring spanning `range`, and slices
+off the body after the top-level `:=` (see `sliceProofSource`). Degrades to `none`
+on any IO or lookup failure so snapshotting never fails on a missing/unreadable
+source file.
+-/
+private def captureProofSource?
+    (sourcePath? : Option System.FilePath) (range? : Option Lean.DeclarationRange) :
+    IO (Option String) := do
+  match sourcePath?, range? with
+  | some sourcePath, some range =>
+    try
+      let content ← IO.FS.readFile sourcePath
+      let fileMap := Lean.FileMap.ofString content
+      let startPos := fileMap.ofPosition range.pos
+      let endPos := fileMap.ofPosition range.endPos
+      let declSrc := String.Pos.Raw.extract content startPos endPos
+      return sliceProofSource declSrc
+    catch _ =>
+      return none
+  | _, _ => return none
+
+/--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
 -/
@@ -291,6 +359,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       match renderResult with
       | .ok html => .ok html
       | .error err => .error err
+    let proofSource? ← liftM <| captureProofSource? sourcePath? (ranges?.map (fun r => r.range))
     pure {
       ref with
       provenance
@@ -298,6 +367,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       selectionRange?
       sourceHref?
       render
+      proofSource?
     }
 
 def workspaceRoot : Lean.CoreM System.FilePath := do

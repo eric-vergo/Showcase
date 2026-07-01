@@ -25,6 +25,11 @@ open Lean Elab Command
 open Informal Data Environment
 open Informal.Graph
 
+register_option verso.blueprint.graph.includeAllDecls : Bool := {
+  defValue := false
+  descr := "Feature the whole project declaration graph: include every in-workspace declaration in the project's namespace(s) as subordinate \"supporting\" nodes, with edges from the real Lean const-level dependencies. Off by default (blueprint-annotated nodes only)."
+}
+
 register_option verso.blueprint.graph.defaultDirection : String := {
   defValue := "TB"
   descr := "Default direction for `blueprint_graph` when `(direction := ...)` is omitted (LR, RL, TB, BT)"
@@ -47,6 +52,12 @@ register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
 
 structure GraphBlockData where
   semanticGraphData : Informal.Graph.GraphData := {}
+  /-- Render-only graph data for this block: the full project-declaration graph
+  (blueprint nodes + supporting nodes + const-level edges). Used for the rendered
+  Dependency-Graph SVG/JSON only; `none` falls back to `semanticGraphData`. Kept
+  out of the traversal cache so the master graph / metrics / node pages see only
+  the authored blueprint nodes. -/
+  renderGraphData? : Option Informal.Graph.GraphData := none
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
@@ -162,6 +173,8 @@ def renderGraphFullwidth
       }}
   let includeMathlibLegend :=
     publicGraphData.nodes.any (fun node => node.visual.color == Informal.Graph.statementBorderMathlibColor)
+  let includeSupportingLegend :=
+    publicGraphData.nodes.any (·.supporting)
   let renderLegend (kind : String) (groups : Array Informal.Graph.LegendGroup)
       (note? : Option String := none) (hidden : Bool := false) : Output.Html :=
     let legendGroupHtml : Array Output.Html :=
@@ -228,7 +241,7 @@ def renderGraphFullwidth
         </div>
       }}
   let fullLegendHtml :=
-    renderLegend "full" (Informal.Graph.graphLegendGroups includeMathlibLegend)
+    renderLegend "full" (Informal.Graph.graphLegendGroups includeMathlibLegend includeSupportingLegend)
       (note? := some Informal.Graph.graphLegendFullViewNote)
   let groupLegendHtml : Output.Html :=
     if hasGroupVariant then
@@ -458,7 +471,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
         | some graphData => pure graphData
         | Option.none => pure { semanticGraphData := {}, options := {} }
       let s ← HtmlT.state
-      let publicGraphData := Informal.GraphApi.finalDataForBlock s id graphData.semanticGraphData
+      -- Render the full project-declaration graph when present (blueprint +
+      -- supporting nodes); the traversal cache still holds only the blueprint
+      -- semantic graph, so the master graph and metrics are unaffected.
+      let renderData := graphData.renderGraphData?.getD graphData.semanticGraphData
+      let publicGraphData := Informal.GraphApi.finalDataForBlock s id renderData
       let graphVariants := publicGraphData.renderVariants graphData.options
       let graphHtmlAttrs := s.htmlId id
       let idBase : String :=
@@ -485,6 +502,110 @@ def buildAll : CoreM Informal.Graph.GraphData := do
   let semanticGraphData :=
     Informal.Graph.buildDataWithExternal state roots external (groupTitles := groupTitles)
   return semanticGraphData
+
+/--
+Augment the blueprint dependency graph with every in-workspace declaration in the
+project's own module(s), as subordinate "supporting" nodes with edges from the
+actual Lean const-level dependency structure.
+
+Opt-in via `verso.blueprint.graph.includeAllDecls` (off by default → returns `base`,
+so existing consumers and tests keep the blueprint-only graph). Project modules are
+inferred from the authored `(lean := …)` declarations whose snapshot provenance is
+in the workspace (so Mathlib/core/dependency declarations are excluded). Every
+non-internal definition/theorem/inductive in those modules becomes a graph node:
+authored declarations keep their blueprint node and gain const-derived edges,
+un-annotated declarations are added as muted supporting nodes. Const dependencies
+are split into statement (type) and proof (value) axes and merged as
+automatically-inferred use-refs (manual author edges win on conflict).
+
+This is used only for the rendered Dependency-Graph block; it never enters the
+traversal-cached semantic graph, so master-graph metrics and node pages are
+unaffected. -/
+def buildProjectDeclGraph (base : Informal.Graph.GraphData) : CoreM Informal.Graph.GraphData := do
+  if !verso.blueprint.graph.includeAllDecls.get (← getOptions) then
+    return base
+  let env ← getEnv
+  let state := informalExt.getState env
+  -- Project module roots: modules of authored, in-workspace `(lean := …)` decls.
+  let projectModuleRoots : NameSet :=
+    state.data.foldl (init := ({} : NameSet)) fun acc _label node =>
+      node.externalRefs.foldl (init := acc) fun acc ref =>
+        match ref.provenance with
+        | .inWorkspace moduleName _ =>
+          let r := moduleName.getRoot
+          if r.isAnonymous then acc else acc.insert r
+        | _ => acc
+  if projectModuleRoots.isEmpty then
+    return base
+  -- Enumerate non-internal def/theorem/inductive decls in those workspace modules.
+  let moduleNames := env.header.moduleNames
+  let moduleData := env.header.moduleData
+  let mut projectDecls : Array (Name × ConstantInfo) := #[]
+  let mut projectDeclSet : NameSet := {}
+  for i in [0:moduleData.size] do
+    let modName := (moduleNames[i]?).getD Name.anonymous
+    if !projectModuleRoots.contains modName.getRoot then continue
+    for cname in moduleData[i]!.constNames do
+      let cname := cname.eraseMacroScopes
+      if projectDeclSet.contains cname then continue
+      if cname.isInternalDetail then continue
+      match env.find? cname with
+      | some cinfo =>
+        if (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).isSome then
+          projectDecls := projectDecls.push (cname, cinfo)
+          projectDeclSet := projectDeclSet.insert cname
+      | none => pure ()
+  let leanNameLabels := state.leanNameLabels
+  -- Graph key(s) for a declaration: its blueprint label(s) if authored, else the
+  -- declaration name itself (a supporting node), else empty (external).
+  let graphKeysOf : Name → Array Name := fun name =>
+    match leanNameLabels.get? name with
+    | some labels => if labels.isEmpty then #[name] else labels.map (fun l => (l : Name))
+    | none => if projectDeclSet.contains name then #[name] else #[]
+  let isAuthored : Name → Bool := fun name =>
+    match leanNameLabels.get? name with
+    | some labels => !labels.isEmpty
+    | none => false
+  let pushUniq := fun (xs ys : Array Name) =>
+    ys.foldl (fun acc y => if acc.contains y then acc else acc.push y) xs
+  -- Accumulate const-derived statement/proof dep keys per target graph key.
+  let mut stmtDepsByKey : Lean.NameMap (Array Name) := {}
+  let mut proofDepsByKey : Lean.NameMap (Array Name) := {}
+  for (decl, cinfo) in projectDecls do
+    let targetKeys := graphKeysOf decl
+    if targetKeys.isEmpty then continue
+    let (typeDeps, valueDeps) := Informal.Graph.projectConstDeps projectDeclSet decl cinfo
+    let mapKeys := fun (deps : Array Name) =>
+      deps.foldl (init := (#[] : Array Name)) fun acc dep => pushUniq acc (graphKeysOf dep)
+    let stmtKeys := mapKeys typeDeps
+    let proofKeys := (mapKeys valueDeps).filter (fun k => !stmtKeys.contains k)
+    for tk in targetKeys do
+      let sKeys := stmtKeys.filter (· != tk)
+      let pKeys := proofKeys.filter (· != tk)
+      if !sKeys.isEmpty then
+        stmtDepsByKey := stmtDepsByKey.insert tk (pushUniq (stmtDepsByKey.getD tk #[]) sKeys)
+      if !pKeys.isEmpty then
+        proofDepsByKey := proofDepsByKey.insert tk (pushUniq (proofDepsByKey.getD tk #[]) pKeys)
+  -- Merge const deps into authored nodes; build supporting nodes for the rest.
+  let autoRefs := fun (keys : Array Name) =>
+    keys.map (fun k => ({ label := (k : Data.Label), origin := .automatic } : Data.UseRef))
+  let baseLabels : NameSet := base.nodes.foldl (init := ({} : NameSet)) fun acc n => acc.insert n.label
+  let mergedNodes := base.nodes.map fun node =>
+    { node with
+      statementUses :=
+        Data.UseRef.mergeByLabel node.statementUses (autoRefs (stmtDepsByKey.getD node.label #[]))
+      proofUses :=
+        Data.UseRef.mergeByLabel node.proofUses (autoRefs (proofDepsByKey.getD node.label #[])) }
+  let mut supportingNodes : Array Informal.Graph.NodeData := #[]
+  for (decl, cinfo) in projectDecls do
+    if isAuthored decl then continue
+    if baseLabels.contains decl then continue
+    let kind := (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).getD Data.NodeKind.definition
+    supportingNodes := supportingNodes.push <|
+      Informal.Graph.mkSupportingNodeData kind decl
+        (autoRefs (stmtDepsByKey.getD decl #[])) (autoRefs (proofDepsByKey.getD decl #[]))
+  let augmented : Informal.Graph.GraphData := { base with nodes := mergedNodes ++ supportingNodes }
+  return { augmented with edges := Informal.Graph.edgesForGraph augmented.toGraph }
 
 open Verso.ArgParse
 
@@ -616,9 +737,13 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   let semanticGraphData ← buildAll
+  let renderGraphData ← buildProjectDeclGraph semanticGraphData
+  let renderGraphData? : Option Informal.Graph.GraphData :=
+    if renderGraphData.nodes.size > semanticGraphData.nodes.size then some renderGraphData else none
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
-    logInfo m!"Adding {semanticGraphData.nodes.size} graph nodes"
-  let graphData : GraphBlockData := { semanticGraphData, options, previewMode, previewPlacement }
+    logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
+  let graphData : GraphBlockData :=
+    { semanticGraphData, renderGraphData?, options, previewMode, previewPlacement }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

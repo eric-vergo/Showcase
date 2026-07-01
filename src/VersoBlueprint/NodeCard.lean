@@ -30,16 +30,19 @@ open Verso.Output.Html
 Proof-row content for a node card.
 
 The strict 2×2 grid pairs the informal proof prose (left) with the formal Lean
-tactic body (right). In Wave 1 the formal proof cell is emitted empty: the
-typical tactic body is the tail of the *statement* facet's single highlighted
-code block, which a later wave relocates into this cell at runtime. `formalProof`
-covers the rare case a proof facet carries its own Lean; when non-empty it is
-placed after the informal proof prose (see `render`).
+proof body (right). For external `(lean := …)` declarations the formal proof cell
+is filled server-side with the captured proof source (`formalProof`). For
+inline-authored theorems `formalProof` is empty and the runtime relocates the
+tail of the *statement* facet's single highlighted code block into the cell
+instead (`Commands/proof-toggle.mjs`).
 -/
 structure ProofParts where
   /-- Rendered informal proof prose (the proof facet's `bp_content` body). -/
   informalProof : Html
-  /-- Formal Lean carried by the proof facet itself; usually `.empty`. -/
+  /-- Formal Lean proof body for the right proof cell: the captured proof/value
+  source of the statement's associated `(lean := …)` declaration. `.empty` for
+  inline-authored theorems (the runtime relocates the statement's tactic tail
+  here instead) and for nodes with no associated Lean. -/
   formalProof : Html := .empty
   /-- Proof-side uses panel for the proof facet, or `.empty`. -/
   proofUses : Html := .empty
@@ -95,13 +98,16 @@ private def renderStatementGrid (parts : Parts) : Html :=
 
 /--
 The proof toggle button plus the animatable proof region, for a card that has a
-proof facet. The formal proof cell is emitted empty; a later wave's runtime
+proof facet. The informal proof prose (plus its uses panel) fills the left cell;
+the formal Lean proof body (`proof.formalProof`, the captured proof source for
+external `(lean := …)` decls) fills the right cell. When `formalProof` is empty
+(inline-authored theorems), the right cell is emitted empty and the runtime
 relocates the statement block's tactic tail into it.
 -/
 private def renderProofRegion (cardId : String) (proof : ProofParts) : Html :=
   let proofId := s!"{cardId}-proof"
   let informalProof :=
-    Html.seq #[proof.informalProof, proof.formalProof, proof.proofUses]
+    Html.seq #[proof.informalProof, proof.proofUses]
   {{
     <button type="button" class="bp_card2_proof_toggle"
         "aria-expanded"="false" aria-controls={{proofId}}>
@@ -110,7 +116,7 @@ private def renderProofRegion (cardId : String) (proof : ProofParts) : Html :=
     <div class="bp_card2_proof_anim" id={{proofId}}>
       <div class="bp_card2_grid bp_card2_proof_grid">
         <div class="bp_card2_cell bp_card2_informal_proof"> {{informalProof}} </div>
-        <div class="bp_card2_cell bp_card2_formal_proof"></div>
+        <div class="bp_card2_cell bp_card2_formal_proof"> {{proof.formalProof}} </div>
       </div>
     </div>
   }}

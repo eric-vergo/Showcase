@@ -428,6 +428,14 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
+  /--
+  Snapshot of the declaration's proof/value source text — everything after the
+  top-level `:=` in the source declaration (the tactic block for `:= by …`, or the
+  term for `:= term`). Captured at registration time from the declaration's source
+  file + range so the node card can render the proof body server-side. `none` when
+  the source or range is unavailable, or the declaration has no `:=` body.
+  -/
+  proofSource? : Option String := none
 deriving Repr, Inhabited, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=
