@@ -436,6 +436,14 @@ structure ExternalRef where
   the source or range is unavailable, or the declaration has no `:=` body.
   -/
   proofSource? : Option String := none
+  /--
+  Syntactically-highlighted HTML for `proofSource?` (self-contained token spans,
+  themed by the shared `--verso-code-*` code-token CSS), captured at registration
+  time via SubVerso's highlighter run with no info trees. `none` when there is no
+  proof source or highlighting failed; the node card then falls back to escaping
+  `proofSource?` as plain text. See `Informal.highlightProofSourceHtml?`.
+  -/
+  proofHtml? : Option String := none
 deriving Repr, Inhabited, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=

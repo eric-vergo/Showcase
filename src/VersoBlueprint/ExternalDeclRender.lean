@@ -157,6 +157,20 @@ private def highlightedToHtml (h : SubVerso.Highlighting.Highlighted) :
     ExternalDeclHighlightRender ExternalDeclHtml :=
   runHighlightedHtml (h.toHtml (g := Verso.Genre.Manual))
 
+/--
+Render a standalone `SubVerso.Highlighting.Highlighted` value to a self-contained
+HTML string via the isolated highlighted-code renderer.
+
+Reuses the same `runHighlightedHtml`/`renderWithHoverPayloads` machinery as the
+signature path. Syntactic highlights (produced with no info trees) carry no
+hovers, so the payload-inlining `selfContained` pass yields a plain,
+page-independent token-span fragment suitable for direct injection into a code
+block (no page hover-table rewriting needed). The result is the inner token
+markup only — callers wrap it in their own `<pre><code class="hl lean …">`.
+-/
+def renderHighlightedSelfContainedHtml (hl : SubVerso.Highlighting.Highlighted) : String :=
+  (renderWithHoverPayloads (highlightedToHtml hl)).selfContained
+
 private def renderExternalDeclSignatureVariant
     (keywordText : String) (signature : SubVerso.Highlighting.Highlighted) :
     ExternalDeclHighlightRender ExternalDeclHtml :=

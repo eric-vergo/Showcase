@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import SubVerso.Highlighting
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
 import VersoBlueprint.ExternalDeclRender
@@ -306,6 +307,37 @@ private def captureProofSource?
       return none
   | _, _ => return none
 
+open SubVerso.Highlighting in
+/--
+Syntactically highlight a captured proof/value source string, returning a
+self-contained highlighted-code HTML fragment (token spans themed by the shared
+`--verso-code-*` CSS in both light and dark).
+
+Full semantic highlighting (const/type coloring, hovers) needs the proof's
+elaboration info trees, which are not persisted in `.olean`s and so are
+unavailable at generation time for imported declarations. This instead parses the
+captured source as a Lean `term` and runs SubVerso's highlighter with *no* info
+trees, over a file map built from the source text alone, yielding purely
+*syntactic* classification (keywords, literals, comments, punctuation) — a large
+legibility gain over flat monospace text.
+
+Degrades to `none` (the caller falls back to escaping the raw source) on any parse
+or highlight failure, so snapshotting never fails on an odd proof body.
+-/
+def highlightProofSourceHtml? (proofSrc : String) : Lean.CoreM (Option String) := do
+  let env ← getEnv
+  match Lean.Parser.runParserCategory env `term proofSrc "<proof>" with
+  | .error _ => return none
+  | .ok stx =>
+    try
+      let hl ←
+        withTheReader Lean.Core.Context
+            (fun ctx => { ctx with fileMap := Lean.FileMap.ofString proofSrc }) <|
+          (highlight stx #[] PersistentArray.empty).run'.run'
+      return some (renderHighlightedSelfContainedHtml hl)
+    catch _ =>
+      return none
+
 /--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
@@ -360,6 +392,10 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       | .ok html => .ok html
       | .error err => .error err
     let proofSource? ← liftM <| captureProofSource? sourcePath? (ranges?.map (fun r => r.range))
+    let proofHtml? ←
+      match proofSource? with
+      | some src => highlightProofSourceHtml? src
+      | none => pure none
     pure {
       ref with
       provenance
@@ -368,6 +404,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       sourceHref?
       render
       proofSource?
+      proofHtml?
     }
 
 def workspaceRoot : Lean.CoreM System.FilePath := do

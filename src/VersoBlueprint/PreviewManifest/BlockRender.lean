@@ -291,8 +291,15 @@ private def formalProofFromEntry (entry : Entry) : Html :=
   | some (.external refs) =>
     let bodies : Array Html := refs.filterMap fun ref =>
       if ref.present then
-        ref.proofSource?.map fun src =>
-          {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{.text true src}}</code></pre> }}
+        -- Prefer the syntactically-highlighted token markup (consistent with the
+        -- signature cell above); fall back to escaped raw source when highlighting
+        -- was unavailable (`Informal.highlightProofSourceHtml?` returned `none`).
+        match ref.proofHtml? with
+        | some html =>
+          some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{htmlFragment html}}</code></pre> }}
+        | none =>
+          ref.proofSource?.map fun src =>
+            {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{.text true src}}</code></pre> }}
       else
         none
     if bodies.isEmpty then .empty else .seq bodies

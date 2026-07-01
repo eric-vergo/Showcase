@@ -417,8 +417,16 @@ def groupEdgeMixedText : String := "Thicker solid: statement + proof deps"
 /-- Edge color/style tokens keyed by dependency intent and origin. -/
 def edgeAuxiliaryColor : String := "#94a3b8"
 def edgeTechnicalColor : String := "#94a3b8"
-/-- Distinct hue for automatically-inferred (non-manual) dependency edges. -/
-def edgeAutomaticColor : String := "#6a4fba"
+/-- Distinct hue for automatically-inferred (non-manual) dependency edges.
+
+In the all-declarations graph these inferred const-dependency edges vastly
+outnumber the authored ones, so they use a lighter violet (and a thinner stroke,
+via `edgeStyleAttrs`) to recede into a supporting layer without disappearing. -/
+def edgeAutomaticColor : String := "#9a86d1"
+/-- Thin stroke for the de-emphasized automatically-inferred edges (see
+`edgeAutomaticColor`); overrides the base statement/proof penwidth so the inferred
+const-dep mesh stays legible but never dominates the authored spine. -/
+def edgeAutomaticPenwidth : String := "0.6"
 /-- STY-GRAPH-14 (#32d): darker slate-grey for the dense proof-only (dotted,
     regular-intent) edges so they keep contrast at fit-zoom without matching the
     heavier dashed statement edges. Slightly darker than the default `#6b7280`. -/
@@ -530,7 +538,7 @@ def graphLegendGroups (includeMathlib : Bool := false) (includeSupporting : Bool
         edgeLegendItem edgeTechnicalText
           { color := edgeTechnicalColor, borderStyle := "dotted", borderWidth := "1.8" },
         edgeLegendItem edgeAutomaticText
-          { color := edgeAutomaticColor, borderStyle := "solid", borderWidth := "1.8" }
+          { color := edgeAutomaticColor, borderStyle := "solid", borderWidth := "1" }
       ]
     }
   ]
@@ -1224,7 +1232,11 @@ def edgeStyleAttrs (origin : Data.UseOrigin) (intent : Data.UseIntent) : Array S
     | .technical => #["style=dotted", s!"color=\"{edgeTechnicalColor}\""]
   match origin with
   | .manual => attrs
-  | .automatic => attrs.push s!"color=\"{edgeAutomaticColor}\""
+  | .automatic =>
+    -- De-emphasize inferred edges: recolor to the lighter violet and override the
+    -- base penwidth with a thinner stroke (these attrs are appended last, so the
+    -- later DOT value wins over any dashed/dotted base penwidth).
+    (attrs.push s!"color=\"{edgeAutomaticColor}\"").push s!"penwidth={edgeAutomaticPenwidth}"
 
 /-- Build a DOT edge line, layering intent/origin styling after the base attrs. -/
 def edgeLineWithStyle (src tgt : Name) (baseAttrs : Array String)
@@ -1309,6 +1321,15 @@ def Graph.toDot (g : Graph Ref) (header : String)
             match node.cssClass? with
             | some cls => base.push s!"class=\"{escapeDotString cls}\""
             | none => base
+          -- STY-GRAPH: shrink the muted "supporting" nodes (present only in the
+          -- all-declarations graph) so the authored nodes read as the primary
+          -- layer and the wide supporting ranks take far less horizontal room —
+          -- the main lever against the flat, very-wide fit-zoom band. Sizes are
+          -- minimums (`fixedsize` defaults false), so long labels still expand.
+          let base :=
+            if (node.cssClass?.getD "" |>.splitOn " ").contains "bp-node-supporting" then
+              base ++ #["fontsize=7", "width=0.3", "height=0.2", "margin=\"0.03,0.02\""]
+            else base
           match node.ref?, refAttrs? with
           | some ref, some mkAttrs =>
             match mkAttrs ref with
@@ -1429,13 +1450,28 @@ def Graph.toDot (g : Graph Ref) (header : String)
   lines.foldl (init := "") fun acc line =>
     if acc.isEmpty then line else acc ++ "\n" ++ line
 
+/-- Node count at or above which a graph is treated as "dense" and gets the
+breathe-out layout (see `graphDotHeader`). The all-declarations Full/Essential
+graphs (~100+ nodes) cross this; per-node, group, and parent sub-graphs stay well
+below it, so their DOT is unchanged. -/
+def graphDenseNodeThreshold : Nat := 48
+
 /-- Common DOT header for rendered Blueprint graphs.
 
 `pack=true` keeps disconnected graph components compact before d3-graphviz fits
-the SVG into the canvas. Without it, sparse multi-component graphs can be
-placed far from the top of the viewport after variant or direction switches.
--/
-def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {}) : String :=
+the SVG into the canvas.
+
+When `dense := true` (large all-declarations graphs), the layout is loosened to
+fight the flat, very-wide fit-zoom band: horizontal `nodesep` is tightened while
+`concentrate=true` merges shared edge trunks (both cut the width) and `ranksep`
+is opened up for vertical breathing. Together with the shrunken supporting nodes
+(`Graph.toDot`) and de-emphasized inferred edges this roughly halves the width and
+the aspect ratio. Small graphs keep the original spacing byte-for-byte. -/
+def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {})
+    (dense : Bool := false) : String :=
+  let nodesep := if dense then "0.18" else "0.35"
+  let ranksep := if dense then "0.8" else "0.45"
+  let denseAttrs := if dense then "    concentrate=true;\n" else ""
   "strict digraph \"\" {\n" ++
   s!"    rankdir={options.direction.rankdir};\n" ++
   -- STY-GRAPH-01 (#32a): emit a transparent SVG background so the canvas
@@ -1446,8 +1482,9 @@ def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {}) 
   "    bgcolor=\"transparent\";\n" ++
   (if style.includePack then s!"    pack={graphPackAttr options.pack};\n" else "") ++
   "    splines=true;\n" ++
-  "    nodesep=0.35;\n" ++
-  "    ranksep=0.45;\n" ++
+  s!"    nodesep={nodesep};\n" ++
+  s!"    ranksep={ranksep};\n" ++
+  denseAttrs ++
   s!"    node [shape=box, style=\"rounded,filled\", fontname=\"Helvetica\", fontsize={style.nodeFontSize}, margin=\"{style.nodeMargin}\", color=\"#6b7280\", penwidth={style.nodePenwidth}];\n" ++
   s!"    edge [color=\"#6b7280\", arrowhead=vee, arrowsize={style.edgeArrowsize}, penwidth={style.edgePenwidth}];\n" ++
   "    graph [fontname=\"Helvetica\"];\n" ++
@@ -1463,7 +1500,7 @@ type or compact DOT styling.
 def graphToDotWith (g : Graph Ref) (options : GraphOptions := {}) (style : GraphDotStyle := {})
     (resolveGroupTitle : Name → Option String := fun _ => none)
     (refAttrs? : Option (Ref → Option String) := none) : String :=
-  Graph.toDot g (graphDotHeader options style)
+  Graph.toDot g (graphDotHeader options style (dense := g.size ≥ graphDenseNodeThreshold))
     (groupLabel? := some resolveGroupTitle)
     (refAttrs? := refAttrs?)
 
