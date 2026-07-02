@@ -592,7 +592,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links
       let locatorHtml? := (locatorText cfg.kind cfg.index).map (fun loc => {{<span>{{.text true loc}}</span>}})
-      let htmlNote? : Option Html ←
+      let htmlNote? : Option Output.Html ←
         if content.isEmpty then
           pure Option.none
         else
