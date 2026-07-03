@@ -1,0 +1,41 @@
+/* Dashboard trust strip (fed by formalization.yaml + a comparator-status
+   artifact). The strip only ever renders alongside the dashboard block, whose
+   asset bundle ships summary.css, so the shared .bp_summary_badge* classes are
+   always available. Token-driven; no raw colors. */
+
+.bp_trust_strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2) var(--bp-space-3);
+  margin: 0 0 var(--bp-space-4);
+  padding: var(--bp-space-2) var(--bp-space-3);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-subtle);
+}
+
+.bp_trust_strip_label {
+  font-size: var(--bp-fs-badge);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_strip .bp_summary_badge_row {
+  margin-top: 0;
+}
+
+.bp_trust_strip_link {
+  margin-left: auto;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-link);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bp_trust_strip_link:hover,
+.bp_trust_strip_link:focus-visible {
+  text-decoration: underline;
+}

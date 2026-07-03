@@ -11,6 +11,7 @@ import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.Summary.Collect
 import VersoBlueprint.Commands.Summary.Render
+import VersoBlueprint.Commands.TrustStrip
 
 namespace Informal.Commands
 
@@ -54,6 +55,10 @@ public meta def blueprintDashboardCmd : PartCommand
     let summary ← buildSummary
     if verso.blueprint.debug.commands.get (← Lean.getOptions) then
       logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
+    -- Trust strip (additive): only when the `verso.blueprint.trust.*` options
+    -- name artifacts; unconfigured consumers render the dashboard unchanged.
+    if let some trust ← elabTrustData? then
+      PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.trustStrip $(quote trust)) #[]))
     PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.dashboard $(quote summary)) #[]))
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
