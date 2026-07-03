@@ -264,11 +264,12 @@ class PrepareReferenceBlueprintPagesTests(unittest.TestCase):
     def test_readme_uses_release_namespaced_reference_links(self) -> None:
         readme = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        deployable_releases = {target.release_id for target in catalog.release_targets if target.deploy_pages}
 
         for project in catalog.projects:
             self.assertNotIn(f"reference-blueprints/{project.project_id}/", readme)
             for target in project.targets:
-                if target.publish_reference:
+                if target.publish_reference and target.release in deployable_releases:
                     self.assertIn(f"reference-blueprints/{target.release}/{project.project_id}/", readme)
 
     def test_project_template_readme_does_not_link_unpublished_render(self) -> None:

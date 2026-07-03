@@ -5,8 +5,8 @@ open Lake DSL
 -- the parent repo root, which remains a checkout of Verso.
 -- require verso from "../verso"
 require verso from git "https://github.com/leanprover/verso"@"v4.32.0-rc1"
--- Temporary pin to leanprover/verso-slides#59 for Config.extraHead.
-require «verso-slides» from git "https://github.com/ejgallego/verso-slides.git"@"e6a5d54228eb21fd86b041ab786d2d03bfb46685"
+-- Pin past v4.32.0-rc1 until the next verso-slides tag includes Config.extraHead.
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"723f6e75bd54b7bb0572faa181823df85b59da29"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 
 package VersoBlueprint where

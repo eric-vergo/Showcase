@@ -340,13 +340,13 @@ you want to enable it.
 ## Reference Blueprints
 
 The repository also tracks a release-versioned reference catalog. On the
-current `v4.31.0` line, the in-repo starter template, Noperthedron, and FLT are
-active reference targets. Other external blueprints keep their last published
-release links until their upstream repositories have been updated and validated
-for the new Lean release.
+current `v4.32.0` line, the in-repo starter template is the active reference
+target. External blueprints keep their last published release links until their
+upstream repositories have been updated and validated for the new Lean release.
 
 - [project_template/](./project_template/), the in-repo starter template,
-  [rendered site](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
+  and [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
   [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/noperthedron/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),

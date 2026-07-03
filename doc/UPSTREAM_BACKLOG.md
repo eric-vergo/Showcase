@@ -93,11 +93,10 @@ pull requests unless that upstream write action is explicitly requested.
     `blueprint-slides.js` bundle. The slide runtime tag is supplied through
     Slides `extraHead`.
   - release-line note:
-    the current `v4.31.0` tag does not yet include Slides `extraHead`, so
-    Blueprint temporarily pins `ejgallego/verso-slides` to upstream PR 59 plus a
-    one-commit toolchain revert to Lean 4.31. Once a supported
-    `verso-slides` release line contains `extraHead`, replace the temporary
-    fork pin with the normal upstream release pin.
+    the current `v4.32.0-rc1` tag does not yet include Slides `extraHead`, so
+    Blueprint pins `leanprover/verso-slides` to the upstream post-rc1 commit
+    that merged PR 59. Once a supported `verso-slides` release line contains
+    `extraHead`, replace the commit pin with the normal upstream release pin.
 
 - [ ] Expose Verso Slides hooks for quiet rendering and initial hover state.
   - current Blueprint workaround:

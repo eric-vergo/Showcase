@@ -17,7 +17,8 @@
           "publish_reference": true
         },
         {
-          "release": "v4.32.0"
+          "release": "v4.32.0",
+          "publish_reference": true
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],
