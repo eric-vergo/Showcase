@@ -36,6 +36,9 @@ import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
+import VersoBlueprint.Commands.Formalization
+import VersoBlueprint.Commands.TrustStrip
+import VersoBlueprint.FormalizationYaml
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Config
 import VersoBlueprint.Informal.Code
