@@ -456,6 +456,34 @@ def saveId (state : TraverseState) (label : String) (id : Verso.Multi.InternalId
 
 end Bibliography
 
+namespace FormalizationPage
+
+/--
+Singleton key under which the formalization-metadata page anchor is indexed.
+`Block.formalization`'s traversal saves the block's anchor id here so other
+surfaces (the dashboard trust strip) can cross-link the page without guessing
+its slug.
+-/
+def pageKey : String := "formalization"
+
+def spec : StoreSpec := {
+  name := Resolve.formalizationDomainName
+  kind := .semanticDomain
+  key := "singleton formalization key"
+  value := "formalization-metadata page anchor id"
+  summary := "Anchor index for the standalone formalization-metadata page (trust-strip cross-link)."
+}
+
+def domainName : Name := spec.name
+
+def href? (state : TraverseState) : Option String :=
+  Resolve.resolveDomainHref? state domainName pageKey
+
+def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName pageKey id
+
+end FormalizationPage
+
 namespace CitationUsages
 
 def spec : StoreSpec := {
@@ -538,6 +566,7 @@ def allSpecs : Array StoreSpec := #[
   ExternalDeclAnchors.spec,
   CitationPreviews.spec,
   Bibliography.spec,
+  FormalizationPage.spec,
   CitationUsages.spec,
   Summary.spec
 ]
