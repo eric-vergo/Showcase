@@ -1,0 +1,107 @@
+/* Formalization-metadata page (blueprint_formalization). Reuses the summary
+   badge classes for status chips (summary.css ships in this block's asset
+   bundle). Token-driven; no raw colors, so light/dark parity is inherited. */
+
+.bp_formalization_lead {
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-small);
+}
+
+.bp_formalization_section {
+  margin: var(--bp-space-5) 0;
+}
+
+.bp_formalization_section > h2 {
+  margin-bottom: var(--bp-space-3);
+}
+
+.bp_formalization_subtitle {
+  margin: var(--bp-space-4) 0 var(--bp-space-2);
+}
+
+.bp_formalization_fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-1);
+}
+
+.bp_formalization_field {
+  display: flex;
+  gap: var(--bp-space-2);
+  font-size: var(--bp-fs-small);
+}
+
+.bp_formalization_field_label {
+  flex: 0 0 10rem;
+  font-weight: 600;
+  color: var(--bp-color-text-muted);
+}
+
+.bp_formalization_field_value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bp_formalization_prose {
+  font-size: var(--bp-fs-small);
+  white-space: pre-line;
+}
+
+.bp_formalization_list {
+  margin: var(--bp-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-3);
+}
+
+.bp_formalization_item {
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-subtle);
+  padding: var(--bp-space-3);
+}
+
+.bp_formalization_item_title {
+  font-weight: 600;
+  margin-bottom: var(--bp-space-2);
+}
+
+.bp_formalization_badges {
+  margin-top: var(--bp-space-2);
+}
+
+.bp_formalization_table_wrap {
+  overflow-x: auto;
+  margin-top: var(--bp-space-3);
+}
+
+.bp_formalization_table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--bp-fs-small);
+}
+
+.bp_formalization_table th {
+  text-align: left;
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bp-color-text-faint);
+  border-bottom: 1px solid var(--bp-color-border);
+  padding: 0.3rem 0.6rem 0.3rem 0;
+}
+
+.bp_formalization_table td {
+  vertical-align: top;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  padding: 0.45rem 0.6rem 0.45rem 0;
+}
+
+.bp_formalization_note {
+  margin-top: var(--bp-space-1);
+  color: var(--bp-color-text-faint);
+  font-size: var(--bp-fs-caption);
+}
