@@ -590,6 +590,33 @@ def namePrefix? (state : TraverseState) : Option String := do
 
 end DeclRegistry
 
+namespace TrustData
+
+def spec : StoreSpec := {
+  name := `VersoBlueprint.TraversalIndex.TrustData
+  kind := .runtimeCache
+  key := "singleton trust key"
+  value := "raw trust-strip JSON payload (sorry count, axioms, review status, comparator verdict)"
+  summary := "Carries the elaboration-time trust-strip data (`Commands.TrustData`, saved by `Block.trustStrip`'s traverse) to the generation-time `TrustPages` ExtraStep, which emits the per-badge evidence pages. Absent when no `verso.blueprint.trust.*` option is configured."
+}
+
+def domainName : Name := spec.name
+
+/-- Singleton key under which the document's trust-strip payload is cached. -/
+def trustKey : String := "trust"
+
+/-- Stash the trust-strip JSON payload (already `toJson`ed by the block). -/
+def saveData (state : TraverseState) (data : Json) : TraverseState :=
+  saveObjectData state domainName trustKey data
+
+/-- Read back the cached trust-strip JSON, if a `blueprint_dashboard`/trust-strip
+block saved one during traversal. -/
+def raw? (state : TraverseState) : Option Json := do
+  let obj ← state.getDomainObject? domainName trustKey
+  some obj.data
+
+end TrustData
+
 /--
 Code-side inventory of the traversal indexes owned by Blueprint.
 
@@ -612,7 +639,8 @@ def allSpecs : Array StoreSpec := #[
   FormalizationPage.spec,
   CitationUsages.spec,
   Summary.spec,
-  DeclRegistry.spec
+  DeclRegistry.spec,
+  TrustData.spec
 ]
 
 end Informal.TraversalIndex

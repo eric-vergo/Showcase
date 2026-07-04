@@ -20,7 +20,11 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
     -- The heading L∃∀N status chips (and the code-summary hover preview they
     -- hosted) are gone (clean-card 1D). Each statement now carries a status dot
     -- keyed by `data-status`: proved / containsSorry / axiomLike statuses from
-    -- the inline code, and `informal` for the no-Lean statement.
+    -- the inline code, and `informal` for the no-Lean statement. The `data-status`
+    -- tag stays "proved" for a completed statement, but the accessible wording is
+    -- kind-aware: these fixture nodes are all definitions, so the completed one
+    -- reads "Lean status: formalized" (a definition has no proof to prove) rather
+    -- than "proved" — see `CodeSummary.statusDotHtmlOfTag`.
     pure (
       !hasSubstr out "bp_code_link_status_proved" &&
       !hasSubstr out "bp_code_link_status_warning" &&
@@ -34,7 +38,7 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
       hasSubstr out "data-status=\"axiomLike\"" &&
       hasSubstr out "data-status=\"informal\"" &&
       hasSubstr out "role=\"img\"" &&
-      hasSubstr out "aria-label=\"Lean status: proved\"" &&
+      hasSubstr out "aria-label=\"Lean status: formalized\"" &&
       removedTemplateBinderJs?.isNone
     )
 

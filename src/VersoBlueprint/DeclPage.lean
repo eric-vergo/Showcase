@@ -64,13 +64,16 @@ private def displayShort (e : Entry) : String :=
   if e.shortName.isEmpty then e.name else e.shortName
 
 /-- Hover/tooltip text for a registry status tag (mirrors the status-dot aria
-vocabulary; the tag itself drives the dot color via CSS). -/
-private def statusTitle : String → String
-  | "proved" => "Proved"
-  | "containsSorry" => "Contains sorry"
-  | "axiomLike" => "Axiom-like"
-  | "missing" => "Missing declaration"
-  | other => other
+vocabulary; the tag itself drives the dot color via CSS). Complete definitions
+read "Formalized"; complete theorem-likes read "Proved". -/
+private def statusTitle (kind status : String) : String :=
+  if kind == "Definition" && status == "proved" then "Formalized"
+  else match status with
+    | "proved" => "Proved"
+    | "containsSorry" => "Contains sorry"
+    | "axiomLike" => "Axiom-like"
+    | "missing" => "Missing declaration"
+    | other => other
 
 /-- Registry kind string → blueprint node kind (defaults to `theorem`). -/
 private def nodeKindOf (kind : String) : Informal.Data.NodeKind :=
@@ -93,7 +96,8 @@ private def cardHeader (e : Entry) : Html :=
       <div class="bp_heading_title_row bp_heading_title_row_statement">
         <span class="bp_caption" title={{e.name}}>{{.text true e.kind}}</span>
         <span class="bp_label">{{.text true short}}</span>
-        {{Informal.CodeSummary.statusDotHtmlOfTag e.status (statusTitle e.status)}}
+        {{Informal.CodeSummary.statusDotHtmlOfTag e.status (statusTitle e.kind e.status)
+            (kind? := some (nodeKindOf e.kind))}}
       </div>
       {{fqSubtitle}}
     </div>

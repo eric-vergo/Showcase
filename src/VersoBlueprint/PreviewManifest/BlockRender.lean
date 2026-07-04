@@ -89,7 +89,7 @@ from their code source (`informal` when there is none); proof entries carry no
 dot. -/
 private def statusDotOfEntry (entry : Entry) : Html :=
   match entry.blockKind with
-  | .statement _ => Informal.CodeSummary.statusDotHtml entry.codeData
+  | .statement kind => Informal.CodeSummary.statusDotHtml entry.codeData (kind? := some kind)
   | .proof => .empty
 
 private def renderCodePanel

@@ -450,26 +450,6 @@ producer for that store, so post-elaboration consumers (e.g. PM-page emission)
 can read it back via `cachedSummary?`.
 -/
 
-/-- Server-rendered fallback for the status donut: the coverage-split buckets. -/
-private def dashboardStatusFallback (data : Summary) : Output.Html :=
-  let cs := data.coverageSplit
-  let row (label : String) (value : Nat) : Output.Html :=
-    if value == 0 then .empty
-    else {{
-      <li>
-        <span class="bp_dashboard_stat_label">{{.text true label}}</span>
-        <span class="bp_dashboard_stat_value">{{.text true (toString value)}}</span>
-      </li>
-    }}
-  let rows : Array Output.Html := #[
-    row "Fully closed" cs.fullyClosed,
-    row "Formalized, ancestors open" cs.formalizedWithoutAncestors,
-    row "Ready to formalize" cs.readyToFormalize,
-    row "Informal only" cs.informalOnly,
-    row "Blocked / incomplete" cs.blockedOrIncomplete
-  ]
-  {{ <ul class="bp_dashboard_statlist">{{rows}}</ul> }}
-
 /-- A labelled chart mount carrying its server-rendered fallback content. -/
 private def dashboardChartMount (chart title : String) (wide : Bool)
     (fallback : Output.Html) : Output.Html :=
@@ -767,7 +747,6 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
         {{hero}}
         {{readingMap}}
         <div class="bp_dashboard_charts">
-          {{dashboardChartMount "status" "Coverage by status" false (dashboardStatusFallback data)}}
           {{dashboardChartMount "chapters" "Per-chapter progress" true chaptersFallback}}
           {{ownerMount}}
           {{tagMount}}

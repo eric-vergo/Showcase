@@ -185,6 +185,10 @@ structure BlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  /-- Canonical name of this node's primary `(lean := …)` declaration (the first
+  present ref, else the first). Drives decl-name display titles; `none` for
+  proofs and nodes with no associated Lean. -/
+  primaryDeclName : Option String := none
 deriving FromJson, ToJson, Quote
 
 /--
@@ -216,7 +220,22 @@ structure StoredBlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  /-- Canonical name of this node's primary `(lean := …)` declaration; persisted
+  so decl-name display titles resolve from stored data (see `displayIdentifier`). -/
+  primaryDeclName : Option String := none
 deriving FromJson, ToJson, Quote
+
+/-- Canonical name of the node's primary `(lean := …)` declaration: the first
+present external ref, else the first (mirrors the card selection rule in
+`Informal/Block.lean`). `none` for proofs and no-Lean nodes. -/
+def BlockData.primaryDeclName? (data : BlockData) : Option String :=
+  let externalDecls : Array Data.ExternalRef :=
+    (data.codeData.map BlockCodeData.externalDecls).getD #[]
+  let primary? : Option Data.ExternalRef :=
+    externalDecls.find? (fun ref : Data.ExternalRef => ref.present) <|> externalDecls[0]?
+  match primary? with
+  | some ref => some ref.canonical.toString
+  | none => none
 
 def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   kind := data.kind
@@ -238,6 +257,7 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  primaryDeclName := data.primaryDeclName <|> data.primaryDeclName?
 }
 
 def StoredBlockData.toBlockData (data : StoredBlockData)
@@ -262,6 +282,7 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  primaryDeclName := data.primaryDeclName
 }
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=

@@ -287,9 +287,17 @@ def statusCssClass : StatementStatus → String
   | .formalized => "bp-status-formalized"
   | .mathlib => "bp-status-mathlib"
 
+/-- Visible DOT node label: the node's display title ("Definition raceKernel",
+"Lemma exists_one_lt_tsum_primes_rpow_gt") when present, falling back to the raw
+blueprint label slug. Keeps the rendered graph node text in sync with the tooltips,
+`data-bp-node-title`, and the click-through modal card — all of which key off
+`NodeData.title` — instead of surfacing the internal `«def:chi»`-style slug. -/
+def NodeData.graphLabel (node : NodeData) : String :=
+  if node.title.trimAscii.toString.isEmpty then node.displayLabel else node.title
+
 def NodeData.toGraphNode (node : NodeData) : GraphNode String := {
   label := node.label
-  displayLabel? := some node.displayLabel
+  displayLabel? := some node.graphLabel
   deps := node.statementUses.map (fun useRef => (useRef.label : Name))
   proofDeps := node.proofUses.map (fun useRef => (useRef.label : Name))
   parent? := node.parent

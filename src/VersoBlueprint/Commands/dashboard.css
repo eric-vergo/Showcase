@@ -18,14 +18,11 @@ main section:has(.bp_dashboard) {
   gap: 1.25rem;
 }
 
+/* De-chromed dashboard (E): the hero, chart cards and reading map are plain
+   typographic sections separated by whitespace (the `.bp_dashboard` flex-column
+   gap), not boxed cards. */
 .bp_dashboard_hero {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-xl, 12px);
-  background: var(--bp-color-surface);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--bp-shadow-sm);
-  transition: background-color 0.14s ease, border-color 0.14s ease,
-    color 0.14s ease, box-shadow 0.14s ease;
+  padding: 0;
 }
 
 .bp_dashboard_hero_head {
@@ -57,30 +54,24 @@ main section:has(.bp_dashboard) {
   gap: 0.5rem 0.6rem;
 }
 
-.bp_dashboard_worklist_cta.bp_dashboard_cta_secondary {
-  color: var(--bp-color-accent, #2563eb);
-  background: var(--bp-color-surface, #ffffff);
-  border: 1px solid var(--bp-color-accent, #2563eb);
-}
-
+/* CTAs are quiet underlined text links, not pills (E). */
 .bp_dashboard_worklist_cta {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.45rem 0.95rem;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
-  color: var(--bp-color-on-accent, #ffffff);
-  background: var(--bp-color-accent, #2563eb);
-  border-radius: var(--bp-radius-pill, 999px);
-  box-shadow: var(--bp-shadow-sm);
-  transition: background-color 0.14s ease, color 0.14s ease,
-    box-shadow 0.14s ease, filter 0.14s ease;
+  color: var(--bp-color-link);
+  transition: color var(--bp-duration-fast, 0.12s) var(--bp-ease, ease);
+}
+
+.bp_dashboard_worklist_cta.bp_dashboard_cta_secondary {
+  color: var(--bp-color-link);
 }
 
 .bp_dashboard_worklist_cta:hover {
-  filter: brightness(1.07);
-  box-shadow: var(--bp-shadow-md);
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
 }
 
 /* Owners + tags share a clean two-equal-column row; the status and per-chapter
@@ -92,21 +83,10 @@ main section:has(.bp_dashboard) {
 }
 
 .bp_dashboard_chart {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-xl, 12px);
-  background: var(--bp-color-surface);
-  padding: 1rem 1.25rem;
-  box-shadow: var(--bp-shadow-sm);
-  transition: background-color 0.14s ease, border-color 0.14s ease,
-    color 0.14s ease, box-shadow 0.14s ease;
+  padding: 0;
 }
 
-.bp_dashboard_chart:hover {
-  border-color: var(--bp-color-border-strong);
-}
-
-.bp_dashboard_chart_wide,
-.bp_dashboard_chart[data-bp-chart="status"] {
+.bp_dashboard_chart_wide {
   grid-column: 1 / -1;
 }
 
@@ -142,25 +122,6 @@ main section:has(.bp_dashboard) {
   flex: 1 1 14rem;
 }
 
-/* Coverage-by-status spans the full column: pin the donut to a fixed size on the
-   left so it stays crisp and never stretches, and let the legend fill the space
-   to its right (no dead gap). They wrap to a stack only on narrow screens. */
-.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_chart_canvas {
-  align-items: center;
-  gap: 1.1rem 1.75rem;
-}
-
-.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_svg {
-  flex: 0 0 auto;
-  width: 16rem;
-  max-width: 16rem;
-}
-
-.bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_legend {
-  flex: 1 1 16rem;
-  font-size: var(--bp-fs-caption, 0.78rem);
-}
-
 .bp_dashboard_legend {
   list-style: none;
   margin: 0;
@@ -189,36 +150,6 @@ main section:has(.bp_dashboard) {
   border-radius: 0.2rem;
   border: 1px solid var(--bp-color-border-soft);
   flex: 0 0 auto;
-}
-
-.bp_dashboard_statlist {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.bp_dashboard_statlist li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  font-family: var(--font-mono-ui);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: var(--bp-fs-caption, 0.78rem);
-  color: var(--bp-color-text-subtle);
-  border-bottom: 1px dashed var(--bp-color-border-soft);
-  padding-bottom: 0.25rem;
-}
-
-.bp_dashboard_statlist .bp_dashboard_stat_value {
-  text-transform: none;
-  font-weight: 700;
-  font-size: var(--bp-fs-small);
-  color: var(--bp-color-text-strong);
 }
 
 .bp_dashboard_detail {
@@ -341,21 +272,13 @@ main section:has(.bp_dashboard) {
   .bp_dashboard_charts {
     grid-template-columns: 1fr;
   }
-
-  .bp_dashboard_chart[data-bp-chart="status"] .bp_dashboard_svg {
-    width: 13rem;
-    max-width: 13rem;
-  }
 }
 
 /* "Start here" reading map: foundations / critical-path spine / goals, computed
    from the graph metrics and shown above the charts as a guided reading path. */
 .bp_readingmap {
   margin: 0;
-  padding: 1rem 1.25rem;
-  background: var(--bp-color-surface-muted, #f8fafc);
-  border: 1px solid var(--bp-color-border, #cbd5e1);
-  border-radius: var(--bp-radius-xl, 12px);
+  padding: 0;
 }
 
 .bp_readingmap_title {

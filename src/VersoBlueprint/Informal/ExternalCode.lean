@@ -301,12 +301,18 @@ private def missingExternalDeclBody : Output.Html :=
 
 private def externalDeclRowDataWith [Monad m]
     (renderBody : LinkedExternalDecl → m Output.Html)
+    (includeStatusRows : Bool)
     (item : LinkedExternalDecl) : m ExternalDeclRowData := do
   let status := externalDeclStatusView item
+  -- On the two-column node card the decl-name + status "head" row and the footer
+  -- status pill are suppressed (`includeStatusRows := false`): the card reads bare
+  -- and the properties rail owns the decl identity + status. Hover previews and
+  -- other surfaces keep the rows (the default).
+  let head := if includeStatusRows then externalDeclHead item status else .empty
   if !item.decl.present then
     pure {
       liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
-      head := externalDeclHead item status
+      head
       body := missingExternalDeclBody
     }
   else
@@ -314,9 +320,9 @@ private def externalDeclRowDataWith [Monad m]
     if (externalRenderFailure? item.decl).isSome then
       pure {
         liAttrs := #[("class", "bp_external_decl_item")] ++ item.anchorAttrs
-        head := externalDeclHead item status
+        head
         body
-        footer := externalDeclRenderedMeta item status
+        footer := externalDeclRenderedMeta item status (includeStatus := includeStatusRows)
       }
     else
       pure {
@@ -345,9 +351,10 @@ status, anchors, and footer layout.
 -/
 private def renderExternalDeclRowsWith [Monad m]
     (renderBody : LinkedExternalDecl → m Output.Html)
-    (linkedDecls : Array LinkedExternalDecl) : m (Array Output.Html) :=
+    (linkedDecls : Array LinkedExternalDecl)
+    (includeStatusRows : Bool := true) : m (Array Output.Html) :=
   linkedDecls.mapM fun item => do
-    let rowData ← externalDeclRowDataWith renderBody item
+    let rowData ← externalDeclRowDataWith renderBody includeStatusRows item
     pure <| renderExternalDeclRow rowData
 
 private def renderExternalDeclRows (linkedDecls : Array LinkedExternalDecl) : Array Output.Html :=
@@ -414,13 +421,14 @@ def renderPartsWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
     (summaryTitle : String)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
     (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
-    (folded : Bool := false) :
+    (folded : Bool := false) (includeStatusRows : Bool := true) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m RenderParts := do
   if externalDecls.isEmpty then
     pure {}
   else
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let rows ← renderExternalDeclRowsWith externalDeclRenderedWithPageHovers linkedDecls
+      (includeStatusRows := includeStatusRows)
     let externalCodePanel : Output.Html :=
       mkCodePanel panelHeader summaryTitle
         (renderExternalDeclList rows)

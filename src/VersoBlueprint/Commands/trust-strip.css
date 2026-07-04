@@ -39,3 +39,47 @@
 .bp_trust_strip_link:focus-visible {
   text-decoration: underline;
 }
+
+/* Trust badges that link to their evidence page render as <a>. Keep them visually
+   identical at rest, add a quiet hover/focus affordance (token-driven, both
+   themes). */
+a.bp_summary_badge {
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease),
+    background-color var(--bp-duration-fast) var(--bp-ease);
+}
+
+a.bp_summary_badge:hover {
+  border-color: var(--bp-color-border-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+a.bp_summary_badge:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+}
+
+/* Trust-evidence pages (trust/sorries, /axioms, /review, /comparator). Reuse the
+   shared PM-page chrome; just space the titled sections and code lists. */
+.bp_trust_section {
+  margin-top: var(--bp-space-5);
+}
+
+.bp_trust_section_title {
+  margin: 0 0 var(--bp-space-2);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_trust_list {
+  margin: var(--bp-space-2) 0;
+  padding-left: var(--bp-space-5);
+}
+
+.bp_trust_list li {
+  margin: var(--bp-space-1) 0;
+}

@@ -896,6 +896,18 @@ def css : String := r##"
   line-height: 1.5;
 }
 
+/* Bare card (1F): inside the two-column node card, the per-declaration head row
+   (decl name + status pill) and any footer status pill are suppressed so the Lean
+   code reads bare — the properties rail owns decl identity + status. Scoped to
+   `.bp_card2` so hover previews and decl pages keep their rows. The inline chapter
+   card already renders these empty via a render flag (`includeStatusRows`); this
+   also covers the node-page / graph-modal / graft cards, whose formal cells come
+   from pre-rendered preview fragments the flag can't reach. */
+.bp_card2 .bp_external_decl_head,
+.bp_card2 .bp_external_decl_footer_status {
+  display: none;
+}
+
 .bp_external_decl_head_meta {
   color: #64748b;
   font-size: var(--bp-fs-caption, 0.78rem);

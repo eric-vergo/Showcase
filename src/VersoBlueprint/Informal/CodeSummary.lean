@@ -439,11 +439,17 @@ Shared markup for the block-header status dot, from a registry-aligned
 the registry's status tag, with no `BlockCodeData` available at generation
 time), so every surface emits identical dot markup.
 -/
-def statusDotHtmlOfTag (tag title : String) : Output.Html :=
+def statusDotHtmlOfTag (tag title : String) (kind? : Option Data.NodeKind := none) : Output.Html :=
   open Verso.Output.Html in
+  -- Complete definitions read "formalized" (they have no proof to prove); complete
+  -- theorem-likes read "proved". The `data-status` tag stays "proved" either way,
+  -- so no CSS/JS selector churns — only the accessible wording is kind-aware.
+  let formalized := match kind?, tag with
+    | some .definition, "proved" => true
+    | _, _ => false
   let ariaLabel :=
     match tag with
-    | "proved" => "Lean status: proved"
+    | "proved" => if formalized then "Lean status: formalized" else "Lean status: proved"
     | "containsSorry" => "Lean status: contains sorry"
     | "axiomLike" => "Lean status: axiom-like"
     | "missing" => "Lean status: missing declaration"
@@ -457,13 +463,16 @@ CSS off `data-status` (`.bp_status_dot` in `Informal/Block/Assets.lean`, existin
 `--bp-color-accent-*` tokens in both themes). `role="img"` plus `aria-label` and
 `title` carry the status text for assistive tech and hover.
 -/
-def statusDotHtml (source? : Option BlockCodeData) : Output.Html :=
+def statusDotHtml (source? : Option BlockCodeData) (kind? : Option Data.NodeKind := none) : Output.Html :=
   let tag := statusDotTag source?
   let title :=
-    match source? with
-    | some _ => (statusMarkFromCodeSource source?).title
-    | none => "No associated Lean declarations"
-  statusDotHtmlOfTag tag title
+    match kind?, tag with
+    | some .definition, "proved" => "Formalized"
+    | _, _ =>
+      match source? with
+      | some _ => (statusMarkFromCodeSource source?).title
+      | none => "No associated Lean declarations"
+  statusDotHtmlOfTag tag title kind?
 
 private def codeSummaryText (label : Data.Label)
     (definedDefs definedTheorems : Array CodeDeclData) : String :=

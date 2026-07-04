@@ -334,14 +334,16 @@ details.bp_mod_node[open] > .bp_mod_summary::before { transform: rotate(90deg); 
 private def kindShort (kind : String) : String :=
   if kind == "Definition" then "def" else "thm"
 
-/-- Compact status label for the trailing badge. -/
-private def statusLabel (status : String) : String :=
-  match status with
-  | "proved" => "Proved"
-  | "containsSorry" => "Sorry"
-  | "missing" => "Missing"
-  | "axiomLike" => "Axiom"
-  | other => other
+/-- Compact status label for the trailing badge. Complete definitions read
+"Formalized"; complete theorem-likes read "Proved". -/
+private def statusLabel (kind status : String) : String :=
+  if kind == "Definition" && status == "proved" then "Formalized"
+  else match status with
+    | "proved" => "Proved"
+    | "containsSorry" => "Sorry"
+    | "missing" => "Missing"
+    | "axiomLike" => "Axiom"
+    | other => other
 
 /-- Short display name for a registry row (falls back to the FQ name for
 registries predating the `shortName` field). -/
@@ -394,7 +396,7 @@ private def declRow (showSig : Bool) (e : Entry) : Html :=
       {{nameNode}}
       {{sigNode}}
       <span class="bp_decl_row_module">{{.text true e.moduleName}}</span>
-      <span class="bp_decl_row_status" "data-status"={{e.status}}>{{.text true (statusLabel e.status)}}</span>
+      <span class="bp_decl_row_status" "data-status"={{e.status}}>{{.text true (statusLabel e.kind e.status)}}</span>
       {{openLink}}
     </li>
   }}

@@ -110,7 +110,7 @@ block_extension Block.informal (data : BlockData) where
                 source := some (.external externalDecls)
               }
               let externalSummaryTitle := CodeSummary.panelSummaryTitle data.label externalCdata
-              let panelHeader := codePanelHeader data (data.displayNumber s)
+              let panelHeader := codePanelHeader data (data.displayIdentifier s)
               some <$> ExternalCode.renderPartsWithPageHovers
                 panelHeader
                 externalSummaryTitle
@@ -118,6 +118,9 @@ block_extension Block.informal (data : BlockData) where
                 getDeclHref
                 getDeclAnchorAttrs
                 (folded := data.foldCodeBlock)
+                -- Card surface (1F): suppress the per-decl name+status head row and
+                -- footer status pill; the code reads bare and the rail owns identity.
+                (includeStatusRows := false)
           | .proof => pure none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
         let content := (← blocks.mapM goB)
@@ -130,7 +133,7 @@ block_extension Block.informal (data : BlockData) where
         -- title row plus the status dot.
         let statusDot :=
           match data.kind with
-          | .statement _ => CodeSummary.statusDotHtml codeSource
+          | .statement kind => CodeSummary.statusDotHtml codeSource (kind? := some kind)
           | .proof => Verso.Output.Html.empty
         match data.kind with
         | .statement _ =>
@@ -141,13 +144,15 @@ block_extension Block.informal (data : BlockData) where
           -- render of the proof prose.
           let stmtParts := renderInformalBlockHtmlParts data
             (InformalBlockRenderContext.forBlock data
-              (data.displayNumber s)
+              (data.displayIdentifier s)
               (proofCaption? := some (data.displayTitle s))
               (attrs := attrs)
               (statusDot := statusDot))
             content
-          -- Statement metadata lives in the informal statement cell, above prose.
-          let informalStmt := Verso.Output.Html.seq #[stmtParts.metadata, stmtParts.contentInner]
+          -- Bare card (1F): the informal statement cell carries the prose only —
+          -- owner/tags/priority/effort/PR live in the properties rail now, not on
+          -- the card, so the old `stmtParts.metadata` panel is dropped here.
+          let informalStmt := stmtParts.contentInner
           -- Fold the proof facet's prose (if it exists) into the proof region.
           -- The informal proof cell carries the prose only — the old "USES n"
           -- chip is gone (the metadata rail's Uses section owns that data).
@@ -229,7 +234,7 @@ block_extension Block.informal (data : BlockData) where
               return renderInformalBlockModel {
                 data
                 context := InformalBlockRenderContext.forBlock data
-                  (data.displayNumber s)
+                  (data.displayIdentifier s)
                   (proofCaption? := some (data.displayTitle s))
                   (attrs := attrs)
                   (folded := foldInformalBlock)
@@ -240,7 +245,7 @@ block_extension Block.informal (data : BlockData) where
             return renderInformalBlockModel {
               data
               context := InformalBlockRenderContext.forBlock data
-                (data.displayNumber s)
+                (data.displayIdentifier s)
                 (proofCaption? := some (data.displayTitle s))
                 (attrs := attrs)
                 (folded := foldInformalBlock)

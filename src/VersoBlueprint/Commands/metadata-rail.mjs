@@ -25,11 +25,10 @@ import { installSelectionBus } from "./selection-bus.mjs";
 import { setAllProofs } from "./proof-toggle.mjs";
 
 const RAIL_ID = "bp-metadata-rail";
-const TAB_ID = "bp-metadata-rail-tab";
 const BODY_ID = "bp-metadata-rail-body";
-const BACKDROP_CLASS = "bp-rail-backdrop";
-const OPEN_KEY = "bp-rail-open";
-const DOCK_BREAKPOINT = 1400; // px — matches the 87.5rem CSS breakpoint.
+// Docked ≥ 87.5rem (1400px), reparented inline into the page flow below that. The
+// rail is always present and open on every page (no drawer / edge tab / collapse).
+const DOCK_QUERY = "(min-width: 87.5rem)";
 const SEE_ALSO_CAP = 8;
 const DEP_CAP = 60; // guard against pathologically long used-by lists.
 
@@ -42,9 +41,8 @@ let registryNamePrefix = ""; // registry v2 top-level namePrefix (short names)
 const inlineMeta = new Map(); // Map<name, slim record>
 
 let railEl = null;
-let tabEl = null;
 let bodyEl = null;
-let backdropEl = null;
+let dockMql = null; // matchMedia handle for the dock/inline breakpoint.
 
 const STATUS_LABELS = {
   proved: "Proved",
@@ -52,6 +50,13 @@ const STATUS_LABELS = {
   axiomLike: "Axiom",
   containsSorry: "Sorry"
 };
+
+// Complete definitions read "Formalized" (they have no proof to prove); complete
+// theorem-likes read "Proved". Kind-aware, mirroring the server-side wording.
+function statusLabelFor(kind, status) {
+  if (status === "proved" && kind === "Definition") return "Formalized";
+  return STATUS_LABELS[status] || status;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Small DOM helper                                                           */
@@ -76,57 +81,10 @@ function el(tag, opts, children) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Open / collapse state (persisted)                                          */
-/* -------------------------------------------------------------------------- */
-
-function storedOpen() {
-  try {
-    const v = window.localStorage.getItem(OPEN_KEY);
-    if (v === "true") return true;
-    if (v === "false") return false;
-  } catch (_e) {
-    /* ignore storage errors */
-  }
-  return null;
-}
-
-function persistOpen(open) {
-  try {
-    window.localStorage.setItem(OPEN_KEY, open ? "true" : "false");
-  } catch (_e) {
-    /* ignore storage errors */
-  }
-}
-
-function applyOpen(open, persist) {
-  const root = document.documentElement;
-  root.setAttribute("data-bp-rail-open", open ? "true" : "false");
-  if (railEl) railEl.setAttribute("aria-hidden", open ? "false" : "true");
-  if (tabEl) tabEl.setAttribute("aria-expanded", open ? "true" : "false");
-  if (persist) persistOpen(open);
-}
-
-function initialOpen() {
-  const s = storedOpen();
-  if (s !== null) return s;
-  // Default: docked-open on wide desktop, closed (drawer) below the breakpoint.
-  try {
-    return window.innerWidth >= DOCK_BREAKPOINT;
-  } catch (_e) {
-    return false;
-  }
-}
-
-/* -------------------------------------------------------------------------- */
 /* Rail shell                                                                 */
 /* -------------------------------------------------------------------------- */
 
-const ICON_CLOSE =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ' +
-  'focusable="false"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>';
-
-// Pinned footer: the absorbed page-level controls (theme + bulk proof
+// Pinned footer: the absorbed page-level controls (theme + text size + bulk proof
 // visibility). The aside is a fixed flex column, so a `flex: 0 0 auto` footer
 // pins below the scrollable body naturally. Theme drives the page-global
 // `window.VersoBlueprint.colorScheme` API published by the pre-paint applier
@@ -176,6 +134,47 @@ function buildFooter() {
     ]));
   }
 
+  // Text size: three "A" buttons (small / medium / large) driving the pre-paint
+  // text-size applier (TextSize.lean → window.VersoBlueprint.textSize). The visible
+  // glyph is "A" at three CSS sizes; the accessible name carries the size word.
+  const textApi = ns.textSize || null;
+  if (textApi && typeof textApi.get === "function" && typeof textApi.set === "function") {
+    const tgroup = el("div", {
+      class: "bp-rail-textsize",
+      attrs: { role: "radiogroup", "aria-label": "Text size" }
+    });
+    function syncTextChecked() {
+      const current = textApi.get();
+      tgroup.querySelectorAll(".bp-rail-textsize-option").forEach(function (b) {
+        b.setAttribute("aria-checked", b.getAttribute("data-size") === current ? "true" : "false");
+      });
+    }
+    [["small", "Small text"], ["medium", "Medium text"], ["large", "Large text"]].forEach(function (t) {
+      const btn = el("button", {
+        class: "bp-rail-textsize-option",
+        attrs: {
+          type: "button",
+          role: "radio",
+          "aria-checked": "false",
+          "aria-label": t[1],
+          "data-size": t[0]
+        },
+        text: "A"
+      });
+      btn.addEventListener("click", function () {
+        textApi.set(t[0]);
+        syncTextChecked();
+      });
+      tgroup.appendChild(btn);
+    });
+    window.addEventListener("bp-text-size-change", syncTextChecked);
+    syncTextChecked();
+    footer.appendChild(el("div", { class: "bp-rail-footer-row" }, [
+      el("span", { class: "bp-rail-footer-label", text: "Text" }),
+      tgroup
+    ]));
+  }
+
   if (document.querySelector(".bp_card2_proof_toggle")) {
     const showBtn = el("button", {
       class: "bp-rail-proof-action",
@@ -198,79 +197,54 @@ function buildFooter() {
   return footer.childNodes.length > 0 ? footer : null;
 }
 
+// Place the rail in the DOM according to the current breakpoint: docked (fixed to
+// the right edge, appended to <body>) at >= 87.5rem, else reparented inline into
+// the page flow below the content (`main .content-wrapper`, falling back to
+// `main`). Idempotent; safe to call at install and on every breakpoint change.
+function placeRail() {
+  if (!railEl) return;
+  const docked = dockMql ? dockMql.matches : true;
+  if (docked) {
+    railEl.classList.remove("bp-rail-inline");
+    if (railEl.parentNode !== document.body) document.body.appendChild(railEl);
+  } else {
+    railEl.classList.add("bp-rail-inline");
+    const host =
+      document.querySelector("main .content-wrapper") ||
+      document.querySelector("main") ||
+      document.body;
+    if (railEl.parentNode !== host) host.appendChild(railEl);
+  }
+}
+
 function buildRail() {
   if (document.getElementById(RAIL_ID)) return;
 
-  // Edge tab (opens the rail when collapsed).
-  tabEl = el("button", {
-    attrs: {
-      id: TAB_ID,
-      type: "button",
-      "aria-controls": RAIL_ID,
-      "aria-expanded": "false",
-      title: "Show properties & dependencies"
-    },
-    text: "Properties"
-  });
-  tabEl.addEventListener("click", function () {
-    applyOpen(true, true);
-  });
-
-  // Backdrop (drawer mode overlay). Visibility is CSS-driven (shown only when the
-  // rail is open below the docked breakpoint); no `hidden` attribute so the media
-  // query is the single source of truth.
-  backdropEl = el("div", { class: BACKDROP_CLASS });
-  backdropEl.addEventListener("click", function () {
-    applyOpen(false, true);
-  });
-
-  const collapse = el("button", {
-    class: "bp-rail-collapse",
-    attrs: {
-      type: "button",
-      "aria-controls": BODY_ID,
-      "aria-expanded": "true",
-      title: "Collapse",
-      "aria-label": "Collapse properties panel"
-    }
-  });
-  collapse.innerHTML = ICON_CLOSE;
-  collapse.addEventListener("click", function () {
-    applyOpen(false, true);
-  });
-
   const header = el("div", { class: "bp-rail-header" }, [
-    el("span", { class: "bp-rail-title", text: "Properties & Dependencies" }),
-    collapse
+    el("span", { class: "bp-rail-title", text: "Properties & Dependencies" })
   ]);
 
   bodyEl = el("div", { class: "bp-rail-body", attrs: { id: BODY_ID } });
 
   const footer = buildFooter();
 
+  // Always present and open on every page; `aria-hidden` stays "false".
   railEl = el("aside", {
     attrs: {
       id: RAIL_ID,
       "aria-label": "Properties and dependencies",
-      "aria-hidden": "true"
+      "aria-hidden": "false"
     }
   }, [header, bodyEl, footer]);
 
-  // Backdrop must be a sibling before the rail so the rail paints on top.
-  document.body.appendChild(backdropEl);
-  document.body.appendChild(tabEl);
-  document.body.appendChild(railEl);
+  dockMql =
+    typeof window.matchMedia === "function" ? window.matchMedia(DOCK_QUERY) : null;
+  placeRail();
+  if (dockMql) {
+    if (dockMql.addEventListener) dockMql.addEventListener("change", placeRail);
+    else if (dockMql.addListener) dockMql.addListener(placeRail);
+  }
 
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Escape") return;
-    if (document.documentElement.getAttribute("data-bp-rail-open") !== "true") return;
-    // In drawer mode, Escape closes; docked mode leaves it (it isn't modal).
-    if (window.innerWidth < DOCK_BREAKPOINT) {
-      applyOpen(false, true);
-    }
-  });
-
-  applyOpen(initialOpen(), false);
   renderEmpty();
 }
 
@@ -494,7 +468,7 @@ function renderRail(name, hintMeta) {
       el("span", {
         class: "bp-rail-status",
         attrs: { "data-status": vm.status },
-        text: STATUS_LABELS[vm.status] || vm.status
+        text: statusLabelFor(vm.kind, vm.status)
       })
     );
   }

@@ -94,55 +94,6 @@ function appendLegend(host, items) {
   host.appendChild(ul);
 }
 
-function drawStatusDonut(d3, mount, data, pal) {
-  const cs = data.coverageSplit || {};
-  const slices = [
-    { label: "Fully closed", value: cs.fullyClosed || 0, color: pal.closed },
-    { label: "Formalized, ancestors open", value: cs.formalizedWithoutAncestors || 0, color: pal.warning },
-    { label: "Ready to formalize", value: cs.readyToFormalize || 0, color: pal.ready },
-    { label: "Informal only", value: cs.informalOnly || 0, color: pal.other },
-    { label: "Blocked / incomplete", value: cs.blockedOrIncomplete || 0, color: pal.danger }
-  ].filter(function (d) { return d.value > 0; });
-  const total = slices.reduce(function (a, d) { return a + d.value; }, 0);
-  if (total === 0) return false;
-
-  const host = chartHost(mount);
-  const width = 220;
-  const height = 200;
-  const radius = Math.min(width, height) / 2 - 4;
-
-  const svg = d3
-    .select(host)
-    .append("svg")
-    .attr("class", "bp_dashboard_svg")
-    .attr("viewBox", "0 0 " + width + " " + height)
-    .attr("role", "img")
-    .attr("aria-label", "Coverage by status");
-  const g = svg
-    .append("g")
-    .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
-  const pie = d3.pie().sort(null).value(function (d) { return d.value; });
-  const arc = d3.arc().innerRadius(radius * 0.58).outerRadius(radius);
-  g.selectAll("path")
-    .data(pie(slices))
-    .enter()
-    .append("path")
-    .attr("d", arc)
-    .attr("fill", function (d) { return d.data.color; })
-    .attr("stroke", pal.grid)
-    .attr("stroke-width", 1);
-  g.append("text")
-    .attr("text-anchor", "middle")
-    .attr("dy", "0.35em")
-    .attr("fill", pal.text)
-    .attr("font-size", "22")
-    .attr("font-weight", "700")
-    .text(total);
-
-  appendLegend(host, slices);
-  return true;
-}
-
 // Generic horizontal stacked bar chart.
 function drawStackedBars(d3, mount, rows, keys, pal) {
   rows = rows.filter(function (r) { return (r.total || 0) > 0; });
@@ -276,8 +227,7 @@ function drawAll(d3, mounts, data) {
     try {
       const kind = mount.getAttribute("data-bp-chart");
       let drew = false;
-      if (kind === "status") drew = drawStatusDonut(d3, mount, data, pal);
-      else if (kind === "chapters") drew = drawChapterBars(d3, mount, data, pal);
+      if (kind === "chapters") drew = drawChapterBars(d3, mount, data, pal);
       else if (kind === "owners") drew = drawRollupBars(d3, mount, data.ownerRollups || [], pal, "owner");
       else if (kind === "tags") drew = drawRollupBars(d3, mount, data.tagRollups || [], pal, "tag");
       if (drew) mount.classList.add("bp_dashboard_chart_enhanced");

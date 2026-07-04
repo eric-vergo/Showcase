@@ -63,10 +63,6 @@ External declaration inference can be enabled locally.
 Block-level manual dependencies take precedence over same-axis automatic edges.
 :::
 
-:::theorem "auto.controls.external.union" (lean := "externalUnionStatementDecl, externalUnionProofDecl") (autoDeps := true)
-External declaration inference unions multiple compiled Lean references.
-:::
-
 :::definition "auto.controls.inline.local_true"
 Inline Lean inference can be enabled locally.
 :::
@@ -178,11 +174,6 @@ private def expectedControlUses : Array ExpectedUses :=
       statement := #[useRef "auto.controls.type_source"],
       proof := #[useRef "auto.controls.proof_source" .automatic]
     },
-    {
-      labelText := "auto.controls.external.union",
-      statement := #[useRef "auto.controls.type_source" .automatic],
-      proof := #[useRef "auto.controls.proof_source" .automatic]
-    },
     -- Inline Lean controls.
     {
       labelText := "auto.controls.inline.local_true",
@@ -218,6 +209,22 @@ private def expectedControlUses : Array ExpectedUses :=
 #eval
   show CoreM (Array String) from do
     expectedUsesFailures expectedControlUses
+
+-- A blueprint node must pair with *exactly one* Lean declaration: a comma-list in
+-- `(lean := "a, b")` is now an unconditional hard error (no option gate), so the
+-- old "external declaration inference unions multiple compiled Lean references"
+-- node is gone. This guard pins that error message (reusing the `externalUnion*`
+-- decls above), so the one-to-one node rule stays enforced.
+/--
+error: Label «auto.controls.multi.decl» pairs with 2 Lean declarations (externalUnionStatementDecl, externalUnionProofDecl); blueprint nodes must pair with exactly one Lean declaration — split this node so each declaration has its own node.
+-/
+#guard_msgs in
+#docs (Genre.Manual) multiDeclErrorDoc "Multi Declaration Node Error" :=
+:::::::
+:::theorem "auto.controls.multi.decl" (lean := "externalUnionStatementDecl, externalUnionProofDecl")
+A blueprint node cannot pair with more than one Lean declaration.
+:::
+:::::::
 
 /--
 error: Expected 'true' or 'false'

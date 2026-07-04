@@ -383,7 +383,9 @@ private def comparatorJson := r##"{
   let strip := (trustStripHtml trust (some "Formalization-Metadata/")).asString
   let empty := (trustStripHtml {} none).asString
   hasSubstr strip "bp_trust_strip" &&
-  countSubstr strip "<span class=\"bp_summary_badge" == 4 &&
+  -- Each configured badge now renders as an `<a>` linking to its `trust/…` evidence
+  -- page (see `trustBadgeHtml`'s `href?` branch); the strip carries four of them.
+  countSubstr strip "<a class=\"bp_summary_badge" == 4 &&
   hasSubstr strip "href=\"Formalization-Metadata/\"" &&
   hasSubstr strip "Formalization metadata" &&
   empty == ""

@@ -17,29 +17,28 @@ themed on every page, and reuses the existing `--bp-*` design tokens exclusively
 (no new color is introduced), so light + dark come for free with AA contrast in
 both; no CDN / network dependency.
 
-Layout model (two independent axes, both CSS-driven off a single
-`:root[data-bp-rail-open]` attribute set by the runtime + persisted in
-`localStorage`):
+Layout model: the rail is **always present and open** on every page (no drawer,
+edge tab, collapse toggle, or persisted open-state). Its placement is purely
+viewport-driven, switched by the runtime via `matchMedia`:
 
-* **Docked vs. drawer** is purely viewport-driven. At `>= 87.5rem` (1400px) the
-  rail docks along the right edge and reserves right margin on `<main>` so it
-  never overlaps the 44rem content measure, marginalia (which live inside
-  `<main>`'s box), or the graph's `100cqw` breakout (whose container shrinks with
-  the reserved margin). Below that width it becomes an off-canvas drawer that
-  overlays content with a backdrop, so narrow layouts are never crowded.
-* **Open vs. collapsed** is the user's toggle (edge tab to open, header button to
-  collapse), persisted across pages. When collapsed the rail slides off-screen and
-  only the edge tab remains; the reserved `<main>` margin is released.
+* **Docked** at `>= 87.5rem` (1400px): fixed along the right edge (appended to
+  `<body>`), reserving right margin on `<main>` so it never overlaps the 44rem
+  content measure, marginalia (which live inside `<main>`'s box), or the graph's
+  `100cqw` breakout (whose container shrinks with the reserved margin).
+* **Inline** below that width: the runtime reparents the rail into the page flow
+  (`main .content-wrapper`, falling back to `main`) and adds `.bp-rail-inline`
+  (static, full-width, hairline top rule), so narrow layouts stack it below the
+  content instead of crowding them with an overlay.
 
 The rail sits above the fixed ToC (z 10-12) but below the graph node modal
 (z 9500), so the Wave-2 modal always layers over it. It honors
-`prefers-reduced-motion` and is fully keyboard operable (tab + collapse buttons
-carry `aria-expanded`/`aria-controls`; every dependency item is a real button).
+`prefers-reduced-motion` and every dependency item is a real button.
 
 The pinned footer (`.bp-rail-footer`) carries the absorbed page-level controls
 (the old floating widget): an Auto | Light | Dark theme radiogroup driving
-`window.VersoBlueprint.colorScheme`, and — when the page has node cards — a
-bulk "Proofs: show all / hide all" pair driving proof-toggle.mjs `setAllProofs`.
+`window.VersoBlueprint.colorScheme`, a three-`A` text-size radiogroup driving
+`window.VersoBlueprint.textSize`, and — when the page has node cards — a bulk
+"Proofs: show all / hide all" pair driving proof-toggle.mjs `setAllProofs`.
 
 Stage-2 data sections: the registry v2 fields feed a **Docstring** section
 (build-generated HTML — the markdown pipeline has raw HTML disabled, so
@@ -51,60 +50,17 @@ below (`.bp-rail-docstring`) with overflow-safe scrolling for wide math/code.
 
 namespace Informal.MetadataRail
 
-/-- Stylesheet for the metadata rail, edge tab, and drawer backdrop. -/
+/-- Stylesheet for the always-open metadata rail (docked + inline variants). -/
 def css : String := r##"
 :root {
   --bp-rail-width: 20.5rem;
   --bp-rail-gap: var(--bp-space-4);
-  --bp-rail-breakpoint: 87.5rem;
-}
-
-/* ---- Edge tab (resting affordance when the rail is closed) ---------------- */
-#bp-metadata-rail-tab {
-  position: fixed;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  z-index: 38;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--bp-space-1);
-  margin: 0;
-  padding: var(--bp-space-2) var(--bp-space-2);
-  border: 1px solid var(--bp-color-border);
-  border-right: 0;
-  border-radius: var(--bp-radius-md) 0 0 var(--bp-radius-md);
-  background: var(--bp-color-surface);
-  color: var(--bp-color-text-muted);
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  box-shadow: var(--bp-shadow-sm);
-  transition: background-color var(--bp-duration-fast) var(--bp-ease),
-    color var(--bp-duration-fast) var(--bp-ease),
-    border-color var(--bp-duration-fast) var(--bp-ease);
-}
-
-#bp-metadata-rail-tab:hover {
-  background: var(--bp-color-surface-subtle);
-  color: var(--bp-color-text-strong);
-  border-color: var(--bp-color-border-strong);
-}
-
-#bp-metadata-rail-tab:focus-visible {
-  outline: 2px solid var(--bp-color-accent);
-  outline-offset: 2px;
-}
-
-:root[data-bp-rail-open="true"] #bp-metadata-rail-tab {
-  display: none;
 }
 
 /* ---- Rail shell ----------------------------------------------------------- */
+/* The rail is always present and open (no drawer / edge tab / collapse). Docked
+   at >= 87.5rem it is fixed to the right edge (appended to <body>); below that
+   the runtime reparents it into the page flow and adds `.bp-rail-inline`. */
 #bp-metadata-rail {
   position: fixed;
   top: var(--verso-header-height, 3rem);
@@ -119,19 +75,22 @@ def css : String := r##"
   background: var(--bp-color-surface);
   border-left: 1px solid var(--bp-color-border);
   color: var(--bp-color-text);
-  transform: translateX(100%);
-  transition: transform var(--bp-duration-base) var(--bp-ease);
 }
 
-:root[data-bp-rail-open="true"] #bp-metadata-rail {
-  transform: translateX(0);
+/* Inline mode (narrow viewports): static, full-width, hairline top rule; sits in
+   the page flow below the content. Spacing via the design scale. */
+#bp-metadata-rail.bp-rail-inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  z-index: auto;
+  border-left: 0;
+  border-top: 1px solid var(--bp-color-border);
+  margin-top: var(--bp-space-5);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #bp-metadata-rail,
-  #bp-metadata-rail-tab {
-    transition: none;
-  }
+#bp-metadata-rail.bp-rail-inline .bp-rail-body {
+  overflow-y: visible;
 }
 
 /* ---- Header --------------------------------------------------------------- */
@@ -152,36 +111,6 @@ def css : String := r##"
   text-transform: uppercase;
   color: var(--bp-color-text-strong);
 }
-
-.bp-rail-collapse {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--bp-radius-sm);
-  background: transparent;
-  color: var(--bp-color-text-muted);
-  cursor: pointer;
-  transition: background-color var(--bp-duration-fast) var(--bp-ease),
-    color var(--bp-duration-fast) var(--bp-ease),
-    border-color var(--bp-duration-fast) var(--bp-ease);
-}
-
-.bp-rail-collapse:hover {
-  background: var(--bp-color-surface-subtle);
-  border-color: var(--bp-color-border);
-  color: var(--bp-color-text-strong);
-}
-
-.bp-rail-collapse:focus-visible {
-  outline: 2px solid var(--bp-color-accent);
-  outline-offset: 2px;
-}
-
-.bp-rail-collapse svg { display: block; }
 
 /* ---- Body ----------------------------------------------------------------- */
 .bp-rail-body {
@@ -501,6 +430,7 @@ def css : String := r##"
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--bp-space-2);
 }
 
@@ -550,6 +480,56 @@ def css : String := r##"
   outline-offset: -2px;
 }
 
+/* ---- Text-size control (H): three segmented "A" buttons -------------------- */
+.bp-rail-textsize {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  overflow: hidden;
+}
+
+.bp-rail-textsize-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--bp-color-text-muted);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease);
+}
+
+/* The glyph "A" renders at three sizes so the control reads as small/medium/large
+   at a glance; the accessible name carries the size word. */
+.bp-rail-textsize-option[data-size="small"] { font-size: 0.7rem; }
+.bp-rail-textsize-option[data-size="medium"] { font-size: 0.85rem; }
+.bp-rail-textsize-option[data-size="large"] { font-size: 1.05rem; }
+
+.bp-rail-textsize-option + .bp-rail-textsize-option {
+  border-left: 1px solid var(--bp-color-border);
+}
+
+.bp-rail-textsize-option:hover {
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-strong);
+}
+
+.bp-rail-textsize-option[aria-checked="true"] {
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-strong);
+}
+
+.bp-rail-textsize-option:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: -2px;
+}
+
 .bp-rail-proofs {
   display: inline-flex;
   gap: var(--bp-space-1);
@@ -580,57 +560,23 @@ def css : String := r##"
 
 @media (prefers-reduced-motion: reduce) {
   .bp-rail-theme-option,
+  .bp-rail-textsize-option,
   .bp-rail-proof-action {
     transition: none;
   }
 }
 
-/* ---- Backdrop (drawer mode only) ------------------------------------------ */
-.bp-rail-backdrop {
-  position: fixed;
-  inset: var(--verso-header-height, 3rem) 0 0 0;
-  z-index: 39;
-  /* Matches the Wave-2 graph modal scrim (a dark overlay in both themes; not a
-     themed surface color, so no scheme blocks needed). */
-  background: rgba(15, 23, 42, 0.5);
-  border: 0;
-  padding: 0;
-  margin: 0;
-  display: none;
-}
-
 /* ---- Docked layout: reserve right margin so nothing overlaps -------------- */
+/* The rail is always open, so the reservation is unconditional at the docked
+   breakpoint. Below it the rail is inline (in the page flow) and needs no margin. */
 @media (min-width: 87.5rem) {
-  :root[data-bp-rail-open="true"] .with-toc > main {
+  .with-toc > main {
     margin-right: calc(var(--bp-rail-width) + var(--bp-rail-gap));
   }
 }
 
-/* ---- Drawer layout: overlay + backdrop below the docked breakpoint -------- */
-@media (max-width: 87.4375rem) {
-  #bp-metadata-rail {
-    box-shadow: var(--bp-shadow-lg);
-  }
-
-  :root[data-bp-rail-open="true"] .bp-rail-backdrop {
-    display: block;
-  }
-}
-
-/* The rail is a desktop/tablet affordance; on phones the drawer would eat the
-   whole viewport, so hide it entirely and fall back to the in-page cards. */
-@media (max-width: 700px) {
-  #bp-metadata-rail,
-  #bp-metadata-rail-tab,
-  .bp-rail-backdrop {
-    display: none !important;
-  }
-}
-
 @media print {
-  #bp-metadata-rail,
-  #bp-metadata-rail-tab,
-  .bp-rail-backdrop {
+  #bp-metadata-rail {
     display: none !important;
   }
 }

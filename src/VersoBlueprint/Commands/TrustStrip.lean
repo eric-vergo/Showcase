@@ -87,12 +87,31 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
 /-- The axioms every kernel-checked Mathlib development is expected to use. -/
 def standardAxioms : List String := ["propext", "Classical.choice", "Quot.sound"]
 
+/-!
+Evidence-page routes. Each configured badge links to a generated evidence page
+under `trust/`; these root-relative hrefs (no leading slash) resolve against each
+page's `<base href>`, matching the worklist/audit route convention. The paired
+`Verso.Multi.Path`s are the multi-page output locations `TrustPages` writes to.
+-/
+
+def trustSorriesHref : String := "trust/sorries/"
+def trustSorriesPath : Verso.Multi.Path := #["trust", "sorries"]
+def trustAxiomsHref : String := "trust/axioms/"
+def trustAxiomsPath : Verso.Multi.Path := #["trust", "axioms"]
+def trustReviewHref : String := "trust/review/"
+def trustReviewPath : Verso.Multi.Path := #["trust", "review"]
+def trustComparatorHref : String := "trust/comparator/"
+def trustComparatorPath : Verso.Multi.Path := #["trust", "comparator"]
+
 /--
 One trust badge. Reuses the dashboard's `.bp_summary_badge` classes (`variant`
 is one of `""`/`success`/`warn`/`error`/`accent`); `title?` becomes a tooltip.
+When `href?` is set the badge renders as an `<a>` linking to its evidence page;
+otherwise it is a plain `<span>`.
 -/
 def trustBadgeHtml (text : String) (variant : String := "")
-    (title? : Option String := Option.none) : Output.Html :=
+    (title? : Option String := Option.none) (href? : Option String := Option.none) :
+    Output.Html :=
   let className :=
     if variant.isEmpty then "bp_summary_badge"
     else s!"bp_summary_badge bp_summary_badge_{variant}"
@@ -101,27 +120,31 @@ def trustBadgeHtml (text : String) (variant : String := "")
     match title? with
     | Option.some t => attrs.push ("title", t)
     | Option.none => attrs
-  .tag "span" attrs (.text true text)
+  match href? with
+  | Option.some href => .tag "a" (attrs.push ("href", href)) (.text true text)
+  | Option.none => .tag "span" attrs (.text true text)
 
 def trustSorryBadge (n : Nat) : Output.Html :=
   trustBadgeHtml
     s!"{n} {if n == 1 then "sorry" else "sorries"}"
     (if n == 0 then "success" else "error")
+    (href? := Option.some trustSorriesHref)
 
 def trustAxiomsBadge (axioms : List String) : Output.Html :=
   if axioms.isEmpty then
-    trustBadgeHtml "axioms: none recorded"
+    trustBadgeHtml "axioms: none recorded" (href? := Option.some trustAxiomsHref)
   else
     let nonstandard := axioms.filter (fun a => !standardAxioms.contains a)
     let title := s!"Axioms: {String.intercalate ", " axioms}"
     if nonstandard.isEmpty then
       trustBadgeHtml s!"axioms: standard {axioms.length}" "success" (Option.some title)
+        (Option.some trustAxiomsHref)
     else
       trustBadgeHtml s!"axioms: {axioms.length} ({nonstandard.length} nonstandard)" "warn"
-        (Option.some title)
+        (Option.some title) (Option.some trustAxiomsHref)
 
 def trustReviewBadge (status : String) : Output.Html :=
-  trustBadgeHtml s!"review: {status}"
+  trustBadgeHtml s!"review: {status}" (href? := Option.some trustReviewHref)
 
 def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   let theoremsTitle :=
@@ -130,11 +153,13 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   if cmp.status == "verified" then
     let when := if cmp.verifiedAt.isEmpty then "Independently verified" else s!"Verified at {cmp.verifiedAt}"
     trustBadgeHtml "comparator: verified" "success" (Option.some s!"{when}{theoremsTitle}")
+      (Option.some trustComparatorHref)
   else if cmp.status == "configured" then
     let title := if cmp.note.isEmpty then s!"Comparator configured{theoremsTitle}" else cmp.note
     trustBadgeHtml "comparator: configured — not yet run" "warn" (Option.some title)
+      (Option.some trustComparatorHref)
   else
-    trustBadgeHtml s!"comparator: {cmp.status}"
+    trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some trustComparatorHref)
 
 /--
 The rendered strip: a labelled badge row plus (when the document emits a
@@ -177,7 +202,11 @@ def trustStripAssetBundle : BlueprintAssetBundle :=
 open Verso Doc Elab Genre Manual in
 block_extension Block.trustStrip (trust : TrustData) where
   data := toJson trust
-  traverse _id _data _contents := do
+  traverse _id data _contents := do
+    -- Stash the trust payload so the generation-time `TrustPages` ExtraStep can
+    -- emit one evidence page per configured badge. `data` is the block's already
+    -- `toJson`ed `TrustData`.
+    modify fun st => Informal.TraversalIndex.TrustData.saveData st data
     return none
   toTeX := none
   toHtml :=

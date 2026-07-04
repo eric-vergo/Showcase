@@ -362,7 +362,7 @@ def css : String := r##"
   }
 
   .bp_card2 {
-    width: min(100cqw, 72rem);
+    width: min(100cqw, 90rem);
     margin-inline: auto;
   }
 }

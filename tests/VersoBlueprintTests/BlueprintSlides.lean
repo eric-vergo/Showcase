@@ -47,7 +47,10 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 #docs (Genre.Manual) slideMetadataPanelDoc "Slide Metadata Panel" :=
 :::::::
-:::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
+:::author "alice" (name := "Alice Example") (url := "https://example.com/alice") (image_url := "https://example.com/alice.png")
+:::
+
+:::definition "def:slide.meta.panel" (owner := "alice") (tags := "slides, renderer") (effort := "small") (priority := "high")
 Manifest-backed slide rendering should use the standard Blueprint block renderer.
 :::
 :::::::
@@ -326,7 +329,15 @@ private def writeSlidesPreviewDataFiles
         hasSubstr rendered "Effort" &&
         hasSubstr rendered "small" &&
         hasSubstr rendered "Priority" &&
-        hasSubstr rendered "high"
+        hasSubstr rendered "high" &&
+        -- The manifest-backed slide renderer is the surviving surface that still
+        -- inlines the statement metadata panel (the two-column node card dropped
+        -- it in T2). It renders the owner's display name, and — upholding the
+        -- no-avatar hard constraint — never the avatar wrapper class nor the
+        -- external owner image URL (an off-origin fetch that would break offline).
+        hasSubstr rendered "Alice Example" &&
+        !hasSubstr rendered "bp_metadata_avatar" &&
+        !hasSubstr rendered "https://example.com/alice.png"
 
 /-- info: true -/
 #guard_msgs in

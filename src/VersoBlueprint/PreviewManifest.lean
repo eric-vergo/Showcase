@@ -12,6 +12,7 @@ import VersoManual
 import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
 import VersoBlueprint.ColorScheme
+import VersoBlueprint.TextSize
 import VersoBlueprint.CopyButton
 import VersoBlueprint.Commands.CommandPalette
 import VersoBlueprint.Commands.BannerNav
@@ -131,7 +132,10 @@ Global color-scheme (dark mode) assets, applied to *every* page.
 -/
 def colorSchemeHtmlAssets : HtmlAssets where
   extraCss := ([Informal.Commands.blueprintTokensCss] : List String)
-  extraJs := ([Informal.ColorScheme.applierJs] : List String)
+  -- Both pre-paint appliers ride the same inline-`<head>` extraJs channel (no
+  -- flash of the wrong theme / text size); see the warnings in ColorScheme.lean /
+  -- TextSize.lean.
+  extraJs := ([Informal.ColorScheme.applierJs, Informal.TextSize.applierJs] : List String)
 
 /--
 Global copy-to-clipboard assets for Lean code blocks, applied to *every* page.
@@ -1548,7 +1552,10 @@ private def blockHeadingParts? (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
     Option BlockHeadingParts := do
   let blockData ← blockData? <|> blockInfo? state label
-  let numberText := blockData.displayNumber state
+  -- The heading label is the node's display identifier: the short decl name when
+  -- the node pairs with a `(lean := …)` declaration, else the numbered form. This
+  -- flows onto `Entry.displayLabel` → the manifest card/graph/node-page headings.
+  let numberText := blockData.displayIdentifier state
   match facet with
   | .statement =>
       let kind ← blockData.statementKind? state

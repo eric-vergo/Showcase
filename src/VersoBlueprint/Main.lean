@@ -9,6 +9,7 @@ import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
 import VersoBlueprint.DeclIndex
 import VersoBlueprint.DeclPage
+import VersoBlueprint.Commands.TrustPages
 
 /-!
 Baked-in Blueprint entry point.
@@ -56,6 +57,7 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages
         :: Informal.DeclPage.emitBlueprintDeclPages
+        :: Informal.Commands.emitBlueprintTrustPages
         :: extraSteps)
 
 end Informal.PreviewManifest

@@ -121,6 +121,22 @@ def blueprintTokensCss : String := r##"
 }
 
 /*
+  Reader text-size axis (H). `data-bp-text-size` is stamped on <html> by the
+  pre-paint applier (TextSize.lean); absent = medium (book.css's default). Scaling
+  the root font-size scales the whole rem-based layout. `:root[data-bp-text-size]`
+  (attribute + pseudo-class) out-specifies book.css's `html { font-size: … }`, so
+  it wins regardless of stylesheet order. Not scheme-dependent, so one pair covers
+  both light and dark.
+*/
+:root[data-bp-text-size="small"] {
+  font-size: 87.5%;
+}
+
+:root[data-bp-text-size="large"] {
+  font-size: 112.5%;
+}
+
+/*
   Dark color scheme for the blueprint design tokens. Purely additive: the :root
   block above keeps the original light palette, so light mode is unchanged. The
   dual `@media (prefers-color-scheme: dark)` + `[data-bp-color-scheme="dark"]`

@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import VersoBlueprint.Informal.Block.Model
+import VersoBlueprint.NodeCard
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -161,6 +162,7 @@ def mergeStoredBlockData (existing incoming : StoredBlockData) : StoredBlockData
       effort := existing.effort <|> incoming.effort
       priority := existing.priority <|> incoming.priority
       prUrl := existing.prUrl <|> incoming.prUrl
+      primaryDeclName := existing.primaryDeclName <|> incoming.primaryDeclName
   }
 
 /--
@@ -230,6 +232,26 @@ def BlockData.displayNumber (data : BlockData)
       | some numPrefix => s!"{numPrefix}.{data.count}"
       | none => s!"{data.count}"
 
+/--
+The user-facing *identifier* for a block: the short name of its primary Lean
+declaration (project prefix stripped via `NodeCard.shortDeclName`) when the node
+pairs with a `(lean := …)` declaration, otherwise the resolved display number.
+
+This is the standard label across every title surface (cards, node pages, graph,
+worklists, citations, search): "Theorem irrational_x" when a decl exists, falling
+back to "Theorem 6.4" when it doesn't. The primary decl name is read from the
+block itself and, for synthesized `BlockData` (e.g. from `Cite`), from the stored
+node data, so both resolve. -/
+def BlockData.displayIdentifier (data : BlockData)
+    (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
+  let declName? := data.primaryDeclName
+    <|> (resolveStoredNodeData? st data.label).bind (·.primaryDeclName)
+  match declName? with
+  | some name =>
+    let pfx := (Informal.TraversalIndex.DeclRegistry.namePrefix? st).getD ""
+    NodeCard.shortDeclName pfx name
+  | none => data.displayNumber st fallbackPrefix?
+
 /-- Add the block kind to a rendered number, for example `Definition 1.3.2`. -/
 def blockDisplayTitle (data : BlockData) (numberText : String) : String :=
   match data.kind with
@@ -254,15 +276,16 @@ def proofDisplayTitle (statementKind? : Option Data.NodeKind) (numberText : Stri
 
 def BlockData.displayProofTitle (data : BlockData)
     (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  proofDisplayTitle (data.statementKind? st) (data.displayNumber st fallbackPrefix?)
+  proofDisplayTitle (data.statementKind? st) (data.displayIdentifier st fallbackPrefix?)
 
-/-- The user-facing title for a block, including kind and resolved number. -/
+/-- The user-facing title for a block, including kind and resolved identifier
+(decl name when present, else the display number). -/
 def BlockData.displayTitle (data : BlockData)
     (st : TraverseState) (fallbackPrefix? : Option String := none) : String :=
-  let numberText := data.displayNumber st fallbackPrefix?
+  let identText := data.displayIdentifier st fallbackPrefix?
   match data.kind with
   | .proof => data.displayProofTitle st fallbackPrefix?
-  | .statement _ => blockDisplayTitle data numberText
+  | .statement _ => blockDisplayTitle data identText
 
 /--
 Save one traversed informal block in the semantic node index.
