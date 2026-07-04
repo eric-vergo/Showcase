@@ -3,6 +3,9 @@ import {
   getGraphData as coreGetGraphData,
   getGraphVariants as coreGetGraphVariants
 } from "../blueprint-graph-core.mjs";
+import { startProofToggle } from "./proof-toggle.mjs";
+import { startLineNumbers } from "./line-numbers.mjs";
+import { installSelectionBus } from "./selection-bus.mjs";
 
 const {
   debounce,
@@ -27,6 +30,222 @@ function collectPreviewTemplates(previewUtils, rootNode) {
     rootNode || document,
     "template.bp_graph_preview_tpl[data-bp-preview-label]"
   );
+}
+
+// Per-label card metadata (node-page href + display title) read from the inline
+// card templates, keyed the same way as `collectPreviewTemplates` (by
+// `data-bp-preview-label`). Powers the modal's "Open node page" link and title.
+function collectCardMeta(rootNode) {
+  const meta = new Map();
+  const scope = rootNode || document;
+  scope
+    .querySelectorAll("template.bp_graph_preview_tpl[data-bp-preview-label]")
+    .forEach(function (tpl) {
+      const label = (tpl.getAttribute("data-bp-preview-label") || "").trim();
+      if (!label) return;
+      meta.set(label, {
+        href: (tpl.getAttribute("data-bp-node-href") || "").trim(),
+        title: (tpl.getAttribute("data-bp-node-title") || label).trim()
+      });
+    });
+  return meta;
+}
+
+// Map a graph node to its declaration, for the metadata rail selection bus.
+// Blueprint nodes carry a blueprint label (`«thm:…»`); the inline card templates
+// map that label to the card's `data-bp-decl` (and its slim inline record for
+// offline first paint). Supporting nodes have no template — their node label *is*
+// the declaration name (see `mkSupportingNodeData`), used verbatim.
+function collectGraphDeclMeta(rootNode) {
+  const labelToDecl = new Map(); // blueprint node label -> declaration name
+  const metaByDecl = new Map(); // declaration name -> slim inline record
+  const scope = rootNode || document;
+  scope
+    .querySelectorAll("template.bp_graph_preview_tpl[data-bp-preview-label]")
+    .forEach(function (tpl) {
+      const label = (tpl.getAttribute("data-bp-preview-label") || "").trim();
+      const content = tpl.content;
+      if (!content) return;
+      const card = content.querySelector(".bp_card2[data-bp-decl]");
+      if (!card) return;
+      const decl = (card.getAttribute("data-bp-decl") || "").trim();
+      if (!decl) return;
+      if (label) labelToDecl.set(label, decl);
+      const metaNode = content.querySelector(".bp-decl-meta[data-bp-decl]");
+      if (metaNode) {
+        try {
+          const rec = JSON.parse(metaNode.textContent || "null");
+          if (rec && typeof rec === "object") metaByDecl.set(decl, rec);
+        } catch (_e) {
+          /* ignore malformed payloads */
+        }
+      }
+    });
+  return { labelToDecl: labelToDecl, metaByDecl: metaByDecl };
+}
+
+// Make every graph node (blueprint AND supporting) select its declaration on the
+// shared selection bus, so a click populates the metadata rail. Blueprint nodes
+// additionally open the Wave-2 modal (bound per node in `attachPreviewHandlers`);
+// supporting nodes now get rail metadata instead of the empty peek. Delegation is
+// capture-phase on the stable block so it fires before the modal handler's
+// `stopPropagation`, and reads a `data-bp-decl` stamped here before the preview
+// pass strips node `<title>`s.
+function attachSelectionHandlers(graphBlock, graphContainer, labelToDecl, metaByDecl) {
+  const svg = graphContainer.select("svg").node();
+  if (!svg || !(svg instanceof SVGElement)) return;
+  svg.querySelectorAll("g.node").forEach(function (node) {
+    const label = graphNodeLabel(node);
+    if (!label) return;
+    const decl = labelToDecl.get(label) || label;
+    node.setAttribute("data-bp-decl", decl);
+    if (!node.style.cursor) node.style.cursor = "pointer";
+    if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "0");
+    if (!node.hasAttribute("role")) node.setAttribute("role", "button");
+  });
+  // Latest inline records for offline first paint (templates are static, but keep
+  // the reference fresh across re-renders).
+  graphBlock.__bpMetaByDecl = metaByDecl;
+  if (graphBlock.__bpSelectionBound === true) return;
+  graphBlock.__bpSelectionBound = true;
+  const selectFromNode = function (node) {
+    if (!(node instanceof Element)) return;
+    const decl = (node.getAttribute("data-bp-decl") || "").trim();
+    if (!decl) return;
+    const bus = window.VersoBlueprint && window.VersoBlueprint.selection;
+    if (!bus || typeof bus.set !== "function") return;
+    const records = graphBlock.__bpMetaByDecl;
+    bus.set({
+      declName: decl,
+      source: "graph",
+      meta: records && records.get ? records.get(decl) || null : null
+    });
+  };
+  graphBlock.addEventListener("click", function (ev) {
+    const node = ev.target && ev.target.closest ? ev.target.closest("g.node") : null;
+    if (node) selectFromNode(node);
+  }, true);
+  graphBlock.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const node = ev.target && ev.target.closest ? ev.target.closest("g.node") : null;
+    if (node) selectFromNode(node);
+  }, true);
+}
+
+// Centered modal dialog showing a graph node's full two-column card on click.
+// Content comes from the inline `<template class="bp_graph_preview_tpl">` cards
+// embedded at build time (offline-correct: no fetch). KaTeX and the per-card
+// proof toggle are (re)hydrated on the injected fragment. One overlay per page
+// (graph pages carry a single graph block; reused if already present).
+function ensureGraphModal(previewUtils) {
+  const existing = document.querySelector(".bp_graph_modal_overlay");
+  if (existing && existing.__bpGraphModal) return existing.__bpGraphModal;
+
+  const overlay = document.createElement("div");
+  overlay.className = "bp_graph_modal_overlay";
+  overlay.hidden = true;
+
+  const dialog = document.createElement("div");
+  dialog.className = "bp_graph_modal_dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", "Node preview");
+  dialog.setAttribute("tabindex", "-1");
+  dialog.innerHTML =
+    '<div class="bp_graph_modal_header">' +
+      '<div class="bp_graph_modal_title"></div>' +
+      '<button type="button" class="bp_graph_modal_close" aria-label="Close preview">Close</button>' +
+    "</div>" +
+    '<div class="bp_graph_modal_body"></div>' +
+    '<div class="bp_graph_modal_footer">' +
+      '<a class="bp_graph_modal_open" href="#">Open node page →</a>' +
+    "</div>";
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const titleEl = dialog.querySelector(".bp_graph_modal_title");
+  const bodyEl = dialog.querySelector(".bp_graph_modal_body");
+  const closeBtn = dialog.querySelector(".bp_graph_modal_close");
+  const openLink = dialog.querySelector(".bp_graph_modal_open");
+  let lastFocused = null;
+
+  const close = function () {
+    if (overlay.hidden) return;
+    overlay.hidden = true;
+    bodyEl.replaceChildren();
+    document.removeEventListener("keydown", onKeydown, true);
+    if (lastFocused && typeof lastFocused.focus === "function") {
+      try { lastFocused.focus(); } catch (_e) { /* ignore */ }
+    }
+    lastFocused = null;
+  };
+
+  const onKeydown = function (ev) {
+    if (overlay.hidden) return;
+    if (ev.key === "Escape") { ev.preventDefault(); close(); return; }
+    if (ev.key !== "Tab") return;
+    // Basic focus trap: keep Tab within the dialog.
+    const focusables = dialog.querySelectorAll(
+      'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])'
+    );
+    if (focusables.length === 0) { ev.preventDefault(); dialog.focus(); return; }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (ev.shiftKey && (active === first || active === dialog)) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && active === last) {
+      ev.preventDefault();
+      first.focus();
+    }
+  };
+
+  const open = function (payload) {
+    lastFocused = document.activeElement;
+    titleEl.textContent = (payload && payload.title) || "";
+    bodyEl.innerHTML = (payload && payload.html) || "";
+    // Typeset KaTeX + run registered hydrators on the injected card fragment.
+    try {
+      if (previewUtils && typeof previewUtils.hydrate === "function") {
+        previewUtils.hydrate(bodyEl);
+      }
+    } catch (_e) { /* ignore */ }
+    // Rebind the per-card proof toggle (proof-toggle.mjs binds on load only).
+    try { startProofToggle(bodyEl); } catch (_e) { /* ignore */ }
+    // Number the signature / proof-source blocks in the injected fragment too.
+    try { startLineNumbers(bodyEl); } catch (_e) { /* ignore */ }
+    if (payload && payload.href) {
+      openLink.setAttribute("href", payload.href);
+      openLink.hidden = false;
+    } else {
+      openLink.removeAttribute("href");
+      openLink.hidden = true;
+    }
+    // Always start at the top of the card (the body is a reused, scrollable
+    // element, so a prior open's scroll position would otherwise persist).
+    bodyEl.scrollTop = 0;
+    overlay.hidden = false;
+    document.addEventListener("keydown", onKeydown, true);
+    (closeBtn || dialog).focus();
+  };
+
+  overlay.addEventListener("mousedown", function (ev) {
+    if (ev.target === overlay) close();
+  });
+  closeBtn.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    close();
+  });
+
+  const modal = {
+    overlay: overlay,
+    open: open,
+    close: close,
+    isOpen: function () { return !overlay.hidden; }
+  };
+  overlay.__bpGraphModal = modal;
+  return modal;
 }
 
 function readPublicGraphData(root) {
@@ -89,11 +308,12 @@ function dotForVariantOptions(variant, options) {
   return dotWithGraphOptions(variant.dot, options);
 }
 
-function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId) {
+function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId, graphModal, cardMeta) {
   if (!previewController) return;
   const graphState = ensureGraphBlockState(graphBlock);
   const previewKeys =
     previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
+  const meta = cardMeta instanceof Map ? cardMeta : new Map();
   const svg = graphContainer.select("svg").node();
   if (!svg || !(svg instanceof SVGElement)) {
     previewController.hide();
@@ -103,6 +323,19 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     previewController.hide();
     return;
   }
+  // Click / keyboard on a node opens the centered modal with the node's full
+  // card (from the inline templates in `previewMap`). Returns true when it
+  // opened, so the caller can suppress the docked-panel click activation.
+  const openModalForNode = function (node) {
+    if (!graphModal || !(node instanceof Element)) return false;
+    const label = (node.getAttribute("data-bp-node-label") || graphNodeLabel(node) || "").trim();
+    if (!label) return false;
+    const html = previewMap.get(label) || "";
+    if (!html) return false;
+    const nodeMeta = meta.get(label) || {};
+    graphModal.open({ html: html, href: nodeMeta.href || "", title: nodeMeta.title || label });
+    return true;
+  };
   const show = async function (label, anchorNode) {
     const requestToken = ++graphState.previewRequestToken;
     const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
@@ -128,6 +361,12 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     if (!canPreviewNode(node)) return;
     node.style.cursor = "pointer";
     node.setAttribute("tabindex", "0");
+    // Stash the stable node label (the SVG <title> == the DOT node name == the
+    // template's `data-bp-preview-label`) BEFORE removing the title below, so
+    // later lookups do not fall back to the visible <text> (which is the display
+    // label and would not match).
+    const stableLabel = graphNodeLabel(node);
+    if (stableLabel) node.setAttribute("data-bp-node-label", stableLabel);
     const titleNode = node.querySelector("title");
     if (titleNode) titleNode.remove();
     [node].concat(Array.from(node.querySelectorAll("*"))).forEach(function (el) {
@@ -138,6 +377,24 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
         el.removeAttributeNS("http://www.w3.org/1999/xlink", "title");
       }
     });
+    // Click / Enter / Space -> centered modal with the full card. Bound per node
+    // (nodes are recreated on each render); guarded against double-binding.
+    if (graphModal && node.__bpModalBound !== true) {
+      node.__bpModalBound = true;
+      node.addEventListener("click", function (ev) {
+        if (openModalForNode(node)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      });
+      node.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        if (openModalForNode(node)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      });
+    }
   });
   const showFromNode = function (node) {
     if (!(node instanceof Element) || !canPreviewNode(node)) return false;
@@ -157,8 +414,12 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     show: showFromNode,
     hide: function () { previewController.hide(); },
     getActiveTrigger: function () { return graphState.previewActiveNode; },
-    activateOnClick: true,
-    activateOnKeydown: true,
+    // When a modal exists, click/keyboard open the centered full-card modal
+    // (bound per node above); the docked panel is then hover-only. Without a
+    // modal (e.g. a consumer graph with no inline card templates), keep the
+    // legacy click-to-pin docked-panel behavior.
+    activateOnClick: !graphModal,
+    activateOnKeydown: !graphModal,
     enterRequiresHover: true,
     bindEscape: false,
     bindWindow: false
@@ -343,6 +604,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
       const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
+      // Per-node card metadata + the shared click-activated modal. Interactive
+      // canvases with inline card templates only; static node-page graphs and
+      // template-less consumer graphs keep the legacy docked preview behavior.
+      const cardMeta = collectCardMeta(graphBlock);
+      // Node -> declaration mapping + slim inline records for the selection bus.
+      const graphDeclMeta = collectGraphDeclMeta(graphBlock);
+      const graphModal =
+        (!isStatic && previewMap.size > 0) ? ensureGraphModal(previewUtils) : null;
       const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
       const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
       let previewController = null;
@@ -687,13 +956,23 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           if (graphState.renderToken !== renderToken) return;
           if (graphState.renderFinalizedToken === renderToken) return;
           graphState.renderFinalizedToken = renderToken;
+          // Stamp decl selection on every node BEFORE the preview pass strips
+          // `<title>`s, so both blueprint and supporting nodes feed the rail.
+          attachSelectionHandlers(
+            graphBlock,
+            graphContainer,
+            graphDeclMeta.labelToDecl,
+            graphDeclMeta.metaByDecl
+          );
           attachPreviewHandlers(
             previewUtils,
             graphBlock,
             graphContainer,
             previewMap,
             previewController,
-            activeVariant.previewKeyByNodeId
+            activeVariant.previewKeyByNodeId,
+            graphModal,
+            cardMeta
           );
           if (!isStatic) {
             attachVariantSelectors(
@@ -1144,6 +1423,9 @@ export function bindGraphs(previewUtils, options) {
 
 export function startGraphRuntime(previewUtils, options) {
   installGraphRenderApi(previewUtils, options);
+  // Ensure the selection bus exists (idempotent with the metadata rail) so graph
+  // node clicks can populate the rail regardless of boot order.
+  installSelectionBus();
   if (document.readyState === "loading") {
     return new Promise(function (resolve, reject) {
       document.addEventListener("DOMContentLoaded", function () {

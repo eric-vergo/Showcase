@@ -14,6 +14,9 @@ import VersoBlueprint.Cite
 import VersoBlueprint.ColorScheme
 import VersoBlueprint.CopyButton
 import VersoBlueprint.Commands.CommandPalette
+import VersoBlueprint.Commands.BannerNav
+import VersoBlueprint.Commands.MetadataRail
+import VersoBlueprint.Commands.DocsChrome
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -152,6 +155,46 @@ def commandPaletteHtmlAssets : HtmlAssets where
   extraCss := ([Informal.CommandPalette.css] : List String)
 
 /--
+Global banner Back / Home control assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the controls' DOM is
+injected by an ESM module (`Commands/banner-nav.mjs`) registered in
+`pageRuntimeModules` and started from `blueprint-page-runtime.mjs`. The styling
+reuses the `--bp-color-*` design tokens so the controls follow the dark-mode
+color scheme, with no CDN / network dependency.
+-/
+def bannerNavHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.BannerNav.css] : List String)
+
+/--
+Global metadata-rail assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the rail's DOM is
+injected by ESM modules (`Commands/metadata-rail.mjs` + `Commands/selection-bus.mjs`)
+registered in `pageRuntimeModules` and started from `blueprint-page-runtime.mjs`.
+The styling reuses the `--bp-*` design tokens exclusively so the rail follows the
+dark-mode color scheme with AA contrast in both, and introduces no CDN / network
+dependency.
+-/
+def metadataRailHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.MetadataRail.css] : List String)
+
+/--
+Global docs-navigation chrome assets (Wave 5), applied to *every* page: the top-nav
+category strip, line-numbered Lean code blocks, and the per-page declaration outline.
+
+Only the stylesheets ride this global `extraCss` channel; the three DOMs are injected
+by ESM modules (`Commands/top-nav.mjs`, `Commands/line-numbers.mjs`,
+`Commands/page-outline.mjs`) registered in `pageRuntimeModules` and started from
+`blueprint-page-runtime.mjs`. All styling reuses the `--bp-*` / `--verso-*` design
+tokens, so light + dark and AA contrast come for free with no CDN / network dependency.
+-/
+def docsChromeHtmlAssets : HtmlAssets where
+  extraCss :=
+    ([Informal.DocsChrome.topNavCss, Informal.DocsChrome.lineNumbersCss,
+      Informal.DocsChrome.pageOutlineCss] : List String)
+
+/--
 Print / PDF stylesheet, applied to *every* page via the global `extraCss` channel.
 
 Everything is scoped inside `@media print`, so it never affects on-screen
@@ -232,8 +275,9 @@ def printHtmlAssets : HtmlAssets where
   extraCss := ([printCss] : List String)
 
 def blueprintHtmlAssets : HtmlAssets :=
-  ((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+  (((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
     colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets).combine
+    bannerNavHtmlAssets).combine metadataRailHtmlAssets).combine docsChromeHtmlAssets).combine
     printHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
@@ -761,6 +805,18 @@ private def dashboardModuleMjs : String := include_str "Commands/dashboard.mjs"
 
 private def proofToggleModuleMjs : String := include_str "Commands/proof-toggle.mjs"
 
+private def bannerNavModuleMjs : String := include_str "Commands/banner-nav.mjs"
+
+private def selectionBusModuleMjs : String := include_str "Commands/selection-bus.mjs"
+
+private def metadataRailModuleMjs : String := include_str "Commands/metadata-rail.mjs"
+
+private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"
+
+private def lineNumbersModuleMjs : String := include_str "Commands/line-numbers.mjs"
+
+private def pageOutlineModuleMjs : String := include_str "Commands/page-outline.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -815,7 +871,13 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs),
   ("Commands/command-palette.mjs", commandPaletteModuleMjs),
   ("Commands/dashboard.mjs", dashboardModuleMjs),
-  ("Commands/proof-toggle.mjs", proofToggleModuleMjs)
+  ("Commands/proof-toggle.mjs", proofToggleModuleMjs),
+  ("Commands/banner-nav.mjs", bannerNavModuleMjs),
+  ("Commands/selection-bus.mjs", selectionBusModuleMjs),
+  ("Commands/metadata-rail.mjs", metadataRailModuleMjs),
+  ("Commands/top-nav.mjs", topNavModuleMjs),
+  ("Commands/line-numbers.mjs", lineNumbersModuleMjs),
+  ("Commands/page-outline.mjs", pageOutlineModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do
@@ -1979,6 +2041,12 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   -- (`{schemaVersion, criticalPath, nodes : [{label, fanIn, fanOut, depth, height, onCriticalPath}]}`).
   IO.FS.writeFile (dataDir / "graph-metrics.json")
     (toJson (Informal.GraphMetrics.computeGraphMetrics (Informal.GraphApi.masterGraph state))).compress
+  -- All-declarations registry (every project decl, wired or not), when a
+  -- `blueprint_graph` block built one under `includeAllDecls`. Absent otherwise —
+  -- no file written, no behavior change for consumers without the flag.
+  match Informal.TraversalIndex.DeclRegistry.raw? state with
+  | some registryJson => IO.FS.writeFile (dataDir / "decl-registry.json") registryJson
+  | none => pure ()
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
   IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
   IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs

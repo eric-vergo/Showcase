@@ -15,9 +15,14 @@ import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
+import VersoBlueprint.PreviewManifest
+import VersoBlueprint.PreviewManifest.BlockRender
+import VersoBlueprint.Informal.LeanCodePreview
+import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
+import VersoBlueprint.DeclRegistry
 
 namespace Informal.Commands
 
@@ -58,6 +63,12 @@ structure GraphBlockData where
   out of the traversal cache so the master graph / metrics / node pages see only
   the authored blueprint nodes. -/
   renderGraphData? : Option Informal.Graph.GraphData := none
+  /-- Compressed all-declarations registry JSON, built at elaboration time when
+  `verso.blueprint.graph.includeAllDecls` is on. Carried through block data so the
+  `Block.graph.traverse` hook can stash it in the traversal state, from where
+  `PreviewManifest.emitBlueprintPreviewData` writes `-verso-data/decl-registry.json`.
+  `none` on consumers without the flag (no registry emitted). -/
+  declRegistryJson? : Option String := none
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
@@ -119,6 +130,103 @@ def shortenVariantLabel (label : String) (maxLen : Nat := 42) : String :=
 def graphAssetBundle : BlueprintAssetBundle :=
   previewPanelAssetBundle (cssExtras := [graphCss])
 
+section GraphCardTemplates
+open Verso Doc Genre Manual
+open Verso.Output.Html
+
+/-- Render stored Manual blocks (a cached preview's `.blocks`) to HTML via `goB`. -/
+private def renderGraphCardBlocks {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (blocks : Array (Doc.Block Verso.Genre.Manual)) :
+    Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html := do
+  Verso.Output.Html.seq <$> blocks.mapM goB
+
+/-- Render one Lean-code preview body for a card cell, or `none` when the preview
+key is missing/malformed. Skipped silently: the graph modal is a secondary
+surface and the same previews are already reported on their primary pages. -/
+private def renderGraphCardLeanCodeBody? {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (key : String) :
+    Doc.Html.HtmlT Verso.Genre.Manual m (Option Verso.Output.Html) := do
+  match Informal.TraversalIndex.LeanCodePreviews.decodedEntry? state key with
+  | some (.ok stored) =>
+    match stored.data.source with
+    | .inlineBlocks blocks => some <$> renderGraphCardBlocks goB blocks
+    | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
+  | _ => pure none
+
+/-- Collect the deduplicated Lean-code panel bodies for a manifest entry (mirrors
+the graft / node-page code-panel assembly). -/
+private def renderGraphCardLeanCodeBodies {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (entry : Informal.PreviewManifest.Entry) :
+    Doc.Html.HtmlT Verso.Genre.Manual m (Array Verso.Output.Html) := do
+  let mut bodies : Array Verso.Output.Html := #[]
+  for key in entry.leanCodePreviewKeys do
+    match ← renderGraphCardLeanCodeBody? goB state key with
+    | some body =>
+      let html := body.asString
+      if !html.trimAscii.isEmpty && !bodies.any (fun existing => existing.asString == html) then
+        bodies := bodies.push body
+    | Option.none => pure ()
+  pure bodies
+
+/-- Look up a statement/proof facet by cache key and render its `(entry, content)`
+for the two-column card, or `none` when absent / empty. -/
+private def renderGraphCardFacet? {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (key : String) :
+    Doc.Html.HtmlT Verso.Genre.Manual m
+      (Option (Informal.PreviewManifest.Entry ×
+        Informal.PreviewManifest.BlockRender.RenderedContent)) := do
+  match Informal.PreviewManifest.findTraversalBlockEntry? state key with
+  | some (preview, entry) =>
+    if preview.blocks.isEmpty then
+      pure none
+    else
+      let body ← renderGraphCardBlocks goB preview.blocks
+      let codeBodies ← renderGraphCardLeanCodeBodies goB state entry
+      pure <| some (entry, { body, codeBodies })
+  | Option.none => pure none
+
+/-- Build the inline `<template>` carrying one graph node's full two-column card
+(statement facet + folded proof facet), keyed by the node's label so the runtime
+resolves it from a clicked SVG node. `none` for supporting nodes and nodes
+without a cached statement facet. Uses the default `RenderConfig`, matching the
+node-page card (`NodePage.renderNodePageBody`). -/
+private def renderGraphNodeCardTemplate? {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (node : Informal.Graph.NodeData) :
+    Doc.Html.HtmlT Verso.Genre.Manual m (Option Verso.Output.Html) := do
+  if node.supporting then
+    return none
+  match ← renderGraphCardFacet? goB state (Informal.PreviewCache.statementKey node.label) with
+  | Option.none => return none
+  | some (entry, content) =>
+    let proof? ← renderGraphCardFacet? goB state (Informal.PreviewCache.proofKey node.label)
+    let card := Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry content proof?
+    let attrs : Array (String × String) := Id.run do
+      let mut a := #[
+        ("class", "bp_graph_preview_tpl"),
+        ("data-bp-preview-label", toString node.label),
+        ("data-bp-node-title", if node.title.isEmpty then node.displayLabel else node.title)
+      ]
+      if let some href := node.href then
+        a := a.push ("data-bp-node-href", href)
+      pure a
+    return some (Verso.Output.Html.tag "template" attrs card)
+
+/-- Render every graph node's inline card template for embedding on the graph
+page (empty for nodes without a card, e.g. supporting nodes). -/
+private def renderGraphNodeCardTemplates {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (nodes : Array Informal.Graph.NodeData) :
+    Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html := do
+  let templates ← nodes.mapM (renderGraphNodeCardTemplate? goB state)
+  pure <| Verso.Output.Html.seq (templates.filterMap id)
+
+end GraphCardTemplates
+
 open Verso Verso.Output.Html in
 /--
 Render the fullwidth graph surface (canvas markup plus the three embedded
@@ -140,7 +248,8 @@ def renderGraphFullwidth
     (idBase : String)
     (static : Bool := false)
     (previewMode : Informal.HoverRender.PreviewMode := .pinned)
-    (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked) :
+    (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked)
+    (previewTemplates : Verso.Output.Html := .empty) :
     Verso.Output.Html :=
   -- Escape `</script>`-style breakouts in author-supplied strings (owner/tag/
   -- chapter/titles) before embedding the JSON verbatim in `<script>` payloads.
@@ -421,6 +530,16 @@ def renderGraphFullwidth
     }}
   let previewPanelHtml : Output.Html := if static then .empty else previewPanel
   let groupHoverPanelHtml : Output.Html := if static then .empty else groupHoverPanel
+  -- Inline per-node full-card templates for the click-activated modal. Interactive
+  -- canvases only (static node-page graphs keep the lightweight statement peek and
+  -- pass no templates). `<template>` content is inert, so this ships offline with
+  -- no fetch; `graph.mjs collectPreviewTemplates` reads it as the preview source.
+  let previewTemplatesHtml : Output.Html :=
+    if static then .empty else {{
+      <div class="bp_graph_preview_templates" hidden>
+        {{previewTemplates}}
+      </div>
+    }}
   {{
     <div class="bp_graph_fullwidth">
       {{controlsHtml}}
@@ -444,6 +563,7 @@ def renderGraphFullwidth
       </div>
       {{previewPanelHtml}}
       {{groupHoverPanelHtml}}
+      {{previewTemplatesHtml}}
     </div>
   }}
 
@@ -456,7 +576,11 @@ block_extension Block.graph (graphData : GraphBlockData) where
       match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
           (fun _ => "Malformed data in Block.graph.traverse") with
       | some graphData =>
-        modify fun state => Informal.GraphApi.saveData state id graphData.semanticGraphData
+        modify fun state =>
+          let state := Informal.GraphApi.saveData state id graphData.semanticGraphData
+          match graphData.declRegistryJson? with
+          | some json => Informal.TraversalIndex.DeclRegistry.saveRaw state json
+          | Option.none => state
       | Option.none =>
         pure ()
       return none
@@ -464,7 +588,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in
-    some <| fun _goI _goB id data _blocks => do
+    some <| fun _goI goB id data _blocks => do
       let graphData : GraphBlockData ←
         match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
             (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
@@ -484,10 +608,14 @@ block_extension Block.graph (graphData : GraphBlockData) where
             | _ => Option.none with
         | some value => value
         | Option.none => Informal.HtmlId.prefixed "bp-graph" (toString id)
+      -- Full two-column node cards, embedded as inline templates for the
+      -- click-activated modal (offline-correct; resolved by label at runtime).
+      let previewTemplates ← renderGraphNodeCardTemplates goB s publicGraphData.nodes
       return renderGraphFullwidth publicGraphData graphVariants graphData.options idBase
         (static := false)
         (previewMode := graphData.previewMode)
         (previewPlacement := graphData.previewPlacement)
+        (previewTemplates := previewTemplates)
   extraCss := graphAssetBundle.css
   extraJs := graphAssetBundle.js
 
@@ -526,35 +654,19 @@ def buildProjectDeclGraph (base : Informal.Graph.GraphData) : CoreM Informal.Gra
     return base
   let env ← getEnv
   let state := informalExt.getState env
-  -- Project module roots: modules of authored, in-workspace `(lean := …)` decls.
-  let projectModuleRoots : NameSet :=
-    state.data.foldl (init := ({} : NameSet)) fun acc _label node =>
-      node.externalRefs.foldl (init := acc) fun acc ref =>
-        match ref.provenance with
-        | .inWorkspace moduleName _ =>
-          let r := moduleName.getRoot
-          if r.isAnonymous then acc else acc.insert r
-        | _ => acc
+  -- Project module roots + declaration enumeration are shared with the declaration
+  -- registry (`DeclRegistry`). The graph keeps `private` helpers out (the default
+  -- `includePrivate := false`) to stay readable; the registry tracks them too. The
+  -- root harvest accepts authored `(lean := …)` decls whose source is inside the
+  -- project — the consumer's own package or a sibling package — which is why the
+  -- sibling-package showcase now gains supporting nodes.
+  let projectModuleRoots ← Informal.DeclRegistry.projectModuleRoots
   if projectModuleRoots.isEmpty then
     return base
-  -- Enumerate non-internal def/theorem/inductive decls in those workspace modules.
-  let moduleNames := env.header.moduleNames
-  let moduleData := env.header.moduleData
-  let mut projectDecls : Array (Name × ConstantInfo) := #[]
-  let mut projectDeclSet : NameSet := {}
-  for i in [0:moduleData.size] do
-    let modName := (moduleNames[i]?).getD Name.anonymous
-    if !projectModuleRoots.contains modName.getRoot then continue
-    for cname in moduleData[i]!.constNames do
-      let cname := cname.eraseMacroScopes
-      if projectDeclSet.contains cname then continue
-      if cname.isInternalDetail then continue
-      match env.find? cname with
-      | some cinfo =>
-        if (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).isSome then
-          projectDecls := projectDecls.push (cname, cinfo)
-          projectDeclSet := projectDeclSet.insert cname
-      | none => pure ()
+  let projectDeclsFull ← Informal.DeclRegistry.enumerateProjectDecls projectModuleRoots
+  let projectDecls : Array (Name × ConstantInfo) := projectDeclsFull.map fun (n, ci, _) => (n, ci)
+  let projectDeclSet : NameSet :=
+    projectDeclsFull.foldl (init := ({} : NameSet)) fun acc (n, _, _) => acc.insert n
   let leanNameLabels := state.leanNameLabels
   -- Graph key(s) for a declaration: its blueprint label(s) if authored, else the
   -- declaration name itself (a supporting node), else empty (external).
@@ -740,10 +852,20 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let renderGraphData ← buildProjectDeclGraph semanticGraphData
   let renderGraphData? : Option Informal.Graph.GraphData :=
     if renderGraphData.nodes.size > semanticGraphData.nodes.size then some renderGraphData else none
+  -- Build the all-declarations registry under the same opt-in as the all-decls
+  -- graph (`includeAllDecls`); serialized here at elaboration time (env available)
+  -- and emitted as `-verso-data/decl-registry.json` at generation time.
+  let declRegistryJson? ← do
+    if verso.blueprint.graph.includeAllDecls.get (← Lean.getOptions) then
+      let registry ← Informal.DeclRegistry.buildDeclRegistry
+      if registry.decls.isEmpty then pure none
+      else pure (some (toJson registry).compress)
+    else
+      pure none
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
-    { semanticGraphData, renderGraphData?, options, previewMode, previewPlacement }
+    { semanticGraphData, renderGraphData?, declRegistryJson?, options, previewMode, previewPlacement }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

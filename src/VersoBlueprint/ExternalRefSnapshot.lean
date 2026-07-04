@@ -127,7 +127,7 @@ private def dropLakePackagesPrefix? (pathText : String) : Option String :=
   | _ :: rest :: _ => dropFirstPathComponent? rest
   | _ => none
 
-private def elegantSourcePath (workspaceRoot : System.FilePath)
+def elegantSourcePath (workspaceRoot : System.FilePath)
     (moduleName? : Option Lean.Name) (sourcePath : System.FilePath) : String :=
   let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
   match dropLakePackagesPrefix? relPath with
@@ -183,13 +183,11 @@ private def existingSourcePath? (workspaceRoot path : System.FilePath) :
   else
     pure none
 
-private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
-    (moduleName : Lean.Name) : IO (Option System.FilePath) := do
-  let modulePath := moduleSourcePathText moduleName
-  if let some path ← existingSourcePath? workspaceRoot (System.FilePath.mk modulePath) then
-    return some path
+/-- Scan the immediate subdirectories of `dir` for `<child>/<modulePath>`. -/
+private def scanChildDirsForModule (workspaceRoot dir : System.FilePath)
+    (modulePath : String) : IO (Option System.FilePath) := do
   try
-    for entry in ← workspaceRoot.readDir do
+    for entry in ← dir.readDir do
       if ← entry.path.isDir then
         if let some path ← existingSourcePath? workspaceRoot (entry.path / modulePath) then
           return some path
@@ -197,7 +195,24 @@ private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
   catch _ =>
     pure none
 
-private def sourcePathForModule? (workspaceRoot : System.FilePath)
+private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
+    (moduleName : Lean.Name) : IO (Option System.FilePath) := do
+  let modulePath := moduleSourcePathText moduleName
+  if let some path ← existingSourcePath? workspaceRoot (System.FilePath.mk modulePath) then
+    return some path
+  -- First the consumer's own subdirectories.
+  if let some path ← scanChildDirsForModule workspaceRoot workspaceRoot modulePath then
+    return some path
+  -- Then sibling packages one level up (the workspace / monorepo root). A
+  -- `(lean := …)` decl frequently lives in a *separate* package whose source dir
+  -- is absent from the build-time source search path (only the consumer's own
+  -- source dir is on it during elaboration), so the decl's `.lean` source — and
+  -- hence its captured proof/value body — is reachable only by looking outward.
+  match workspaceRoot.parent with
+  | some parent => scanChildDirsForModule workspaceRoot parent modulePath
+  | none => pure none
+
+def sourcePathForModule? (workspaceRoot : System.FilePath)
     (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
     let srcSearchPath ← Lean.getSrcSearchPath

@@ -34,6 +34,7 @@ import VersoBlueprint.NodeRoute
 import VersoBlueprint.NodeCard
 import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
+import VersoBlueprint.DeclIndex
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Commands.Formalization
@@ -55,6 +56,7 @@ import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.Author
 import VersoBlueprint.Informal.Uses
 import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.Lean
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.LeanNameParsing

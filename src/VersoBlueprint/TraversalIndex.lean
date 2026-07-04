@@ -547,6 +547,29 @@ def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
 
 end Summary
 
+namespace DeclRegistry
+
+def spec : StoreSpec := {
+  name := `VersoBlueprint.TraversalIndex.DeclRegistry
+  kind := .accumulator
+  key := "the fixed key \"registry\""
+  value := "compressed all-declarations registry JSON string"
+  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) to the generation-time ExtraStep that writes `-verso-data/decl-registry.json`."
+}
+
+def domainName : Name := spec.name
+
+/-- Stash the (already-compressed) registry JSON produced at elaboration time. -/
+def saveRaw (state : TraverseState) (json : String) : TraverseState :=
+  saveObjectData state domainName "registry" (Json.str json)
+
+/-- Read back the compressed registry JSON, if a `blueprint_graph` block stored one. -/
+def raw? (state : TraverseState) : Option String := do
+  let obj ← state.getDomainObject? domainName "registry"
+  obj.data.getStr?.toOption
+
+end DeclRegistry
+
 /--
 Code-side inventory of the traversal indexes owned by Blueprint.
 
@@ -568,7 +591,8 @@ def allSpecs : Array StoreSpec := #[
   Bibliography.spec,
   FormalizationPage.spec,
   CitationUsages.spec,
-  Summary.spec
+  Summary.spec,
+  DeclRegistry.spec
 ]
 
 end Informal.TraversalIndex

@@ -27,6 +27,7 @@ import VersoBlueprint.Informal.CodeSummary
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.NodeCard
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
@@ -181,15 +182,51 @@ block_extension Block.informal (data : BlockData) where
                 { data with kind := .proof }
               pure <| some {
                 informalProof
-                formalProof := .empty
                 proofUses
                 cardId := s!"bp-card-{data.label}"
               }
+          let isTheoremLike :=
+            match data.kind with
+            | .statement k => k.isTheoremLike
+            | .proof => true
+          -- Captured proof/value source of the statement's external `(lean := …)`
+          -- refs (snapshotted in `ExternalRefSnapshot`). `render` routes it into
+          -- the formal proof cell (theorems) or under the signature (definitions);
+          -- empty for inline-authored theorems (runtime tactic-tail relocation).
+          let formalBody := NodeCard.formalSourceBody <|
+            externalDecls.filterMap fun ref =>
+              if ref.present then some (ref.proofHtml?, ref.proofSource?) else none
+          -- Primary decl name + slim identity metadata for the selection bus /
+          -- metadata rail (matches the manifest card path in `BlockRender`): the
+          -- first present (else first) `(lean := …)` ref, identity fields only.
+          let (cardDeclName?, cardDeclMetaJson?) :=
+            match externalDecls.find? (·.present) <|> externalDecls[0]? with
+            | some primaryRef =>
+              let name := primaryRef.canonical.toString
+              let moduleName := (primaryRef.provenance.moduleName?.map (·.toString)).getD ""
+              let statusTag := match primaryRef.provedStatus with
+                | .proved => "proved"
+                | .missing => "missing"
+                | .axiomLike => "axiomLike"
+                | .containsSorry _ => "containsSorry"
+              let kindStr := match data.kind with
+                | .statement k => toString k
+                | .proof => "theorem"
+              let nodeHref := s!"node/{Informal.NodeRoute.nodePageSlugOfString (toString data.label)}/"
+              (some name,
+               some (NodeCard.declMetaJson name kindStr statusTag moduleName (data.displayTitle s)
+                 (primaryRef.range?.map (·.pos.line)) (primaryRef.range?.map (·.endPos.line))
+                 (some nodeHref)))
+            | none => (none, none)
           let card := NodeCard.render {
             cardId := s!"bp-card-{data.label}"
+            isTheoremLike
+            declName? := cardDeclName?
+            declMetaJson? := cardDeclMetaJson?
             header := stmtParts.header
             informalStmt
             formalStmt := externalPanel
+            formalBody
             proof?
           } { showHeader := true }
           -- Preserve the block's anchor `id` (carried in `attrs`) so in-chapter

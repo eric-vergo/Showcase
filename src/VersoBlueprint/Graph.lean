@@ -1222,9 +1222,17 @@ Extra DOT edge attributes derived from a dependency edge's intent/origin.
 
 Returns `#[]` for the default (`regular` intent, `manual` origin) so existing
 graph output is byte-identical when no richer metadata is present. Non-regular
-intent adds a style + slate color; automatic origin overrides the color hue.
+intent adds a style + slate color.
+
+`supporting` is `true` when the edge touches a muted "supporting" node (present
+only in the all-declarations graph). STY-GRAPH-14: the lighter-violet + thinner
+de-emphasis is applied *only* to those edges, so the dense inferred supporting
+mesh recedes while authored blueprint↔blueprint edges keep their base
+statement/proof styling (e.g. the darkened `edgeProofOnlyColor` dotted edges).
+Automatic-origin edges between two authored nodes are therefore left untouched.
 -/
-def edgeStyleAttrs (origin : Data.UseOrigin) (intent : Data.UseIntent) : Array String :=
+def edgeStyleAttrs (origin : Data.UseOrigin) (intent : Data.UseIntent)
+    (supporting : Bool) : Array String :=
   let attrs : Array String :=
     match intent with
     | .regular => #[]
@@ -1233,15 +1241,30 @@ def edgeStyleAttrs (origin : Data.UseOrigin) (intent : Data.UseIntent) : Array S
   match origin with
   | .manual => attrs
   | .automatic =>
-    -- De-emphasize inferred edges: recolor to the lighter violet and override the
-    -- base penwidth with a thinner stroke (these attrs are appended last, so the
-    -- later DOT value wins over any dashed/dotted base penwidth).
-    (attrs.push s!"color=\"{edgeAutomaticColor}\"").push s!"penwidth={edgeAutomaticPenwidth}"
+    if supporting then
+      -- De-emphasize the inferred supporting mesh: recolor to the lighter violet
+      -- and thin the stroke. `dedupEdgeAttrs` collapses these against any base
+      -- color/penwidth so each edge emits exactly one of each (violet/0.6 win).
+      (attrs.push s!"color=\"{edgeAutomaticColor}\"").push s!"penwidth={edgeAutomaticPenwidth}"
+    else attrs
 
-/-- Build a DOT edge line, layering intent/origin styling after the base attrs. -/
+/-- Collapse DOT edge attributes to a single occurrence per key, keeping the LAST
+value (matching Graphviz precedence, where a later attribute wins). First-appearance
+order is preserved and lists with no duplicate keys are returned byte-identically,
+so edges carrying no override are unaffected. Prevents the `color=…, color=…` /
+`penwidth=…, penwidth=…` duplicates that arise when an override attribute is
+appended after a base attribute of the same key. -/
+def dedupEdgeAttrs (attrs : Array String) : Array String :=
+  let keyOf : String → String := fun a => (a.splitOn "=").headD a
+  attrs.foldr (init := (#[] : Array String)) fun a acc =>
+    if acc.any (fun b => keyOf b == keyOf a) then acc else #[a] ++ acc
+
+/-- Build a DOT edge line, layering intent/origin styling after the base attrs.
+`supporting` marks an edge touching a supporting node (see `edgeStyleAttrs`);
+`dedupEdgeAttrs` ensures the layered attributes never emit a duplicate key. -/
 def edgeLineWithStyle (src tgt : Name) (baseAttrs : Array String)
-    (origin : Data.UseOrigin) (intent : Data.UseIntent) : String :=
-  let attrs := baseAttrs ++ edgeStyleAttrs origin intent
+    (origin : Data.UseOrigin) (intent : Data.UseIntent) (supporting : Bool) : String :=
+  let attrs := dedupEdgeAttrs (baseAttrs ++ edgeStyleAttrs origin intent supporting)
   if attrs.isEmpty then
     s!"  \"{src}\" -> \"{tgt}\";"
   else
@@ -1291,6 +1314,13 @@ def Graph.toDot (g : Graph Ref) (header : String)
   let known : NameSet := g.foldl (init := {}) fun acc node => acc.insert node.label
   let defLike : NameSet := g.foldl (init := {}) fun acc node =>
     if node.shape == "box" then acc.insert node.label else acc
+  -- Labels of the muted "supporting" nodes (all-declarations graph only), detected
+  -- via the `bp-node-supporting` marker class the same way node sizing is (below).
+  -- STY-GRAPH-14: only edges touching one of these get the de-emphasized violet.
+  let supportingSet : NameSet := g.foldl (init := {}) fun acc node =>
+    if (node.cssClass?.getD "" |>.splitOn " ").contains "bp-node-supporting" then
+      acc.insert node.label
+    else acc
   let nodeByLabel : NameMap (GraphNode Ref) :=
     g.foldl (init := ({} : NameMap (GraphNode Ref))) fun acc node => acc.insert node.label node
   let (nodeDefs, groupMembers, edges) :=
@@ -1369,23 +1399,30 @@ def Graph.toDot (g : Graph Ref) (header : String)
               else if mixed then #["penwidth=1.7"]
               else #[]
             let (origin, intent) := intentOriginFor dep
-            edges.push (edgeLineWithStyle dep node.label baseAttrs origin intent)
+            let touchesSupporting :=
+              supportingSet.contains dep || supportingSet.contains node.label
+            edges.push (edgeLineWithStyle dep node.label baseAttrs origin intent touchesSupporting)
           else
             edges
         let edges := proofDeps.foldl (init := edges) fun edges dep =>
           if known.contains dep && !stmtDepSet.contains dep then
             let (origin, intent) := intentOriginFor dep
+            let touchesSupporting :=
+              supportingSet.contains dep || supportingSet.contains node.label
             -- STY-GRAPH-09 (#32c): finer dotted stroke (proof-only) reads as
             -- clearly dotted versus the heavier dashed statement edges above.
             -- STY-GRAPH-14 (#32d): with hundreds of these in a dense fan-in the
             -- 1.0pt default-grey (#6b7280) dotted edges read as low-contrast
             -- noise at fit-zoom. Nudge to 1.2pt in a darker slate-grey so they
             -- stay legible while remaining lighter/finer than the dashed
-            -- statement edges (1.4-1.7pt). Auxiliary/technical/automatic intents
-            -- still win their own hue: `edgeStyleAttrs` color attrs are appended
-            -- after these base attrs, so the later DOT value overrides this one.
+            -- statement edges (1.4-1.7pt). Auxiliary/technical intents win their
+            -- own hue via `edgeStyleAttrs`; the automatic supporting-mesh
+            -- de-emphasis applies only when `touchesSupporting`, so authored
+            -- blueprint↔blueprint proof edges keep this darker slate. `edgeLineWithStyle`
+            -- dedups so each edge still emits exactly one color/penwidth.
             edges.push (edgeLineWithStyle dep node.label
-              #["style=dotted", "penwidth=1.2", s!"color=\"{edgeProofOnlyColor}\""] origin intent)
+              #["style=dotted", "penwidth=1.2", s!"color=\"{edgeProofOnlyColor}\""]
+              origin intent touchesSupporting)
           else
             edges
         (nodeDefs, groupMembers, edges)

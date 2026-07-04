@@ -90,7 +90,10 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "value=\"anchored\"" &&
       hasSubstr out "Near node" &&
       !hasSubstr out "class=\"bp_graph_preview_store\"" &&
-      !hasSubstr out "class=\"bp_graph_preview_tpl\"" &&
+      -- The interactive graph now embeds per-node full-card templates in a hidden
+      -- container; the click-activated modal resolves them by label (offline).
+      hasSubstr out "class=\"bp_graph_preview_templates\"" &&
+      hasSubstr out "class=\"bp_graph_preview_tpl\" data-bp-preview-label=" &&
       hasSubstr out "class=\"bp_group_hover_preview bp_preview_panel\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_header bp_preview_panel_header\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_title bp_preview_panel_title\"" &&

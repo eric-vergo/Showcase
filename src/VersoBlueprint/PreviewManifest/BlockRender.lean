@@ -274,36 +274,63 @@ private def cardIdOf (entry : Entry) : String :=
   s!"bp-card-{entry.label}"
 
 /--
-Formal-proof cell HTML for a two-column node card.
+Captured formal body HTML for a two-column node card: the proof body for
+theorem-like nodes or the `:= value` body for definitions.
 
 Renders the captured proof/value source of the statement's associated Lean
 declaration(s) (`Data.ExternalRef.proofSource?`, snapshotted from the source file
-in `ExternalRefSnapshot`) as a Lean code block, so the proof body shows
-server-side for both tactic-mode (`:= by …`) and term-mode (`:= term`) proofs.
+in `ExternalRefSnapshot`) as a Lean code block, so the body shows server-side for
+both tactic-mode (`:= by …`) and term-mode (`:= term`) declarations. `render`
+routes this into the formal proof cell (theorems) or under the signature
+(definitions).
 
-Empty when the statement has no external declaration or no captured proof source:
-inline-code nodes keep `formalStmt`'s single signature+tactic block and rely on
-the runtime tactic-tail relocation (`Commands/proof-toggle.mjs`), and nodes with
-no associated Lean keep a blank proof cell (no stray divider).
+Empty when the statement has no external declaration or no captured source:
+inline-authored theorems keep `formalStmt`'s single signature+tactic block and
+rely on the runtime tactic-tail relocation (`Commands/proof-toggle.mjs`).
 -/
-private def formalProofFromEntry (entry : Entry) : Html :=
+private def formalBodyFromEntry (entry : Entry) : Html :=
   match entry.codeData with
   | some (.external refs) =>
-    let bodies : Array Html := refs.filterMap fun ref =>
-      if ref.present then
-        -- Prefer the syntactically-highlighted token markup (consistent with the
-        -- signature cell above); fall back to escaped raw source when highlighting
-        -- was unavailable (`Informal.highlightProofSourceHtml?` returned `none`).
-        match ref.proofHtml? with
-        | some html =>
-          some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{htmlFragment html}}</code></pre> }}
-        | none =>
-          ref.proofSource?.map fun src =>
-            {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{.text true src}}</code></pre> }}
-      else
-        none
-    if bodies.isEmpty then .empty else .seq bodies
+    -- Prefer the syntactically-highlighted token markup; fall back to escaped raw
+    -- source when highlighting was unavailable. Shared markup via `NodeCard`.
+    Informal.NodeCard.formalSourceBody <| refs.filterMap fun ref =>
+      if ref.present then some (ref.proofHtml?, ref.proofSource?) else none
   | _ => .empty
+
+/-- Registry-aligned status tag for one external reference's snapshot status. -/
+private def provedStatusTag : Informal.Data.ProvedStatus → String
+  | .proved => "proved"
+  | .missing => "missing"
+  | .axiomLike => "axiomLike"
+  | .containsSorry _ => "containsSorry"
+
+/--
+Primary declaration name + slim identity metadata JSON for one statement entry's
+node card, sourced from the entry's `(lean := …)` external reference(s).
+
+Returns `(declName?, declMetaJson?)` for `NodeCard.Parts`: the canonical name of
+the first present (else first) external decl, and the injection-safe identity
+payload the metadata rail first-paints from offline. `(none, none)` for no-Lean
+nodes (nothing to select). The heavier params / uses / used-by data comes from the
+declaration registry at selection time.
+-/
+private def declMetaOfEntry (entry : Entry) : Option String × Option String :=
+  match entry.codeData with
+  | some codeData =>
+    let refs := codeData.externalDecls
+    match refs.find? (·.present) <|> refs[0]? with
+    | some primaryRef =>
+      let name := primaryRef.canonical.toString
+      let moduleName := (primaryRef.provenance.moduleName?.map (·.toString)).getD ""
+      let startLine := primaryRef.range?.map (·.pos.line)
+      let endLine := primaryRef.range?.map (·.endPos.line)
+      let kind := toString (entry.kind.getD .theorem)
+      let nodeHref := s!"node/{Informal.NodeRoute.nodePageSlug entry.label}/"
+      let json := Informal.NodeCard.declMetaJson name kind (provedStatusTag primaryRef.provedStatus)
+        moduleName entry.title startLine endLine (some nodeHref)
+      (some name, some json)
+    | none => (none, none)
+  | none => (none, none)
 
 /--
 Build the two-column node card parts for one statement entry, optionally folding
@@ -328,6 +355,7 @@ def renderCardParts
   let title := entry.heading opts.displayLabelOverride?
   let stmtParts := renderShellParts cfg entry content opts.displayLabelOverride?
   let formalStmt := renderCodePanel cfg title entry content.codeBodies
+  let isTheoremLike := (entry.kind.getD .theorem).isTheoremLike
   let proofParts? : Option Informal.NodeCard.ProofParts :=
     proof?.map fun (pEntry, pContent) =>
       let pShell := renderShellParts cfg pEntry pContent
@@ -337,20 +365,24 @@ def renderCardParts
         | none => .empty
       {
         informalProof := pShell.contentInner
-        -- Formal proof cell: the captured proof/value source of the statement's
-        -- associated Lean declaration (external `(lean := …)` refs). For
-        -- inline-authored theorems this stays empty and the runtime relocates the
-        -- statement block's tactic tail into the cell instead; nodes with no Lean
-        -- keep a blank proof cell. See `formalProofFromEntry`.
-        formalProof := formalProofFromEntry entry
         proofUses
         cardId := cardIdOf entry
       }
+  let (declName?, declMetaJson?) := declMetaOfEntry entry
   {
     cardId := cardIdOf entry
+    isTheoremLike
+    declName?
+    declMetaJson?
     header := stmtParts.header
     informalStmt := stmtParts.contentInner
     formalStmt
+    -- The captured proof/value source of the statement's associated Lean
+    -- declaration (external `(lean := …)` refs). `render` routes it into the
+    -- formal proof cell (theorems) or under the signature (definitions). Empty
+    -- for inline-authored theorems (runtime tactic-tail relocation) and no-Lean
+    -- nodes. See `formalBodyFromEntry`.
+    formalBody := formalBodyFromEntry entry
     proof? := proofParts?
   }
 

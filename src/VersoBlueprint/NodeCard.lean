@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Verso.Output.Html
+import Lean.Data.Json
 
 /-!
 Two-column "node card" renderer (informal prose left ↔ formal Lean right) with a
@@ -27,23 +28,21 @@ open Verso.Output
 open Verso.Output.Html
 
 /--
-Proof-row content for a node card.
+Informal proof-row content for a node card.
 
 The strict 2×2 grid pairs the informal proof prose (left) with the formal Lean
-proof body (right). For external `(lean := …)` declarations the formal proof cell
-is filled server-side with the captured proof source (`formalProof`). For
-inline-authored theorems `formalProof` is empty and the runtime relocates the
-tail of the *statement* facet's single highlighted code block into the cell
-instead (`Commands/proof-toggle.mjs`).
+proof body (right). This structure carries only the *informal* (left) side: the
+proof facet's prose plus its uses panel. The *formal* proof body is a property of
+the statement's associated declaration, so it lives on `Parts.formalBody` (routed
+into the right proof cell by `render`), not here.
+
+For theorem-like nodes with no proof facet at all, `Parts.proof?` is `none` and
+`render` synthesizes a quiet placeholder in the informal proof cell — the proof
+region is always present for theorem-like cards.
 -/
 structure ProofParts where
   /-- Rendered informal proof prose (the proof facet's `bp_content` body). -/
   informalProof : Html
-  /-- Formal Lean proof body for the right proof cell: the captured proof/value
-  source of the statement's associated `(lean := …)` declaration. `.empty` for
-  inline-authored theorems (the runtime relocates the statement's tactic tail
-  here instead) and for nodes with no associated Lean. -/
-  formalProof : Html := .empty
   /-- Proof-side uses panel for the proof facet, or `.empty`. -/
   proofUses : Html := .empty
   /-- Stable id stem for the card, used to wire the toggle to the proof region. -/
@@ -52,23 +51,53 @@ structure ProofParts where
 /--
 Rendered pieces of a single node card.
 
-`informalStmt` is the statement's informal prose; `formalStmt` is its Lean code
-panel (or `.empty`, which leaves the right cell blank). `proof?` is `none` for
-nodes with no proof facet — in that case no toggle and no proof region render.
+`informalStmt` is the statement's informal prose; `formalStmt` is its Lean
+signature panel (or `.empty`). `formalBody` is the captured `:= …` source of the
+statement's associated declaration — the *proof body* for theorem-like nodes and
+the *value* for definitions.
+
+Layout is driven by `isTheoremLike`:
+* **Theorem-like** cards always render the full 2×2 grid — informal statement,
+  formal statement, informal proof, formal proof — with a quiet placeholder
+  synthesized for any unavailable part. `formalBody` fills the formal proof cell;
+  `proof?` fills the informal proof cell (placeholder when `none`). The proof
+  region is always present (toggle + hidden-by-default collapse).
+* **Definitions** always render a 1×2 grid (informal / formal) with no proof
+  region. The formal cell shows the signature (`formalStmt`) followed by the
+  value body (`formalBody`).
 -/
 structure Parts where
   /-- Stable id stem for the card. Drives `data-bp-card` (always set) and the
   proof region's `id`/`aria-controls` (as `{cardId}-proof`). Derive it from the
   node label/slug so every card has a deterministic DOM id. -/
   cardId : String
+  /-- Whether this node is theorem-like (theorem/lemma/proposition/corollary).
+  `true` selects the 2×2 statement+proof layout; `false` (definition) selects the
+  1×2 signature+value layout with no proof region. -/
+  isTheoremLike : Bool := true
   /-- Full-width card header (title / number / status / extras). -/
   header : Html
   /-- Informal statement prose (left statement cell). -/
   informalStmt : Html
-  /-- Formal Lean code panel for the statement (right statement cell), or `.empty`. -/
+  /-- Formal Lean signature panel for the statement (right statement cell), or
+  `.empty`. -/
   formalStmt : Html
-  /-- Proof content, when the node has a proof facet. -/
+  /-- Captured `:= …` source of the statement's associated `(lean := …)`
+  declaration: the proof body for theorem-like nodes (routed into the formal
+  proof cell) or the value for definitions (rendered under the signature).
+  `.empty` for inline-authored theorems (the runtime relocates the statement's
+  tactic tail instead) and for nodes with no associated Lean. -/
+  formalBody : Html := .empty
+  /-- Informal proof content, when the node has a proof facet. -/
   proof? : Option ProofParts := none
+  /-- Primary (canonical) declaration name this card formalizes, surfaced as
+  `data-bp-card`'s sibling `data-bp-decl` so the selection bus / metadata rail can
+  identify the decl on card click/focus. `none` for no-Lean nodes. -/
+  declName? : Option String := none
+  /-- Slim identity-only metadata JSON (see `declMetaJson`) embedded inline as a
+  `<script class="bp-decl-meta">` so the metadata rail can first-paint the current
+  page's decls without a network fetch (offline / `file://`). `none` ⇒ no script. -/
+  declMetaJson? : Option String := none
 
 /-- Presentation knobs for `render`. -/
 structure Options where
@@ -87,45 +116,122 @@ private def wrapperClass (opts : Options) : String :=
   else
     s!"bp_card2 {opts.wrapperClass}"
 
-/-- The statement-row grid (informal prose left, formal Lean right). -/
-private def renderStatementGrid (parts : Parts) : Html :=
+/--
+Render captured formal proof/value source into a card cell — one highlighted Lean
+code block per associated declaration, in source order.
+
+Each item is the `(proofHtml?, proofSource?)` pair snapshotted for one `(lean := …)`
+reference (see `Data.ExternalRef`): the syntactically-highlighted token markup is
+preferred, falling back to escaped raw source when highlighting was unavailable.
+`.empty` when there are no items (inline-authored theorems and no-Lean nodes).
+
+Kept Data-free (plain `String` pairs) so this foundational module stays
+independent of the blueprint data model; callers map their external refs to pairs.
+-/
+def formalSourceBody (items : Array (Option String × Option String)) : Html :=
+  let bodies : Array Html := items.filterMap fun (proofHtml?, proofSource?) =>
+    match proofHtml? with
+    | some html =>
+      some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{Html.text false html}}</code></pre> }}
+    | none =>
+      proofSource?.map fun src =>
+        {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{Html.text true src}}</code></pre> }}
+  if bodies.isEmpty then .empty else .seq bodies
+
+/-- Does this HTML render as nothing but whitespace? Used to decide whether a card
+cell is unavailable and should show a quiet placeholder instead. A present tag is
+never blank (it carries structure even when its text is empty). -/
+private partial def htmlIsBlank : Html → Bool
+  | .text _ s => s.all Char.isWhitespace
+  | .tag .. => false
+  | .seq xs => xs.all htmlIsBlank
+
+/-- A quiet, muted placeholder for an unavailable card cell. -/
+private def placeholderCell (text : String) : Html :=
+  {{ <div class="bp_card2_placeholder">{{Html.ofString text}}</div> }}
+
+/-- `content` if it renders anything, else a quiet placeholder with `text`. -/
+private def orPlaceholder (content : Html) (text : String) : Html :=
+  if htmlIsBlank content then placeholderCell text else content
+
+/-- A statement/proof-row grid pairing an informal (left) and formal (right) cell.
+`extraClass` distinguishes the proof grid so its collapse animation can target it. -/
+private def cardGrid (informalCellClass formalCellClass extraClass : String)
+    (informalCell formalCell : Html) : Html :=
   {{
-    <div class="bp_card2_grid">
-      <div class="bp_card2_cell bp_card2_informal_stmt"> {{parts.informalStmt}} </div>
-      <div class="bp_card2_cell bp_card2_formal_stmt"> {{parts.formalStmt}} </div>
+    <div class={{s!"bp_card2_grid{extraClass}"}}>
+      <div class={{s!"bp_card2_cell {informalCellClass}"}}> {{informalCell}} </div>
+      <div class={{s!"bp_card2_cell {formalCellClass}"}}> {{formalCell}} </div>
     </div>
   }}
 
 /--
-The proof toggle button plus the animatable proof region, for a card that has a
-proof facet. The informal proof prose (plus its uses panel) fills the left cell;
-the formal Lean proof body (`proof.formalProof`, the captured proof source for
-external `(lean := …)` decls) fills the right cell. When `formalProof` is empty
-(inline-authored theorems), the right cell is emitted empty and the runtime
-relocates the statement block's tactic tail into it.
+Build the slim identity-only metadata JSON embedded inline per card for the
+metadata rail's offline first paint (`Parts.declMetaJson?`).
+
+Kept to injection-safe *identity* fields only — name, kind, status, module,
+numbered title, source line span, and root-relative node href — with no type or
+signature text (so the payload can never contain a stray `</script>` and stays
+small). The heavier data (parameters, uses / used-by, see-also) is fetched from
+`-verso-data/decl-registry.json` at selection time; under `file://` those
+sections degrade to a quiet "unavailable offline" note.
+
+`<` is escaped to `<` in the emitted JSON so embedding it verbatim in a
+raw-text `<script>` element can never terminate the script early.
 -/
-private def renderProofRegion (cardId : String) (proof : ProofParts) : Html :=
+def declMetaJson (name kind status moduleName title : String)
+    (startLine endLine : Option Nat) (nodeHref : Option String) : String :=
+  open Lean in
+  let base : List (String × Json) :=
+    [ ("name", Json.str name)
+    , ("kind", Json.str kind)
+    , ("status", Json.str status)
+    , ("module", Json.str moduleName)
+    , ("title", Json.str title) ]
+  let range : List (String × Json) :=
+    match startLine, endLine with
+    | some s, some e => [("startLine", Lean.toJson s), ("endLine", Lean.toJson e)]
+    | _, _ => []
+  let href : List (String × Json) :=
+    match nodeHref with
+    | some h => [("nodeHref", Json.str h)]
+    | none => []
+  ((Json.mkObj (base ++ range ++ href)).compress).replace "<" "\\u003c"
+
+/-- Inline per-card metadata `<script>` for the rail's offline first paint, or
+`.empty`. The JSON is `</script>`-safe (see `declMetaJson`) so it is injected raw. -/
+private def metaScriptOf (parts : Parts) : Html :=
+  match parts.declMetaJson? with
+  | some json =>
+    {{ <script type="application/json" class="bp-decl-meta"
+        "data-bp-decl"={{parts.declName?.getD ""}}>{{Html.text false json}}</script> }}
+  | none => .empty
+
+/-- The always-present proof toggle button plus the animatable proof region. The
+informal proof (left) and formal proof (right) cells are pre-resolved by `render`
+(each already carrying a placeholder when its part is unavailable). -/
+private def renderProofRegion (cardId : String) (informalProof formalProof : Html) : Html :=
   let proofId := s!"{cardId}-proof"
-  let informalProof :=
-    Html.seq #[proof.informalProof, proof.proofUses]
   {{
     <button type="button" class="bp_card2_proof_toggle"
         "aria-expanded"="false" aria-controls={{proofId}}>
       "Show proof"
     </button>
     <div class="bp_card2_proof_anim" id={{proofId}}>
-      <div class="bp_card2_grid bp_card2_proof_grid">
-        <div class="bp_card2_cell bp_card2_informal_proof"> {{informalProof}} </div>
-        <div class="bp_card2_cell bp_card2_formal_proof"> {{proof.formalProof}} </div>
-      </div>
+      {{cardGrid "bp_card2_informal_proof" "bp_card2_formal_proof" " bp_card2_proof_grid"
+          informalProof formalProof}}
     </div>
   }}
 
 /--
 Render a two-column node card.
 
-Emits the statement row always; the proof toggle and proof region only when
-`parts.proof?` is `some`. The header is a plain `<div class="bp_card2_header">`.
+Theorem-like nodes (`parts.isTheoremLike`) always render the full 2×2 grid —
+informal/formal statement and informal/formal proof — with the proof toggle and
+hidden-by-default proof region always present; any unavailable part becomes a
+quiet placeholder. Definitions render a 1×2 grid whose formal cell shows the
+signature followed by the `:= value` body, and no proof region. The header is a
+plain `<div class="bp_card2_header">`.
 -/
 def render (parts : Parts) (opts : Options := {}) : Html :=
   let header :=
@@ -133,17 +239,43 @@ def render (parts : Parts) (opts : Options := {}) : Html :=
       {{ <div class="bp_card2_header"> {{parts.header}} </div> }}
     else
       .empty
-  let proofRegion :=
-    match parts.proof? with
-    | some proof => renderProofRegion parts.cardId proof
-    | none => .empty
-  {{
-    <div class={{wrapperClass opts}} "data-bp-card"={{parts.cardId}}>
-      {{header}}
-      {{renderStatementGrid parts}}
-      {{proofRegion}}
-    </div>
-  }}
+  let informalStmtCell := orPlaceholder parts.informalStmt "No informal statement yet."
+  if parts.isTheoremLike then
+    -- Always the full 2×2: statement row + proof row, placeholders for gaps.
+    let formalStmtCell := orPlaceholder parts.formalStmt "Formal statement not available."
+    let informalProof :=
+      match parts.proof? with
+      | some proof =>
+        orPlaceholder (Html.seq #[proof.informalProof, proof.proofUses]) "No informal proof yet."
+      | none => placeholderCell "No informal proof yet."
+    -- The formal proof cell holds the captured proof source; when empty it shows a
+    -- placeholder, which the runtime tactic-tail relocation (`proof-toggle.mjs`)
+    -- replaces wholesale via `replaceChildren` for inline-authored theorems.
+    let formalProof := orPlaceholder parts.formalBody "Formal proof not available."
+    {{
+      <div class={{wrapperClass opts}} "data-bp-card"={{parts.cardId}}
+          "data-bp-decl"={{parts.declName?.getD ""}}>
+        {{metaScriptOf parts}}
+        {{header}}
+        {{cardGrid "bp_card2_informal_stmt" "bp_card2_formal_stmt" "" informalStmtCell formalStmtCell}}
+        {{renderProofRegion parts.cardId informalProof formalProof}}
+      </div>
+    }}
+  else
+    -- Definition: 1×2, formal cell = signature followed by the `:= value` body.
+    let formalDefCell :=
+      if htmlIsBlank parts.formalStmt && htmlIsBlank parts.formalBody then
+        placeholderCell "Formal definition not available."
+      else
+        Html.seq #[parts.formalStmt, parts.formalBody]
+    {{
+      <div class={{wrapperClass opts}} "data-bp-card"={{parts.cardId}}
+          "data-bp-decl"={{parts.declName?.getD ""}}>
+        {{metaScriptOf parts}}
+        {{header}}
+        {{cardGrid "bp_card2_informal_stmt" "bp_card2_formal_stmt" "" informalStmtCell formalDefCell}}
+      </div>
+    }}
 
 /--
 Card CSS: the two-column grid, the wide breakout, the collapsible proof row, the
@@ -341,6 +473,34 @@ def css : String := r##"
 .bp_card2_formal_proof > pre > code.hl.lean.block {
   display: block;
   overflow-x: auto;
+}
+
+/* ---- Definition value body ----------------------------------------------- */
+/* A definition's formal cell shows its signature panel followed by the captured
+   `:= value` body as a highlighted Lean block. Separate it from the signature and
+   match the proof code column (monospace, horizontal scroll, no bleed). */
+.bp_card2_formal_stmt > .bp_card2_proof_source {
+  margin: var(--bp-space-3) 0 0;
+  overflow-x: auto;
+}
+
+.bp_card2_formal_stmt > .bp_card2_proof_source > code.hl.lean.block {
+  display: block;
+  overflow-x: auto;
+}
+
+/* ---- Quiet placeholder for an unavailable card cell ---------------------- */
+/* Muted, restrained "not yet" copy shown when a statement, proof, or value part
+   is unavailable, so every theorem-like card reads as a complete 2x2 and every
+   definition as a complete 1x2. Token-based, so light + dark come for free; the
+   `:not(:empty)` column divider treats it as real content (it is a real cell). */
+.bp_card2_placeholder {
+  margin: 0;
+  padding: var(--bp-space-1) 0;
+  color: var(--bp-color-text-subtle);
+  font-size: var(--bp-fs-caption, 0.78rem);
+  font-style: italic;
+  line-height: 1.5;
 }
 "##
 

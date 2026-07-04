@@ -106,6 +106,36 @@ def mathlibCandidatesHref : String := "mathlib-candidates/"
 /-- Multi-page output path for the candidates page: `mathlib-candidates/index.html`. -/
 def mathlibCandidatesPath : Verso.Multi.Path := #["mathlib-candidates"]
 
+/-!
+Declaration-catalog page routes (Definitions / Theorems / alphabetical Index /
+Modules). Same root-relative, leading-slash-free convention as the routes above so
+they resolve against each page's `<base href>`. They are the single source of truth
+shared by the top-nav strip (`Commands/top-nav.mjs`, via the site root) and the
+catalog-page emitter (`DeclIndex.lean`), and are chosen to avoid colliding with the
+existing `node/` / `worklist/` / `owners/` / `tags/` / `find/` / `audit/` /
+`mathlib-candidates/` / `Formalization-Metadata/` slugs.
+-/
+
+/-- Root-relative href (no leading slash) to the Definitions catalog page. -/
+def defsHref : String := "defs/"
+/-- Multi-page output path for the Definitions catalog: `defs/index.html`. -/
+def defsPath : Verso.Multi.Path := #["defs"]
+
+/-- Root-relative href (no leading slash) to the Theorems catalog page. -/
+def theoremsHref : String := "theorems/"
+/-- Multi-page output path for the Theorems catalog: `theorems/index.html`. -/
+def theoremsPath : Verso.Multi.Path := #["theorems"]
+
+/-- Root-relative href (no leading slash) to the alphabetical declaration index. -/
+def declIndexHref : String := "decl-index/"
+/-- Multi-page output path for the alphabetical index: `decl-index/index.html`. -/
+def declIndexPath : Verso.Multi.Path := #["decl-index"]
+
+/-- Root-relative href (no leading slash) to the module-tree page. -/
+def modulesHref : String := "modules/"
+/-- Multi-page output path for the module tree: `modules/index.html`. -/
+def modulesPath : Verso.Multi.Path := #["modules"]
+
 /-- Slug for an owner page, derived from the owner's canonical `Name`. -/
 def ownerPageSlug (owner : Name) : String :=
   nodePageSlugOfString owner.toString

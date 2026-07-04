@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
+import VersoBlueprint.DeclIndex
 
 /-!
 Baked-in Blueprint entry point.
@@ -52,6 +53,7 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintExtraPages
         :: Informal.ExtraPages.emitBlueprintAuditPage
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
+        :: Informal.DeclIndex.emitBlueprintDeclIndexPages
         :: extraSteps)
 
 end Informal.PreviewManifest

@@ -582,7 +582,7 @@ html[data-bp-style="bold"] .bp_graph_legend_edge_swatch {
 }
 
 html[data-bp-style="blueprint"] .bp_graph_legend_item {
-  color: #111827;
+  color: var(--bp-color-text);
 }
 
 html[data-bp-style="modern"] .bp_graph_controls_button {
@@ -667,6 +667,129 @@ html[data-bp-style="bold"] .bp_graph_legend_swatch {
   .bp_graph_canvas[data-bp-status-filter] g.node,
   .bp_graph_controls_select,
   .bp_graph_controls_button {
+    transition: none;
+  }
+}
+
+/*
+ * Node-card modal: click a graph node -> a centered dialog with that node's full
+ * two-column card. Backdrop + centered panel, role="dialog"/aria-modal, Esc /
+ * backdrop / close-button dismissal (see graph.mjs). Tokens only, so light +
+ * dark come for free; no new colors introduced.
+ */
+.bp_graph_modal_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--bp-space-5);
+  background: rgba(15, 23, 42, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.bp_graph_modal_overlay[hidden] {
+  display: none;
+}
+
+.bp_graph_modal_dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(90vw, 68rem);
+  max-height: min(88vh, 52rem);
+  background: var(--bp-color-surface);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-lg, 0.75rem);
+  box-shadow: var(--bp-shadow-lg);
+  overflow: hidden;
+}
+
+.bp_graph_modal_header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bp-space-3);
+  padding: var(--bp-space-3) var(--bp-space-4);
+  border-bottom: 1px solid var(--bp-color-border-soft);
+}
+
+.bp_graph_modal_title {
+  min-width: 0;
+  font-weight: 600;
+  font-size: var(--bp-fs-control, 0.9rem);
+  color: var(--bp-color-text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bp_graph_modal_close {
+  flex: 0 0 auto;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  background: var(--bp-color-surface);
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-control, 0.82rem);
+  padding: var(--bp-space-1) var(--bp-space-2);
+  cursor: pointer;
+  transition: background-color var(--bp-duration-fast) var(--bp-ease),
+    border-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease);
+}
+
+.bp_graph_modal_close:hover {
+  border-color: var(--bp-color-border-strong);
+  color: var(--bp-color-text-strong);
+  background: var(--bp-color-surface-subtle);
+}
+
+.bp_graph_modal_close:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+}
+
+.bp_graph_modal_body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--bp-space-4);
+}
+
+/* The card must NOT fire its container-query breakout inside the modal (the
+   modal owns its own width). Neutralize the breakout width/margin. */
+.bp_graph_modal_body .bp_card2 {
+  width: auto;
+  max-width: none;
+  margin: 0;
+}
+
+.bp_graph_modal_footer {
+  flex: 0 0 auto;
+  padding: var(--bp-space-3) var(--bp-space-4);
+  border-top: 1px solid var(--bp-color-border-soft);
+  text-align: right;
+}
+
+.bp_graph_modal_open {
+  font-size: var(--bp-fs-control, 0.85rem);
+  font-weight: 600;
+  color: var(--bp-color-link);
+  text-decoration: none;
+}
+
+.bp_graph_modal_open:hover {
+  text-decoration: underline;
+}
+
+.bp_graph_modal_open:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp_graph_modal_close {
     transition: none;
   }
 }
