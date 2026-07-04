@@ -47,17 +47,6 @@ structure RelationPanelsConfig where
   idPrefix : RelationPanelKind → Entry → String :=
     fun kind entry => s!"bp-preview-data-{kind.key}-{entry.label}"
 
-private def RelationPanelsConfig.apply
-    (cfg : RelationPanelsConfig)
-    (kind : RelationPanelKind)
-    (panelCfg : Informal.RelatedPanel.PanelConfig) :
-    Informal.RelatedPanel.PanelConfig :=
-  { panelCfg with
-    wrapClass := cfg.wrapClass kind
-    panelAttrs := cfg.panelAttrs kind
-    singleMode := cfg.singleMode kind
-  }
-
 /-- Genre-specific presentation knobs for rendering a preview-data-backed Blueprint block. -/
 structure RenderConfig where
   wrapperClass : String := "bp_preview_data_node_blueprint"
@@ -71,6 +60,10 @@ structure RenderOptions where
   displayLabelOverride? : Option String := none
   compact : Bool := false
   showHeader : Bool := true
+  /-- Configured project prefix (`verso.blueprint.declNamePrefix`, read from the
+  traversal store by the calling surface) used to derive the card meta payload's
+  `shortName`; empty ⇒ no shortening (byte-identical legacy output). -/
+  declNamePrefix : String := ""
 
 /--
 Rendered content for a Blueprint block shell.
@@ -91,109 +84,13 @@ def RenderedContent.ofHtmlStrings (bodyHtml : String) (codeHtml : Array String :
     codeBodies := codeHtml.map htmlFragment
   }
 
-private def renderRelatedPanel
-    (cfg : RelationPanelsConfig)
-    (kind : RelationPanelKind)
-    (panelCfg : Informal.RelatedPanel.PanelConfig)
-    (entries : Array RelatedEntry)
-    (entry : Entry)
-    (currentLabel : Name) :
-    Html :=
-  let panelEntries :=
-    Informal.PreviewManifest.relatedPanelEntries entries currentLabel (cfg.idPrefix kind entry)
-  Informal.RelatedPanel.renderPanel (cfg.apply kind panelCfg) panelEntries
-
-/--
-Render a preview-manifest relation panel as a header extra.
-
-Most relation kinds disappear when they have no entries; undeclared groups are
-the exception, because their empty warning chip is the whole signal.
--/
-private def renderRelatedPanelExtra?
-    (cfg : RelationPanelsConfig)
-    (kind : RelationPanelKind)
-    (panelCfg : Informal.RelatedPanel.PanelConfig)
-    (entries : Array RelatedEntry)
-    (entry : Entry)
-    (currentLabel : Name)
-    (toExtra : Html → Informal.HeaderExtra)
-    (showWhenEmpty : Bool := false) :
-    Option Informal.HeaderExtra :=
-  if entries.isEmpty && !showWhenEmpty then
-    none
-  else
-    some <| toExtra <|
-      renderRelatedPanel cfg kind panelCfg entries entry currentLabel
-
-private def renderGroupExtra?
-    (cfg : RelationPanelsConfig)
-    (entry : Entry) :
-    Option Informal.HeaderExtra :=
-  match entry.group with
-  | none => none
-  | some group =>
-    renderRelatedPanelExtra?
-      cfg
-      .group
-      (Informal.RelatedPanel.groupPanelConfig group.label group.title group.declared)
-      group.entries
-      entry
-      entry.label
-      Informal.HeaderExtra.group
-      (showWhenEmpty := !group.declared)
-
-/-- Select the uses-panel wording from the manifest entry facet. -/
-private def usesPanelConfigForEntry (entry : Entry) : Informal.RelatedPanel.PanelConfig :=
+/-- Heading status dot (1D) for a manifest entry: statement entries derive it
+from their code source (`informal` when there is none); proof entries carry no
+dot. -/
+private def statusDotOfEntry (entry : Entry) : Html :=
   match entry.blockKind with
-  | .proof => Informal.RelatedPanel.proofUsesPanelConfig entry.label
-  | .statement _ => Informal.RelatedPanel.statementUsesPanelConfig entry.label
-
-private def renderUsesExtra?
-    (cfg : RelationPanelsConfig)
-    (entry : Entry) :
-    Option Informal.HeaderExtra :=
-  renderRelatedPanelExtra?
-    cfg
-    .uses
-    (usesPanelConfigForEntry entry)
-    entry.uses
-    entry
-    Name.anonymous
-    Informal.HeaderExtra.uses
-
-private def renderCodeExtra? (entry : Entry) (blockData : Informal.BlockData) :
-    Option Informal.HeaderExtra :=
-  entry.codeData.map fun codeData =>
-    let parts := Informal.CodeSummary.renderParts
-      blockData
-      { source := some codeData }
-      (fun _ => none)
-    Informal.HeaderExtra.code parts.codeEntry
-
-private def renderUsedByExtra?
-    (cfg : RelationPanelsConfig)
-    (entry : Entry) :
-    Option Informal.HeaderExtra :=
-  renderRelatedPanelExtra?
-    cfg
-    .usedBy
-    Informal.RelatedPanel.usedByPanelConfig
-    entry.usedBy
-    entry
-    Name.anonymous
-    Informal.HeaderExtra.usedBy
-
-private def renderHeaderExtras
-    (cfg : RelationPanelsConfig)
-    (entry : Entry)
-    (blockData : Informal.BlockData) :
-    Informal.HeaderExtras :=
-  {
-    group? := renderGroupExtra? cfg entry
-    uses? := renderUsesExtra? cfg entry
-    code? := renderCodeExtra? entry blockData
-    usedBy? := renderUsedByExtra? cfg entry
-  }
+  | .statement _ => Informal.CodeSummary.statusDotHtml entry.codeData
+  | .proof => .empty
 
 private def renderCodePanel
     (cfg : RenderConfig)
@@ -204,16 +101,14 @@ private def renderCodePanel
   if codeBodies.isEmpty then
     .empty
   else
-    let panelSummary := Informal.CodeSummary.renderPanelIndicator
+    let summaryTitle := Informal.CodeSummary.panelSummaryTitle
       entry.label
       { source := entry.codeData }
-      (fun _ => none)
     let codeHtml := .seq codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
     Informal.mkCodePanel
       { caption := s!"Lean code for {title.caption}", number? := some title.label }
-      panelSummary.summaryTitle
-      panelSummary.indicator
+      summaryTitle
       body
 
 /-- Render a Blueprint block shell from semantic entry data and rendered content. -/
@@ -237,7 +132,7 @@ def renderWithRenderedContent
         (statementCaption? := some title.caption)
         (proofCaption? := some entry.title)
         (titleRowAttrs? := cfg.titleRowAttrs? entry)
-        (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData)
+        (statusDot := statusDotOfEntry entry)
       content := #[content.body]
       companionPanels := #[codePanel]
       wrapperClass? := some cfg.wrapperClass
@@ -266,7 +161,7 @@ private def renderShellParts
       (statementCaption? := some title.caption)
       (proofCaption? := some entry.title)
       (titleRowAttrs? := cfg.titleRowAttrs? entry)
-      (headerExtras := renderHeaderExtras cfg.relationPanels entry blockData))
+      (statusDot := statusDotOfEntry entry))
     #[content.body]
 
 /-- Card id stem derived from a manifest entry label. -/
@@ -312,9 +207,12 @@ Returns `(declName?, declMetaJson?)` for `NodeCard.Parts`: the canonical name of
 the first present (else first) external decl, and the injection-safe identity
 payload the metadata rail first-paints from offline. `(none, none)` for no-Lean
 nodes (nothing to select). The heavier params / uses / used-by data comes from the
-declaration registry at selection time.
+declaration registry at selection time. `namePrefix` (when configured) adds the
+prefix-stripped `shortName` key — emitted only when it actually shortens, keeping
+legacy output byte-identical.
 -/
-private def declMetaOfEntry (entry : Entry) : Option String × Option String :=
+private def declMetaOfEntry (entry : Entry) (namePrefix : String) :
+    Option String × Option String :=
   match entry.codeData with
   | some codeData =>
     let refs := codeData.externalDecls
@@ -326,8 +224,10 @@ private def declMetaOfEntry (entry : Entry) : Option String × Option String :=
       let endLine := primaryRef.range?.map (·.endPos.line)
       let kind := toString (entry.kind.getD .theorem)
       let nodeHref := s!"node/{Informal.NodeRoute.nodePageSlug entry.label}/"
+      let short := Informal.NodeCard.shortDeclName namePrefix name
+      let shortName? := if short == name then none else some short
       let json := Informal.NodeCard.declMetaJson name kind (provedStatusTag primaryRef.provedStatus)
-        moduleName entry.title startLine endLine (some nodeHref)
+        moduleName entry.title startLine endLine (some nodeHref) (shortName := shortName?)
       (some name, some json)
     | none => (none, none)
   | none => (none, none)
@@ -336,7 +236,7 @@ private def declMetaOfEntry (entry : Entry) : Option String × Option String :=
 Build the two-column node card parts for one statement entry, optionally folding
 in a resolved proof facet.
 
-This is additive: it reuses `renderHeaderExtras`, `entry.heading`, and
+This is additive: it reuses `renderShellParts`, `entry.heading`, and
 `renderCodePanel` (an empty `codeBodies` yields a blank right cell). The
 single-column compositor `renderWithRenderedContent` is untouched.
 -/
@@ -356,19 +256,16 @@ def renderCardParts
   let stmtParts := renderShellParts cfg entry content opts.displayLabelOverride?
   let formalStmt := renderCodePanel cfg title entry content.codeBodies
   let isTheoremLike := (entry.kind.getD .theorem).isTheoremLike
+  -- The informal proof cell carries the proof prose only — the old "USES n" chip
+  -- is gone (the metadata rail's Uses section owns dependency information).
   let proofParts? : Option Informal.NodeCard.ProofParts :=
     proof?.map fun (pEntry, pContent) =>
       let pShell := renderShellParts cfg pEntry pContent
-      let proofUses :=
-        match renderUsesExtra? cfg.relationPanels pEntry with
-        | some extra => extra.html
-        | none => .empty
       {
         informalProof := pShell.contentInner
-        proofUses
         cardId := cardIdOf entry
       }
-  let (declName?, declMetaJson?) := declMetaOfEntry entry
+  let (declName?, declMetaJson?) := declMetaOfEntry entry opts.declNamePrefix
   {
     cardId := cardIdOf entry
     isTheoremLike

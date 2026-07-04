@@ -298,10 +298,12 @@ private def writeSlidesPreviewDataFiles
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
+    -- Header extras (the L∃∀N code chip) no longer render on slides either
+    -- (shared populate-site, clean-card 1D); the bare code panel remains.
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
         hasSubstr rendered "bp_slide_node_blueprint" &&
-        hasSubstr rendered "bp_extra_slot_code" &&
+        !hasSubstr rendered "bp_extra_slot_code" &&
         hasSubstr rendered "bp_code_panel_wrapper" &&
         hasSubstr rendered "data-bp-site-base=\"blueprint\"" &&
         hasSubstr rendered "href=\"#--informal-preview" &&
@@ -352,15 +354,15 @@ private def writeSlidesPreviewDataFiles
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
+    -- Group / used-by manifests are still captured (rail data), but the slide
+    -- header panels are gone with the header extras (clean-card 1D).
     pure <|
       groupManifestOk &&
         usedByManifestOk &&
-        hasSubstr rendered "bp_extra_slot_group" &&
-        hasSubstr rendered "bp_extra_slot_used_by" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
-        hasSubstr rendered "Group: Preview group title. (2)" &&
-        hasSubstr rendered "bp_relation_item_active" &&
+        !hasSubstr rendered "bp_extra_slot_group" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
+        hasSubstr rendered "class=\"bp_status_dot\"" &&
         !hasSubstr rendered "Loading Blueprint node"
 
 /-- info: true -/
@@ -380,12 +382,14 @@ private def writeSlidesPreviewDataFiles
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString
+    -- The undeclared-group warning chip is gone with the header extras
+    -- (clean-card 1D); the manifest still records the undeclared group.
     pure <|
       groupManifestOk &&
-        hasSubstr rendered "bp_extra_slot_group" &&
-        hasSubstr rendered "bp_relation_chip_warn" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "Undeclared group"
+        !hasSubstr rendered "bp_extra_slot_group" &&
+        !hasSubstr rendered "bp_relation_chip_warn" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        !hasSubstr rendered "Undeclared group"
 
 /-- info: true -/
 #guard_msgs in
@@ -414,7 +418,7 @@ private def writeSlidesPreviewDataFiles
         (← copiedHtmlCache.pathExists) &&
         hasSubstr index "data-bp-rendered=\"static\"" &&
         hasSubstr index "bp_slide_node_blueprint" &&
-        hasSubstr index "bp_extra_slot_code" &&
+        !hasSubstr index "bp_extra_slot_code" &&
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
         hasSubstr index "href=\"#--informal-preview" &&

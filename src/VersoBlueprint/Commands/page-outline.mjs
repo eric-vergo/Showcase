@@ -15,13 +15,16 @@ function sanitizeId(name) {
 
 // A card's display label: the clean numbered title from the slim meta payload
 // ("Theorem 3.1"), else the (often noisy — it carries the group blurb) card header
-// text, else the raw declaration name.
+// text, else the prefix-stripped short name from the meta payload, else the raw
+// declaration name.
 function cardLabel(card, declName) {
+  let shortName = "";
   const meta = card.querySelector(".bp-decl-meta[data-bp-decl]");
   if (meta) {
     try {
       const rec = JSON.parse(meta.textContent || "null");
       if (rec && rec.title) return String(rec.title);
+      if (rec && rec.shortName) shortName = String(rec.shortName);
     } catch (_e) {
       /* ignore */
     }
@@ -31,7 +34,7 @@ function cardLabel(card, declName) {
     const t = (header.textContent || "").replace(/\s+/g, " ").trim();
     if (t) return t;
   }
-  return declName;
+  return shortName || declName;
 }
 
 function cardKind(card) {

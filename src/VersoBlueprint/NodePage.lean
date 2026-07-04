@@ -8,7 +8,6 @@ import Std.Data.HashSet
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.CopyButton
 import VersoBlueprint.GraphApi
-import VersoBlueprint.GraphMetrics
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.PreviewManifest
 import VersoBlueprint.PreviewManifest.BlockRender
@@ -23,9 +22,10 @@ the normal multi-page emit loop. It is the shared seam reused by the Wave 3 PM
 pages (worklist / owners / tags); its signature is therefore fixed.
 
 `emitBlueprintNodePages` is the `ExtraStep` that renders one page per informal
-node: the statement, the inline proof, the uses/usedBy/group panels, the Lean
-code, a static localized dependency graph (all ancestors + all descendants), and
-a back-link to the chapter where the node is defined.
+node: breadcrumb + copy-link, the node's two-column card (which is the visual
+page title), and a static localized dependency graph (all ancestors + all
+descendants). Source links / metrics / downstream impact moved off the page
+(the metadata rail owns per-decl properties).
 -/
 
 namespace Informal.NodePage
@@ -35,130 +35,6 @@ open Verso Verso.Output Verso.Doc
 open Verso.Genre Manual
 open Verso.Code.Hover (State)
 open Informal.PreviewManifest (Entry)
-
-/--
-Inline styling for the per-node metrics line.
-
-Emitted once inside each node page body (node pages carry no dedicated CSS file).
-Colors come from the `--bp-color-*` design tokens, with light literal fallbacks,
-so the line themes correctly in dark mode.
--/
-def nodeMetricsCss : String := r##"
-.bp_node_metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.6rem;
-  align-items: center;
-  margin: 0.5rem 0 0;
-  font-size: var(--bp-fs-small, 0.875rem);
-}
-
-.bp_node_metric {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.1rem 0.55rem;
-  color: var(--bp-color-text-muted, #4d5e6d);
-  background: var(--bp-color-surface-muted, #f1f4f7);
-  border: 1px solid var(--bp-color-border, #dbe2ea);
-  border-radius: var(--bp-radius-pill, 999px);
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: var(--bp-fs-badge, 0.72rem);
-}
-
-.bp_node_metric_value {
-  font-weight: 700;
-  color: var(--bp-color-text, #15212b);
-}
-
-.bp_node_metric_critical {
-  color: var(--bp-color-status-mathlib, #6a4fba);
-  background: var(--bp-color-status-mathlib-surface, rgba(106, 79, 186, 0.12));
-  border-color: var(--bp-color-status-mathlib, #6a4fba);
-  font-weight: 700;
-}
-"##
-
-/--
-Inline styling for the per-node downstream-impact panel.
-
-Emitted once inside each node page body that has downstream dependents (node pages
-carry no dedicated CSS file). Colors come from the `--bp-color-*` design tokens so
-the panel themes correctly in light and dark mode.
--/
-def nodeDownstreamCss : String := r##"
-.bp_node_downstream_count {
-  margin: 0 0 0.5rem;
-  color: var(--bp-color-text-muted, #4d5e6d);
-  font-size: var(--bp-fs-small, 0.875rem);
-}
-
-.bp_node_downstream_list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.6rem;
-}
-
-.bp_node_downstream_list li {
-  margin: 0;
-}
-
-.bp_node_downstream_list a {
-  display: inline-block;
-  padding: 0.15rem 0.6rem;
-  color: var(--bp-color-text, #15212b);
-  background: var(--bp-color-surface-muted, #f1f4f7);
-  border: 1px solid var(--bp-color-border, #dbe2ea);
-  border-radius: var(--bp-radius-pill, 999px);
-  text-decoration: none;
-  font-size: var(--bp-fs-small, 0.875rem);
-  transition: border-color var(--bp-duration-fast, 0.12s) ease;
-}
-
-.bp_node_downstream_list a:hover {
-  border-color: var(--bp-color-accent, #1c5fb8);
-}
-"##
-
-/--
-Inline styling for the per-node "view source / open in editor" action row.
-
-Emitted once inside each node page header (node pages carry no dedicated CSS
-file). Colors come from the `--bp-color-*` design tokens with light literal
-fallbacks so the links theme correctly in dark mode.
--/
-def nodeSourceCss : String := r##"
-.bp_node_page_source {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.6rem;
-  align-items: center;
-  margin: 0.5rem 0 0;
-  font-size: var(--bp-fs-small, 0.875rem);
-}
-
-.bp_node_source_link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.15rem 0.6rem;
-  color: var(--bp-color-text, #15212b);
-  background: var(--bp-color-surface-muted, #f1f4f7);
-  border: 1px solid var(--bp-color-border, #dbe2ea);
-  border-radius: var(--bp-radius-pill, 999px);
-  text-decoration: none;
-  transition: border-color var(--bp-duration-fast, 0.12s) ease;
-}
-
-.bp_node_source_link:hover {
-  border-color: var(--bp-color-accent, #1c5fb8);
-}
-"##
 
 /--
 Inline styling for the node-page breadcrumb trail (Book › Chapter › node) and the
@@ -213,21 +89,6 @@ def nodeBreadcrumbCss : String := r##"
   margin: 0.25rem 0 0;
 }
 
-.bp_node_page_title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.2rem 0.55rem;
-}
-
-.bp_node_title_name {
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: 0.62em;
-  font-weight: 500;
-  color: var(--bp-color-text-muted, #4d5e6d);
-  word-break: break-word;
-}
-
 .bp_node_page h2 {
   font-size: 1.15rem;
   font-weight: 600;
@@ -237,88 +98,6 @@ def nodeBreadcrumbCss : String := r##"
   margin-top: var(--bp-space-5, 1.5rem);
 }
 "##
-
-/--
-Pick the primary external Lean declaration for an informal node from its
-manifest `codeData`, preferring a declaration that is present in the environment
-and carries a resolved source link, then any present declaration, then the first.
-Returns `none` for nodes with no external code association (e.g. literate-only or
-purely informal nodes).
--/
-private def primaryExternalDecl? (entry : Entry) : Option Informal.Data.ExternalRef := do
-  let codeData ← entry.codeData
-  let decls := codeData.externalDecls
-  (decls.find? (fun d => d.present && d.sourceHref?.isSome))
-    <|> (decls.find? (·.present))
-    <|> decls[0]?
-
-open Verso.Output.Html in
-/--
-Render the node-header source action row: a "View source" link (GitHub blob URL
-with the declaration line range, from the snapshotted `sourceHref?`) and an
-"Open in editor" link built from a configurable editor URL template (default
-`vscode://file{path}:{line}`) when the declaration's local source path is known.
-
-All build-time string assembly; degrades gracefully to `.empty` when the node
-has no external decl or no source information. The editor template is threaded
-in from `emitBlueprintNodePages` (env-configurable, empty disables the link).
--/
-private def renderNodeSource (editorTemplate : String) (entry : Entry) : Output.Html :=
-  match primaryExternalDecl? entry with
-  | none => .empty
-  | some decl =>
-    let viewSrc : Output.Html :=
-      match decl.sourceHref? with
-      | some href =>
-        {{ <a class="bp_node_source_link" href={{href}} target="_blank" rel="noopener noreferrer">"View source"</a> }}
-      | none => .empty
-    let openEd : Output.Html :=
-      match decl.provenance.sourcePath? with
-      | some path =>
-        if editorTemplate.isEmpty then .empty
-        else
-          let line := match decl.range? with | some r => toString r.pos.line | none => "1"
-          let url := (editorTemplate.replace "{path}" path).replace "{line}" line
-          {{ <a class="bp_node_source_link" href={{url}}>"Open in editor"</a> }}
-      | none => .empty
-    if decl.sourceHref?.isNone && decl.provenance.sourcePath?.isNone then .empty
-    else
-      {{
-        <div class="bp_node_page_source">
-          <style>{{.text false nodeSourceCss}}</style>
-          {{viewSrc}}
-          {{openEd}}
-        </div>
-      }}
-
-open Verso.Output.Html in
-/--
-Render the per-node metrics line (depth / height / fan-in / fan-out and a
-critical-path badge) from the computed `NodeMetrics`, with the inline stylesheet.
--/
-private def renderNodeMetrics (metrics? : Option Informal.GraphMetrics.NodeMetrics) : Output.Html :=
-  match metrics? with
-  | none => .empty
-  | some m =>
-    let metric (name : String) (value : Nat) : Output.Html := {{
-        <span class="bp_node_metric">
-          {{.text true name}}" "<span class="bp_node_metric_value">{{.text true (toString value)}}</span>
-        </span>
-      }}
-    let criticalBadge : Output.Html :=
-      if m.onCriticalPath then
-        {{ <span class="bp_node_metric bp_node_metric_critical">"On critical path"</span> }}
-      else .empty
-    {{
-      <div class="bp_node_metrics" role="group" aria-label="Graph metrics">
-        <style>{{.text false nodeMetricsCss}}</style>
-        {{metric "Depth" m.depth}}
-        {{metric "Height" m.height}}
-        {{metric "Fan-in" m.fanIn}}
-        {{metric "Fan-out" m.fanOut}}
-        {{criticalBadge}}
-      </div>
-    }}
 
 /--
 Emit one standalone Blueprint HTML page at `<outDir>/<path…>/index.html`,
@@ -396,10 +175,8 @@ open Verso.Output.Html in
 private def renderNodePageBody
     (state : TraverseState)
     (master : Informal.Graph.GraphData)
-    (metrics? : Option Informal.GraphMetrics.NodeMetrics)
     (htmlIndex : Informal.PreviewManifest.HtmlCache.Index)
     (manifestIndex : Informal.PreviewManifest.Index)
-    (editorTemplate : String)
     (bookTitle : String)
     (entry0 : Entry) : Output.Html :=
   let entry := repointEntryRelations state entry0
@@ -425,33 +202,14 @@ private def renderNodePageBody
         Informal.PreviewManifest.BlockRender.RenderedContent.ofHtmlStrings proofHtml proofCode)
     | none => none
   -- Single two-column node card: informal prose left, Lean right, proof folded.
+  -- The short-name prefix (traversal store, from `verso.blueprint.declNamePrefix`)
+  -- feeds the card's slim meta payload (`shortName`) for the rail / outline.
+  let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? state).getD ""
   let nodeCard :=
     Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry stmtContent proof?
-  -- Downstream-impact panel: the entries that (transitively) depend on this one,
-  -- restricted to those with their own node page so every item is clickable.
-  let descendantSet := master.descendants entry.label
-  let downstreamLabels :=
-    descendantSet.toList.filter (fun l => Informal.NodeRoute.hasNodePage state l)
-  let downstreamPanel : Output.Html :=
-    if downstreamLabels.isEmpty then .empty
-    else
-      let titleOf := fun (l : Name) =>
-        match master.nodes.find? (fun n => n.label == l) with
-        | some n => if n.title.isEmpty then l.toString else n.title
-        | none => l.toString
-      let items := downstreamLabels.toArray.map fun l =>
-        {{ <li><a href={{Informal.NodeRoute.nodePageHref l}}>{{.text true (titleOf l)}}</a></li> }}
-      {{
-        <section class="bp_node_page_downstream">
-          <style>{{.text false nodeDownstreamCss}}</style>
-          <h2>"Downstream impact"</h2>
-          <p class="bp_node_downstream_count">
-            {{.text true s!"{downstreamLabels.length} entries depend on this."}}
-          </p>
-          <ul class="bp_node_downstream_list">{{items}}</ul>
-        </section>
-      }}
+      { declNamePrefix := namePrefix }
   -- Localized dependency graph: this node ∪ all ancestors ∪ all descendants.
+  let descendantSet := master.descendants entry.label
   let labelSet : Lean.NameSet :=
     let base := (master.ancestors entry.label).insert entry.label
     descendantSet.toList.foldl (·.insert ·) base
@@ -509,21 +267,8 @@ private def renderNodePageBody
         "Copy link"
       </button>
     }}
-  -- Entity-detail page title: the catalog "Kind N.N" (which already sits in the
-  -- final breadcrumb crumb) plus the node's primary Lean declaration name when it
-  -- formalizes one, so the H1 reads as a real page title rather than a bare number
-  -- echoing the breadcrumb. Purely informal nodes (no external decl) fall back to
-  -- just the catalog title — the statement's own display title.
-  let pageTitle : Output.Html :=
-    match (primaryExternalDecl? entry).map (·.written.toString) with
-    | some declName =>
-      {{
-        <h1 class="bp_node_page_title">
-          <span class="bp_node_title_kind">{{.text true entry.title}}</span>
-          <span class="bp_node_title_name">{{.text true declName}}</span>
-        </h1>
-      }}
-    | none => {{ <h1 class="bp_node_page_title">{{.text true entry.title}}</h1> }}
+  -- No separate H1 (1F): the clean card header is the visual page title; the
+  -- breadcrumb's final crumb and the document `<title>` still carry the node name.
   {{
     <div class="bp_node_page">
       <header class="bp_node_page_header">
@@ -532,13 +277,9 @@ private def renderNodePageBody
           {{breadcrumb}}
           {{copyLink}}
         </div>
-        {{pageTitle}}
         {{parentContext}}
-        {{renderNodeSource editorTemplate entry}}
-        {{renderNodeMetrics metrics?}}
       </header>
       <section class="bp_node_page_statement bp_node_page_card2">{{nodeCard}}</section>
-      {{downstreamPanel}}
       <section class="bp_node_page_graph">
         <h2>"Local dependency graph"</h2>
         {{graphHtml}}
@@ -611,15 +352,26 @@ private def chapterNameOf (entry : Entry) : String :=
 
 /--
 Build one slim search record per node page: `{label, display, kind, chapter,
-href, text}` where `text` is the plain-text informal statement. Same-origin,
-self-contained; consumed lazily by `Commands/command-palette.mjs`.
+href, text}` where `text` is the plain-text informal statement, plus a
+`shortName` key (the prefix-stripped primary `(lean := …)` declaration name)
+when the node has one — so the palette also finds wired nodes by their short
+Lean name. Same-origin, self-contained; consumed lazily by
+`Commands/command-palette.mjs`.
 -/
 private def nodeSearchRecord (htmlIndex : Informal.PreviewManifest.HtmlCache.Index)
-    (entry : Entry) : Json :=
+    (namePrefix : String) (entry : Entry) : Json :=
   let stmtHtml := (htmlIndex.findHtml? entry.key).getD ""
   let text := htmlToSearchText stmtHtml
   let kind := match entry.kind with | some k => toString k | none => ""
-  Json.mkObj [
+  let declShort? : Option String :=
+    match entry.codeData with
+    | some codeData =>
+      let refs : Array Informal.Data.ExternalRef := codeData.externalDecls
+      match refs.find? (·.present) <|> refs[0]? with
+      | some ref => some (Informal.NodeCard.shortDeclName namePrefix ref.canonical.toString)
+      | none => none
+    | none => none
+  let base := [
     ("label", Json.str entry.label.toString),
     ("display", Json.str entry.title),
     ("kind", Json.str kind),
@@ -627,6 +379,10 @@ private def nodeSearchRecord (htmlIndex : Informal.PreviewManifest.HtmlCache.Ind
     ("href", Json.str (Informal.NodeRoute.nodePageHref entry.label)),
     ("text", Json.str text)
   ]
+  let short := match declShort? with
+    | some s => [("shortName", Json.str s)]
+    | none => []
+  Json.mkObj (base ++ short)
 
 /-- Write the offline node-search index into the output `-verso-data` dir. -/
 private def writeNodeSearchIndex (mode : Manual.Mode) (cfg : Manual.Config)
@@ -658,13 +414,7 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
       let htmlIndex := files.htmlCache.index
       let manifestIndex := files.manifest.index
       let master := Informal.GraphApi.masterGraph state
-      -- Compute graph metrics once for the whole master graph; node pages look
-      -- up their own metrics by label (Feature 4).
-      let metrics := Informal.GraphMetrics.computeGraphMetrics master
-      -- Editor URL template for the node-header "Open in editor" link. Configured
-      -- via the `BLUEPRINT_EDITOR_URL_TEMPLATE` env var (`{path}`/`{line}`
-      -- placeholders); defaults to a VS Code deep link; set empty to disable.
-      let editorTemplate := (← IO.getEnv "BLUEPRINT_EDITOR_URL_TEMPLATE").getD "vscode://file{path}:{line}"
+      let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? state).getD ""
       let mut usedSlugs : Std.HashSet String := {}
       let mut searchRecords : Array Json := #[]
       for entry in files.manifest.blockStatementEntries do
@@ -675,11 +425,11 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
             "node page may overwrite another node's page"
         usedSlugs := usedSlugs.insert slug
         let body :=
-          renderNodePageBody state master (metrics.find? entry.label) htmlIndex manifestIndex
-            editorTemplate text.titleString entry
+          renderNodePageBody state master htmlIndex manifestIndex
+            text.titleString entry
         emitStaticBlueprintPage mode cfg state text
           (Informal.NodeRoute.nodePagePath entry.label) entry.title body
-        searchRecords := searchRecords.push (nodeSearchRecord htmlIndex entry)
+        searchRecords := searchRecords.push (nodeSearchRecord htmlIndex namePrefix entry)
       -- Emit the slim offline full-text statement search index (one entry per
       -- node page) alongside the pages themselves.
       writeNodeSearchIndex mode cfg searchRecords

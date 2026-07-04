@@ -285,6 +285,17 @@ private def docsHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
   {{<div class="docs">{{plainDocstringHtml docs?}}</div>}}
 
+/--
+Render a docstring to a self-contained HTML *string* for out-of-page surfaces
+(the declaration registry's `docstringHtml?` → the metadata rail's Docstring
+section). Same pure Markdown pipeline as the in-page docstrings — raw HTML is
+disabled (`MD_FLAG_NOHTMLSPANS`/`NOHTMLBLOCKS`), so the result is safe to inject
+via `innerHTML` — falling back to an escaped `<pre class="docstring">` for
+docstrings the pipeline can't handle. `none` for `none`.
+-/
+def docstringHtmlString? (docs? : Option String) : Option String :=
+  docs?.map fun docs => (plainDocstringHtml (some docs)).asString
+
 private def externalDeclSectionLabelId (decl : Name) (title : String) : String :=
   Informal.HtmlId.prefixed "bp-external-decl-section" s!"{decl.toString}:{title}"
 
@@ -320,20 +331,6 @@ private structure ExternalDeclPresentation where
   kindMarker : String
   keywordText : String
 
-structure ExternalDeclHeaderBadge where
-  className : String
-  text : String
-
-structure ExternalDeclHeaderSource where
-  text : String
-  href? : Option String := none
-
-private def countMeta? (singular plural : String) (count : Nat) : Option String :=
-  if count == 0 then
-    none
-  else
-    some s!"{count} {if count == 1 then singular else plural}"
-
 private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : String) : String :=
   match safety with
   | .unsafe => s!"unsafe {base}"
@@ -365,47 +362,15 @@ private def externalDeclPresentation
         keywordText := kindMarker
       }
 
+/-- Bare-code declaration wrapper (1E): just the signature and the (nested
+constructor/field) body — no kicker row, no kind/"defined in …" text, no status
+badge. The `data-decl`/`data-kind` attributes stay as stable selectors. -/
 private def renderExternalDeclWrapper
     (decl : Name) (kindClass : String) (kindMarker : String)
-    (signature : ExternalDeclHtml) (body : ExternalDeclHtml)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerMeta : Array String := #[])
-    (headerSource? : Option ExternalDeclHeaderSource := none) : ExternalDeclHtml :=
+    (signature : ExternalDeclHtml) (body : ExternalDeclHtml) : ExternalDeclHtml :=
   open Verso.Output.Html in
-  let headerMetaHtml : ExternalDeclHtml :=
-    if headerMeta.isEmpty then
-      .empty
-    else
-      {{<span class="bp_external_decl_header_meta">{{.text true s!"({String.intercalate ", " headerMeta.toList})"}}</span>}}
-  let headerSourceHtml : ExternalDeclHtml :=
-    match headerSource? with
-    | none => .empty
-    | some source =>
-      let sourceNode : ExternalDeclHtml :=
-        match source.href? with
-        | some href =>
-          {{<a class="bp_external_decl_source_path" href={{href}}>{{.text true source.text}}</a>}}
-        | none =>
-          {{<span class="bp_external_decl_source_path">{{.text true source.text}}</span>}}
-      {{
-        <span class="bp_external_decl_source">
-          "defined in " {{sourceNode}}
-        </span>
-      }}
   {{
     <div class={{s!"declaration decl {kindClass}"}} data-decl={{decl.toString}} data-kind={{kindMarker}}>
-      <div class="bp_external_decl_kicker">
-        <div class="bp_external_decl_kicker_main">
-          <span class="bp_external_decl_kind">{{.text true kindMarker}}</span>
-          {{headerMetaHtml}}
-          {{headerSourceHtml}}
-        </div>
-        <div class="bp_external_decl_kicker_status">
-          {{if let some badge := headerBadge? then
-            {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text true badge.text}}</span>}}
-          else .empty}}
-        </div>
-      </div>
       {{signature}}
       <div class="bp_external_decl_body">{{body}}</div>
     </div>
@@ -476,50 +441,13 @@ private def renderParentsSection
       </div>
     }}
 
-private def safetyHeaderMeta (cinfo : ConstantInfo) : Array String :=
-  match cinfo with
-  | .defnInfo defn =>
-    match defn.safety with
-    | .unsafe => #["unsafe"]
-    | .partial => #["partial"]
-    | .safe => #[]
-  | _ => #[]
-
-private def renderExternalDeclHeaderMeta
-    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) :
-    Array String := Id.run do
-  let mut items : Array String := #[]
-  match declType with
-  | .structure isClass _ _ fieldInfo _ parents =>
-    if !parents.isEmpty then
-      items := items.push s!"extends {parents.size}"
-    let visibleFields := fieldInfo.filter (fun f => f.subobject?.isNone)
-    if let some fieldCount := countMeta?
-        (if isClass then "method" else "field")
-        (if isClass then "methods" else "fields")
-        visibleFields.size then
-      items := items.push fieldCount
-  | .inductive ctors numArgs propOnly =>
-    if let some ctorCount := countMeta? "constructor" "constructors" ctors.size then
-      items := items.push ctorCount
-    if propOnly then
-      items := items.push "Prop"
-    if let some paramCount := countMeta? "parameter" "parameters" numArgs then
-      items := items.push paramCount
-  | _ => pure ()
-  return items
-
 private def renderDeclHtmlDocstringFromInfoE
-    (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult :=
+    (decl : Name) (cinfo : ConstantInfo) : MetaM ExternalDeclRenderResult :=
   open Verso.Output.Html in do
-  let env ← getEnv
   let declType ←
     withOptions (verso.docstring.allowMissing.set · true) <|
       Verso.Genre.Manual.Block.Docstring.DeclType.ofName decl (hideStructureConstructor := true)
   let signature ← Verso.Genre.Manual.Signature.forName decl
-  let docs? ← liftM <| findDocString? env decl
 
   let rendered := renderWithHoverPayloads <| do
     let ctorSection? : Option ExternalDeclHtml ←
@@ -563,17 +491,15 @@ private def renderDeclHtmlDocstringFromInfoE
       sections := sections.push s
 
     let presentation := externalDeclPresentation declType cinfo
-    let signatureHtml ← signatureToHtml presentation.keywordText signature
-    let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 
-    let body : ExternalDeclHtml :=
-      if sections.isEmpty then
-        plainDocstringHtml docs?
-      else
-        {{ {{plainDocstringHtml docs?}} {{sections}} }}
+    let signatureHtml ← signatureToHtml presentation.keywordText signature
+
+    -- Bare code (1E): the top-level docstring is not rendered here anymore (it
+    -- moves to the metadata rail in Stage 2); nested constructor / field
+    -- docstrings inside the sections are kept.
+    let body : ExternalDeclHtml := .seq sections
     pure <| renderExternalDeclWrapper
       decl presentation.kindClass presentation.kindMarker signatureHtml body
-      (headerBadge? := headerBadge?) (headerMeta := headerMeta) (headerSource? := headerSource?)
   pure <| .ok rendered
 
 /--
@@ -581,12 +507,9 @@ Render one declaration directly from known declaration facts.
 Errors represent rendering failures only; declaration lookup is handled by callers.
 -/
 def renderDeclHtmlDirectFromInfoE
-    (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult := do
+    (decl : Name) (cinfo : ConstantInfo) : MetaM ExternalDeclRenderResult := do
   try
     renderDeclHtmlDocstringFromInfoE decl cinfo
-      (headerBadge? := headerBadge?) (headerSource? := headerSource?)
   catch ex =>
     return .error (.exception decl (← ex.toMessageData.toString))
 

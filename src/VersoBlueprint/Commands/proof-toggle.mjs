@@ -3,11 +3,13 @@
 // Two jobs:
 //   1. Wire each `.bp_card2_proof_toggle` button: a click flips the single
 //      source of truth `data-bp-proof-open` on the closest `.bp_card2`, updates
-//      `aria-expanded`, and swaps the label ("Show proof" <-> "Hide proof").
-//      Keyboard support is free (it is a real `<button>`). The CSS in
-//      NodeCard.lean animates the proof row's height off that attribute, and the
-//      global switcher control bulk-sets the same attribute, so this module and
-//      the switcher coordinate purely through the DOM.
+//      `aria-expanded`, and swaps the quiet action label ("[show]" <-> "[hide]"
+//      in `.bp_card2_proof_action`; the "Proof" word is static). Keyboard
+//      support is free (it is a real `<button>`). The CSS in NodeCard.lean
+//      animates the proof row's height off that attribute, and the metadata
+//      rail's footer bulk control calls the exported `setAllProofs`, so this
+//      module and the rail coordinate purely through the DOM + this module's
+//      exports.
 //   2. Relocate the tactic tail (strict 2x2 grid): the whole theorem -- signature
 //      plus tactic proof -- is a single highlighted code block on the statement
 //      facet (`.bp_card2_formal_stmt details.bp_code_block code.hl.lean.block`).
@@ -20,7 +22,7 @@
 //      no separate per-`by` toggle on a card block.
 //
 // The by-finder / tail-extraction below is COPIED from `installProofHider`
-// (StyleSwitcher.lean): the inline-head IIFE and this ES module run in separate
+// (ProofReveal.lean): the inline-head IIFE and this ES module run in separate
 // scopes, so the logic cannot be imported and is duplicated here on purpose. Keep
 // the two in sync. `installProofHider` skips any block inside a `.bp_card2`
 // (`if (block.closest('.bp_card2')) return;`), so card blocks are owned only here.
@@ -176,6 +178,30 @@ function wireCardTail(card) {
   relocateTail(block, formalCell, range);
 }
 
+// Sync one card's toggle button (aria-expanded + the "[show]"/"[hide]" action
+// span) with the card's `data-bp-proof-open` source of truth.
+export function syncToggleLabel(card) {
+  if (!(card instanceof HTMLElement)) return;
+  const toggle = card.querySelector(".bp_card2_proof_toggle");
+  if (!(toggle instanceof HTMLElement)) return;
+  const open = card.getAttribute("data-bp-proof-open") === "true";
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  const action = toggle.querySelector(".bp_card2_proof_action");
+  if (action) action.textContent = open ? "[hide]" : "[show]";
+}
+
+// Bulk show/hide for every card on the page (the metadata-rail footer control).
+// Sets the per-card `data-bp-proof-open` attribute and keeps each card's own
+// toggle in sync. Not persisted: every load starts hidden, and per-card toggles
+// override individually afterwards.
+export function setAllProofs(open) {
+  document.querySelectorAll(".bp_card2").forEach(function (card) {
+    if (!(card instanceof HTMLElement)) return;
+    card.setAttribute("data-bp-proof-open", open ? "true" : "false");
+    syncToggleLabel(card);
+  });
+}
+
 function wireCardToggle(card) {
   const toggle = card.querySelector(".bp_card2_proof_toggle");
   if (!(toggle instanceof HTMLElement)) return;
@@ -185,8 +211,7 @@ function wireCardToggle(card) {
   toggle.addEventListener("click", function () {
     const open = card.getAttribute("data-bp-proof-open") !== "true";
     card.setAttribute("data-bp-proof-open", open ? "true" : "false");
-    toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    toggle.textContent = open ? "Hide proof" : "Show proof";
+    syncToggleLabel(card);
   });
 }
 
@@ -200,4 +225,4 @@ export function startProofToggle(root = document) {
   });
 }
 
-export default { startProofToggle };
+export default { startProofToggle, syncToggleLabel, setAllProofs };

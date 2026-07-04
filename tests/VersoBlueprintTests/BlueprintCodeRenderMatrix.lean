@@ -69,8 +69,8 @@ private def codeEntryHtml (label : Name) (kind : Data.NodeKind) (source : Option
   let data := statementData label kind source
   (CodeSummary.renderParts data { source } (fun _ => none)).codeEntry.asString
 
-private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String :=
-  (CodeSummary.renderPanelIndicator label { source := some source } (fun _ => none)).indicator.asString
+private def statusDotHtml (source : Option BlockCodeData) : String :=
+  (CodeSummary.statusDotHtml source).asString
 
 /-- info: true -/
 #guard_msgs in
@@ -108,17 +108,20 @@ private def panelIndicatorHtml (label : Name) (source : BlockCodeData) : String 
 /-- info: true -/
 #guard_msgs in
 #eval!
-  let externalOkHtml := panelIndicatorHtml `external.ok (.external #[provedExternalRef `Ext.ok .definition])
-  let externalSorryHtml := panelIndicatorHtml `external.sorry (.external #[sorryExternalRef `Ext.sorry .theorem])
-  let externalMissingHtml := panelIndicatorHtml `external.missing (.external #[missingExternalRef `Ext.missing .definition])
-  let externalAxiomHtml := panelIndicatorHtml `external.axiom (.external #[axiomExternalRef `Ext.axiom .theorem])
-  let externalRenderFailHtml := panelIndicatorHtml `external.render_fail (.external #[renderFailedExternalRef `Ext.renderFail .theorem])
-  hasSubstr externalOkHtml "bp_external_status_badge_summary bp_external_status_ok" &&
-    hasSubstr externalSorryHtml "bp_external_status_badge_summary bp_external_status_sorry" &&
-    hasSubstr externalMissingHtml "bp_external_status_badge_summary bp_external_status_missing" &&
-    hasSubstr externalAxiomHtml "bp_code_decl_status_axiom" &&
-    !hasSubstr externalRenderFailHtml "bp_code_render_warning_badge" &&
-    !hasSubstr externalRenderFailHtml "bp_render_warning_badge" &&
-    hasSubstr externalRenderFailHtml "synthetic render failure"
+  -- Header status dot (1D): one `data-status` per registry-aligned tag, plus
+  -- `informal` for a no-Lean block; the dot always carries `role`/`aria-label`.
+  let dotProved := statusDotHtml (some (.external #[provedExternalRef `Ext.ok .definition]))
+  let dotSorry := statusDotHtml (some (.external #[sorryExternalRef `Ext.sorry .theorem]))
+  let dotMissing := statusDotHtml (some (.external #[missingExternalRef `Ext.missing .definition]))
+  let dotAxiom := statusDotHtml (some (.external #[axiomExternalRef `Ext.axiom .theorem]))
+  let dotInformal := statusDotHtml none
+  hasSubstr dotProved "data-status=\"proved\"" &&
+    hasSubstr dotSorry "data-status=\"containsSorry\"" &&
+    hasSubstr dotMissing "data-status=\"missing\"" &&
+    hasSubstr dotAxiom "data-status=\"axiomLike\"" &&
+    hasSubstr dotInformal "data-status=\"informal\"" &&
+    hasSubstr dotProved "class=\"bp_status_dot\"" &&
+    hasSubstr dotProved "role=\"img\"" &&
+    hasSubstr dotProved "aria-label=\"Lean status: proved\""
 
 end Verso.VersoBlueprintTests.BlueprintCodeRenderMatrix

@@ -69,6 +69,16 @@ structure GraphBlockData where
   `PreviewManifest.emitBlueprintPreviewData` writes `-verso-data/decl-registry.json`.
   `none` on consumers without the flag (no registry emitted). -/
   declRegistryJson? : Option String := none
+  /-- Compressed **internal** proof/value-bodies JSON (`DeclRegistry.Bodies`),
+  built alongside the registry. Stashed in the traversal state for the decl-page
+  emitter (`DeclPage`) only — it is never written into the public data dir, so
+  the heavy bodies can't balloon `decl-registry.json`. -/
+  declBodiesJson? : Option String := none
+  /-- The configured `verso.blueprint.declNamePrefix`, captured at elaboration
+  time (where `Lean.Options` exist) and stashed in the traversal state so the
+  render-time card paths and generation-time page emitters can shorten display
+  names. `none` when unset (no shortening anywhere). -/
+  declNamePrefix? : Option String := none
   options : GraphOptions := {}
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
@@ -204,7 +214,11 @@ private def renderGraphNodeCardTemplate? {m} [Monad m]
   | Option.none => return none
   | some (entry, content) =>
     let proof? ← renderGraphCardFacet? goB state (Informal.PreviewCache.proofKey node.label)
+    -- Same short-name prefix as the node-page cards, so the modal card's slim
+    -- meta payload matches (see `RenderOptions.declNamePrefix`).
+    let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? state).getD ""
     let card := Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry content proof?
+      { declNamePrefix := namePrefix }
     let attrs : Array (String × String) := Id.run do
       let mut a := #[
         ("class", "bp_graph_preview_tpl"),
@@ -578,8 +592,16 @@ block_extension Block.graph (graphData : GraphBlockData) where
       | some graphData =>
         modify fun state =>
           let state := Informal.GraphApi.saveData state id graphData.semanticGraphData
-          match graphData.declRegistryJson? with
-          | some json => Informal.TraversalIndex.DeclRegistry.saveRaw state json
+          let state :=
+            match graphData.declRegistryJson? with
+            | some json => Informal.TraversalIndex.DeclRegistry.saveRaw state json
+            | Option.none => state
+          let state :=
+            match graphData.declBodiesJson? with
+            | some json => Informal.TraversalIndex.DeclRegistry.saveBodies state json
+            | Option.none => state
+          match graphData.declNamePrefix? with
+          | some pfx => Informal.TraversalIndex.DeclRegistry.savePrefix state pfx
           | Option.none => state
       | Option.none =>
         pure ()
@@ -713,9 +735,13 @@ def buildProjectDeclGraph (base : Informal.Graph.GraphData) : CoreM Informal.Gra
     if isAuthored decl then continue
     if baseLabels.contains decl then continue
     let kind := (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).getD Data.NodeKind.definition
-    supportingNodes := supportingNodes.push <|
-      Informal.Graph.mkSupportingNodeData kind decl
-        (autoRefs (stmtDepsByKey.getD decl #[])) (autoRefs (proofDepsByKey.getD decl #[]))
+    -- Supporting nodes are exactly the unwired public project declarations, which
+    -- all have a `decl/{slug}/` page (see `DeclPage`); linking them costs no
+    -- runtime change (the graph runtime already follows node hrefs).
+    let node := Informal.Graph.mkSupportingNodeData kind decl
+      (autoRefs (stmtDepsByKey.getD decl #[])) (autoRefs (proofDepsByKey.getD decl #[]))
+    supportingNodes := supportingNodes.push
+      { node with href := some (Informal.NodeRoute.declPageHref decl.toString) }
   let augmented : Informal.Graph.GraphData := { base with nodes := mergedNodes ++ supportingNodes }
   return { augmented with edges := Informal.Graph.edgesForGraph augmented.toGraph }
 
@@ -852,20 +878,28 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let renderGraphData ← buildProjectDeclGraph semanticGraphData
   let renderGraphData? : Option Informal.Graph.GraphData :=
     if renderGraphData.nodes.size > semanticGraphData.nodes.size then some renderGraphData else none
-  -- Build the all-declarations registry under the same opt-in as the all-decls
-  -- graph (`includeAllDecls`); serialized here at elaboration time (env available)
-  -- and emitted as `-verso-data/decl-registry.json` at generation time.
-  let declRegistryJson? ← do
+  -- Build the all-declarations registry (public JSON) + the internal proof/value
+  -- bodies under the same opt-in as the all-decls graph (`includeAllDecls`);
+  -- serialized here at elaboration time (env available). The registry is emitted
+  -- as `-verso-data/decl-registry.json` at generation time; the bodies stay in
+  -- the traversal store for the decl-page emitter only.
+  let (declRegistryJson?, declBodiesJson?) ← do
     if verso.blueprint.graph.includeAllDecls.get (← Lean.getOptions) then
-      let registry ← Informal.DeclRegistry.buildDeclRegistry
-      if registry.decls.isEmpty then pure none
-      else pure (some (toJson registry).compress)
+      let (registry, bodies) ← Informal.DeclRegistry.buildDeclRegistry
+      if registry.decls.isEmpty then pure (none, none)
+      else pure (some (toJson registry).compress, some (toJson bodies).compress)
     else
-      pure none
+      pure (none, none)
+  -- The short-name prefix rides the same block-data channel (captured here, where
+  -- `Lean.Options` exist) but is independent of `includeAllDecls`.
+  let declNamePrefix? :=
+    let pfx := Informal.DeclRegistry.configuredNamePrefix (← Lean.getOptions)
+    if pfx.isEmpty then none else some pfx
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
-    { semanticGraphData, renderGraphData?, declRegistryJson?, options, previewMode, previewPlacement }
+    { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?, declNamePrefix?,
+      options, previewMode, previewPlacement }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

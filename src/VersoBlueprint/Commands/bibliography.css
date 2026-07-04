@@ -92,25 +92,3 @@
   text-decoration-color: currentColor;
 }
 
-html[data-bp-style="modern"] .bp_bibliography_section {
-  border-color: var(--bp-color-biblio-border);
-  background: var(--bp-color-surface);
-}
-
-html[data-bp-style="modern"] .bp_bibliography_uses {
-  border-color: var(--bp-color-biblio-border-soft);
-  background: var(--bp-color-biblio-surface-soft);
-}
-
-html[data-bp-style="bold"] .bp_bibliography_section {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-lg);
-  box-shadow: var(--bp-shadow-bold);
-  background: var(--bp-color-surface);
-}
-
-html[data-bp-style="bold"] .bp_bibliography_uses {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-2xl);
-  background: var(--bp-color-surface);
-}

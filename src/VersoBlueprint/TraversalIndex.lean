@@ -552,9 +552,9 @@ namespace DeclRegistry
 def spec : StoreSpec := {
   name := `VersoBlueprint.TraversalIndex.DeclRegistry
   kind := .accumulator
-  key := "the fixed key \"registry\""
-  value := "compressed all-declarations registry JSON string"
-  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) to the generation-time ExtraStep that writes `-verso-data/decl-registry.json`."
+  key := "one of the fixed keys \"registry\" / \"bodies\" / \"namePrefix\""
+  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, or the configured decl-name prefix string"
+  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names."
 }
 
 def domainName : Name := spec.name
@@ -566,6 +566,26 @@ def saveRaw (state : TraverseState) (json : String) : TraverseState :=
 /-- Read back the compressed registry JSON, if a `blueprint_graph` block stored one. -/
 def raw? (state : TraverseState) : Option String := do
   let obj ← state.getDomainObject? domainName "registry"
+  obj.data.getStr?.toOption
+
+/-- Stash the (already-compressed) internal proof/value-bodies JSON. Internal-only:
+read back by the decl-page emitter; never written into the public data dir. -/
+def saveBodies (state : TraverseState) (json : String) : TraverseState :=
+  saveObjectData state domainName "bodies" (Json.str json)
+
+/-- Read back the compressed internal proof/value-bodies JSON, if stored. -/
+def bodiesRaw? (state : TraverseState) : Option String := do
+  let obj ← state.getDomainObject? domainName "bodies"
+  obj.data.getStr?.toOption
+
+/-- Stash the configured `verso.blueprint.declNamePrefix` (captured at elaboration
+time, where `Lean.Options` exist) for the generation/render-time short-name paths. -/
+def savePrefix (state : TraverseState) (pfx : String) : TraverseState :=
+  saveObjectData state domainName "namePrefix" (Json.str pfx)
+
+/-- The configured decl-name prefix, if a `blueprint_graph` block stored one. -/
+def namePrefix? (state : TraverseState) : Option String := do
+  let obj ← state.getDomainObject? domainName "namePrefix"
   obj.data.getStr?.toOption
 
 end DeclRegistry

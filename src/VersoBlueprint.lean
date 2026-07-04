@@ -35,6 +35,7 @@ import VersoBlueprint.NodeCard
 import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
 import VersoBlueprint.DeclIndex
+import VersoBlueprint.DeclPage
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Commands.Formalization
@@ -65,7 +66,7 @@ import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Graft
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.ProofReveal
 import VersoBlueprint.ColorScheme
 import VersoBlueprint.CopyButton
 import VersoBlueprint.Tikz

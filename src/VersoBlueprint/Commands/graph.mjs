@@ -4,7 +4,6 @@ import {
   getGraphVariants as coreGetGraphVariants
 } from "../blueprint-graph-core.mjs";
 import { startProofToggle } from "./proof-toggle.mjs";
-import { startLineNumbers } from "./line-numbers.mjs";
 import { installSelectionBus } from "./selection-bus.mjs";
 
 const {
@@ -213,8 +212,6 @@ function ensureGraphModal(previewUtils) {
     } catch (_e) { /* ignore */ }
     // Rebind the per-card proof toggle (proof-toggle.mjs binds on load only).
     try { startProofToggle(bodyEl); } catch (_e) { /* ignore */ }
-    // Number the signature / proof-source blocks in the injected fragment too.
-    try { startLineNumbers(bodyEl); } catch (_e) { /* ignore */ }
     if (payload && payload.href) {
       openLink.setAttribute("href", payload.href);
       openLink.hidden = false;

@@ -578,29 +578,6 @@ def renderUsedByExtra {m}
         }})
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
 
-/-- Render the forward-dependency header extra for a statement or proof block. -/
-def renderUsesExtra {m}
-    [Monad m]
-    (ctx : RelationContext)
-    (data : BlockData) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  let entries := collectUsesEntries ctx data
-  let panelEntries ← entries.mapM fun entry => do
-    let badgesHtml := {{
-      {{renderUseAxisBadges entry}}
-      {{renderUseMetadataBadges entry.origins entry.intents}}
-    }}
-    match entry.target? with
-    | some target =>
-      mkBlockEntry ctx target
-        (usesPreviewId data.label entry.label)
-        (badgesHtml := badgesHtml)
-    | none =>
-      mkLabelEntry ctx entry.label
-        (usesPreviewId data.label entry.label)
-        (badgesHtml := badgesHtml)
-  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries
-
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}
     [Monad m]

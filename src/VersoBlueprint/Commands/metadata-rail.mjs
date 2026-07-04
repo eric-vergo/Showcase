@@ -1,11 +1,13 @@
 // Site-wide "Properties & Dependencies" metadata rail.
 //
 // A fixed right `<aside>` injected on every page (no verso-core template edit —
-// same asset-injection pattern as the banner nav / color-scheme switcher). It
-// shows the properties + dependencies of whatever declaration is currently
-// selected on the shared selection bus (`window.VersoBlueprint.selection`, see
-// selection-bus.mjs), fed by node-card clicks, graph node clicks (graph.mjs), and
-// the page's default selection.
+// same asset-injection pattern as the banner nav). It shows the properties +
+// dependencies of whatever declaration is currently selected on the shared
+// selection bus (`window.VersoBlueprint.selection`, see selection-bus.mjs), fed
+// by node-card clicks, graph node clicks (graph.mjs), and the page's default
+// selection. A pinned footer carries the absorbed page-level controls: the
+// theme (Auto | Light | Dark, via `window.VersoBlueprint.colorScheme`) and the
+// bulk proof show/hide (via proof-toggle.mjs `setAllProofs`).
 //
 // Data sourcing (offline-first):
 //   * Each node card embeds a slim identity record inline
@@ -20,6 +22,7 @@
 //     "unavailable offline" note rather than erroring.
 
 import { installSelectionBus } from "./selection-bus.mjs";
+import { setAllProofs } from "./proof-toggle.mjs";
 
 const RAIL_ID = "bp-metadata-rail";
 const TAB_ID = "bp-metadata-rail-tab";
@@ -35,6 +38,7 @@ let registryState = "idle"; // idle | loading | loaded | error
 let registryPromise = null;
 let registryByName = null; // Map<name, entry>
 let registryByModule = null; // Map<module, name[]>
+let registryNamePrefix = ""; // registry v2 top-level namePrefix (short names)
 const inlineMeta = new Map(); // Map<name, slim record>
 
 let railEl = null;
@@ -122,6 +126,78 @@ const ICON_CLOSE =
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ' +
   'focusable="false"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>';
 
+// Pinned footer: the absorbed page-level controls (theme + bulk proof
+// visibility). The aside is a fixed flex column, so a `flex: 0 0 auto` footer
+// pins below the scrollable body naturally. Theme drives the page-global
+// `window.VersoBlueprint.colorScheme` API published by the pre-paint applier
+// (ColorScheme.lean); the proofs row calls proof-toggle.mjs's `setAllProofs`
+// and only renders when the page has proof toggles (same condition as the
+// retired floating widget; not persisted).
+function buildFooter() {
+  const footer = el("div", { class: "bp-rail-footer" });
+
+  const ns = window.VersoBlueprint || {};
+  const schemeApi = ns.colorScheme || null;
+  if (schemeApi && typeof schemeApi.get === "function" && typeof schemeApi.set === "function") {
+    const group = el("div", {
+      class: "bp-rail-theme",
+      attrs: { role: "radiogroup", "aria-label": "Color scheme" }
+    });
+    function syncChecked() {
+      const current = schemeApi.get();
+      group.querySelectorAll(".bp-rail-theme-option").forEach(function (b) {
+        b.setAttribute("aria-checked", b.getAttribute("data-scheme") === current ? "true" : "false");
+      });
+    }
+    [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]].forEach(function (pair) {
+      const btn = el("button", {
+        class: "bp-rail-theme-option",
+        attrs: {
+          type: "button",
+          role: "radio",
+          "aria-checked": "false",
+          "data-scheme": pair[0]
+        },
+        text: pair[1]
+      });
+      btn.addEventListener("click", function () {
+        schemeApi.set(pair[0]);
+        syncChecked();
+      });
+      group.appendChild(btn);
+    });
+    // Keep the segmented control honest if the scheme changes elsewhere
+    // (the applier fires this event on every apply).
+    window.addEventListener("bp-color-scheme-change", syncChecked);
+    syncChecked();
+    footer.appendChild(el("div", { class: "bp-rail-footer-row" }, [
+      el("span", { class: "bp-rail-footer-label", text: "Theme" }),
+      group
+    ]));
+  }
+
+  if (document.querySelector(".bp_card2_proof_toggle")) {
+    const showBtn = el("button", {
+      class: "bp-rail-proof-action",
+      attrs: { type: "button" },
+      text: "show all"
+    });
+    showBtn.addEventListener("click", function () { setAllProofs(true); });
+    const hideBtn = el("button", {
+      class: "bp-rail-proof-action",
+      attrs: { type: "button" },
+      text: "hide all"
+    });
+    hideBtn.addEventListener("click", function () { setAllProofs(false); });
+    footer.appendChild(el("div", { class: "bp-rail-footer-row" }, [
+      el("span", { class: "bp-rail-footer-label", text: "Proofs" }),
+      el("div", { class: "bp-rail-proofs" }, [showBtn, hideBtn])
+    ]));
+  }
+
+  return footer.childNodes.length > 0 ? footer : null;
+}
+
 function buildRail() {
   if (document.getElementById(RAIL_ID)) return;
 
@@ -170,13 +246,15 @@ function buildRail() {
 
   bodyEl = el("div", { class: "bp-rail-body", attrs: { id: BODY_ID } });
 
+  const footer = buildFooter();
+
   railEl = el("aside", {
     attrs: {
       id: RAIL_ID,
       "aria-label": "Properties and dependencies",
       "aria-hidden": "true"
     }
-  }, [header, bodyEl]);
+  }, [header, bodyEl, footer]);
 
   // Backdrop must be a sibling before the rail so the rail paints on top.
   document.body.appendChild(backdropEl);
@@ -216,6 +294,9 @@ function collectInlineMeta() {
 function indexRegistry(registry) {
   registryByName = new Map();
   registryByModule = new Map();
+  registryNamePrefix = (registry && typeof registry.namePrefix === "string")
+    ? registry.namePrefix
+    : "";
   const decls = registry && Array.isArray(registry.decls) ? registry.decls : [];
   decls.forEach(function (entry) {
     if (!entry || !entry.name) return;
@@ -279,8 +360,33 @@ function viewModel(name, hintMeta) {
     proofDeps: reg ? reg.proofDeps || [] : undefined,
     usedBy: reg ? reg.usedBy || [] : undefined,
     authored: reg ? !!reg.authored : inl ? true : false,
-    nodeHref: (reg && reg.nodeHref) || (inl && inl.nodeHref) || undefined
+    nodeHref: (reg && reg.nodeHref) || (inl && inl.nodeHref) || undefined,
+    // Registry v2 fields (Stage 2): short display name, own decl-page href for
+    // unwired decls, rendered docstring, source link, longest-path metrics.
+    shortName: (reg && reg.shortName) || (inl && inl.shortName) || "",
+    declHref: (reg && reg.declHref) || (inl && inl.declHref) || undefined,
+    docstringHtml: reg ? reg.docstringHtml : undefined,
+    sourceHref: reg ? reg.sourceHref : undefined,
+    depth: reg && reg.depth != null ? reg.depth : undefined,
+    height: reg && reg.height != null ? reg.height : undefined
   };
+}
+
+/** Short display name for a declaration (registry shortName, else the registry
+ * namePrefix stripped, else an inline-meta shortName, else the FQ name). */
+function shortNameFor(name) {
+  const reg = registryByName ? registryByName.get(name) : null;
+  if (reg && reg.shortName) return reg.shortName;
+  if (
+    registryNamePrefix &&
+    name.length > registryNamePrefix.length + 1 &&
+    name.indexOf(registryNamePrefix + ".") === 0
+  ) {
+    return name.slice(registryNamePrefix.length + 1);
+  }
+  const inl = inlineMeta.get(name);
+  if (inl && inl.shortName) return inl.shortName;
+  return name;
 }
 
 function isWired(name) {
@@ -324,10 +430,11 @@ function metaRow(key, value) {
 
 function depItem(name, axis) {
   const wired = isWired(name);
+  // Short display name; the fully-qualified name stays on the hover title.
   const btn = el("button", {
     class: "bp-rail-dep",
     attrs: { type: "button", "data-wired": wired ? "true" : "false", title: name },
-    text: name
+    text: shortNameFor(name)
   });
   btn.addEventListener("click", function () {
     select({ declName: name, source: "rail" });
@@ -336,16 +443,17 @@ function depItem(name, axis) {
   if (axis) {
     children.unshift(el("span", { class: "bp-rail-dep-axis", text: axis }));
   }
-  if (wired) {
-    const href = nodeHrefFor(name);
-    if (href) {
-      const link = el("a", {
-        class: "bp-rail-dep-link",
-        attrs: { href: href, title: "Open node page", "aria-label": "Open node page for " + name },
-        text: "↗"
-      });
-      children.push(link);
-    }
+  // Trailing open-link: node page for wired decls, decl page for unwired ones.
+  const reg = registryByName ? registryByName.get(name) : null;
+  const href = wired ? nodeHrefFor(name) : (reg && reg.declHref) || null;
+  if (href) {
+    const what = wired ? "node page" : "declaration page";
+    const link = el("a", {
+      class: "bp-rail-dep-link",
+      attrs: { href: href, title: "Open " + what, "aria-label": "Open " + what + " for " + name },
+      text: "↗"
+    });
+    children.push(link);
   }
   return el("div", { class: "bp-rail-dep-item" }, children);
 }
@@ -390,9 +498,12 @@ function renderRail(name, hintMeta) {
       })
     );
   }
+  // Identity shows the short name; the fully-qualified name stays on `title`
+  // (and on the decl page itself).
+  const displayName = (vm.shortName || shortNameFor(name)) || vm.name;
   const identity = el("div", { class: "bp-rail-identity" }, [
     badges,
-    el("div", { class: "bp-rail-name", text: vm.name })
+    el("div", { class: "bp-rail-name", attrs: { title: vm.name }, text: displayName })
   ]);
   if (vm.title) {
     identity.appendChild(el("div", { class: "bp-rail-node-title", text: vm.title }));
@@ -407,6 +518,13 @@ function renderRail(name, hintMeta) {
     return;
   }
 
+  // --- Docstring (registry v2; build-generated HTML, raw HTML disabled) ----
+  if (vm.docstringHtml) {
+    const doc = el("div", { class: "bp-rail-docstring" });
+    doc.innerHTML = vm.docstringHtml;
+    frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Docstring"), doc]));
+  }
+
   // --- Location -----------------------------------------------------------
   const loc = el("div", { class: "bp-rail-section" }, [sectionTitle("Source")]);
   if (vm.module) loc.appendChild(metaRow("Module", vm.module));
@@ -416,6 +534,15 @@ function renderRail(name, hintMeta) {
       ? vm.startLine + "–" + vm.endLine
       : String(vm.startLine);
     loc.appendChild(metaRow(vm.sourcePath ? "File" : "Lines", vm.sourcePath ? where + ":" + span : span));
+  }
+  if (vm.sourceHref) {
+    loc.appendChild(
+      el("a", {
+        class: "bp-rail-open-page bp-rail-source-link",
+        attrs: { href: vm.sourceHref, target: "_blank", rel: "noopener" },
+        text: "View source ↗"
+      })
+    );
   }
   frag.appendChild(loc);
 
@@ -453,6 +580,24 @@ function renderRail(name, hintMeta) {
     frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Parameters"), pendingNote()]));
   }
 
+  // --- Metrics (fan-in/out client-side; depth/height from the registry) ----
+  const hasDeps = Array.isArray(vm.statementDeps) || Array.isArray(vm.proofDeps);
+  if (hasDeps || Array.isArray(vm.usedBy) || vm.depth != null || vm.height != null) {
+    const metrics = el("div", { class: "bp-rail-section" }, [sectionTitle("Metrics")]);
+    if (hasDeps) {
+      const outSet = new Set();
+      (vm.statementDeps || []).forEach(function (n) { outSet.add(n); });
+      (vm.proofDeps || []).forEach(function (n) { outSet.add(n); });
+      metrics.appendChild(metaRow("Fan-out", String(outSet.size)));
+    }
+    if (Array.isArray(vm.usedBy)) {
+      metrics.appendChild(metaRow("Fan-in", String(vm.usedBy.length)));
+    }
+    if (vm.depth != null) metrics.appendChild(metaRow("Depth", String(vm.depth)));
+    if (vm.height != null) metrics.appendChild(metaRow("Height", String(vm.height)));
+    frag.appendChild(metrics);
+  }
+
   // --- Uses (statement + proof axes) --------------------------------------
   if (Array.isArray(vm.statementDeps) || Array.isArray(vm.proofDeps)) {
     const uses = [];
@@ -482,12 +627,15 @@ function renderRail(name, hintMeta) {
     }
   }
 
-  // --- Open node page -----------------------------------------------------
-  if (vm.nodeHref) {
+  // --- Open node / declaration page ----------------------------------------
+  // Every registry decl has exactly one canonical page: the node page when
+  // wired, its own decl page otherwise.
+  const pageHref = vm.nodeHref || vm.declHref;
+  if (pageHref) {
     const link = el("a", {
       class: "bp-rail-open-page",
-      attrs: { href: vm.nodeHref },
-      text: "Open node page →"
+      attrs: { href: pageHref },
+      text: vm.nodeHref ? "Open node page →" : "Open declaration page →"
     });
     frag.appendChild(el("div", { class: "bp-rail-section" }, [link]));
   }

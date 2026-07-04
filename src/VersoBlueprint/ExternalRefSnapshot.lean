@@ -84,7 +84,15 @@ private def gitHubSourceHref? (workspaceRoot sourcePath : System.FilePath)
   let fragment := sourceLineFragment? range? |>.getD ""
   pure <| some s!"{repoInfo.githubUrl}/blob/{repoInfo.commit}/{relPath}{fragment}"
 
-private def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePath)
+/--
+Resolve the source link for a declaration from its module/path/range: the
+consumer's `verso.blueprint.externalCode.sourceLinkTemplate` when configured,
+else an automatic GitHub blob URL when the source belongs to a Git checkout with
+a GitHub `origin` remote; `none` when underivable. Shared by the external-ref
+snapshot (`Data.ExternalRef.sourceHref?`) and the declaration registry
+(`DeclRegistry.Entry.sourceHref?`), so both build identical URLs.
+-/
+def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePath)
     (moduleName? : Option Lean.Name) (sourcePath? : Option System.FilePath)
     (range? : Option Lean.DeclarationRange) : IO (Option String) := do
   let template := (externalSourceLinkTemplate opts).trimAscii.toString
@@ -141,23 +149,6 @@ def elegantSourcePath (workspaceRoot : System.FilePath)
       else
         modulePath
     | none => relPath
-
-private def externalDeclHeaderSource?
-    (workspaceRoot : System.FilePath) (moduleName? : Option Lean.Name)
-    (sourcePath? : Option System.FilePath) (sourceHref? : Option String) :
-    Option ExternalDeclHeaderSource := do
-  match sourcePath? with
-  | some sourcePath =>
-    some {
-      text := elegantSourcePath workspaceRoot moduleName? sourcePath
-      href? := sourceHref?
-    }
-  | none =>
-    let moduleName ← moduleName?
-    some {
-      text := moduleSourcePathText moduleName
-      href? := sourceHref?
-    }
 
 private def moduleNameForDecl? (env : Lean.Environment) (decl : Lean.Name) : Option Lean.Name := do
   match env.getModuleIdxFor? decl with
@@ -250,10 +241,6 @@ private def mkProvenance (workspaceRoot : System.FilePath)
     | none =>
       .outWorkspace moduleName none
 
-private def externalDeclStatusBadge (status : Data.ProvedStatus) : ExternalDeclHeaderBadge :=
-  let view := status.presentation
-  { className := view.externalDeclClass, text := view.externalHeaderText }
-
 /--
 Slice the proof/value source out of a full declaration source snippet: return the
 text after the first top-level `:=` (the tactic block or defining term), trimmed.
@@ -299,6 +286,20 @@ private def sliceProofSource (declSrc : String) : Option String := Id.run do
   return none
 
 /--
+Slice the proof/value source of one declaration out of its file's full content
+and range (the pure core of `captureProofSource?`, exposed so callers that
+already hold the file content — e.g. the declaration registry's per-module
+file-content cache — avoid re-reading the file per declaration). `none` when the
+extracted declaration has no top-level `:=` body.
+-/
+def proofSourceFromContent? (content : String) (range : Lean.DeclarationRange) :
+    Option String :=
+  let fileMap := Lean.FileMap.ofString content
+  let startPos := fileMap.ofPosition range.pos
+  let endPos := fileMap.ofPosition range.endPos
+  sliceProofSource (String.Pos.Raw.extract content startPos endPos)
+
+/--
 Read the proof/value source of one declaration from its source file and range.
 
 Reads the file, extracts the declaration substring spanning `range`, and slices
@@ -306,18 +307,14 @@ off the body after the top-level `:=` (see `sliceProofSource`). Degrades to `non
 on any IO or lookup failure so snapshotting never fails on a missing/unreadable
 source file.
 -/
-private def captureProofSource?
+def captureProofSource?
     (sourcePath? : Option System.FilePath) (range? : Option Lean.DeclarationRange) :
     IO (Option String) := do
   match sourcePath?, range? with
   | some sourcePath, some range =>
     try
       let content ← IO.FS.readFile sourcePath
-      let fileMap := Lean.FileMap.ofString content
-      let startPos := fileMap.ofPosition range.pos
-      let endPos := fileMap.ofPosition range.endPos
-      let declSrc := String.Pos.Raw.extract content startPos endPos
-      return sliceProofSource declSrc
+      return proofSourceFromContent? content range
     catch _ =>
       return none
   | _, _ => return none
@@ -397,11 +394,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
     let sourceHref? ←
       liftM <| sourceLinkHref? opts workspaceRoot moduleName? sourcePath? (ranges?.map (fun r => r.range))
-    let headerSource? := externalDeclHeaderSource? workspaceRoot moduleName? sourcePath? sourceHref?
-    let renderResult ←
-      (renderDeclHtmlDirectFromInfoE canonical cinfo
-        (headerBadge? := some (externalDeclStatusBadge ref.provedStatus))
-        (headerSource? := headerSource?)).run'
+    let renderResult ← (renderDeclHtmlDirectFromInfoE canonical cinfo).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
       | .ok html => .ok html

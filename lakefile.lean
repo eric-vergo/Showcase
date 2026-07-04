@@ -38,6 +38,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,
+    `VersoBlueprintTests.BlueprintDeclPages,
     `VersoBlueprintTests.BlueprintImportedDuplicates.Direct,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB,

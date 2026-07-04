@@ -121,14 +121,16 @@ Global color-scheme (dark mode) assets, applied to *every* page.
 
 * `extraCss` carries the blueprint design tokens (so the `--bp-color-*` palette and
   its dark overrides reach pages without a blueprint content block — index, ToC,
-  bibliography) plus the standalone color-scheme switcher box styling.
+  bibliography).
 * `extraJs` carries the pre-paint applier, which Verso emits as an inline
   non-module `<script>` in `<head>`, so the saved scheme is applied before first
-  paint (no flash). The core dark CSS itself rides along on the always-linked
-  `verso-vars.css` / `book.css`, so OS-auto dark works with zero JS.
+  paint (no flash) and the `window.VersoBlueprint.colorScheme` API is available
+  to the metadata-rail footer's theme control. The core dark CSS itself rides
+  along on the always-linked `verso-vars.css` / `book.css`, so OS-auto dark works
+  with zero JS.
 -/
 def colorSchemeHtmlAssets : HtmlAssets where
-  extraCss := ([Informal.Commands.blueprintTokensCss, Informal.ColorScheme.css] : List String)
+  extraCss := ([Informal.Commands.blueprintTokensCss] : List String)
   extraJs := ([Informal.ColorScheme.applierJs] : List String)
 
 /--
@@ -148,8 +150,11 @@ Global command-palette assets, applied to *every* page.
 
 Only the stylesheet rides this global `extraCss` channel; the palette behavior is
 an ESM module (`Commands/command-palette.mjs`) registered in `pageRuntimeModules`
-and started from `blueprint-page-runtime.mjs`. The styling uses `--bp-color-*`
-tokens so the overlay themes in dark mode, with no CDN/network dependency.
+and started from `blueprint-page-runtime.mjs`. It lazily same-origin-fetches
+`xref.json`, `-verso-data/node-search.json`, and (when the declaration registry
+is on) `-verso-data/decl-search.json`, so decl pages and short Lean names are
+searchable too. The styling uses `--bp-color-*` tokens so the overlay themes in
+dark mode, with no CDN/network dependency.
 -/
 def commandPaletteHtmlAssets : HtmlAssets where
   extraCss := ([Informal.CommandPalette.css] : List String)
@@ -181,18 +186,17 @@ def metadataRailHtmlAssets : HtmlAssets where
 
 /--
 Global docs-navigation chrome assets (Wave 5), applied to *every* page: the top-nav
-category strip, line-numbered Lean code blocks, and the per-page declaration outline.
+category strip and the per-page declaration outline.
 
-Only the stylesheets ride this global `extraCss` channel; the three DOMs are injected
-by ESM modules (`Commands/top-nav.mjs`, `Commands/line-numbers.mjs`,
-`Commands/page-outline.mjs`) registered in `pageRuntimeModules` and started from
-`blueprint-page-runtime.mjs`. All styling reuses the `--bp-*` / `--verso-*` design
-tokens, so light + dark and AA contrast come for free with no CDN / network dependency.
+Only the stylesheets ride this global `extraCss` channel; the two DOMs are injected
+by ESM modules (`Commands/top-nav.mjs`, `Commands/page-outline.mjs`) registered in
+`pageRuntimeModules` and started from `blueprint-page-runtime.mjs`. All styling
+reuses the `--bp-*` / `--verso-*` design tokens, so light + dark and AA contrast
+come for free with no CDN / network dependency.
 -/
 def docsChromeHtmlAssets : HtmlAssets where
   extraCss :=
-    ([Informal.DocsChrome.topNavCss, Informal.DocsChrome.lineNumbersCss,
-      Informal.DocsChrome.pageOutlineCss] : List String)
+    ([Informal.DocsChrome.topNavCss, Informal.DocsChrome.pageOutlineCss] : List String)
 
 /--
 Print / PDF stylesheet, applied to *every* page via the global `extraCss` channel.
@@ -210,7 +214,6 @@ def printCss : String := r##"
     --bp-color-surface: #ffffff;
     --bp-color-surface-muted: #f1f4f7;
     --bp-color-surface-subtle: #f7f9fb;
-    --bp-color-surface-modern: #f5f8fc;
     --bp-color-surface-warn: #fbf2e9;
     --bp-color-surface-warn-soft: #f5e4d2;
     --bp-color-surface-note: #fbf6ea;
@@ -239,7 +242,6 @@ def printCss : String := r##"
   #toggle-toc-click,
   label[for="toggle-toc"],
   .prev-next-buttons,
-  #bp-color-scheme-switcher,
   .bp-copy-button,
   .bp_graph_controls,
   .bp_graph_legend,
@@ -813,8 +815,6 @@ private def metadataRailModuleMjs : String := include_str "Commands/metadata-rai
 
 private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"
 
-private def lineNumbersModuleMjs : String := include_str "Commands/line-numbers.mjs"
-
 private def pageOutlineModuleMjs : String := include_str "Commands/page-outline.mjs"
 
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
@@ -876,7 +876,6 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/selection-bus.mjs", selectionBusModuleMjs),
   ("Commands/metadata-rail.mjs", metadataRailModuleMjs),
   ("Commands/top-nav.mjs", topNavModuleMjs),
-  ("Commands/line-numbers.mjs", lineNumbersModuleMjs),
   ("Commands/page-outline.mjs", pageOutlineModuleMjs)
 ]
 

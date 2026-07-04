@@ -56,44 +56,20 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usedByPreviewDoc
     let relationJs? := findRelationPanelJs? st
+    -- Header relation chips/panels are gone (clean-card 1D): used-by / uses /
+    -- group information moved to the metadata rail, and the heading carries only
+    -- the title row + status dot. Statement-side used-by markup therefore no
+    -- longer renders anywhere on the page.
     pure (
-      hasSubstr out "used by 2" &&
-      !hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
-      hasSubstr out "class=\"bp_relation_wrap\"" &&
-      hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
-      !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
-      hasSubstr out "class=\"bp_relation_preview_message\"" &&
-      hasSubstr out "Loading preview" &&
-      hasSubstr out "Reverse dependency previews" &&
-      !hasSubstr out "Hover a use site to preview it." &&
-      !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
-      hasSubstr out "data-bp-relation-preview-id" &&
-      hasSubstr out "data-bp-relation-preview-key" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
-      hasSubstr out ">statement</span>" &&
-      hasSubstr out ">proof</span>" &&
-      hasSubstr out ">automatic</span>" &&
-      hasSubstr out ">technical</span>" &&
-      hasSubstr out ">auxiliary</span>" &&
-      hasSubstr out "bp_relation_badge_statement" &&
-      hasSubstr out "bp_relation_badge_proof" &&
-      hasSubstr out "bp_relation_badge_origin_automatic" &&
-      hasSubstr out "bp_relation_badge_intent_technical" &&
-      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      !hasSubstr out "used by 2" &&
+      !hasSubstr out "bp_extra_slot" &&
+      !hasSubstr out "class=\"bp_relation_wrap\"" &&
+      !hasSubstr out "class=\"bp_relation_panel\"" &&
       !hasSubstr out "bp_uses_chip" &&
-      !hasSubstr out "bp_uses_origin_badge" &&
-      !hasSubstr out "bp_uses_intent_badge" &&
+      hasSubstr out "class=\"bp_status_dot\"" &&
+      hasSubstr out "data-status=\"proved\"" &&
       hasExtraCss st ".content-wrapper > section:has(.bp_relation_panel)" &&
       hasExtraCss st ".bp_preview_header_label" &&
-      hasExtraCss st ".bp_relation_badge_origin::before" &&
-      hasExtraCss st ".bp_relation_badge_intent_technical" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       relationJs?.isNone &&
       !hasExtraJs st "window.VersoBlueprint.onRenderReady"
     )
@@ -103,26 +79,20 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls usedBySinglePreviewDoc
+    -- Chips (uses / used-by counts, the L∃∀N status entry, empty relation
+    -- chips) no longer render; the no-Lean statement carries the "informal"
+    -- status dot instead. Inline `{uses}` prose references keep their preview
+    -- wiring untouched.
     pure (
-      hasSubstr out "uses 1" &&
-      hasSubstr out "uses 0" &&
-      hasSubstr out "used by 1" &&
-      hasSubstr out "used by 0" &&
-      hasSubstr out "bp_code_link_status_absent" &&
-      hasSubstr out "bp_code_link_empty" &&
-      hasSubstr out "No associated Lean declarations" &&
-      hasSubstr out ">X</span>" &&
-      hasSubstr out ">L∃∀N</span>" &&
-      hasSubstr out "class=\"bp_relation_chip bp_relation_chip_empty\"" &&
+      !hasSubstr out "uses 1" &&
+      !hasSubstr out "used by 1" &&
+      !hasSubstr out "bp_code_link_status_absent" &&
+      !hasSubstr out ">L∃∀N</span>" &&
+      !hasSubstr out "bp_relation_chip" &&
+      hasSubstr out "data-status=\"informal\"" &&
+      hasSubstr out "title=\"No associated Lean declarations\"" &&
       hasSubstr out "class=\"bp_inline_preview_ref\"" &&
-      !hasSubstr out "class=\"bp_inline_preview_tpl\" data-bp-preview-id=\"bp-used-by-" &&
-      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-id=\"bp-used-by-" &&
-      hasSubstr out "data-bp-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
-      hasSubstr out "data-bp-preview-footer-html=" &&
-      hasSubstr out "data-bp-preview-key="
+      hasSubstr out "data-bp-preview-id=\"bp-uses-"
     )
 
 /-- info: true -/
@@ -131,39 +101,32 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls usesPreviewDoc
     let relationJs? := findRelationPanelJs? st
+    -- The statement heading's uses chip/panel is gone (1D), and the proof-cell
+    -- "USES n" chip is gone too (Stage 2 — the metadata rail's Uses section owns
+    -- dependency information), so no relation-panel markup renders anywhere on
+    -- the page. The dependency labels still appear via their own directives.
     pure (
-      hasSubstr out "uses 2" &&
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
-      hasSubstr out "class=\"bp_relation_chip\"" &&
-      hasSubstr out "class=\"bp_relation_panel\"" &&
-      hasSubstr out "Statement uses 2" &&
-      hasSubstr out "Statement dependency previews" &&
-      hasSubstr out "Proof uses 2" &&
-      hasSubstr out "Proof dependency previews" &&
+      !hasSubstr out "uses 2" &&
+      !hasSubstr out "bp_extra_slot" &&
+      !hasSubstr out "Statement uses 2" &&
+      !hasSubstr out "Statement dependency previews" &&
+      !hasSubstr out "class=\"bp_relation_chip\"" &&
+      !hasSubstr out "class=\"bp_relation_panel\"" &&
+      !hasSubstr out "Proof uses 2" &&
+      !hasSubstr out "Proof dependency previews" &&
       !hasSubstr out "Hover a dependency to preview it." &&
-      hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
-      hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
-      hasSubstr out "data-bp-preview-header-label=" &&
-      hasSubstr out "data-bp-preview-header-href=" &&
+      !hasSubstr out "class=\"bp_relation_preview_header_label bp_preview_header_label\"" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-uses-" &&
+      !hasSubstr out "data-bp-preview-header-label=" &&
+      !hasSubstr out "data-bp-preview-header-href=" &&
       hasSubstr out "def:uses.hidden" &&
       hasSubstr out "def:uses.inline" &&
       hasSubstr out "def:uses.proof" &&
       hasSubstr out "def:uses.proof.extra" &&
-      hasSubstr out ">statement</span>" &&
-      hasSubstr out ">proof</span>" &&
-      hasSubstr out ">automatic</span>" &&
-      hasSubstr out ">technical</span>" &&
-      hasSubstr out ">auxiliary</span>" &&
-      hasSubstr out "bp_relation_badge_statement" &&
-      hasSubstr out "bp_relation_badge_proof" &&
-      hasSubstr out "bp_relation_badge_origin_automatic" &&
-      hasSubstr out "bp_relation_badge_intent_technical" &&
-      hasSubstr out "bp_relation_badge_intent_auxiliary" &&
+      !hasSubstr out ">proof</span>" &&
       !hasSubstr out "bp_uses_chip" &&
       !hasSubstr out "bp_uses_origin_badge" &&
       !hasSubstr out "bp_uses_intent_badge" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
       relationJs?.isNone
     )
 
@@ -173,23 +136,15 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
   show IO Bool from do
     let (out, st) ← renderManualDocHtmlStringAndState manualImpls groupPreviewDoc
     let relationJs? := findRelationPanelJs? st
+    -- The group chip/panel is gone with the other header extras (1D): group
+    -- membership is metadata-rail territory now. Statements keep only the title
+    -- row + status dot.
     pure (
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_group\"" &&
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
-      hasSubstr out "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_group\"" "class=\"bp_extra_slot bp_extra_slot_uses\"" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_uses\"" "class=\"bp_extra_slot bp_extra_slot_used_by\"" &&
-      appearsBefore out "class=\"bp_extra_slot bp_extra_slot_used_by\"" "class=\"bp_extra_slot bp_extra_slot_code\"" &&
-      hasSubstr out "Group member previews" &&
-      !hasSubstr out "Hover another entry in this group to preview it." &&
-      hasSubstr out "class=\"bp_relation_item bp_relation_item_active\"" &&
-      hasSubstr out "class=\"bp_relation_preview_message\"" &&
-      hasSubstr out "Loading preview" &&
-      !hasSubstr out "class=\"bp_relation_preview_fallback_tpl\"" &&
-      !hasSubstr out "class=\"bp_relation_preview_empty\"" &&
-      hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
-      hasSubstr out "Preview group title." &&
-      hasSubstr out "used by 1" &&
+      !hasSubstr out "bp_extra_slot" &&
+      !hasSubstr out "Group member previews" &&
+      !hasSubstr out "data-bp-relation-preview-id=\"bp-group-" &&
+      !hasSubstr out "used by 1" &&
+      hasSubstr out "class=\"bp_status_dot\"" &&
       relationJs?.isNone
     )
 
@@ -198,11 +153,12 @@ private def samplePanelEntry : Informal.RelatedPanel.PanelEntry := {
 #eval
   show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls missingGroupPreviewDoc
+    -- The undeclared-group warning chip rendered in the heading is gone with the
+    -- header extras; no group markup renders at all.
     pure (
-      hasSubstr out "bp_relation_chip_warn" &&
-      hasSubstr out "data-bp-preview-id=\"bp-group-" &&
-      hasSubstr out "data-bp-preview-key=" &&
-      hasSubstr out "grp:missing"
+      !hasSubstr out "bp_relation_chip_warn" &&
+      !hasSubstr out "data-bp-preview-id=\"bp-group-" &&
+      hasSubstr out "class=\"bp_status_dot\""
     )
 
 /-- info: true -/

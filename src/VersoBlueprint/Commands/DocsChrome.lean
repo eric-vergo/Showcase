@@ -7,16 +7,16 @@ Author: Emilio J. Gallego Arias
 import Lean
 
 /-!
-Site-wide "docs navigation" chrome styling (Wave 5): the top-nav category strip,
-line-numbered Lean code blocks, and the per-page declaration outline.
+Site-wide "docs navigation" chrome styling (Wave 5): the top-nav category strip
+and the per-page declaration outline.
 
-All three DOMs are injected at runtime by ES modules (`Commands/top-nav.mjs`,
-`Commands/line-numbers.mjs`, `Commands/page-outline.mjs`) — no verso-core template
-edit — and only their stylesheets ride here. The CSS rides the global
-`blueprintHtmlAssets` `extraCss` channel (the same channel as the banner nav,
-metadata rail, and copy button) so it is present on every page, and it reuses the
-existing `--bp-*` / `--verso-*` design tokens exclusively, so light + dark and AA
-contrast come for free with no CDN / network dependency.
+Both DOMs are injected at runtime by ES modules (`Commands/top-nav.mjs`,
+`Commands/page-outline.mjs`) — no verso-core template edit — and only their
+stylesheets ride here. The CSS rides the global `blueprintHtmlAssets` `extraCss`
+channel (the same channel as the banner nav, metadata rail, and copy button) so
+it is present on every page, and it reuses the existing `--bp-*` / `--verso-*`
+design tokens exclusively, so light + dark and AA contrast come for free with no
+CDN / network dependency.
 -/
 
 namespace Informal.DocsChrome
@@ -97,48 +97,6 @@ def topNavCss : String := r##"
 
 @media print {
   .bp-topnav { display: none !important; }
-}
-"##
-
-/-! ## Line-numbered Lean code blocks -/
-
-/--
-Styling for the CSS-counter gutter added to the card signature / proof / value
-Lean blocks by `Commands/line-numbers.mjs`.
-
-The runtime wraps each logical line in `.bp_code_line` and adds `.bp-line-numbered`
-to the code container, switching it to `white-space: normal` so the inter-line
-newline text nodes (kept verbatim so copy-to-clipboard stays byte-identical)
-collapse visually, while each line keeps `white-space: pre`. The number is a
-`::before` counter (never part of `textContent`, so it can't corrupt the copy).
-
-The `.hl.lean.bp-line-numbered` selector is `(0,3,0)` so it outranks the core
-`.hl.lean { white-space: pre }` rule `(0,2,0)`.
--/
-def lineNumbersCss : String := r##"
-.hl.lean.bp-line-numbered {
-  white-space: normal;
-  counter-reset: bp-line;
-}
-
-.hl.lean.bp-line-numbered .bp_code_line {
-  display: block;
-  white-space: pre;
-  counter-increment: bp-line;
-}
-
-.hl.lean.bp-line-numbered .bp_code_line::before {
-  content: counter(bp-line);
-  display: inline-block;
-  width: 2.4em;
-  margin-right: 0.7em;
-  padding-right: 0.7em;
-  border-right: 1px solid var(--bp-color-border-soft, #e6ebf1);
-  color: var(--bp-color-text-faint, #5f6f7e);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  -webkit-user-select: none;
-  user-select: none;
 }
 "##
 

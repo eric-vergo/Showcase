@@ -32,9 +32,10 @@ Informal proof-row content for a node card.
 
 The strict 2×2 grid pairs the informal proof prose (left) with the formal Lean
 proof body (right). This structure carries only the *informal* (left) side: the
-proof facet's prose plus its uses panel. The *formal* proof body is a property of
-the statement's associated declaration, so it lives on `Parts.formalBody` (routed
-into the right proof cell by `render`), not here.
+proof facet's prose. (The old proof-cell "USES n" chip is gone — the metadata
+rail's Uses section owns that information.) The *formal* proof body is a property
+of the statement's associated declaration, so it lives on `Parts.formalBody`
+(routed into the right proof cell by `render`), not here.
 
 For theorem-like nodes with no proof facet at all, `Parts.proof?` is `none` and
 `render` synthesizes a quiet placeholder in the informal proof cell — the proof
@@ -43,8 +44,6 @@ region is always present for theorem-like cards.
 structure ProofParts where
   /-- Rendered informal proof prose (the proof facet's `bp_content` body). -/
   informalProof : Html
-  /-- Proof-side uses panel for the proof facet, or `.empty`. -/
-  proofUses : Html := .empty
   /-- Stable id stem for the card, used to wire the toggle to the proof region. -/
   cardId : String
 
@@ -166,21 +165,43 @@ private def cardGrid (informalCellClass formalCellClass extraClass : String)
   }}
 
 /--
+Short display name for a declaration: strips the configured project prefix
+(`verso.blueprint.declNamePrefix`, e.g. `A362583`) plus its trailing dot when it
+matches, else the name unchanged. The single source of truth for name shortening
+— catalog rows, the metadata rail, the page outline, and the search records all
+derive their short names from this (the fully-qualified name is preserved on
+decl pages and in hover `title`s). Pure/deterministic; an empty prefix or an
+exact prefix==name match is the identity.
+-/
+def shortDeclName (pfx name : String) : String :=
+  if pfx.isEmpty then name
+  else
+    let pre := pfx ++ "."
+    if name.startsWith pre && name.length > pre.length then
+      (name.drop pre.length).toString
+    else name
+
+/--
 Build the slim identity-only metadata JSON embedded inline per card for the
 metadata rail's offline first paint (`Parts.declMetaJson?`).
 
 Kept to injection-safe *identity* fields only — name, kind, status, module,
-numbered title, source line span, and root-relative node href — with no type or
+numbered title, source line span, root-relative node href, and (when configured)
+the prefix-stripped `shortName` / unwired-decl-page `declHref` — with no type or
 signature text (so the payload can never contain a stray `</script>` and stays
 small). The heavier data (parameters, uses / used-by, see-also) is fetched from
 `-verso-data/decl-registry.json` at selection time; under `file://` those
 sections degrade to a quiet "unavailable offline" note.
 
+The optional `shortName` / `declHref` keys are emitted only when set, so legacy
+callers (and consumers without a configured prefix) get byte-identical output.
+
 `<` is escaped to `<` in the emitted JSON so embedding it verbatim in a
 raw-text `<script>` element can never terminate the script early.
 -/
 def declMetaJson (name kind status moduleName title : String)
-    (startLine endLine : Option Nat) (nodeHref : Option String) : String :=
+    (startLine endLine : Option Nat) (nodeHref : Option String)
+    (shortName : Option String := none) (declHref : Option String := none) : String :=
   open Lean in
   let base : List (String × Json) :=
     [ ("name", Json.str name)
@@ -196,7 +217,15 @@ def declMetaJson (name kind status moduleName title : String)
     match nodeHref with
     | some h => [("nodeHref", Json.str h)]
     | none => []
-  ((Json.mkObj (base ++ range ++ href)).compress).replace "<" "\\u003c"
+  let short : List (String × Json) :=
+    match shortName with
+    | some s => [("shortName", Json.str s)]
+    | none => []
+  let declPage : List (String × Json) :=
+    match declHref with
+    | some h => [("declHref", Json.str h)]
+    | none => []
+  ((Json.mkObj (base ++ range ++ href ++ short ++ declPage)).compress).replace "<" "\\u003c"
 
 /-- Inline per-card metadata `<script>` for the rail's offline first paint, or
 `.empty`. The JSON is `</script>`-safe (see `declMetaJson`) so it is injected raw. -/
@@ -215,7 +244,8 @@ private def renderProofRegion (cardId : String) (informalProof formalProof : Htm
   {{
     <button type="button" class="bp_card2_proof_toggle"
         "aria-expanded"="false" aria-controls={{proofId}}>
-      "Show proof"
+      <span class="bp_card2_proof_word">"Proof"</span>
+      <span class="bp_card2_proof_action">"[show]"</span>
     </button>
     <div class="bp_card2_proof_anim" id={{proofId}}>
       {{cardGrid "bp_card2_informal_proof" "bp_card2_formal_proof" " bp_card2_proof_grid"
@@ -246,7 +276,7 @@ def render (parts : Parts) (opts : Options := {}) : Html :=
     let informalProof :=
       match parts.proof? with
       | some proof =>
-        orPlaceholder (Html.seq #[proof.informalProof, proof.proofUses]) "No informal proof yet."
+        orPlaceholder proof.informalProof "No informal proof yet."
       | none => placeholderCell "No informal proof yet."
     -- The formal proof cell holds the captured proof source; when empty it shows a
     -- placeholder, which the runtime tactic-tail relocation (`proof-toggle.mjs`)
@@ -392,58 +422,40 @@ def css : String := r##"
   }
 }
 
-/* ---- Proof toggle (restrained disclosure control) ------------------------ */
+/* ---- Proof toggle (quiet italic "Proof [show]" disclosure) ---------------- */
 .bp_card2_proof_toggle {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--bp-space-1);
   margin-top: var(--bp-space-3);
-  padding: var(--bp-space-1) var(--bp-space-2);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-sm);
-  background: var(--bp-color-surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--bp-color-text-muted);
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-control, 0.82rem);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
+  font-family: var(--font-prose, inherit);
+  font-size: var(--bp-fs-small, 0.875rem);
+  font-style: italic;
+  line-height: 1.4;
   cursor: pointer;
-  transition: background-color var(--bp-duration-fast) var(--bp-ease),
-    border-color var(--bp-duration-fast) var(--bp-ease),
-    color var(--bp-duration-fast) var(--bp-ease);
+  transition: color var(--bp-duration-fast) var(--bp-ease);
 }
 
-/* Disclosure chevron, rotates when the proof opens. */
-.bp_card2_proof_toggle::before {
-  content: "";
-  width: 0.42em;
-  height: 0.42em;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(-45deg);
-  transition: transform var(--bp-duration-base) var(--bp-ease);
+.bp_card2_proof_word {
+  font-weight: 600;
 }
 
-.bp_card2[data-bp-proof-open="true"] .bp_card2_proof_toggle::before {
-  transform: rotate(45deg);
+.bp_card2_proof_action {
+  color: var(--bp-color-link);
 }
 
-.bp_card2_proof_toggle:hover {
-  border-color: var(--bp-color-border-strong);
-  color: var(--bp-color-text-strong);
-  background: var(--bp-color-surface-subtle);
+.bp_card2_proof_toggle:hover .bp_card2_proof_action {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
 }
 
 .bp_card2_proof_toggle:focus-visible {
   outline: 2px solid var(--bp-color-accent);
   outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bp_card2_proof_toggle::before {
-    transition: none;
-  }
 }
 
 /* ---- Prose measure: fill the narrower card column ------------------------ */

@@ -87,9 +87,7 @@ block_extension Block.informal (data : BlockData) where
         let s ← HtmlT.state
         let ctxt ← HtmlT.context
         let data := data.withResolvedNumberingInContext s ctxt
-        let relatedPanelContext := RelatedPanel.RelationContext.ofState s
         let attrs := s.htmlId id
-        let codeHref := Informal.TraversalIndex.InlineCode.href? s data.label
         let codeData? : Option InlineCodeData ←
           pure <| Informal.TraversalIndex.InlineCode.data? s data.label
         let codeHint? :=
@@ -102,14 +100,6 @@ block_extension Block.informal (data : BlockData) where
           Resolve.resolveInformalDeclHref? s data.label decl
         let getDeclAnchorAttrs (decl : Data.ExternalRef) : Array (String × String) :=
           Informal.TraversalIndex.ExternalDeclAnchors.htmlIdAttrs s data.label decl.canonical
-        let cdata := {
-          codeHref
-          source := codeSource
-        }
-        let headingParts? : Option CodeSummary.RenderParts :=
-          match data.kind with
-          | .statement _ => some <| CodeSummary.renderParts data cdata getDeclHref
-          | .proof => none
         let externalParts? : Option ExternalCode.RenderParts ←
           match data.kind with
           | .statement _ =>
@@ -119,12 +109,11 @@ block_extension Block.informal (data : BlockData) where
               let externalCdata : CodeSummary.ComputedData := {
                 source := some (.external externalDecls)
               }
-              let externalSummary := CodeSummary.renderPanelIndicator data.label externalCdata getDeclHref
+              let externalSummaryTitle := CodeSummary.panelSummaryTitle data.label externalCdata
               let panelHeader := codePanelHeader data (data.displayNumber s)
               some <$> ExternalCode.renderPartsWithPageHovers
                 panelHeader
-                externalSummary.summaryTitle
-                externalSummary.indicator
+                externalSummaryTitle
                 externalDecls
                 getDeclHref
                 getDeclAnchorAttrs
@@ -132,27 +121,17 @@ block_extension Block.informal (data : BlockData) where
           | .proof => pure none
         let externalPanel := (externalParts?.map (·.externalCodePanel)).getD .empty
         let content := (← blocks.mapM goB)
-        let codeEntry := (headingParts?.map (·.codeEntry)).getD .empty
-        let groupEntry ← RelatedPanel.renderGroupExtra relatedPanelContext data
-        let usesEntry ← RelatedPanel.renderUsesExtra relatedPanelContext data
-        let usedByEntry ← RelatedPanel.renderUsedByExtra relatedPanelContext data
         let foldInformalBlock :=
           match data.kind with
           | .proof => data.foldProofBlock
           | .statement _ => false
-        let headerExtras : HeaderExtras :=
+        -- Header chips (group / uses / used-by / L∃∀N) are gone (1D): the
+        -- metadata rail owns that information now. The heading carries only the
+        -- title row plus the status dot.
+        let statusDot :=
           match data.kind with
-          | .proof =>
-            {
-              uses? := some <| HeaderExtra.uses usesEntry
-            }
-          | .statement _ =>
-            {
-              group? := groupEntry.map HeaderExtra.group
-              uses? := some <| HeaderExtra.uses usesEntry
-              usedBy? := some <| HeaderExtra.usedBy usedByEntry
-              code? := some <| HeaderExtra.code codeEntry
-            }
+          | .statement _ => CodeSummary.statusDotHtml codeSource
+          | .proof => Verso.Output.Html.empty
         match data.kind with
         | .statement _ =>
           -- Default the inline statement to the two-column node card: informal
@@ -165,24 +144,21 @@ block_extension Block.informal (data : BlockData) where
               (data.displayNumber s)
               (proofCaption? := some (data.displayTitle s))
               (attrs := attrs)
-              (headerExtras := headerExtras))
+              (statusDot := statusDot))
             content
           -- Statement metadata lives in the informal statement cell, above prose.
           let informalStmt := Verso.Output.Html.seq #[stmtParts.metadata, stmtParts.contentInner]
           -- Fold the proof facet's prose (if it exists) into the proof region.
+          -- The informal proof cell carries the prose only — the old "USES n"
+          -- chip is gone (the metadata rail's Uses section owns that data).
           let proofKey := Informal.PreviewCache.proofKey data.label
           let proof? : Option NodeCard.ProofParts ←
             match Informal.TraversalIndex.TraversalPreviews.entry? s proofKey with
             | none => pure none
             | some pEntry =>
               let informalProof := Verso.Output.Html.seq (← pEntry.blocks.mapM goB)
-              -- Proof-side uses: reuse the statement's `proofUses` by rendering
-              -- the uses panel against a proof-kind view of this block.
-              let proofUses ← RelatedPanel.renderUsesExtra relatedPanelContext
-                { data with kind := .proof }
               pure <| some {
                 informalProof
-                proofUses
                 cardId := s!"bp-card-{data.label}"
               }
           let isTheoremLike :=
@@ -199,6 +175,10 @@ block_extension Block.informal (data : BlockData) where
           -- Primary decl name + slim identity metadata for the selection bus /
           -- metadata rail (matches the manifest card path in `BlockRender`): the
           -- first present (else first) `(lean := …)` ref, identity fields only.
+          -- The short-name prefix comes from the traversal store (stashed by the
+          -- graph block's traverse from `verso.blueprint.declNamePrefix`); the
+          -- `shortName` key is emitted only when it actually shortens.
+          let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? s).getD ""
           let (cardDeclName?, cardDeclMetaJson?) :=
             match externalDecls.find? (·.present) <|> externalDecls[0]? with
             | some primaryRef =>
@@ -213,10 +193,12 @@ block_extension Block.informal (data : BlockData) where
                 | .statement k => toString k
                 | .proof => "theorem"
               let nodeHref := s!"node/{Informal.NodeRoute.nodePageSlugOfString (toString data.label)}/"
+              let short := NodeCard.shortDeclName namePrefix name
+              let shortName? := if short == name then none else some short
               (some name,
                some (NodeCard.declMetaJson name kindStr statusTag moduleName (data.displayTitle s)
                  (primaryRef.range?.map (·.pos.line)) (primaryRef.range?.map (·.endPos.line))
-                 (some nodeHref)))
+                 (some nodeHref) (shortName := shortName?)))
             | none => (none, none)
           let card := NodeCard.render {
             cardId := s!"bp-card-{data.label}"
@@ -250,7 +232,6 @@ block_extension Block.informal (data : BlockData) where
                   (data.displayNumber s)
                   (proofCaption? := some (data.displayTitle s))
                   (attrs := attrs)
-                  (headerExtras := headerExtras)
                   (folded := foldInformalBlock)
                 content
                 companionPanels := #[externalPanel]
@@ -262,7 +243,6 @@ block_extension Block.informal (data : BlockData) where
                 (data.displayNumber s)
                 (proofCaption? := some (data.displayTitle s))
                 (attrs := attrs)
-                (headerExtras := headerExtras)
                 (folded := foldInformalBlock)
               content
               companionPanels := #[externalPanel]

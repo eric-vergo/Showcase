@@ -35,6 +35,18 @@ The rail sits above the fixed ToC (z 10-12) but below the graph node modal
 (z 9500), so the Wave-2 modal always layers over it. It honors
 `prefers-reduced-motion` and is fully keyboard operable (tab + collapse buttons
 carry `aria-expanded`/`aria-controls`; every dependency item is a real button).
+
+The pinned footer (`.bp-rail-footer`) carries the absorbed page-level controls
+(the old floating widget): an Auto | Light | Dark theme radiogroup driving
+`window.VersoBlueprint.colorScheme`, and — when the page has node cards — a
+bulk "Proofs: show all / hide all" pair driving proof-toggle.mjs `setAllProofs`.
+
+Stage-2 data sections: the registry v2 fields feed a **Docstring** section
+(build-generated HTML — the markdown pipeline has raw HTML disabled, so
+`innerHTML` injection is safe), a **View source** link in the Source section,
+and a **Metrics** section (fan-in/fan-out computed client-side from the
+dependency arrays; depth/height from the registry). Docstring prose is styled
+below (`.bp-rail-docstring`) with overflow-safe scrolling for wide math/code.
 -/
 
 namespace Informal.MetadataRail
@@ -415,7 +427,44 @@ def css : String := r##"
   color: var(--bp-color-text-faint);
 }
 
-/* ---- Open node page CTA + offline note ------------------------------------ */
+/* ---- Docstring (registry v2) ----------------------------------------------- */
+.bp-rail-docstring {
+  font-size: var(--bp-fs-caption, 0.78rem);
+  line-height: 1.55;
+  color: var(--bp-color-text);
+  overflow-x: auto; /* wide inline math / code scrolls inside the rail */
+}
+
+.bp-rail-docstring p {
+  margin: 0 0 var(--bp-space-2);
+}
+
+.bp-rail-docstring p:last-child {
+  margin-bottom: 0;
+}
+
+.bp-rail-docstring pre {
+  margin: var(--bp-space-2) 0;
+  padding: var(--bp-space-2);
+  background: var(--bp-color-surface-subtle);
+  border-radius: var(--bp-radius-sm);
+  overflow-x: auto;
+  font-size: var(--bp-fs-small, 0.8rem);
+}
+
+.bp-rail-docstring code {
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.95em;
+  overflow-wrap: anywhere;
+}
+
+.bp-rail-docstring ul,
+.bp-rail-docstring ol {
+  margin: 0 0 var(--bp-space-2);
+  padding-left: var(--bp-space-5);
+}
+
+/* ---- Open node/declaration page CTA + source link + offline note ----------- */
 .bp-rail-open-page {
   display: inline-flex;
   align-items: center;
@@ -436,6 +485,104 @@ def css : String := r##"
   font-size: var(--bp-fs-badge, 0.72rem);
   font-style: italic;
   line-height: 1.5;
+}
+
+/* ---- Pinned footer (absorbed theme + proofs controls) ---------------------- */
+.bp-rail-footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-2);
+  padding: var(--bp-space-3) var(--bp-space-4);
+  border-top: 1px solid var(--bp-color-border-soft);
+}
+
+.bp-rail-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bp-space-2);
+}
+
+.bp-rail-footer-label {
+  font-size: var(--bp-fs-badge, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--bp-color-text-subtle);
+}
+
+.bp-rail-theme {
+  display: inline-flex;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  overflow: hidden;
+}
+
+.bp-rail-theme-option {
+  padding: 0.2rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-badge, 0.72rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease);
+}
+
+.bp-rail-theme-option + .bp-rail-theme-option {
+  border-left: 1px solid var(--bp-color-border);
+}
+
+.bp-rail-theme-option:hover {
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-strong);
+}
+
+.bp-rail-theme-option[aria-checked="true"] {
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-strong);
+}
+
+.bp-rail-theme-option:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: -2px;
+}
+
+.bp-rail-proofs {
+  display: inline-flex;
+  gap: var(--bp-space-1);
+}
+
+.bp-rail-proof-action {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: var(--bp-radius-sm);
+  background: transparent;
+  color: var(--bp-color-link);
+  font-size: var(--bp-fs-badge, 0.72rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease);
+}
+
+.bp-rail-proof-action:hover {
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-strong);
+}
+
+.bp-rail-proof-action:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-rail-theme-option,
+  .bp-rail-proof-action {
+    transition: none;
+  }
 }
 
 /* ---- Backdrop (drawer mode only) ------------------------------------------ */

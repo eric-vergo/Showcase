@@ -82,6 +82,10 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         !sameUnsafeAbbrev.asString.contains badUnsafeAbbrev &&
         !sameThm.asString.contains badTheorem
       | _, _, _, _, _, _ => false
+    -- Bare-code wrapper (1E): no kicker row, so no `bp_external_decl_kind` /
+    -- `bp_external_decl_header_meta` markup; the stable `data-decl` / `data-kind`
+    -- attributes and the keyword-prefixed signature remain the classification
+    -- carriers.
     let abbrevUsesAbbrevRendering :=
       match sameAbbrev? with
       | some sameAbbrev =>
@@ -89,7 +93,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
+          !out.contains "bp_external_decl_kicker" &&
           out.contains "<span class=\"keyword token\">abbrev</span>" &&
           !out.contains "data-kind=\"def\""
       | none => false
@@ -100,8 +104,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderUnsafeDef" &&
           out.contains "class=\"declaration decl def\"" &&
           out.contains "data-kind=\"def\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">def</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
+          !out.contains "bp_external_decl_header_meta" &&
           out.contains "<span class=\"keyword token\">unsafe def</span>"
       | none => false
     let unsafeAbbrevUsesUniformAbbrevRendering :=
@@ -111,8 +114,6 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderUnsafeAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
           out.contains "<span class=\"keyword token\">unsafe abbrev</span>" &&
           !out.contains "data-kind=\"unsafe abbrev\""
       | none => false
@@ -122,20 +123,22 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         let out := samePackage.asString
         out.contains "class=\"declaration decl structure\"" &&
           out.contains "data-kind=\"structure\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">structure</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(4 fields)</span>" &&
+          !out.contains "bp_external_decl_kicker" &&
           out.contains "sameModuleRenderPackage.x" &&
           out.contains "The first value in the package." &&
           !out.contains "sameModuleRenderPackage.mk" &&
           !out.contains "Constructor"
       | none => false
-    let theoremDocstringAvailableForRuntimeMarkdown :=
+    -- The top-level docstring is no longer rendered into the decl body (it moves
+    -- to the metadata rail in Stage 2): a theorem's body div is empty. (The
+    -- docstring text itself can still legitimately appear inside inlined
+    -- hover payloads of the signature's own name token, so assert the empty
+    -- body rather than global text absence.)
+    let theoremTopLevelDocstringOmitted :=
       match samePackageExists? with
       | some samePackageExists =>
         let out := samePackageExists.asString
-        out.contains "<pre class=\"docstring\">Given a counterexample-shaped input `x + y = y + x`" &&
-          out.contains "produce a package." &&
-          !out.contains "<span class=\"bp_external_decl_header_meta\">(docstring)</span>"
+        out.contains "<div class=\"bp_external_decl_body\"></div>"
       | none => false
     pure
       (natAddHasPayload &&
@@ -145,7 +148,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         unsafeDefUsesUniformDefinitionRendering &&
         unsafeAbbrevUsesUniformAbbrevRendering &&
         structureUsesFieldFirstRendering &&
-        theoremDocstringAvailableForRuntimeMarkdown &&
+        theoremTopLevelDocstringOmitted &&
         prod?.isSome &&
         sameDef?.isSome &&
         sameAbbrev?.isSome &&
@@ -209,7 +212,6 @@ private def htmlTestContext :
       Informal.ExternalCode.renderPartsWithPageHovers
         { caption := "Code for theorem", number? := some "1" }
         "Lean declarations"
-        .empty
         #[ref, ref]
         (fun _ => none)
     let result :

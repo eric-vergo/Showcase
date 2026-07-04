@@ -124,9 +124,9 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 #eval
   Informal.Block.Assets.blockAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-        Informal.Block.Assets.css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle,
+        Informal.Block.Assets.css, Informal.NodeCard.css, Verso.Genre.Manual.docstringStyle,
         Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    Informal.Block.Assets.blockAssetBundle.js == [Informal.StyleSwitcher.jsInteractive]
+    Informal.Block.Assets.blockAssetBundle.js == [Informal.ProofReveal.jsInteractive]
 
 /-- info: true -/
 #guard_msgs in

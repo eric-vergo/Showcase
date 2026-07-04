@@ -1,11 +1,13 @@
 // Command palette: a Ctrl/Cmd-K fuzzy "jump to node" overlay.
 //
-// Offline & self-contained: the only network access is two same-origin lazy
+// Offline & self-contained: the only network access is three same-origin lazy
 // fetches resolved against the page `<base href>` — `xref.json` (the navigable
-// node list) and `-verso-data/node-search.json` (the plain-text informal
-// statements, for full-text search). Both load on first open. The fuzzy matcher
-// is hand-rolled (subsequence scorer with contiguity / word-boundary bonuses) —
-// no external dependency, no CDN.
+// node list), `-verso-data/node-search.json` (the plain-text informal
+// statements, for full-text search), and `-verso-data/decl-search.json` (the
+// per-declaration pages emitted by DeclPage; absent on consumers without the
+// registry — degrades to an empty list). All load on first open. The fuzzy
+// matcher is hand-rolled (subsequence scorer with contiguity / word-boundary
+// bonuses) — no external dependency, no CDN.
 //
 // Search covers both node names/labels/titles AND the informal statement text;
 // title/label matches always rank above statement-body matches, and body-only
@@ -24,6 +26,7 @@ const TITLE_RANK_BONUS = 1e6;
 
 let indexPromise = null;
 let searchPromise = null;
+let declSearchPromise = null;
 let combinedPromise = null;
 let overlay = null;
 let inputEl = null;
@@ -144,25 +147,74 @@ function loadSearchText() {
 }
 
 /**
- * Load both indexes and fold the statement text + chapter onto each navigable
- * item (matched by href). Cached after the first resolve.
+ * Fetch the per-declaration page index (`-verso-data/decl-search.json`), once.
+ * Emitted by the decl-page ExtraStep only when the declaration registry is on;
+ * degrades to an empty list when absent so consumers without the registry keep
+ * the node-only palette.
+ */
+function loadDeclSearch() {
+  if (declSearchPromise) return declSearchPromise;
+  declSearchPromise = fetch("-verso-data/decl-search.json", { credentials: "same-origin" })
+    .then((resp) => {
+      if (!resp.ok) throw new Error("decl-search.json: " + resp.status);
+      return resp.json();
+    })
+    .then((records) => (Array.isArray(records) ? records : []))
+    .catch(() => []);
+  return declSearchPromise;
+}
+
+/**
+ * Load all indexes: fold the statement text + chapter + short decl name onto
+ * each navigable node item (matched by href), then append one item per decl
+ * page. Cached after the first resolve.
  */
 function loadAll() {
   if (combinedPromise) return combinedPromise;
-  combinedPromise = Promise.all([loadIndex(), loadSearchText()]).then(([list, textMap]) => {
-    for (const it of list) {
-      const rec = textMap.get(it.href);
-      if (rec) {
-        if (typeof rec.text === "string" && rec.text) {
-          it.text = rec.text;
-          it.textLower = rec.text.toLowerCase();
+  combinedPromise = Promise.all([loadIndex(), loadSearchText(), loadDeclSearch()])
+    .then(([list, textMap, declRecords]) => {
+      for (const it of list) {
+        const rec = textMap.get(it.href);
+        if (rec) {
+          if (typeof rec.text === "string" && rec.text) {
+            it.text = rec.text;
+            it.textLower = rec.text.toLowerCase();
+          }
+          if (!it.detail && rec.chapter) it.detail = String(rec.chapter);
+          it.chapter = rec.chapter || "";
+          // Wired nodes are also findable by their short Lean declaration name.
+          if (typeof rec.shortName === "string" && rec.shortName) {
+            it.haystack += " " + rec.shortName.toLowerCase();
+          }
         }
-        if (!it.detail && rec.chapter) it.detail = String(rec.chapter);
-        it.chapter = rec.chapter || "";
       }
-    }
-    return list;
-  });
+      const out = list.slice();
+      const seen = new Set(list.map((it) => it.href));
+      for (const r of declRecords) {
+        const href = stripLeadingSlash(r && r.href);
+        if (!href || seen.has(href)) continue;
+        seen.add(href);
+        const label = (r && typeof r.label === "string" && r.label) || "";
+        const display = (r && typeof r.display === "string" && r.display) || label;
+        if (!display) continue;
+        const detail = [r.kind, r.chapter].filter(Boolean).join(" · ");
+        const item = {
+          label,
+          display,
+          detail,
+          href,
+          chapter: r.chapter || "",
+          haystack: (label + " " + display).toLowerCase(),
+        };
+        if (typeof r.text === "string" && r.text) {
+          item.text = r.text;
+          item.textLower = r.text.toLowerCase();
+        }
+        out.push(item);
+      }
+      out.sort((a, b) => a.display.localeCompare(b.display));
+      return out;
+    });
   return combinedPromise;
 }
 

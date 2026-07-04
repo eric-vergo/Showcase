@@ -388,7 +388,7 @@ page `Html.State`, such as preview and manifest generation. Page rendering
 should use `renderPartsWithPageHovers` so repeated hover payloads deduplicate.
 -/
 def renderParts (panelHeader : CodePanelHeader)
-    (summaryTitle : String) (indicator : Output.Html)
+    (summaryTitle : String)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
     (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
     (folded : Bool := false) : RenderParts :=
@@ -397,7 +397,7 @@ def renderParts (panelHeader : CodePanelHeader)
   else
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let externalCodePanel : Output.Html :=
-      mkCodePanel panelHeader summaryTitle indicator
+      mkCodePanel panelHeader summaryTitle
         (renderExternalDeclList <| renderExternalDeclRows linkedDecls)
         (folded := folded)
     { externalCodePanel }
@@ -411,7 +411,7 @@ table, so repeated external declaration docstrings are emitted once per page
 instead of once per occurrence.
 -/
 def renderPartsWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
-    (summaryTitle : String) (indicator : Output.Html)
+    (summaryTitle : String)
     (externalDecls : Array Data.ExternalRef) (getDeclHref : Name → Option String)
     (getDeclAnchorAttrs : Data.ExternalRef → Array (String × String) := fun _ => #[])
     (folded : Bool := false) :
@@ -422,7 +422,7 @@ def renderPartsWithPageHovers [Monad m] (panelHeader : CodePanelHeader)
     let linkedDecls := externalDecls.map (linkedExternalDecl getDeclHref getDeclAnchorAttrs)
     let rows ← renderExternalDeclRowsWith externalDeclRenderedWithPageHovers linkedDecls
     let externalCodePanel : Output.Html :=
-      mkCodePanel panelHeader summaryTitle indicator
+      mkCodePanel panelHeader summaryTitle
         (renderExternalDeclList rows)
         (folded := folded)
     pure { externalCodePanel }

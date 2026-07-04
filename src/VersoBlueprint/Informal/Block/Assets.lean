@@ -6,7 +6,7 @@ Author: Emilio J. Gallego Arias
 
 import VersoManual
 import VersoBlueprint.Commands.Common
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.ProofReveal
 import VersoBlueprint.NodeCard
 
 namespace Informal.Block.Assets
@@ -15,6 +15,10 @@ def css : String := r##"
 .bp_wrapper {
   scroll-margin-top: 1rem;
   margin: 0.75rem 0;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-sm);
+  padding: 0.5rem 0.5rem 0.5rem;
+  background: var(--bp-color-surface);
 }
 
 /* Leave scroll room for relation panels opened near the end of a page. */
@@ -29,6 +33,8 @@ def css : String := r##"
   flex-wrap: wrap;
   font-style: normal;
   font-weight: bold;
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  padding-bottom: 0.25rem;
 }
 
 .bp_heading_title_row {
@@ -41,11 +47,13 @@ def css : String := r##"
   align-items: baseline;
 }
 
+/* Compact caption/label/dot run ("Theorem 8.1 ●"): word-sized gaps, no fixed
+   tracks — the old grid reserved an 11ch caption column that opened a large gap
+   after short captions like "Lemma". */
 .bp_heading_title_row_statement {
-  display: inline-grid;
-  grid-template-columns: 11ch minmax(3ch, auto);
+  display: inline-flex;
   align-items: baseline;
-  column-gap: 0.5rem;
+  column-gap: 0.35em;
 }
 
 .bp_caption {
@@ -58,93 +66,43 @@ def css : String := r##"
 
 .bp_heading_title_row_statement .bp_label {
   margin-left: 0;
-  min-width: 0;
-  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.bp_label::after,
-span[class$="_thmlabel"]::after {
-  content: ".";
+/* Header status dot (1D): a small token-colored disc after the block title
+   ("Theorem 4.2.9 ●"). `data-status` values mirror the declaration registry's
+   status tags plus "informal" for nodes with no associated Lean; every color is
+   an existing `--bp-color-*` token (all four scheme blocks), so light + dark
+   come for free. Emitted by `CodeSummary.statusDotHtml`. */
+.bp_status_dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  align-self: center;
+  width: 0.55em;
+  height: 0.55em;
+  /* The title row's own column-gap spaces the dot ("Theorem 8.1 ●"). */
+  border-radius: 50%;
+  background: var(--bp-color-text-faint);
 }
 
-.bp_extras {
-  /* Apparatus metadata groups tightly: each slot is content-sized and they sit
-     in one tidy cluster (right-aligned) with a single consistent gap, rather
-     than reserving wide fixed columns that spread the cluster across the row. */
-  --bp-extra-group-col: max-content;
-  --bp-extra-uses-col: max-content;
-  --bp-extra-used-by-col: max-content;
-  --bp-extra-code-col: max-content;
-  --bp-extra-code-placeholder-col: max-content;
-  display: inline-grid;
-  align-items: baseline;
-  justify-content: end;
-  column-gap: 0.75rem;
-  grid-template-columns: var(--bp-extra-used-by-col) var(--bp-extra-code-col);
-  grid-template-areas: "used code";
-  margin-left: auto;
+.bp_status_dot[data-status="proved"] {
+  background: var(--bp-color-accent-success);
 }
 
-.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "uses used code";
+.bp_status_dot[data-status="containsSorry"] {
+  background: var(--bp-color-accent-warning);
 }
 
-.bp_extras_with_uses:not(.bp_extras_with_group):not(.bp_extras_with_used_by):not(.bp_extras_with_code) {
-  /* Keep proof-only uses aligned with the statement uses column. */
-  grid-template-columns:
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-placeholder-col);
-  grid-template-areas: "uses . .";
+.bp_status_dot[data-status="axiomLike"] {
+  background: var(--bp-color-accent-info);
 }
 
-.bp_extras_with_group {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group used code";
+.bp_status_dot[data-status="missing"] {
+  background: var(--bp-color-accent-danger);
 }
 
-.bp_extras_with_group.bp_extras_with_uses {
-  grid-template-columns:
-    var(--bp-extra-group-col)
-    var(--bp-extra-uses-col)
-    var(--bp-extra-used-by-col)
-    var(--bp-extra-code-col);
-  grid-template-areas: "group uses used code";
-}
-
-.bp_extra_slot {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.1rem;
-  min-width: 0;
-}
-
-.bp_extra_slot_code {
-  grid-area: code;
-  justify-content: flex-end;
-}
-
-.bp_extra_slot_group {
-  grid-area: group;
-  justify-content: flex-start;
-}
-
-.bp_extra_slot_uses {
-  grid-area: uses;
-  justify-content: flex-start;
-}
-
-.bp_extra_slot_used_by {
-  grid-area: used;
-  justify-content: flex-start;
+.bp_status_dot[data-status="informal"] {
+  background: var(--bp-color-text-faint);
 }
 
 .bp_metadata_panel {
@@ -453,83 +411,26 @@ span[class$="_thmlabel"]::after {
   margin-bottom: 0.25rem;
 }
 
-.bp_code_block summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.bp_code_summary_text {
-  white-space: nowrap;
-}
-
-.bp_code_summary_indicator {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-}
-
-.bp_code_progress {
-  display: inline-flex;
-  min-width: 9rem;
-  max-width: 24rem;
-  width: min(24rem, 40vw);
-  height: 0.64rem;
-  border-radius: 999px;
+/* Code panels are bare (1E): no wrapper box, no visible "Lean code for …"
+   header, no progress pill. The `<summary>` stays in the DOM (fold options and
+   the proof-hider JS key off `details.bp_code_block`) but is visually hidden —
+   accessible name + keyboard toggle only, via the standard sr-only recipe
+   (never `display: none`, which would remove it from the a11y tree). */
+.bp_code_block > summary.bp_code_summary_hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
-  border: 1px solid var(--bp-color-border-strong);
-  background: linear-gradient(180deg, var(--bp-color-surface-muted), var(--bp-color-border-soft));
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.08);
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  list-style: none;
 }
 
-.bp_code_progress_segment {
-  min-width: 0.22rem;
-}
-
-.bp_code_progress_segment + .bp_code_progress_segment {
-  border-left: 1px solid rgba(15, 23, 42, 0.35);
-}
-
-.bp_code_progress_segment_ok {
-  background: var(--bp-color-accent-success);
-}
-
-.bp_code_progress_segment_sorry {
-  background: var(--bp-color-accent-warning);
-}
-
-.bp_code_progress_segment_missing {
-  background: var(--bp-color-accent-danger);
-}
-
-.bp_external_status_icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.08rem;
-  height: 1.08rem;
-  border-radius: 999px;
-  font-size: var(--bp-fs-caption, 0.78rem);
-  line-height: 1;
-  color: var(--bp-color-surface);
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
-}
-
-.bp_external_status_ok {
-  background: var(--bp-color-accent-success);
-}
-
-.bp_external_status_sorry {
-  background: var(--bp-color-accent-warning);
-}
-
-.bp_external_status_missing {
-  background: var(--bp-color-accent-danger);
-}
-
-.bp_external_status_error {
-  background: var(--bp-color-accent-info);
+.bp_code_block > summary.bp_code_summary_hidden::-webkit-details-marker {
+  display: none;
 }
 
 .bp_code_panel {
@@ -538,10 +439,6 @@ span[class$="_thmlabel"]::after {
 
 .bp_code_panel_wrapper {
   margin-top: 0.5rem;
-}
-
-.bp_code_panel_wrapper .bp_code_block > summary {
-  cursor: pointer;
 }
 
 .bp_decl_target {
@@ -903,20 +800,6 @@ span[class$="_thmlabel"]::after {
   font-weight: 600;
 }
 
-.bp_external_badge {
-  font-size: var(--bp-fs-caption, 0.78rem);
-  font-weight: 600;
-  color: var(--bp-color-text-muted);
-  border: 1px solid var(--bp-color-border-panel);
-  border-radius: var(--bp-radius-pill);
-  padding: 0.12rem 0.5rem;
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-surface-muted));
-}
-
-.bp_external_badge_kind {
-  text-transform: capitalize;
-}
-
 .bp_external_status_badge {
   display: inline-flex;
   align-items: center;
@@ -928,14 +811,6 @@ span[class$="_thmlabel"]::after {
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.bp_external_status_badge_summary {
-  padding-right: 0.5rem;
-}
-
-.bp_external_status_badge_text {
-  display: inline-block;
 }
 
 .bp_external_decl_ok {
@@ -954,26 +829,22 @@ span[class$="_thmlabel"]::after {
   color: #7c3aed;
 }
 
-.bp_external_status_badge.bp_external_decl_ok,
-.bp_external_status_badge.bp_external_status_ok {
+.bp_external_status_badge.bp_external_decl_ok {
   background: rgba(22, 101, 52, 0.08);
   border-color: rgba(22, 101, 52, 0.18);
 }
 
-.bp_external_status_badge.bp_external_decl_sorry,
-.bp_external_status_badge.bp_external_status_sorry {
+.bp_external_status_badge.bp_external_decl_sorry {
   background: rgba(161, 98, 7, 0.09);
   border-color: rgba(161, 98, 7, 0.2);
 }
 
-.bp_external_status_badge.bp_external_decl_missing,
-.bp_external_status_badge.bp_external_status_missing {
+.bp_external_status_badge.bp_external_decl_missing {
   background: rgba(185, 28, 28, 0.08);
   border-color: rgba(185, 28, 28, 0.18);
 }
 
-.bp_external_status_badge.bp_external_decl_error,
-.bp_external_status_badge.bp_external_status_error {
+.bp_external_status_badge.bp_external_decl_error {
   background: rgba(124, 58, 237, 0.08);
   border-color: rgba(124, 58, 237, 0.18);
 }
@@ -1088,102 +959,13 @@ span[class$="_thmlabel"]::after {
   overflow-x: visible;
 }
 
+/* Bare code (1E): the rendered declaration carries no box / kicker chrome —
+   just the highlighted signature (and, for structures/inductives, the nested
+   constructor/field sections). */
 .bp_external_decl_rendered .declaration {
   margin: 0;
   padding: 0;
-  border: 1px solid var(--bp-color-border-soft);
-  border-left: 0.15rem solid var(--bp-color-border-strong);
-  border-radius: 6px;
-  background: var(--bp-color-surface-muted);
-  background: color-mix(in srgb, var(--bp-color-surface-muted) 54%, transparent);
   min-width: 100%;
-  overflow: hidden;
-}
-
-.bp_external_decl_kicker {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  margin: 0;
-  padding: 0.25rem 0.25rem;
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  background: var(--bp-color-surface-muted);
-  color: var(--bp-color-text-muted);
-  font-size: var(--bp-fs-caption, 0.78rem);
-  line-height: 1.35;
-}
-
-.bp_external_decl_kicker_main {
-  display: flex;
-  align-items: baseline;
-  flex: 1 1 18rem;
-  flex-wrap: wrap;
-  gap: 0.12rem 0.25rem;
-  min-width: 0;
-}
-
-.bp_external_decl_kicker_status {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.bp_external_decl_header_status {
-  padding: 0.05rem 0.5rem;
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.bp_external_decl_kind {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  color: var(--bp-color-text-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.bp_external_decl_header_meta {
-  color: var(--bp-color-text-muted);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.bp_external_decl_source {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.25rem;
-  min-width: 0;
-  color: var(--bp-color-text-muted);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  line-height: 1.25;
-}
-
-.bp_external_decl_source::before {
-  content: "·";
-  color: var(--bp-color-text-faint);
-}
-
-.bp_external_decl_source_path {
-  min-width: 0;
-  max-width: min(34rem, 72vw);
-  overflow: hidden;
-  color: var(--bp-color-text-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: var(--bp-fs-badge, 0.72rem);
-  overflow-wrap: anywhere;
-  text-decoration: none;
-}
-
-a.bp_external_decl_source_path:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.12rem;
 }
 
 .bp_external_decl_rendered .bp_external_decl_signature {
@@ -1217,8 +999,6 @@ a.bp_external_decl_source_path:hover {
 .bp_external_decl_rendered .bp_external_decl_body:not(:empty) {
   margin-top: 0;
   padding: 0.5rem 0.25rem;
-  border-top: 1px solid var(--bp-color-border-soft);
-  background: var(--bp-color-surface);
 }
 
 .bp_external_decl_rendered .bp_external_decl_body > :first-child {
@@ -1349,27 +1129,10 @@ a.bp_external_decl_source_path:hover {
 }
 
 @media (max-width: 700px) {
-  .bp_code_block summary {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .bp_code_summary_text {
-    white-space: normal;
-  }
-
-  .bp_code_summary_indicator {
-    margin-left: 0;
-  }
-
   .bp_external_decl_head_meta,
   .bp_external_decl_rendered_source {
     width: 100%;
     margin-left: 0;
-  }
-
-  .bp_external_decl_rendered .declaration {
-    border-left-width: 0.12rem;
   }
 
   .bp_external_decl_list > .bp_external_decl_item + .bp_external_decl_item {
@@ -1378,7 +1141,8 @@ a.bp_external_decl_source_path:hover {
 }
 
 .bp_content {
-  padding-left: 0.75rem;
+  margin-top: 0.25rem;
+  padding-left: 0.5rem;
 }
 
 .bp_content > :first-child {
@@ -1438,8 +1202,15 @@ div.theorem-style-plain div[class$="_thmheading"] {
   font-weight: bold;
 }
 
-.bp_wrapper.bp_style_plain .bp_content,
-div.theorem-style-plain div[class$="_thmcontent"] {
+/* Informal STATEMENT prose for theorem-like blocks reads italic serif (LaTeX
+   convention; matches the mockup). Scoped by the kind-specific content classes
+   so it also applies inside the two-column cards, whose cells carry the content
+   classes without the `.bp_wrapper` shell; definitions and informal proof prose
+   stay upright. */
+.bp_kind_theorem_content, div.theorem_thmcontent,
+.bp_kind_proposition_content, div.proposition_thmcontent,
+.bp_kind_lemma_content, div.lemma_thmcontent,
+.bp_kind_corollary_content, div.corollary_thmcontent {
   font-style: italic;
   font-weight: normal;
 }
@@ -1450,31 +1221,19 @@ div.theorem-style-definition div[class$="_thmheading"] {
   font-weight: bold;
 }
 
-/* Entry blocks carry no per-status class, so the left rule uses the structural
-   blueprint-blue accent uniformly (statements) with a quieter hairline for proofs. */
+/* Informal statement / proof prose: a quiet indent (1D — the colored left rule
+   is gone; the italic serif body carries the register on its own). */
 .bp_kind_theorem_content,
-div.theorem_thmcontent {
-  border-left: 3px solid var(--bp-color-accent);
-}
-
+div.theorem_thmcontent,
 .bp_kind_proposition_content,
-div.proposition_thmcontent {
-  border-left: 3px solid var(--bp-color-accent);
-}
-
+div.proposition_thmcontent,
 .bp_kind_lemma_content,
-div.lemma_thmcontent {
-  border-left: 3px solid var(--bp-color-accent);
-}
-
+div.lemma_thmcontent,
 .bp_kind_corollary_content,
-div.corollary_thmcontent {
-  border-left: 3px solid var(--bp-color-accent);
-}
-
+div.corollary_thmcontent,
 .bp_kind_proof_content,
 div.proof_content {
-  border-left: 3px solid var(--bp-color-border-strong);
+  padding-left: var(--bp-space-4);
 }
 
 .bp_wrapper:target {
@@ -1527,17 +1286,15 @@ div.proof_content {
 }
 
 /* "Apparatus": the kind caption ("Definition") and number label render as a
-   quiet monospace eyebrow. Identifiers/math in the content are untouched. */
+   title-case bold heading ("Theorem 4.2.9"). Identifiers/math in the content
+   are untouched. */
 .bp_caption,
 .bp_label,
 span[class$="_thmcaption"],
 span[class$="_thmlabel"] {
-  font-family: var(--font-mono-ui);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 0.82em;
+  font-size: 1em;
   font-weight: 700;
-  color: var(--bp-color-text-muted);
+  color: var(--bp-color-text-strong);
 }
 
 /* Links inside informal prose: blueprint-blue with a subtle underline. */
@@ -1560,9 +1317,9 @@ def codeAssetBundle : Informal.Commands.BlueprintAssetBundle :=
 def blockAssetBundle : Informal.Commands.BlueprintAssetBundle :=
   Informal.Commands.previewPanelInlinePreviewAssetBundle
     (cssExtras :=
-      [css, Informal.StyleSwitcher.css, Informal.NodeCard.css,
+      [css, Informal.NodeCard.css,
         Verso.Genre.Manual.docstringStyle])
-    (jsAfter := [Informal.StyleSwitcher.jsInteractive])
+    (jsAfter := [Informal.ProofReveal.jsInteractive])
 
 def codeCssAssets : List String :=
   codeAssetBundle.css

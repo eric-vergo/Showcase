@@ -9,7 +9,6 @@ import { startProofToggle } from "./Commands/proof-toggle.mjs";
 import { startBannerNav } from "./Commands/banner-nav.mjs";
 import { startMetadataRail } from "./Commands/metadata-rail.mjs";
 import { startTopNav } from "./Commands/top-nav.mjs";
-import { bootLineNumbers } from "./Commands/line-numbers.mjs";
 import { startPageOutline } from "./Commands/page-outline.mjs";
 
 export function startBlueprintPageRuntime(options = {}) {
@@ -21,9 +20,6 @@ export function startBlueprintPageRuntime(options = {}) {
   startCommandPalette();
   startDashboard();
   startProofToggle();
-  // After proof-toggle so any relocated tactic tail already exists; line-numbers
-  // targets the server-rendered signature / proof-source blocks only.
-  bootLineNumbers();
   startBannerNav();
   startTopNav();
   startMetadataRail();

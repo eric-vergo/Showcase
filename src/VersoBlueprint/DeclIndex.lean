@@ -25,7 +25,9 @@ Every row is selection-bus wired the same way node cards are (Wave 4): it carrie
 `data-bp-decl` plus a slim inline `<script class="bp-decl-meta">` identity payload
 (via `NodeCard.declMetaJson`), so a click / focus updates the site-wide metadata
 rail (see `Commands/metadata-rail.mjs`, whose delegated selection handler matches
-`.bp_decl_row`). Wired declarations additionally link to their node page.
+`.bp_decl_row`). Every row links somewhere: wired declarations to their node page,
+unwired ones to their own `decl/{slug}/` page (`DeclPage`). Names display as the
+registry's prefix-stripped `shortName` with the fully-qualified name on hover.
 
 If the registry is absent (the flag is off, or no authored declaration has a
 resolvable project source) the step emits nothing and changes nothing — the same
@@ -341,35 +343,49 @@ private def statusLabel (status : String) : String :=
   | "axiomLike" => "Axiom"
   | other => other
 
+/-- Short display name for a registry row (falls back to the FQ name for
+registries predating the `shortName` field). -/
+private def displayName (e : Entry) : String :=
+  if e.shortName.isEmpty then e.name else e.shortName
+
 /-- Slim `</script>`-safe rail identity payload for a registry row, in the exact
 shape the metadata rail expects (see `NodeCard.declMetaJson`). -/
 private def rowMeta (e : Entry) : String :=
+  let shortName? := if e.shortName.isEmpty || e.shortName == e.name then none else some e.shortName
   Informal.NodeCard.declMetaJson e.name e.kind e.status e.moduleName ""
     (e.range?.map (·.pos.line)) (e.range?.map (·.endPos.line)) e.nodeHref?
+    (shortName := shortName?) (declHref := e.declHref?)
 
 /--
 One catalog/index row: a selection-bus-wired list item. The declaration name is the
-row's single interactive control — a node-page link for wired declarations, a plain
-select button for unwired ones — so the row is keyboard-operable with no nested
-interactives. The whole row is rail-selectable via the delegated handler in
-`metadata-rail.mjs` (it matches `.bp_decl_row[data-bp-decl]` and reads the inline
-`bp-decl-meta` payload). `showSig` includes the truncated signature column.
+row's single interactive control — a link to the declaration's canonical page (node
+page for wired declarations, `decl/{slug}/` page for unwired ones; a plain select
+button only for legacy registries with neither href) — so the row is
+keyboard-operable with no nested interactives. Displays the short name with the
+fully-qualified name as the hover `title`. The whole row is rail-selectable via the
+delegated handler in `metadata-rail.mjs` (it matches `.bp_decl_row[data-bp-decl]`
+and reads the inline `bp-decl-meta` payload). `showSig` includes the truncated
+signature column.
 -/
 private def declRow (showSig : Bool) (e : Entry) : Html :=
   let metaJson := rowMeta e
+  let href? := e.nodeHref? <|> e.declHref?
+  let openTitle := if e.nodeHref?.isSome then "Open node page" else "Open declaration page"
   let nameNode : Html :=
-    match e.nodeHref? with
-    | some href => {{ <a class="bp_decl_row_name" href={{href}}>{{.text true e.name}}</a> }}
-    | none => {{ <button type="button" class="bp_decl_row_name">{{.text true e.name}}</button> }}
+    match href? with
+    | some href =>
+      {{ <a class="bp_decl_row_name" href={{href}} title={{e.name}}>{{.text true (displayName e)}}</a> }}
+    | none =>
+      {{ <button type="button" class="bp_decl_row_name" title={{e.name}}>{{.text true (displayName e)}}</button> }}
   let sigNode : Html :=
     if showSig && !e.signatureText.isEmpty then
       {{ <code class="bp_decl_row_sig" title={{e.signatureText}}>{{.text true e.signatureText}}</code> }}
     else .empty
   let openLink : Html :=
-    match e.nodeHref? with
+    match href? with
     | some href =>
-      {{ <a class="bp_decl_row_open" href={{href}} title="Open node page"
-            aria-label={{s!"Open node page for {e.name}"}}>"↗"</a> }}
+      {{ <a class="bp_decl_row_open" href={{href}} title={{openTitle}}
+            aria-label={{s!"{openTitle} for {e.name}"}}>"↗"</a> }}
     | none => .empty
   {{
     <li class="bp_decl_row" "data-bp-decl"={{e.name}}>

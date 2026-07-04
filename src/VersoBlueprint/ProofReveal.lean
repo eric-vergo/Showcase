@@ -1,4 +1,4 @@
-/- 
+/-
 Copyright (c) 2026 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Emilio J. Gallego Arias
@@ -6,294 +6,31 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 
-namespace Informal.StyleSwitcher
+/-!
+Inline page script for Lean-code proof interactions (formerly `StyleSwitcher`,
+renamed when the multi-skin style switcher was removed):
+
+* `installProofHider` — the non-card `by`-click proof fold for standalone Lean
+  code blocks (card blocks are owned by `Commands/proof-toggle.mjs`).
+* `revealDeclFromHash` — opens `<details>` ancestors and pulses the target when
+  a page loads (or navigates) with a `#decl-anchor` hash.
+
+Delivered as an inline classic `<script>` via the block asset bundle
+(`Informal/Block/Assets.lean`), configured per-surface through `JsConfig`.
+-/
+
+namespace Informal.ProofReveal
 
 structure JsConfig where
   proofHider : Bool := false
   hashReveal : Bool := false
 deriving Inhabited, Repr
 
-def css : String := r##"
-#bp-style-switcher {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem 0.5rem;
-  flex-wrap: wrap;
-  background: var(--bp-color-surface);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-md);
-  box-shadow: var(--bp-shadow-sm);
-  padding: 0.5rem 0.5rem;
-  font-size: var(--bp-fs-control, 0.82rem);
-}
-
-#bp-style-switcher .bp-style-switcher-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-#bp-style-switcher label {
-  font-weight: 600;
-}
-
-#bp-style-switcher select {
-  border: 1px solid var(--bp-color-border);
-  border-radius: 0.3rem;
-  background: var(--bp-color-surface);
-  font-size: var(--bp-fs-control, 0.82rem);
-  padding: 0.1rem 0.25rem;
-  transition: background-color 0.14s ease, border-color 0.14s ease,
-    color 0.14s ease, box-shadow 0.14s ease;
-}
-
-#bp-style-switcher select:hover {
-  border-color: var(--bp-color-border-strong);
-}
-
-html[data-bp-style="blueprint"] .bp_wrapper {
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-sm);
-  padding: 0.5rem 0.5rem 0.5rem;
-  background: var(--bp-color-surface);
-}
-
-html[data-bp-style="blueprint"] .bp_heading {
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  padding-bottom: 0.25rem;
-}
-
-html[data-bp-style="blueprint"] .bp_content {
-  margin-top: 0.25rem;
-  padding-left: 0.5rem;
-}
-
-html[data-bp-style="blueprint"] .bp_kind_theorem_content,
-html[data-bp-style="blueprint"] .bp_kind_proposition_content,
-html[data-bp-style="blueprint"] .bp_kind_lemma_content,
-html[data-bp-style="blueprint"] .bp_kind_corollary_content,
-html[data-bp-style="blueprint"] .bp_kind_proof_content,
-html[data-bp-style="blueprint"] div.theorem_thmcontent,
-html[data-bp-style="blueprint"] div.proposition_thmcontent,
-html[data-bp-style="blueprint"] div.lemma_thmcontent,
-html[data-bp-style="blueprint"] div.corollary_thmcontent,
-html[data-bp-style="blueprint"] div.proof_content {
-  border-left-color: var(--bp-color-text-muted);
-}
-
-html[data-bp-style="modern"] .bp_wrapper {
-  border: 1px solid var(--bp-color-modern-border);
-  border-radius: var(--bp-radius-2xl);
-  padding: 0.5rem 0.75rem 0.75rem;
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-surface-modern));
-  box-shadow: var(--bp-shadow-modern);
-}
-
-html[data-bp-style="modern"] .bp_heading {
-  border-bottom: 1px solid var(--bp-color-border-soft);
-  padding-bottom: 0.5rem;
-}
-
-html[data-bp-style="modern"] .bp_caption {
-  background: var(--bp-color-modern-caption);
-  border-radius: var(--bp-radius-pill);
-  padding: 0.08rem 0.5rem;
-}
-
-html[data-bp-style="modern"] .bp_content {
-  margin-top: 0.5rem;
-  padding-left: 0.5rem;
-}
-
-html[data-bp-style="modern"] .bp_kind_theorem_content,
-html[data-bp-style="modern"] .bp_kind_proposition_content,
-html[data-bp-style="modern"] .bp_kind_lemma_content,
-html[data-bp-style="modern"] .bp_kind_corollary_content,
-html[data-bp-style="modern"] .bp_kind_proof_content,
-html[data-bp-style="modern"] .bp_wrapper div.theorem_thmcontent,
-html[data-bp-style="modern"] .bp_wrapper div.proposition_thmcontent,
-html[data-bp-style="modern"] .bp_wrapper div.lemma_thmcontent,
-html[data-bp-style="modern"] .bp_wrapper div.corollary_thmcontent,
-html[data-bp-style="modern"] .bp_wrapper div.proof_content {
-  border-left-color: var(--bp-color-text-faint);
-}
-
-html[data-bp-style="bold"] .bp_wrapper {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-3xl);
-  padding: 0.5rem 0.75rem 0.75rem;
-  background:
-    radial-gradient(circle at 100% 0%, var(--bp-color-bold-surface-glow-1), transparent 36%),
-    radial-gradient(circle at 0% 100%, var(--bp-color-bold-surface-glow-2), transparent 32%),
-    var(--bp-color-surface);
-  box-shadow: var(--bp-shadow-bold-lg);
-}
-
-html[data-bp-style="bold"] .bp_heading {
-  border-bottom: 2px solid var(--bp-color-text-strong);
-  padding-bottom: 0.5rem;
-  letter-spacing: 0.01em;
-}
-
-html[data-bp-style="bold"] .bp_caption {
-  background: var(--bp-color-text-strong);
-  color: var(--bp-color-surface-muted);
-  border-radius: 0.25rem;
-  padding: 0.08rem 0.5rem;
-  text-transform: uppercase;
-}
-
-html[data-bp-style="bold"] .bp_label {
-  background: var(--bp-color-bold-label);
-  color: var(--bp-color-text);
-  border-radius: var(--bp-radius-pill);
-  padding: 0.06rem 0.5rem;
-}
-
-html[data-bp-style="bold"] .bp_code_link {
-  color: var(--bp-color-bold-link);
-  font-weight: 700;
-}
-
-html[data-bp-style="bold"] .bp_code_hover {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-xl);
-  box-shadow: var(--bp-shadow-bold);
-}
-
-html[data-bp-style="bold"] .bp_content {
-  margin-top: 0.5rem;
-  padding-left: 0.5rem;
-}
-
-html[data-bp-style="bold"] .bp_kind_theorem_content,
-html[data-bp-style="bold"] .bp_kind_proposition_content,
-html[data-bp-style="bold"] .bp_kind_lemma_content,
-html[data-bp-style="bold"] .bp_kind_corollary_content,
-html[data-bp-style="bold"] .bp_kind_proof_content,
-html[data-bp-style="bold"] .bp_wrapper div.theorem_thmcontent,
-html[data-bp-style="bold"] .bp_wrapper div.proposition_thmcontent,
-html[data-bp-style="bold"] .bp_wrapper div.lemma_thmcontent,
-html[data-bp-style="bold"] .bp_wrapper div.corollary_thmcontent,
-html[data-bp-style="bold"] .bp_wrapper div.proof_content {
-  border-left: 0.2rem solid var(--bp-color-text-strong);
-}
-"##
-
 private def jsTemplate : String := r##"(function () {
-  const styleStorageKey = "verso-blueprint-style";
-  const switcherId = "bp-style-switcher";
-  const root = document.documentElement;
   const targetClass = "bp_decl_target";
   const targetBlockClass = "bp_decl_target_block";
   const enableProofHider = __BP_ENABLE_PROOF_HIDER__;
   const enableHashReveal = __BP_ENABLE_HASH_REVEAL__;
-
-  function normalizeStyle(style) {
-    if (style === "blueprint" || style === "modern" || style === "bold") return style;
-    return "blueprint";
-  }
-
-  function applyStyle(style) {
-    root.setAttribute("data-bp-style", normalizeStyle(style));
-  }
-
-  function getSavedStyle() {
-    try {
-      return normalizeStyle(localStorage.getItem(styleStorageKey));
-    } catch (_err) {
-      return "blueprint";
-    }
-  }
-
-  function saveStyle(style) {
-    try {
-      localStorage.setItem(styleStorageKey, normalizeStyle(style));
-    } catch (_err) {}
-  }
-
-  function installSwitcher() {
-    if (document.getElementById(switcherId)) return;
-    if (!document.body) return;
-
-    const host = document.createElement("div");
-    host.id = switcherId;
-
-    function appendControl(labelText, selectId, options) {
-      const control = document.createElement("div");
-      control.className = "bp-style-switcher-control";
-
-      const label = document.createElement("label");
-      label.setAttribute("for", selectId);
-      label.textContent = labelText;
-
-      const select = document.createElement("select");
-      select.id = selectId;
-      options.forEach(function (value) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        select.appendChild(option);
-      });
-
-      control.appendChild(label);
-      control.appendChild(select);
-      host.appendChild(control);
-      return select;
-    }
-
-    const styleSelect = appendControl("Style", "bp-style-select", [
-      "blueprint",
-      "modern",
-      "bold"
-    ]);
-
-    const currentStyle = getSavedStyle();
-    styleSelect.value = currentStyle;
-    applyStyle(currentStyle);
-
-    styleSelect.addEventListener("change", function () {
-      const value = normalizeStyle(styleSelect.value);
-      applyStyle(value);
-      saveStyle(value);
-    });
-
-    // Global "Proofs: hidden / shown" bulk control. Sets the single per-card
-    // source of truth -- `data-bp-proof-open` on every `.bp_card2` -- and keeps
-    // each card's own toggle (aria-expanded + label) in sync. Not persisted:
-    // every load starts hidden, and the per-card toggles override individually
-    // (the select does not re-assert itself after a manual per-card change).
-    function setAllProofs(open) {
-      const cards = document.querySelectorAll(".bp_card2");
-      cards.forEach(function (card) {
-        if (!(card instanceof HTMLElement)) return;
-        card.setAttribute("data-bp-proof-open", open ? "true" : "false");
-        const toggle = card.querySelector(".bp_card2_proof_toggle");
-        if (toggle instanceof HTMLElement) {
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-          toggle.textContent = open ? "Hide proof" : "Show proof";
-        }
-      });
-    }
-
-    const hasCards = document.querySelector(".bp_card2_proof_toggle");
-    if (hasCards) {
-      const proofsSelect = appendControl("Proofs", "bp-proofs-select", [
-        "hidden",
-        "shown"
-      ]);
-      proofsSelect.value = "hidden";
-      proofsSelect.addEventListener("change", function () {
-        setAllProofs(proofsSelect.value === "shown");
-      });
-    }
-
-    document.body.appendChild(host);
-  }
 
   function installProofHider() {
     const blocks = document.querySelectorAll("details.bp_code_block code.hl.lean.block");
@@ -498,16 +235,12 @@ private def jsTemplate : String := r##"(function () {
     target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
   }
 
-  applyStyle(getSavedStyle());
-
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
-      installSwitcher();
       if (enableProofHider) installProofHider();
       if (enableHashReveal) revealDeclFromHash();
     });
   } else {
-    installSwitcher();
     if (enableProofHider) installProofHider();
     if (enableHashReveal) revealDeclFromHash();
   }
@@ -536,4 +269,4 @@ def js (cfg : JsConfig := {}) : String :=
 
 def jsInteractive : String := js { proofHider := true, hashReveal := true }
 
-end Informal.StyleSwitcher
+end Informal.ProofReveal

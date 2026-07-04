@@ -168,6 +168,8 @@ private def renderManualGraftNode
                 displayLabelOverride? := node.displayLabel?
                 compact := node.compact
                 showHeader := node.showHeader
+                declNamePrefix :=
+                  (Informal.TraversalIndex.DeclRegistry.namePrefix? state).getD ""
               }
               { showHeader := node.showHeader }
           pure <| Html.tag "div" (manualNodeAttrs node) card

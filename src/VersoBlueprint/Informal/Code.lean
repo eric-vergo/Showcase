@@ -108,17 +108,14 @@ block_extension Block.informalCode (data : InlineCodeData) where
           let b := b.withResolvedNumberingInContext s ctxt
           codePanelHeader b (b.displayNumber s)
         | none => fallbackCodePanelHeader
-      let getDeclHref (decl : Name) : Option String :=
-        Resolve.resolveInlineLeanDeclHref? s decl
-      let panelSummary :=
-        renderPanelIndicator label
+      let summaryTitle :=
+        panelSummaryTitle label
           {
             source := some (.inline { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs })
           }
-          getDeclHref
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
       let panelBody := .seq (← blocks.mapM goB)
-      pure <| mkCodePanel panelHeader panelSummary.summaryTitle panelSummary.indicator panelBody panelAttrs
+      pure <| mkCodePanel panelHeader summaryTitle panelBody panelAttrs
         (folded := foldCodeBlock)
 
 structure CodeConfig where

@@ -94,9 +94,12 @@ end BlockKindRenderStyle
 private def blockKindRenderStyle (data : BlockData) : BlockKindRenderStyle :=
   BlockKindRenderStyle.ofInProgressKind data.kind
 
-/-- Render the caption/label row shared by informal block shells. -/
+/-- Render the caption/label row shared by informal block shells. `statusDot`
+(1D) is the optional trailing status disc ("Theorem 4.2.9 ●"); `.empty` for
+proof headings and surfaces without Lean status. -/
 def renderBlockTitleRow (style : BlockKindRenderStyle)
-    (labelText numberText captionText : String) :
+    (labelText numberText captionText : String)
+    (statusDot : Verso.Output.Html := .empty) :
     Verso.Output.Html :=
   open Verso.Output.Html in
   let titleRowClass :=
@@ -110,6 +113,7 @@ def renderBlockTitleRow (style : BlockKindRenderStyle)
     <div class={{titleRowClass}}>
       <span class={{captionClass}} title={{labelText}}> {{.text true captionText}} </span>
       {{ if style.showLabel then {{<span class={{labelClass}}> {{.text true numberText}} </span>}} else .empty }}
+      {{statusDot}}
     </div>
   }}
 
@@ -335,6 +339,8 @@ structure InformalBlockRenderContext where
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
+  /-- Optional heading status dot (1D), rendered after the caption/number. -/
+  statusDot : Verso.Output.Html := .empty
   folded : Bool := false
 
 /--
@@ -353,6 +359,7 @@ def InformalBlockRenderContext.forBlock
     (attrs : Array (String × String) := #[])
     (titleRowAttrs? : Option (Array (String × String)) := none)
     (headerExtras : HeaderExtras := {})
+    (statusDot : Verso.Output.Html := .empty)
     (folded : Bool := false) :
     InformalBlockRenderContext :=
   let captionText? :=
@@ -365,6 +372,7 @@ def InformalBlockRenderContext.forBlock
     attrs
     titleRowAttrs?
     headerExtras
+    statusDot
     folded
   }
 
@@ -400,12 +408,15 @@ structure InformalBlockShell where
   attrs : Array (String × String) := #[]
   titleRowAttrs? : Option (Array (String × String)) := none
   headerExtras : HeaderExtras := {}
+  /-- Optional heading status dot (1D), rendered after the caption/number. -/
+  statusDot : Verso.Output.Html := .empty
   metadataPanel : Verso.Output.Html := .empty
   folded : Bool := false
   showHeader : Bool := true
 
 private def renderShellTitleRow (shell : InformalBlockShell) : Verso.Output.Html :=
   let titleRow := renderBlockTitleRow shell.style shell.labelText shell.numberText shell.captionText
+    shell.statusDot
   match shell.titleRowAttrs? with
   | some attrs => .tag "a" attrs titleRow
   | none => titleRow
@@ -511,6 +522,7 @@ private def informalBlockShell (data : BlockData) (ctx : InformalBlockRenderCont
     attrs := ctx.attrs
     titleRowAttrs? := ctx.titleRowAttrs?
     headerExtras := ctx.headerExtras
+    statusDot := ctx.statusDot
     metadataPanel
     folded := ctx.folded
     showHeader

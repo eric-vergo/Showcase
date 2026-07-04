@@ -136,6 +136,30 @@ def modulesHref : String := "modules/"
 /-- Multi-page output path for the module tree: `modules/index.html`. -/
 def modulesPath : Verso.Multi.Path := #["modules"]
 
+/-!
+Per-declaration page routes (`decl/<slug>/`).
+
+One page per **unwired** registry declaration (wired declarations' canonical page
+stays their node page). The slug is derived from the fully-qualified (de-mangled)
+declaration name, so it never collides with the label-derived `node/` slugs and
+stays deterministic across the emitters: the registry (`DeclRegistry.buildEntry`
+populates `Entry.declHref?`), the all-decls graph (supporting-node hrefs), the
+catalog rows (`DeclIndex`), and the page emitter (`DeclPage`) all agree without
+sharing state. Same root-relative, leading-slash-free convention as above.
+-/
+
+/-- Slug for a declaration page, derived from the fully-qualified declaration name. -/
+def declPageSlug (declName : String) : String :=
+  nodePageSlugOfString declName
+
+/-- Root-relative href (no leading slash) to a declaration page. -/
+def declPageHref (declName : String) : String :=
+  "decl/" ++ declPageSlug declName ++ "/"
+
+/-- Multi-page output path for a declaration page: `decl/<slug>/index.html`. -/
+def declPagePath (declName : String) : Verso.Multi.Path :=
+  #["decl", declPageSlug declName]
+
 /-- Slug for an owner page, derived from the owner's canonical `Name`. -/
 def ownerPageSlug (owner : Name) : String :=
   nodePageSlugOfString owner.toString

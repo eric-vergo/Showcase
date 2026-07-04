@@ -5,6 +5,7 @@ Author: Emilio J. Gallego Arias
 -/
 
 import Lean
+import Std.Data.HashMap
 import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
@@ -12,6 +13,7 @@ import VersoBlueprint.Environment
 import VersoBlueprint.Graph
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.NodeCard
 import VersoBlueprint.NodeRoute
 
 /-!
@@ -35,12 +37,31 @@ shared with the all-decls graph augmentation. The registry is the more inclusive
 consumer: it tracks every project declaration including `private` helpers
 (`includePrivate := true`), whereas the graph drops private helpers to stay
 readable. Both agree on the public declaration set and on the project boundary.
+
+Schema v2 additionally carries per-entry `shortName` (the configured project
+prefix — `verso.blueprint.declNamePrefix` — stripped), `isPrivate`, the rendered
+`docstringHtml?`, the unwired decl-page `declHref?`, the `sourceHref?` source
+link, and the longest-path `depth?`/`height?` metrics, plus a top-level
+`namePrefix` for client-side name shortening. The heavy proof/value **bodies**
+are deliberately NOT part of the public JSON: `buildDeclRegistry` returns them as
+a separate `Bodies` artifact carried only through the internal traversal store
+(`TraversalIndex.DeclRegistry`, key `"bodies"`) to the decl-page emitter, where
+they are baked into static HTML.
 -/
 
 namespace Informal.DeclRegistry
 
 open Lean Meta
 open Informal.Environment (informalExt)
+
+register_option verso.blueprint.declNamePrefix : String := {
+  defValue := ""
+  descr := "Project namespace prefix (e.g. \"A362583\") stripped from declaration names wherever they display (catalog rows, metadata rail, graph labels, page outline, search); the fully-qualified name is kept on declaration pages and hover titles. Empty disables shortening."
+}
+
+/-- The configured `verso.blueprint.declNamePrefix` (empty ⇒ no shortening). -/
+def configuredNamePrefix (opts : Lean.Options) : String :=
+  opts.get verso.blueprint.declNamePrefix.name verso.blueprint.declNamePrefix.defValue
 
 /-! ## Serializable schema -/
 
@@ -102,14 +123,70 @@ structure Entry where
   status : String
   /-- Whether the declaration is wired to a blueprint node. -/
   authored : Bool := false
+  /-- Short display name: the configured project prefix stripped (see
+  `NodeCard.shortDeclName`); equals `name` when no prefix is configured / matched. -/
+  shortName : String := ""
+  /-- Whether the declaration is `private` (de-mangled for display; kept out of
+  every dependency graph, including the synthesized decl-page local graphs). -/
+  isPrivate : Bool := false
+  /-- Rendered docstring HTML (markdown + `$…$` math, raw HTML disabled — safe
+  for the metadata rail's `innerHTML`); `none` when the declaration has no
+  docstring. -/
+  docstringHtml? : Option String := none
+  /-- Root-relative href of this declaration's own page (`decl/{slug}/`), set
+  **iff unwired** — wired declarations' canonical page stays their node page, so
+  every entry has exactly one of `nodeHref?`/`declHref?`. -/
+  declHref? : Option String := none
+  /-- Source link (consumer template or automatic GitHub blob URL, the same
+  builder as `Data.ExternalRef.sourceHref?`); `none` when underivable. -/
+  sourceHref? : Option String := none
+  /-- Longest dependency-chain length below this declaration (0 = no project
+  deps), over the project decl graph; `none` when unresolvable (cycle). -/
+  depth? : Option Nat := none
+  /-- Longest dependent-chain length above this declaration (0 = no project
+  dependents); `none` when unresolvable (cycle). -/
+  height? : Option Nat := none
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-- The full declaration registry artifact. -/
 structure Registry where
-  schemaVersion : Nat := 1
+  schemaVersion : Nat := 2
+  /-- The configured `verso.blueprint.declNamePrefix`, for client-side (runtime)
+  name shortening of names that arrive outside the registry. Empty ⇒ none. -/
+  namePrefix : String := ""
   declCount : Nat := 0
   decls : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
+
+/-- One captured proof/value body (the source after the top-level `:=`) for a
+project declaration, keyed by its (de-mangled) fully-qualified name. `html?` is
+the syntactically-highlighted token markup, `text?` the raw source fallback. -/
+structure Body where
+  name : String
+  html? : Option String := none
+  text? : Option String := none
+deriving Inhabited, Repr, ToJson, FromJson
+
+/--
+The internal proof/value-bodies artifact: one `Body` per project declaration with
+a capturable `:= …` body. **Never emitted into the public
+`decl-registry.json`** — it is carried only through the traversal store
+(`TraversalIndex.DeclRegistry`, key `"bodies"`) to the decl-page emitter
+(`DeclPage`), which bakes each body into that declaration's static page. Sizes
+are capped at capture time (`rawBodyCap`/`highlightBodyCap`).
+-/
+structure Bodies where
+  schemaVersion : Nat := 1
+  bodies : Array Body := #[]
+deriving Inhabited, Repr, ToJson, FromJson
+
+/-- Cap (in characters) on a captured raw proof/value body; larger bodies are
+dropped entirely (the decl page degrades to its quiet placeholder). -/
+def rawBodyCap : Nat := 100_000
+
+/-- Cap (in characters) on a body eligible for syntactic highlighting; larger
+bodies keep only the escaped raw source. -/
+def highlightBodyCap : Nat := 40_000
 
 /-! ## Project boundary + enumeration (shared with the all-decls graph) -/
 
@@ -232,16 +309,51 @@ private def declParams (type : Expr) : MetaM (Array Param) :=
         binderInfo := binderInfoTag ld.binderInfo
       }
 
-/-- Build the full registry record for one project declaration. -/
-private def buildEntry (workspaceRoot : System.FilePath)
+/--
+Longest-path lengths over a DAG given as dependency adjacency (`adj[i]` = the
+node indices `i` depends on): `some d` where `d` is the longest chain strictly
+below node `i` (0 when it has no deps). Kahn-style: a node's length is final
+once all its deps are resolved; nodes stuck on a dependency cycle (possible for
+mutually-recursive declarations) resolve to `none` rather than a wrong value.
+-/
+private partial def longestPathLengths (adj : Array (Array Nat)) : Array (Option Nat) := Id.run do
+  let n := adj.size
+  let mut rev : Array (Array Nat) := Array.replicate n #[]
+  for i in [0:n] do
+    for d in adj[i]! do
+      rev := rev.modify d (·.push i)
+  let mut remaining : Array Nat := adj.map (·.size)
+  let mut dist : Array Nat := Array.replicate n 0
+  let mut finished : Array Bool := Array.replicate n false
+  let mut queue : Array Nat := #[]
+  for i in [0:n] do
+    if remaining[i]! == 0 then queue := queue.push i
+  let mut qi := 0
+  while qi < queue.size do
+    let i := queue[qi]!
+    qi := qi + 1
+    finished := finished.set! i true
+    for j in rev[i]! do
+      if dist[j]! < dist[i]! + 1 then
+        dist := dist.set! j (dist[i]! + 1)
+      let r := remaining[j]! - 1
+      remaining := remaining.set! j r
+      if r == 0 then queue := queue.push j
+  return (Array.range n).map fun i => if finished[i]! then some dist[i]! else none
+
+/-- Build the full registry record for one project declaration. `sourcePath?` and
+`ranges?` are resolved by the caller (shared with the body-capture pass so the
+per-module source file is read once); `depth?`/`height?` come from the global
+longest-path computation over the project decl graph. -/
+private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     (leanNameLabels : NameMap (Array Data.Label)) (usedByNames : Array Name)
     (name : Name) (cinfo : ConstantInfo) (moduleName : Name)
-    (statementDeps proofDeps : Array Name) : MetaM Entry := do
-  let ranges? ← findDeclarationRanges? name
+    (sourcePath? : Option System.FilePath) (ranges? : Option DeclarationRanges)
+    (statementDeps proofDeps : Array Name)
+    (depth? height? : Option Nat) : MetaM Entry := do
   let range? : Option Range := ranges?.map fun r =>
     { pos := { line := r.range.pos.line, column := r.range.pos.column }
       endPos := { line := r.range.endPos.line, column := r.range.endPos.column } }
-  let sourcePath? ← sourcePathForModule? workspaceRoot moduleName
   let sourcePath : String :=
     match sourcePath? with
     | some p => elegantSourcePath workspaceRoot (some moduleName) p
@@ -250,20 +362,21 @@ private def buildEntry (workspaceRoot : System.FilePath)
   -- dependency edges are computed against the canonical (mangled) names, so this must
   -- be applied uniformly to `name`, deps, and `usedBy` to keep cross-references valid.
   let display := fun (n : Name) => ((privateToUserName? n).getD n).toString
+  let signatureText := (← ppExpr cinfo.type).pretty
   -- Highlighted signature (syntactic + semantic when info is available); degrade to
   -- `none` on any failure so registry construction never fails on an odd signature.
-  -- Skipped for `private` declarations: `Signature.forName` embeds the leading
-  -- declaration name, which would surface the internal `_private.…` mangling — the
-  -- clean `signatureText`/`params` cover those decls instead.
+  -- `private` declarations skip `Signature.forName` (it embeds the leading declaration
+  -- name, which would surface the internal `_private.…` mangling) and instead fall
+  -- back to a purely syntactic highlight of the pretty-printed type; consumers degrade
+  -- further to an escaped `<pre>` of `signatureText` when that parse fails too.
   let signatureHtml? ←
     if isPrivateName name then
-      pure none
+      highlightProofSourceHtml? signatureText
     else
       try
         pure (some ((← Verso.Genre.Manual.Signature.forName name).wide |> renderHighlightedSelfContainedHtml))
       catch _ =>
         pure none
-  let signatureText := (← ppExpr cinfo.type).pretty
   let params ← declParams cinfo.type
   -- Blueprint labels are keyed by the referenced name; authored decls are public, but
   -- fall back to the de-mangled name for robustness.
@@ -275,8 +388,21 @@ private def buildEntry (workspaceRoot : System.FilePath)
   -- xref slug scheme (`node/{slug}/`); `none` for unwired declarations.
   let nodeHref? : Option String :=
     labels[0]?.map fun l => s!"node/{Informal.NodeRoute.nodePageSlug (l : Name)}/"
+  let displayName := display name
+  -- Unwired declarations get their own `decl/{slug}/` page (see `DeclPage`); wired
+  -- ones keep their node page as the canonical page, so exactly one href is set.
+  let declHref? : Option String :=
+    if nodeLabels.isEmpty then some (Informal.NodeRoute.declPageHref displayName) else none
+  -- Docstring, rendered once here (markdown + math, raw HTML disabled) so the
+  -- metadata rail can inject it without a client-side renderer.
+  let docs? ← findDocString? (← getEnv) name
+  let docstringHtml? := docstringHtmlString? docs?
+  -- Source link via the same builder the external-ref snapshot uses.
+  let sourceHref? ←
+    liftM <| sourceLinkHref? (← getOptions) workspaceRoot (some moduleName) sourcePath?
+      (ranges?.map (·.range))
   return {
-    name := display name
+    name := displayName
     kind := toString ((Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).getD Data.NodeKind.definition)
     moduleName := moduleName.toString
     sourcePath
@@ -291,24 +417,38 @@ private def buildEntry (workspaceRoot : System.FilePath)
     nodeHref?
     status := provedStatusTag (Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true))
     authored := !nodeLabels.isEmpty
+    shortName := Informal.NodeCard.shortDeclName namePrefix displayName
+    isPrivate := isPrivateName name
+    docstringHtml?
+    declHref?
+    sourceHref?
+    depth?
+    height?
   }
 
 /--
-Build the declaration registry over the whole project, or an empty registry when
-there are no project modules (e.g. the flag is off, or no authored declaration has
-a resolvable project source).
+Build the declaration registry over the whole project — plus the internal
+proof/value `Bodies` artifact — or empty artifacts when there are no project
+modules (e.g. the flag is off, or no authored declaration has a resolvable
+project source).
 
 Reverse (`usedBy`) edges are computed once here over the full project declaration
 set from the same project-scoped const dependencies (`projectConstDeps`) that the
 graph augmentation uses; clients read them directly rather than recomputing.
+`depth?`/`height?` come from one longest-path pass over the same edges. Body
+capture reads each module's source file **once** (per-module file-content cache)
+and slices every declaration's `:= …` body out of the cached content, with size
+caps (`rawBodyCap`/`highlightBodyCap`) so a pathological body can never balloon
+the store.
 -/
-def buildDeclRegistry : CoreM Registry := do
+def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let env ← getEnv
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
+  let namePrefix := configuredNamePrefix (← getOptions)
   let roots ← projectModuleRoots
   if roots.isEmpty then
-    return {}
+    return ({}, {})
   -- The registry tracks every project declaration, `private` helpers included (the
   -- all-decls graph keeps them out to stay readable — see `enumerateProjectDecls`).
   let decls ← enumerateProjectDecls roots (includePrivate := true)
@@ -324,16 +464,70 @@ def buildDeclRegistry : CoreM Registry := do
       let cur := usedBy.getD dep #[]
       if !cur.contains n then
         usedBy := usedBy.insert dep (cur.push n)
-  -- Pass 2: signatures, params, ranges, source paths. Each entry runs in a fresh
-  -- `MetaM` (matching the external-ref snapshot path) so a failed signature render
-  -- on one declaration cannot bleed metavariable state into the next.
+  -- Longest-path metrics over the project decl graph (indices into `decls`).
+  let idxOf : Std.HashMap Name Nat := Id.run do
+    let mut m : Std.HashMap Name Nat := {}
+    for i in [0:decls.size] do
+      m := m.insert (decls[i]!).1 i
+    return m
+  let depAdj : Array (Array Nat) := fwd.map fun (typeDeps, valueDeps) =>
+    (typeDeps ++ valueDeps).foldl (init := (#[] : Array Nat)) fun acc dep =>
+      match idxOf.get? dep with
+      | some j => if acc.contains j then acc else acc.push j
+      | none => acc
+  let depths := longestPathLengths depAdj
+  let revAdj : Array (Array Nat) := Id.run do
+    let mut rev : Array (Array Nat) := Array.replicate depAdj.size #[]
+    for i in [0:depAdj.size] do
+      for j in depAdj[i]! do
+        rev := rev.modify j (·.push i)
+    return rev
+  let heights := longestPathLengths revAdj
+  -- Pass 2: signatures, params, ranges, source paths, bodies. Each entry runs in a
+  -- fresh `MetaM` (matching the external-ref snapshot path) so a failed signature
+  -- render on one declaration cannot bleed metavariable state into the next.
   let mut entries : Array Entry := #[]
+  let mut bodies : Array Body := #[]
+  let mut fileCache : Std.HashMap String (Option String) := {}
   for i in [0:decls.size] do
     let (n, ci, modName) := decls[i]!
     let (typeDeps, valueDeps) := fwd[i]!
-    let entry ← (buildEntry workspaceRoot leanNameLabels (usedBy.getD n #[])
-      n ci modName typeDeps valueDeps).run'
+    let ranges? ← findDeclarationRanges? n
+    let sourcePath? ← sourcePathForModule? workspaceRoot modName
+    let entry ← (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
+      n ci modName sourcePath? ranges? typeDeps valueDeps
+      depths[i]! heights[i]!).run'
     entries := entries.push entry
-  return { schemaVersion := 1, declCount := entries.size, decls := entries }
+    -- Proof/value body, from the per-module cached file content (degrades to no
+    -- body on any read/slice failure — the decl page shows its quiet placeholder).
+    let content? : Option String ←
+      match sourcePath? with
+      | none => pure none
+      | some p => do
+        let key := p.toString
+        match fileCache.get? key with
+        | some cached => pure cached
+        | none => do
+          let read? : Option String ←
+            try
+              pure (some (← IO.FS.readFile p))
+            catch _ =>
+              pure none
+          fileCache := fileCache.insert key read?
+          pure read?
+    let bodyText? : Option String :=
+      match content?, ranges? with
+      | some content, some ranges =>
+        (Informal.proofSourceFromContent? content ranges.range).filter (·.length ≤ rawBodyCap)
+      | _, _ => none
+    match bodyText? with
+    | some src =>
+      let bodyHtml? ←
+        if src.length ≤ highlightBodyCap then highlightProofSourceHtml? src else pure none
+      bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
+    | none => pure ()
+  return (
+    { schemaVersion := 2, namePrefix, declCount := entries.size, decls := entries },
+    { bodies })
 
 end Informal.DeclRegistry
