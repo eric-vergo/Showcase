@@ -348,11 +348,11 @@ upstream repositories have been updated and validated for the new Lean release.
   [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
   and [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/project-template/)
 - [`ejgallego/verso-noperthedron`](https://github.com/ejgallego/verso-noperthedron),
-  [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/noperthedron/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/noperthedron/)
 - [`ejgallego/verso-sphere-packing`](https://github.com/ejgallego/verso-sphere-packing),
   [rendered site for v4.30.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/spherepackingblueprint/)
 - [`ejgallego/verso-flt`](https://github.com/ejgallego/verso-flt),
-  [rendered site for v4.31.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.31.0/verso-flt/)
+  [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/verso-flt/)
 - [`ejgallego/verso-carleson`](https://github.com/ejgallego/verso-carleson),
   [rendered site for v4.30.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.30.0/verso-carleson/)
 
