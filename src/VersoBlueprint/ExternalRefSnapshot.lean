@@ -194,13 +194,19 @@ private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
   -- First the consumer's own subdirectories.
   if let some path ← scanChildDirsForModule workspaceRoot workspaceRoot modulePath then
     return some path
-  -- Then sibling packages one level up (the workspace / monorepo root). A
-  -- `(lean := …)` decl frequently lives in a *separate* package whose source dir
-  -- is absent from the build-time source search path (only the consumer's own
-  -- source dir is on it during elaboration), so the decl's `.lean` source — and
-  -- hence its captured proof/value body — is reachable only by looking outward.
+  -- Then one level up (the workspace / monorepo root). A `(lean := …)` decl
+  -- frequently lives in a *separate* package whose source dir is absent from the
+  -- build-time source search path (only the consumer's own source dir is on it
+  -- during elaboration), so the decl's `.lean` source — and hence its captured
+  -- proof/value body — is reachable only by looking outward. The parent may itself
+  -- be a package root (a consumer nested inside the formalization repo, e.g.
+  -- `<repo>/site` consuming `<repo>`'s modules), or the target may live in one of
+  -- the parent's sibling subdirectories.
   match workspaceRoot.parent with
-  | some parent => scanChildDirsForModule workspaceRoot parent modulePath
+  | some parent =>
+    if let some path ← existingSourcePath? workspaceRoot (parent / modulePath) then
+      return some path
+    scanChildDirsForModule workspaceRoot parent modulePath
   | none => pure none
 
 def sourcePathForModule? (workspaceRoot : System.FilePath)
