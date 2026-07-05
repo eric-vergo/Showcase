@@ -11,6 +11,7 @@ import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.NodeCard
 
 namespace Informal
 namespace CodeSummary
@@ -91,6 +92,15 @@ structure DeclSummaryItem where
   present : Bool := true
 deriving Inhabited, Repr
 
+/-- Prefix-stripped display form of a declaration name for the code-summary
+lists (delegates to `NodeCard.shortDeclName`, the single source of truth). The
+`Name` is only reconstructed when the prefix actually shortens, so an empty /
+non-matching prefix is a byte-identical no-op. -/
+private def shortDisplayName (pfx : String) (n : Name) : Name :=
+  let s := n.toString
+  let short := Informal.NodeCard.shortDeclName pfx s
+  if short == s then n else short.toName
+
 private structure SummaryTooltipSection where
   title : String := ""
   items : Array DeclSummaryItem := #[]
@@ -162,10 +172,10 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
     }}
 
 private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDeclData)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   let defs := definedDefs.map fun decl =>
     {
-      displayName := decl.name
+      displayName := shortDisplayName namePrefix decl.name
       previewName := decl.name
       href := hrefOf decl.name
       kind := .definition
@@ -173,7 +183,7 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
     }
   let theoremLikes := definedTheorems.map fun decl =>
     {
-      displayName := decl.name
+      displayName := shortDisplayName namePrefix decl.name
       previewName := decl.name
       href := hrefOf decl.name
       kind := .theoremLike
@@ -198,10 +208,10 @@ private def externalDeclHref (decl : Data.ExternalRef) (hrefOf : Name → Option
     hrefOf decl.written
 
 private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   decls.map fun decl =>
     {
-      displayName := decl.written
+      displayName := shortDisplayName namePrefix decl.written
       previewName := decl.canonical
       href := externalDeclHref decl hrefOf
       kind := externalSummaryKind decl
@@ -210,12 +220,12 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
     }
 
 private def summaryPreviewItems (cdata : ComputedData)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   match cdata.source with
   | some (.inline codeData) =>
-    inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf
+    inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf namePrefix
   | some (.external decls) =>
-    externalDeclSummaryItems decls hrefOf
+    externalDeclSummaryItems decls hrefOf namePrefix
   | none =>
     #[]
 
@@ -223,8 +233,8 @@ private def summaryPreviewEmptyText (_cdata : ComputedData) : String :=
   "No associated Lean code or declarations."
 
 private def renderSummaryPreview (_label : Data.Label) (cdata : ComputedData)
-    (hrefOf : Name → Option String) : Output.Html :=
-  let items := summaryPreviewItems cdata hrefOf
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Output.Html :=
+  let items := summaryPreviewItems cdata hrefOf namePrefix
   let sectionTitle :=
     if items.isEmpty then "Lean status" else "Associated Lean declarations"
   let sections := #[{
@@ -475,23 +485,24 @@ def statusDotHtml (source? : Option BlockCodeData) (kind? : Option Data.NodeKind
   statusDotHtmlOfTag tag title kind?
 
 private def codeSummaryText (label : Data.Label)
-    (definedDefs definedTheorems : Array CodeDeclData) : String :=
+    (definedDefs definedTheorems : Array CodeDeclData) (namePrefix : String := "") : String :=
   if definedDefs.isEmpty && definedTheorems.isEmpty then
     s!"{label}"
   else
+    let shortOf := fun (n : Name) => Informal.NodeCard.shortDeclName namePrefix n.toString
     let definedDefNames := definedDefs.map (·.name)
     let definedTheoremNames := definedTheorems.map (·.name)
     let defs :=
       if definedDefNames.isEmpty then
         "none"
       else
-        String.intercalate ", " (definedDefNames.toList.map toString)
+        String.intercalate ", " (definedDefNames.toList.map shortOf)
     let thms :=
       if definedTheoremNames.isEmpty then
         "none"
       else
-        String.intercalate ", " (definedTheoremNames.toList.map toString)
-    let summaryItems := inlineDeclSummaryItems definedDefs definedTheorems (fun _ => none)
+        String.intercalate ", " (definedTheoremNames.toList.map shortOf)
+    let summaryItems := inlineDeclSummaryItems definedDefs definedTheorems (fun _ => none) namePrefix
     let sorries := incompleteSummaryItems summaryItems
     let sorriesTxt :=
       if sorries.isEmpty then
@@ -506,10 +517,11 @@ Accessible summary text for a block's Lean code panel (the visually-hidden
 their declarations and sorries; external references summarize presence /
 completeness plus any render-failure diagnostics.
 -/
-def panelSummaryTitle (label : Data.Label) (cdata : ComputedData) : String :=
+def panelSummaryTitle (label : Data.Label) (cdata : ComputedData)
+    (namePrefix : String := "") : String :=
   match cdata.source with
   | some (.inline codeData) =>
-    s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
+    s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems namePrefix}"
   | some (.external decls) =>
     let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
     let renderHealth := externalRenderHealth decls
@@ -530,13 +542,14 @@ Output policy:
 - statement headings with external refs always render a status mark and an external-summary tooltip.
 - inline/no-hint headings hide the status mark when `codeHref` is absent.
 -/
-def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String) : RenderParts :=
+def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String)
+    (namePrefix : String := "") : RenderParts :=
   open Verso.Output.Html in
   match data.kind with
   | .proof => {}
   | .statement statementKind =>
     let externalDecls := cdata.source.map BlockCodeData.externalDecls |>.getD #[]
-    let codeEntryPreviewBody := renderSummaryPreview data.label cdata hrefOf
+    let codeEntryPreviewBody := renderSummaryPreview data.label cdata hrefOf namePrefix
     let previewTitle := s!"{data.label}"
     if !externalDecls.isEmpty then
       let health := Informal.Graph.codeHealthOfBlockSource statementKind {} cdata.source

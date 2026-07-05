@@ -1171,7 +1171,11 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       renderGraph();
       if (!graphState.blockResizeBound) {
         graphState.blockResizeBound = true;
-        window.addEventListener("resize", scheduleRender);
+        // No window "resize" -> re-render coupling: the canvas height is fixed
+        // (graph-runtime-core `layoutGraphCanvas`), so only *width* changes need a
+        // reflow. Those are caught by the ResizeObserver on graphBlock / graphRoot
+        // below (e.g. dragging the ToC or the properties rail), which keeps the
+        // graph responsive without tying its height to the viewport.
         if (typeof ResizeObserver === "function") {
           const observer = new ResizeObserver(function (entries) {
             let shouldRender = false;

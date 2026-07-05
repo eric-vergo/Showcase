@@ -47,33 +47,6 @@ main section:has(.bp_dashboard) {
   line-height: 1;
 }
 
-.bp_dashboard_worklist_link {
-  margin: 0.9rem 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.6rem;
-}
-
-/* CTAs are quiet underlined text links, not pills (E). */
-.bp_dashboard_worklist_cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-weight: 600;
-  text-decoration: none;
-  color: var(--bp-color-link);
-  transition: color var(--bp-duration-fast, 0.12s) var(--bp-ease, ease);
-}
-
-.bp_dashboard_worklist_cta.bp_dashboard_cta_secondary {
-  color: var(--bp-color-link);
-}
-
-.bp_dashboard_worklist_cta:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.14em;
-}
-
 /* Owners + tags share a clean two-equal-column row; the status and per-chapter
    cards span the full column. On narrow screens everything collapses to one. */
 .bp_dashboard_charts {

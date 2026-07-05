@@ -17,18 +17,21 @@ themed on every page, and reuses the existing `--bp-*` design tokens exclusively
 (no new color is introduced), so light + dark come for free with AA contrast in
 both; no CDN / network dependency.
 
-Layout model: the rail is **always present and open** on every page (no drawer,
-edge tab, collapse toggle, or persisted open-state). Its placement is purely
-viewport-driven, switched by the runtime via `matchMedia`:
+Layout model: the rail is **always present, open, and docked** to the right edge
+on every page (no drawer, edge tab, collapse toggle, breakpoint, or persisted
+open-state). It is fixed along the right edge (appended to `<body>`), reserving
+right margin on `<main>` — gated on the `body.bp-rail-present` class the runtime
+sets once the rail is injected — so it never overlaps the 44rem content measure,
+marginalia (which live inside `<main>`'s box), or the graph's `100cqw` breakout
+(whose container shrinks with the reserved margin), and pages without a rail get
+no dead margin.
 
-* **Docked** at `>= 87.5rem` (1400px): fixed along the right edge (appended to
-  `<body>`), reserving right margin on `<main>` so it never overlaps the 44rem
-  content measure, marginalia (which live inside `<main>`'s box), or the graph's
-  `100cqw` breakout (whose container shrinks with the reserved margin).
-* **Inline** below that width: the runtime reparents the rail into the page flow
-  (`main .content-wrapper`, falling back to `main`) and adds `.bp-rail-inline`
-  (static, full-width, hairline top rule), so narrow layouts stack it below the
-  content instead of crowding them with an overlay.
+Its **width is user-resizable**: a drag handle (`.bp-rail-resize-handle`,
+mirroring verso-core's ToC handle) writes `--bp-rail-user-width` (px, persisted
+to `localStorage["bp-rail-width"]`); CSS clamps it to
+`clamp(14rem, …, min(32rem, 100vw - var(--verso-toc-effective-width) - 20rem))`,
+so the rail stays visible at every viewport while always leaving the content
+column at least ~20rem beyond the left ToC.
 
 The rail sits above the fixed ToC (z 10-12) but below the graph node modal
 (z 9500), so the Wave-2 modal always layers over it. It honors
@@ -53,14 +56,24 @@ namespace Informal.MetadataRail
 /-- Stylesheet for the always-open metadata rail (docked + inline variants). -/
 def css : String := r##"
 :root {
-  --bp-rail-width: 20.5rem;
+  /* User-resizable (drag handle writes --bp-rail-user-width in px; see
+     metadata-rail.mjs), clamped so the rail stays a sane width and always leaves
+     the content column at least ~20rem *beyond* the left ToC. The upper bound
+     subtracts the ToC's effective width (--verso-toc-effective-width, a :root var
+     in verso core; the 0rem fallback covers pages/viewports where the ToC
+     collapses) so a tablet-width viewport with the ToC open doesn't crush the
+     content column. When that upper bound falls below the 14rem lower bound
+     (very narrow viewport) CSS clamp() resolves min-wins and pins the rail at
+     14rem. The rail is visible at every viewport. */
+  --bp-rail-width: clamp(14rem, var(--bp-rail-user-width, 20.5rem), min(32rem, 100vw - var(--verso-toc-effective-width, 0rem) - 20rem));
   --bp-rail-gap: var(--bp-space-4);
 }
 
 /* ---- Rail shell ----------------------------------------------------------- */
-/* The rail is always present and open (no drawer / edge tab / collapse). Docked
-   at >= 87.5rem it is fixed to the right edge (appended to <body>); below that
-   the runtime reparents it into the page flow and adds `.bp-rail-inline`. */
+/* The rail is always present, open, and docked to the right edge on every page
+   (no drawer / edge tab / collapse / breakpoint), appended to <body>. Its width
+   is user-resizable (drag handle below) and CSS-clamped so the content column
+   keeps a minimum width at every viewport. */
 #bp-metadata-rail {
   position: fixed;
   top: var(--verso-header-height, 3rem);
@@ -77,20 +90,44 @@ def css : String := r##"
   color: var(--bp-color-text);
 }
 
-/* Inline mode (narrow viewports): static, full-width, hairline top rule; sits in
-   the page flow below the content. Spacing via the design scale. */
-#bp-metadata-rail.bp-rail-inline {
-  position: static;
-  width: auto;
-  max-width: none;
-  z-index: auto;
-  border-left: 0;
-  border-top: 1px solid var(--bp-color-border);
-  margin-top: var(--bp-space-5);
+/* ---- Width drag handle (mirrors verso-core .toc-resize-handle) ------------- */
+/* Sits at the rail's left edge; the grab area extends a few px into the content
+   margin, the hairline divider (::after) sits on the rail's border. */
+.bp-rail-resize-handle {
+  position: fixed;
+  top: var(--verso-header-height, 3rem);
+  right: var(--bp-rail-width);
+  width: 6px;
+  height: calc(100dvh - var(--verso-header-height, 3rem));
+  z-index: 41;
+  cursor: col-resize;
+  touch-action: none;
 }
 
-#bp-metadata-rail.bp-rail-inline .bp-rail-body {
-  overflow-y: visible;
+.bp-rail-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--bp-color-border);
+  transition: background var(--bp-duration-fast, 0.12s) var(--bp-ease, ease);
+}
+
+.bp-rail-resize-handle:hover::after,
+.bp-rail-resize-handle.dragging::after,
+.bp-rail-resize-handle:focus-visible::after {
+  background: var(--bp-color-accent);
+}
+
+.bp-rail-resize-handle:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-rail-resize-handle::after { transition: none; }
 }
 
 /* ---- Header --------------------------------------------------------------- */
@@ -567,17 +604,20 @@ def css : String := r##"
 }
 
 /* ---- Docked layout: reserve right margin so nothing overlaps -------------- */
-/* The rail is always open, so the reservation is unconditional at the docked
-   breakpoint. Below it the rail is inline (in the page flow) and needs no margin. */
-@media (min-width: 87.5rem) {
-  .with-toc > main {
-    margin-right: calc(var(--bp-rail-width) + var(--bp-rail-gap));
-  }
+/* The rail is always docked, so the reservation is unconditional — but gated on
+   `body.bp-rail-present` (set by metadata-rail.mjs once the rail is injected) so
+   a page without a rail never gets a dead right margin. */
+body.bp-rail-present .with-toc > main {
+  margin-right: calc(var(--bp-rail-width) + var(--bp-rail-gap));
 }
 
 @media print {
-  #bp-metadata-rail {
+  #bp-metadata-rail,
+  .bp-rail-resize-handle {
     display: none !important;
+  }
+  body.bp-rail-present .with-toc > main {
+    margin-right: 0;
   }
 }
 "##

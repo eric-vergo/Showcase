@@ -237,12 +237,12 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
 /-- One palette search record per decl page (mirrors the node-search shape:
 `{label, display, kind, chapter, href, text}` with the module as the "chapter"
 and the truncated type signature as the searchable text). -/
-private def declSearchRecord (e : Entry) : Json :=
+private def declSearchRecord (e : Entry) (pfx : String) : Json :=
   Json.mkObj [
     ("label", Json.str e.name),
     ("display", Json.str (displayShort e)),
     ("kind", Json.str e.kind),
-    ("chapter", Json.str e.moduleName),
+    ("chapter", Json.str (Informal.NodeCard.shortModuleName pfx e.moduleName)),
     ("href", Json.str (Informal.NodeRoute.declPageHref e.name)),
     ("text", Json.str ((e.signatureText.take 300).toString))
   ]
@@ -308,7 +308,7 @@ def emitBlueprintDeclPages : ExtraStep :=
             let body := renderDeclPageBody master bodies text.titleString e slug
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               (Informal.NodeRoute.declPagePath e.name) (displayShort e) body
-            searchRecords := searchRecords.push (declSearchRecord e)
+            searchRecords := searchRecords.push (declSearchRecord e registry.namePrefix)
           writeDeclSearchIndex mode cfg searchRecords
 
 end Informal.DeclPage

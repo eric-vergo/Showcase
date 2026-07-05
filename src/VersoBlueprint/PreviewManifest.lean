@@ -249,8 +249,7 @@ def printCss : String := r##"
   .bp-copy-button,
   .bp_graph_controls,
   .bp_graph_legend,
-  .bp_command_palette,
-  .bp_dashboard_worklist_link {
+  .bp_command_palette {
     display: none !important;
   }
 
@@ -821,6 +820,9 @@ private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"
 
 private def pageOutlineModuleMjs : String := include_str "Commands/page-outline.mjs"
 
+-- (const-token.mjs: first-child-text-node shortening + MutationObserver re-pass.)
+private def constTokenModuleMjs : String := include_str "Commands/const-token.mjs"
+
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
@@ -880,7 +882,8 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/selection-bus.mjs", selectionBusModuleMjs),
   ("Commands/metadata-rail.mjs", metadataRailModuleMjs),
   ("Commands/top-nav.mjs", topNavModuleMjs),
-  ("Commands/page-outline.mjs", pageOutlineModuleMjs)
+  ("Commands/page-outline.mjs", pageOutlineModuleMjs),
+  ("Commands/const-token.mjs", constTokenModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do

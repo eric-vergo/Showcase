@@ -26,9 +26,17 @@ import { setAllProofs } from "./proof-toggle.mjs";
 
 const RAIL_ID = "bp-metadata-rail";
 const BODY_ID = "bp-metadata-rail-body";
-// Docked ≥ 87.5rem (1400px), reparented inline into the page flow below that. The
-// rail is always present and open on every page (no drawer / edge tab / collapse).
-const DOCK_QUERY = "(min-width: 87.5rem)";
+// The rail is *always* docked along the right edge on every page (no drawer /
+// edge tab / collapse / breakpoint). Its width is user-resizable via a drag
+// handle (buildResizeHandle); CSS clamps the stored width so the content column
+// keeps a minimum width at every viewport (see MetadataRail.lean).
+const RAIL_WIDTH_STORAGE_KEY = "bp-rail-width";
+// Width clamp bounds (px), mirroring the clamp() for --bp-rail-user-width in
+// MetadataRail.lean (14rem / 32rem at the default 16px root). Keep in sync.
+const RAIL_MIN_WIDTH = 224;
+const RAIL_MAX_WIDTH = 512;
+const RAIL_KEY_STEP = 16;
+const RAIL_KEY_STEP_LARGE = 64;
 const SEE_ALSO_CAP = 8;
 const DEP_CAP = 60; // guard against pathologically long used-by lists.
 
@@ -42,7 +50,7 @@ const inlineMeta = new Map(); // Map<name, slim record>
 
 let railEl = null;
 let bodyEl = null;
-let dockMql = null; // matchMedia handle for the dock/inline breakpoint.
+let handleEl = null; // the width drag handle.
 
 const STATUS_LABELS = {
   proved: "Proved",
@@ -197,24 +205,110 @@ function buildFooter() {
   return footer.childNodes.length > 0 ? footer : null;
 }
 
-// Place the rail in the DOM according to the current breakpoint: docked (fixed to
-// the right edge, appended to <body>) at >= 87.5rem, else reparented inline into
-// the page flow below the content (`main .content-wrapper`, falling back to
-// `main`). Idempotent; safe to call at install and on every breakpoint change.
-function placeRail() {
-  if (!railEl) return;
-  const docked = dockMql ? dockMql.matches : true;
-  if (docked) {
-    railEl.classList.remove("bp-rail-inline");
-    if (railEl.parentNode !== document.body) document.body.appendChild(railEl);
-  } else {
-    railEl.classList.add("bp-rail-inline");
-    const host =
-      document.querySelector("main .content-wrapper") ||
-      document.querySelector("main") ||
-      document.body;
-    if (railEl.parentNode !== host) host.appendChild(railEl);
+/* -------------------------------------------------------------------------- */
+/* Width resize handle (mirrors verso-core toc-resize.js)                     */
+/* -------------------------------------------------------------------------- */
+
+function railWidth() {
+  return railEl ? railEl.getBoundingClientRect().width : RAIL_MIN_WIDTH;
+}
+
+function syncHandleAria() {
+  if (!handleEl) return;
+  const width = Math.round(railWidth());
+  handleEl.setAttribute("aria-valuenow", String(width));
+  handleEl.setAttribute("aria-valuetext", width + " pixels");
+}
+
+// Record a preferred rail width in --bp-rail-user-width. The stylesheet clamps
+// it to the viewport, so this only bounds the stored value to the absolute
+// [MIN, MAX] range.
+function setRailWidth(width, persist) {
+  const next = Math.round(Math.max(RAIL_MIN_WIDTH, Math.min(RAIL_MAX_WIDTH, width)));
+  document.documentElement.style.setProperty("--bp-rail-user-width", next + "px");
+  syncHandleAria();
+  if (persist) {
+    try {
+      localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, String(next));
+    } catch (_e) {
+      /* storage may be disabled; the width still applies for this session */
+    }
   }
+}
+
+// A vertical drag handle at the rail's left edge (pointer capture + keyboard),
+// mirroring verso-core's toc-resize.js. The rail is fixed to the right, so
+// dragging left widens it. Restores the saved width on load and persists on
+// drop / keyboard change. Appended to <body> like the rail itself.
+function buildResizeHandle() {
+  if (document.querySelector(".bp-rail-resize-handle")) return;
+  const handle = el("div", {
+    class: "bp-rail-resize-handle",
+    attrs: {
+      role: "separator",
+      "aria-orientation": "vertical",
+      "aria-label": "Resize properties panel",
+      "aria-valuemin": String(RAIL_MIN_WIDTH),
+      "aria-valuemax": String(RAIL_MAX_WIDTH),
+      tabindex: "0"
+    }
+  });
+  handleEl = handle;
+
+  // Restore any saved width (CSS falls back to the default when unset).
+  let saved = NaN;
+  try {
+    const v = localStorage.getItem(RAIL_WIDTH_STORAGE_KEY);
+    if (v !== null) saved = Number(v);
+  } catch (_e) {
+    /* leave the default width in place */
+  }
+  if (Number.isFinite(saved)) setRailWidth(saved, false);
+  else syncHandleAria();
+
+  let activePointer = null;
+  let startX = 0;
+  let startWidth = 0;
+
+  handle.addEventListener("pointerdown", function (ev) {
+    activePointer = ev.pointerId;
+    startX = ev.clientX;
+    startWidth = railWidth();
+    handle.setPointerCapture(ev.pointerId);
+    handle.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    ev.preventDefault();
+  });
+  handle.addEventListener("pointermove", function (ev) {
+    if (activePointer !== ev.pointerId) return;
+    // Rail is on the right edge: dragging left (smaller clientX) widens it.
+    setRailWidth(startWidth - (ev.clientX - startX), false);
+  });
+  function endDrag(ev) {
+    if (activePointer !== ev.pointerId) return;
+    activePointer = null;
+    handle.releasePointerCapture(ev.pointerId);
+    handle.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    setRailWidth(railWidth(), true);
+  }
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+
+  handle.addEventListener("keydown", function (ev) {
+    const step = ev.shiftKey ? RAIL_KEY_STEP_LARGE : RAIL_KEY_STEP;
+    switch (ev.key) {
+      case "ArrowLeft": setRailWidth(railWidth() + step, true); ev.preventDefault(); break;
+      case "ArrowRight": setRailWidth(railWidth() - step, true); ev.preventDefault(); break;
+      case "Home": setRailWidth(RAIL_MIN_WIDTH, true); ev.preventDefault(); break;
+      case "End": setRailWidth(RAIL_MAX_WIDTH, true); ev.preventDefault(); break;
+    }
+  });
+
+  window.addEventListener("resize", syncHandleAria);
+  document.body.appendChild(handle);
 }
 
 function buildRail() {
@@ -237,13 +331,11 @@ function buildRail() {
     }
   }, [header, bodyEl, footer]);
 
-  dockMql =
-    typeof window.matchMedia === "function" ? window.matchMedia(DOCK_QUERY) : null;
-  placeRail();
-  if (dockMql) {
-    if (dockMql.addEventListener) dockMql.addEventListener("change", placeRail);
-    else if (dockMql.addListener) dockMql.addListener(placeRail);
-  }
+  document.body.appendChild(railEl);
+  // Gate the <main> right-margin reservation on the rail actually being present
+  // (see MetadataRail.lean): pages without an injected rail get no dead margin.
+  document.body.classList.add("bp-rail-present");
+  buildResizeHandle();
 
   renderEmpty();
 }
@@ -363,6 +455,33 @@ function shortNameFor(name) {
   return name;
 }
 
+/** Prefix-strip a module path the same way shortNameFor does a decl name
+ * (mirrors the server-side NodeCard.shortModuleName; identity when there's no
+ * registry prefix). Display-only. */
+function shortModuleFor(module) {
+  if (
+    registryNamePrefix &&
+    module &&
+    module.length > registryNamePrefix.length + 1 &&
+    module.indexOf(registryNamePrefix + ".") === 0
+  ) {
+    return module.slice(registryNamePrefix.length + 1);
+  }
+  return module;
+}
+
+/** Strip the registry prefix from pretty-printed signature / type text for
+ * display: drop `<prefix>.` only where it begins a qualified name — preceded by
+ * start-of-string or a non-identifier, non-dot character — so `Nat.Primes` and
+ * names that merely contain the prefix as a substring are left intact. The
+ * registry data itself is never mutated. Identity when there's no prefix. */
+function stripPrefixInText(s) {
+  if (!registryNamePrefix || !s) return s;
+  const esc = registryNamePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("(^|[^A-Za-z0-9_.\\u00A0-\\uFFFF])" + esc + "\\.", "g");
+  return s.replace(re, "$1");
+}
+
 function isWired(name) {
   const reg = registryByName ? registryByName.get(name) : null;
   if (reg) return !!reg.authored;
@@ -395,10 +514,12 @@ function sectionTitle(text) {
   return el("h2", { class: "bp-rail-section-title", text: text });
 }
 
-function metaRow(key, value) {
+function metaRow(key, value, title) {
+  const val = el("span", { class: "bp-rail-meta-val", text: value });
+  if (title && title !== value) val.setAttribute("title", title);
   return el("div", { class: "bp-rail-meta-row" }, [
     el("span", { class: "bp-rail-meta-key", text: key }),
-    el("span", { class: "bp-rail-meta-val", text: value })
+    val
   ]);
 }
 
@@ -501,7 +622,7 @@ function renderRail(name, hintMeta) {
 
   // --- Location -----------------------------------------------------------
   const loc = el("div", { class: "bp-rail-section" }, [sectionTitle("Source")]);
-  if (vm.module) loc.appendChild(metaRow("Module", vm.module));
+  if (vm.module) loc.appendChild(metaRow("Module", shortModuleFor(vm.module), vm.module));
   if (vm.startLine != null) {
     const where = vm.sourcePath ? vm.sourcePath : "line";
     const span = vm.endLine != null && vm.endLine !== vm.startLine
@@ -525,7 +646,7 @@ function renderRail(name, hintMeta) {
     frag.appendChild(
       el("div", { class: "bp-rail-section" }, [
         sectionTitle("Signature"),
-        el("pre", { class: "bp-rail-sig", text: vm.signatureText })
+        el("pre", { class: "bp-rail-sig", text: stripPrefixInText(vm.signatureText) })
       ])
     );
   }
@@ -542,7 +663,7 @@ function renderRail(name, hintMeta) {
           }, [
             el("span", { class: "bp-rail-param-name", text: p.name }),
             el("span", { class: "bp-rail-param-sep", text: ":" }),
-            el("span", { class: "bp-rail-param-type", text: p.type })
+            el("span", { class: "bp-rail-param-type", text: stripPrefixInText(p.type) })
           ])
         );
       });

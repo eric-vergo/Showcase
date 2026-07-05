@@ -619,32 +619,6 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
       heroSeg "bp_progress_seg bp_progress_seg_blocked" heroBlockedPct,
       heroSeg "bp_progress_seg bp_progress_seg_other" heroOtherPct
     ]
-    let heroCards : Output.Html := {{
-      <div class="bp_summary_grid">
-        {{summaryCard "Total entries" (toString total) (Option.some (statusCountsText data.totalStatus))}}
-        {{summaryCard "Fully closed" (toString closed)
-            (Option.some "Local code and prerequisite closure are both complete.")}}
-        {{summaryCard "Ready now" (toString data.coverageSplit.readyToFormalize)
-            (Option.some "Entries whose next formalization step is currently unblocked.")}}
-        {{summaryOptionalWarnCard (data.coverageSplit.blockedOrIncomplete > 0)
-            "Blocked / incomplete" (toString data.coverageSplit.blockedOrIncomplete)
-            (Option.some "Entries not covered by the readiness buckets above.")}}
-      </div>
-    }}
-    -- CTA to the Mathlib upstream-candidates page. The page is always emitted, so
-    -- the link is always shown (keeping the page reachable rather than orphaned);
-    -- when entries now resolve into Mathlib it also surfaces that count as an
-    -- actionable prompt.
-    let mathlibCandidateCount := data.mathlibCandidates.length
-    let mathlibCandidatesLabel : String :=
-      if mathlibCandidateCount == 0 then "Mathlib upstream candidates →"
-      else s!"{mathlibCandidateCount} {if mathlibCandidateCount == 1 then "entry" else "entries"} may now be available in Mathlib →"
-    let mathlibCandidatesCta : Output.Html := {{
-      <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary"
-          href={{Informal.NodeRoute.mathlibCandidatesHref}}>
-        {{.text true mathlibCandidatesLabel}}
-      </a>
-    }}
     let hero : Output.Html := {{
       <section class="bp_dashboard_hero">
         <div class="bp_dashboard_hero_head">
@@ -659,16 +633,6 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
             {{.text true s!"{closed} of {total} entries fully closed"}}
           </div>
         </div>
-        {{heroCards}}
-        <p class="bp_dashboard_worklist_link">
-          <a class="bp_dashboard_worklist_cta" href={{Informal.NodeRoute.worklistHref}}>
-            "Open worklist →"
-          </a>
-          <a class="bp_dashboard_worklist_cta bp_dashboard_cta_secondary" href={{Informal.NodeRoute.auditHref}}>
-            "Audit and technical debt →"
-          </a>
-          {{mathlibCandidatesCta}}
-        </p>
       </section>
     }}
     let readingMap := dashboardReadingMap s

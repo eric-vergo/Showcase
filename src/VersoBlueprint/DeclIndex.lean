@@ -114,18 +114,6 @@ def catalogCss : String := r##"
   color: var(--bp-color-text-strong);
 }
 
-.bp_decl_module_count {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.05rem 0.45rem;
-  border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface-subtle);
-  border: 1px solid var(--bp-color-border);
-  color: var(--bp-color-text-muted);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 600;
-}
-
 /* ---- Row list ------------------------------------------------------------- */
 .bp_decl_list {
   list-style: none;
@@ -213,17 +201,9 @@ button.bp_decl_row_name:hover { color: var(--bp-color-text); text-decoration: un
   color: var(--bp-color-text-muted);
 }
 
-.bp_decl_row_module {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  color: var(--bp-color-text-subtle);
-  white-space: nowrap;
-}
-
 .bp_decl_row_status {
   flex: 0 0 auto;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   padding: 0.05rem 0.45rem;
@@ -249,17 +229,6 @@ button.bp_decl_row_name:hover { color: var(--bp-color-text); text-decoration: un
   color: var(--bp-color-status-warning-text);
   border-color: var(--bp-color-status-warning-border-soft);
 }
-
-.bp_decl_row_open {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  color: var(--bp-color-text-subtle);
-  text-decoration: none;
-  padding: 0 0.1rem;
-}
-
-.bp_decl_row_open:hover { color: var(--bp-color-accent); }
 
 /* ---- Module tree ---------------------------------------------------------- */
 .bp_mod_tree { margin: 0; }
@@ -306,24 +275,11 @@ details.bp_mod_node[open] > .bp_mod_summary::before { transform: rotate(90deg); 
   color: var(--bp-color-text-strong);
 }
 
-.bp_mod_count {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.05rem 0.4rem;
-  border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface-subtle);
-  border: 1px solid var(--bp-color-border);
-  color: var(--bp-color-text-muted);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  font-weight: 600;
-}
-
 .bp_mod_decls { padding-left: var(--bp-space-2); }
 
 /* ---- Narrow viewports: drop the secondary columns ------------------------- */
 @media (max-width: 700px) {
-  .bp_decl_row_sig,
-  .bp_decl_row_module { display: none; }
+  .bp_decl_row_sig { display: none; }
   .bp_decl_row_name { max-width: none; }
 }
 "##
@@ -372,7 +328,6 @@ signature column.
 private def declRow (showSig : Bool) (e : Entry) : Html :=
   let metaJson := rowMeta e
   let href? := e.nodeHref? <|> e.declHref?
-  let openTitle := if e.nodeHref?.isSome then "Open node page" else "Open declaration page"
   let nameNode : Html :=
     match href? with
     | some href =>
@@ -383,21 +338,13 @@ private def declRow (showSig : Bool) (e : Entry) : Html :=
     if showSig && !e.signatureText.isEmpty then
       {{ <code class="bp_decl_row_sig" title={{e.signatureText}}>{{.text true e.signatureText}}</code> }}
     else .empty
-  let openLink : Html :=
-    match href? with
-    | some href =>
-      {{ <a class="bp_decl_row_open" href={{href}} title={{openTitle}}
-            aria-label={{s!"{openTitle} for {e.name}"}}>"↗"</a> }}
-    | none => .empty
   {{
     <li class="bp_decl_row" "data-bp-decl"={{e.name}}>
       <script type="application/json" class="bp-decl-meta" "data-bp-decl"={{e.name}}>{{.text false metaJson}}</script>
       <span class="bp_decl_row_kind" "data-kind"={{e.kind}}>{{.text true (kindShort e.kind)}}</span>
       {{nameNode}}
       {{sigNode}}
-      <span class="bp_decl_row_module">{{.text true e.moduleName}}</span>
       <span class="bp_decl_row_status" "data-status"={{e.status}}>{{.text true (statusLabel e.kind e.status)}}</span>
-      {{openLink}}
     </li>
   }}
 
@@ -438,22 +385,22 @@ private def modulesSorted (es : Array Entry) : Array String :=
 
 /-! ## Definitions / Theorems pages (grouped by module, source order) -/
 
-private def moduleSection (modName : String) (es : Array Entry) : Html :=
+private def moduleSection (pfx modName : String) (es : Array Entry) : Html :=
   {{
     <section class="bp_decl_module_group">
-      <h2 class="bp_decl_module_head">
-        {{.text true modName}}
-        <span class="bp_decl_module_count">{{.text true (toString es.size)}}</span>
+      <h2 class="bp_decl_module_head" title={{modName}}>
+        {{.text true (Informal.NodeCard.shortModuleName pfx modName)}}
       </h2>
       <ul class="bp_decl_list">{{(bySource es).map (declRow true)}}</ul>
     </section>
   }}
 
 /-- Body shared by the Definitions and Theorems pages: rows grouped by module,
-each module in source order. -/
-private def catalogBody (title intro : String) (entries : Array Entry) : Html :=
+each module in source order. Module group headers show the project-prefix-stripped
+name (`pfx`, the registry `namePrefix`), keeping the fully-qualified name on hover. -/
+private def catalogBody (pfx title intro : String) (entries : Array Entry) : Html :=
   let sections := (modulesSorted entries).map fun m =>
-    moduleSection m (entries.filter (·.moduleName == m))
+    moduleSection pfx m (entries.filter (·.moduleName == m))
   {{
     <div class="bp_decl_catalog bp_pm_page">
       <style>{{.text false catalogCss}}</style>
@@ -542,10 +489,6 @@ private partial def insertModule (forest : Array ModNode) (segs : List String)
         else ModNode.node seg full #[] (insertModule #[] rest full decls)
       forest.push child
 
-/-- Total declarations in a module subtree (own + descendants). -/
-private partial def subtreeCount : ModNode → Nat
-  | .node _ _ ds cs => ds.size + cs.foldl (fun acc c => acc + subtreeCount c) 0
-
 private partial def renderModNode (n : ModNode) : Html :=
   let sortedChildren := n.children.qsort (fun a b => a.segment < b.segment)
   let childHtml := sortedChildren.map renderModNode
@@ -554,7 +497,6 @@ private partial def renderModNode (n : ModNode) : Html :=
     <details class="bp_mod_node" open="open">
       <summary class="bp_mod_summary">
         <span class="bp_mod_name">{{.text true n.segment}}</span>
-        <span class="bp_mod_count">{{.text true (toString (subtreeCount n))}}</span>
       </summary>
       {{if n.decls.isEmpty then .empty
         else {{ <ul class="bp_decl_list bp_mod_decls">{{declRows}}</ul> }}}}
@@ -563,10 +505,15 @@ private partial def renderModNode (n : ModNode) : Html :=
     </details>
   }}
 
-private def modulesBody (entries : Array Entry) : Html :=
+private def modulesBody (pfx : String) (entries : Array Entry) : Html :=
   let forest := (modulesSorted entries).foldl (init := (#[] : Array ModNode)) fun f m =>
     let decls := entries.filter (·.moduleName == m)
-    insertModule f (m.splitOn ".") "" decls
+    -- Drop a redundant single root segment equal to the project prefix so the tree
+    -- doesn't nest every module under a pointless single "A362583" root.
+    let segs := match m.splitOn "." with
+      | root :: rest => if !pfx.isEmpty && root == pfx && !rest.isEmpty then rest else root :: rest
+      | [] => []
+    insertModule f segs "" decls
   let roots := (forest.qsort (fun a b => a.segment < b.segment)).map renderModNode
   {{
     <div class="bp_decl_catalog bp_pm_page">
@@ -613,19 +560,20 @@ def emitBlueprintDeclIndexPages : ExtraStep :=
                skipping the defs/theorems/decl-index/modules pages."
         | .ok registry =>
           let entries := registry.decls
+          let pfx := registry.namePrefix
           let defs := entries.filter (·.kind == "Definition")
           let thms := entries.filter (·.kind != "Definition")
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             Informal.NodeRoute.defsPath "Definitions"
-            (catalogBody "Definitions"
+            (catalogBody pfx "Definitions"
               "definitions, grouped by module (source order). Wired declarations link to their node page." defs)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             Informal.NodeRoute.theoremsPath "Theorems"
-            (catalogBody "Theorems"
+            (catalogBody pfx "Theorems"
               "theorems and lemmas, grouped by module (source order). Wired declarations link to their node page." thms)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             Informal.NodeRoute.declIndexPath "Index" (indexBody entries)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            Informal.NodeRoute.modulesPath "Modules" (modulesBody entries)
+            Informal.NodeRoute.modulesPath "Modules" (modulesBody pfx entries)
 
 end Informal.DeclIndex

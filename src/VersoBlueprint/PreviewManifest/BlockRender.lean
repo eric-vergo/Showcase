@@ -96,7 +96,8 @@ private def renderCodePanel
     (cfg : RenderConfig)
     (title : EntryHeading)
     (entry : Entry)
-    (codeBodies : Array Html) :
+    (codeBodies : Array Html)
+    (namePrefix : String := "") :
     Html :=
   if codeBodies.isEmpty then
     .empty
@@ -104,6 +105,7 @@ private def renderCodePanel
     let summaryTitle := Informal.CodeSummary.panelSummaryTitle
       entry.label
       { source := entry.codeData }
+      namePrefix
     let codeHtml := .seq codeBodies
     let body := Html.tag "div" (Informal.htmlClassAttrs cfg.codeBodyClass) codeHtml
     Informal.mkCodePanel
@@ -124,7 +126,7 @@ def renderWithRenderedContent
       if opts.compact then
         .empty
       else
-        renderCodePanel cfg title entry content.codeBodies
+        renderCodePanel cfg title entry content.codeBodies opts.declNamePrefix
     Informal.renderInformalBlockModel {
       data := blockData
       context := Informal.InformalBlockRenderContext.forBlock blockData
@@ -254,7 +256,7 @@ def renderCardParts
   -- label.
   let title := entry.heading opts.displayLabelOverride?
   let stmtParts := renderShellParts cfg entry content opts.displayLabelOverride?
-  let formalStmt := renderCodePanel cfg title entry content.codeBodies
+  let formalStmt := renderCodePanel cfg title entry content.codeBodies opts.declNamePrefix
   let isTheoremLike := (entry.kind.getD .theorem).isTheoremLike
   -- The informal proof cell carries the proof prose only — the old "USES n" chip
   -- is gone (the metadata rail's Uses section owns dependency information).

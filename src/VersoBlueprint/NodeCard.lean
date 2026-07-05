@@ -182,6 +182,15 @@ def shortDeclName (pfx name : String) : String :=
     else name
 
 /--
+Short display name for a *module* path: the same prefix-stripping as
+`shortDeclName`, applied to a dotted module name (e.g. `A362583.BoundedHolo` →
+`BoundedHolo`). Kept as a distinct helper for the catalog module headers /
+search "chapter" field, but delegates to `shortDeclName` so the stripping rule
+stays single-sourced. Identity on an empty prefix or a non-matching name.
+-/
+def shortModuleName (pfx name : String) : String := shortDeclName pfx name
+
+/--
 Build the slim identity-only metadata JSON embedded inline per card for the
 metadata rail's offline first paint (`Parts.declMetaJson?`).
 

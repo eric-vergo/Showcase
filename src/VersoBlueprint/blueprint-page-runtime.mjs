@@ -10,6 +10,7 @@ import { startBannerNav } from "./Commands/banner-nav.mjs";
 import { startMetadataRail } from "./Commands/metadata-rail.mjs";
 import { startTopNav } from "./Commands/top-nav.mjs";
 import { startPageOutline } from "./Commands/page-outline.mjs";
+import { startConstTokens } from "./Commands/const-token.mjs";
 
 export function startBlueprintPageRuntime(options = {}) {
   const preview = createPreview(options);
@@ -24,6 +25,7 @@ export function startBlueprintPageRuntime(options = {}) {
   startTopNav();
   startMetadataRail();
   startPageOutline();
+  startConstTokens();
   return preview;
 }
 

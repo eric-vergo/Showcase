@@ -145,6 +145,28 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
   let note : Output.Html :=
     if cmp.note.isEmpty then .empty
     else trustSection "Note" {{ <p>{{.text true cmp.note}}</p> }}
+  -- Optional external link to the CI run that produced the verdict. A plain
+  -- link (not a shipped asset), so it is fine under the offline constraint;
+  -- omitted when the status artifact carries no `run_url`.
+  let ciLink : Output.Html :=
+    if cmp.runUrl.isEmpty then .empty
+    else {{ <p><a class="bp_trust_ci_link" href={{cmp.runUrl}}
+              target="_blank" rel="noopener">"View CI run →"</a></p> }}
+  -- The comparator's configuration + the challenge Lean statement, embedded
+  -- verbatim (read at build time) so a skeptic can inspect exactly what was
+  -- checked. Both degrade to nothing when their option/file is absent.
+  let configSection : Output.Html :=
+    if cmp.configJson.isEmpty then .empty
+    else trustSection "Comparator configuration"
+      {{ <details class="bp_trust_disclosure">
+           <summary>"Show comparator configuration"</summary>
+           <pre class="bp_trust_code bp_trust_code_json">{{.text true cmp.configJson}}</pre>
+         </details> }}
+  let challengeSection : Output.Html :=
+    if cmp.challengeSource.isEmpty then .empty
+    else trustSection "Challenge statement (Lean)"
+      {{ <p>"The exact Lean statement the comparator checks the formalization against:"</p>
+         <pre class="bp_trust_code bp_trust_code_lean">{{.text true cmp.challengeSource}}</pre> }}
   let repro : Output.Html :=
     {{ <ul>
         <li>"Re-run the statement comparator against the project's "<code>"comparator.json"</code>"
@@ -152,8 +174,8 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
       </ul> }}
   trustPageShell "Statement comparator"
     "An independent tool checks that the formal statements proved here really do encode the intended mathematical claims — guarding against a correct proof of the wrong statement."
-    (.seq #[trustSection "Evidence" verdict, theorems, note,
-      trustSection "How to reproduce" repro])
+    (.seq #[trustSection "Evidence" (.seq #[verdict, ciLink]), theorems, note,
+      configSection, challengeSection, trustSection "How to reproduce" repro])
 
 /--
 `ExtraStep` that emits one trust-evidence page per configured badge under

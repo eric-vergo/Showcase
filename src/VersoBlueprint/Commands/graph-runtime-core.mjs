@@ -143,26 +143,18 @@
       layoutGraphCanvasFill(graphRoot, graphState);
       return;
     }
-    const rect = graphRoot.getBoundingClientRect();
-    const viewportHeight = readViewportHeight();
-    const bottomGap = 20;
-    const viewportMaxHeight = Math.max(280, Math.floor(viewportHeight * 0.84));
-    const flowBottom = readGraphCanvasFlowBottom(graphRoot, layoutMode);
-    const trailingHeight = Math.max(0, flowBottom - rect.bottom);
-    const rawAvailableHeight = Math.floor(viewportHeight - rect.top - bottomGap - trailingHeight);
-    const availableHeight =
-      layoutMode === "block" && rawAvailableHeight < 280
-        ? viewportMaxHeight
-        : Math.max(1, rawAvailableHeight);
-    const autoHeight = Math.min(viewportMaxHeight, availableHeight);
-    const minHeight = Math.min(autoHeight, 280);
+    // Page-mode graphs get a fixed, deliberate default height (~40rem) rather than
+    // one derived from the viewport. The user can still drag-resize the canvas
+    // (CSS `resize: vertical`); a dragged height sticks across re-renders (width
+    // reflows, etc.) via the `canvasUserResized` override below.
+    const autoHeight = 640;
+    const minHeight = 280;
     const currentHeight = parsePixelSize(graphRoot.style.height);
     const state = graphState && typeof graphState === "object" ? graphState : null;
 
     graphRoot.style.minHeight = minHeight + "px";
-    // Keep the initial auto-fit height flow-aware, but leave headroom for explicit
-    // user resizing instead of clamping the canvas back to the auto height.
-    graphRoot.style.maxHeight = viewportMaxHeight + "px";
+    // No upper clamp: `resize: vertical` can grow the canvas freely.
+    graphRoot.style.maxHeight = "none";
     if (
       state &&
       Number.isFinite(currentHeight) &&
@@ -172,7 +164,7 @@
       state.canvasUserResized = true;
     }
     if (state && state.canvasUserResized && Number.isFinite(currentHeight)) {
-      const clampedHeight = Math.max(minHeight, Math.min(currentHeight, viewportMaxHeight));
+      const clampedHeight = Math.max(minHeight, currentHeight);
       if (Math.abs(clampedHeight - currentHeight) > 1) {
         graphRoot.style.height = clampedHeight + "px";
       }

@@ -58,8 +58,9 @@
  * Dependency Graph -- and its light-mode appearance -- is unaffected.
  */
 .bp_graph_canvas[data-bp-graph-static="true"] {
-  min-height: 360px;
-  resize: none;
+  /* Fixed default height (drag the corner to resize — `resize: vertical`). */
+  height: 400px;
+  resize: vertical;
   overflow: auto;
 }
 
@@ -67,11 +68,11 @@
   display: block;
   /* Scale the localized graph up to a readable size (small/chain-shaped
    * neighborhoods otherwise render as a tiny sliver): grow to at least
-   * min-height, cap by max-height/width, preserving aspect via the viewBox. */
+   * min-height and to the container width, preserving aspect via the viewBox;
+   * taller graphs scroll inside the fixed-height, resizable canvas. */
   width: auto;
   height: auto;
   min-height: 320px;
-  max-height: 70vh;
   max-width: 100%;
   margin: 0 auto;
 }

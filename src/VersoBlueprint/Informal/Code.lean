@@ -108,11 +108,13 @@ block_extension Block.informalCode (data : InlineCodeData) where
           let b := b.withResolvedNumberingInContext s ctxt
           codePanelHeader b (b.displayNumber s)
         | none => fallbackCodePanelHeader
+      let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? s).getD ""
       let summaryTitle :=
         panelSummaryTitle label
           {
             source := some (.inline { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs })
           }
+          namePrefix
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
       let panelBody := .seq (← blocks.mapM goB)
       pure <| mkCodePanel panelHeader summaryTitle panelBody panelAttrs

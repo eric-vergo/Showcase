@@ -49,12 +49,32 @@ register_option verso.blueprint.trust.comparatorStatus : String := {
   descr := "Path (relative to the build CWD) to a comparator-status JSON artifact; feeds the dashboard trust strip's comparator badge. Empty disables."
 }
 
-/-- Comparator verdict extracted from the comparator-status artifact. -/
+register_option verso.blueprint.trust.comparatorConfig : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to the comparator's configuration JSON; its contents are embedded verbatim (pretty-printed) on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
+}
+
+register_option verso.blueprint.trust.challengeFile : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to the comparator's Challenge Lean file; its contents are embedded verbatim on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
+}
+
+/-- Comparator verdict extracted from the comparator-status artifact.
+
+`runUrl`/`configJson`/`challengeSource` are empty-string sentinels (matching the
+other fields; empty ⇒ absent): the optional CI-run URL (from the status
+artifact's `run_url` field, absent today ⇒ empty) and the verbatim contents of
+the comparator config JSON / Challenge Lean file (embedded on the evidence page,
+read from the `verso.blueprint.trust.comparatorConfig` / `.challengeFile`
+options at elaboration; probe-and-degrade to empty). -/
 structure TrustComparator where
   status : String := ""
   verifiedAt : String := ""
   theoremNames : List String := []
   note : String := ""
+  runUrl : String := ""
+  configJson : String := ""
+  challengeSource : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- Trust-strip payload: only fields present in the configured artifacts are set. -/
@@ -75,13 +95,16 @@ def TrustData.ofFormalizationJson (doc : Json) : TrustData :=
     reviewStatus := (review.getObjValAs? String "status").toOption.getD ""
   }
 
-/-- Extract the comparator verdict from a comparator-status artifact (`verified_at` may be `null`). -/
+/-- Extract the comparator verdict from a comparator-status artifact (`verified_at` may be `null`).
+`run_url` is optional (absent in older artifacts ⇒ empty). The embedded config /
+Challenge sources are filled in later from their own options (`elabTrustData?`). -/
 def TrustComparator.ofJson (j : Json) : TrustComparator :=
   {
     status := (j.getObjValAs? String "status").toOption.getD ""
     verifiedAt := (j.getObjValAs? String "verified_at").toOption.getD ""
     theoremNames := (j.getObjValAs? (List String) "theorem_names").toOption.getD []
     note := (j.getObjValAs? String "note").toOption.getD ""
+    runUrl := (j.getObjValAs? String "run_url").toOption.getD ""
   }
 
 /-- The axioms every kernel-checked Mathlib development is expected to use. -/
@@ -251,6 +274,30 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     match Json.parse (← IO.FS.readFile cmpPath) with
     | .error err => throwError "could not parse {cmpPath}: {err}"
     | .ok j => trust := { trust with comparator := Option.some (TrustComparator.ofJson j) }
+  -- Embed the comparator's config JSON + Challenge Lean source verbatim on the
+  -- evidence page. Unlike the two required options above, these degrade silently
+  -- when their file is empty/missing (probe-and-degrade) and only attach when a
+  -- comparator verdict exists.
+  if let some cmp := trust.comparator then
+    let cfgPath : String :=
+      opts.get verso.blueprint.trust.comparatorConfig.name
+        verso.blueprint.trust.comparatorConfig.defValue
+    let chalPath : String :=
+      opts.get verso.blueprint.trust.challengeFile.name
+        verso.blueprint.trust.challengeFile.defValue
+    let mut cmp := cmp
+    if !cfgPath.isEmpty then
+      if (← System.FilePath.pathExists cfgPath) then
+        let raw ← IO.FS.readFile cfgPath
+        -- Pretty-print when it parses as JSON; fall back to the raw file text.
+        let pretty := match Json.parse raw with
+          | .ok j => j.pretty
+          | .error _ => raw
+        cmp := { cmp with configJson := pretty }
+    if !chalPath.isEmpty then
+      if (← System.FilePath.pathExists chalPath) then
+        cmp := { cmp with challengeSource := (← IO.FS.readFile chalPath) }
+    trust := { trust with comparator := Option.some cmp }
   return Option.some trust
 
 end Informal.Commands

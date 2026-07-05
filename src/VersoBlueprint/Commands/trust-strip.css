@@ -83,3 +83,48 @@ a.bp_summary_badge:focus-visible {
 .bp_trust_list li {
   margin: var(--bp-space-1) 0;
 }
+
+/* External CI-run link on the comparator evidence page. */
+.bp_trust_ci_link {
+  color: var(--bp-color-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_trust_ci_link:hover,
+.bp_trust_ci_link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+/* Embedded config JSON / Challenge Lean source. Token-driven, so it reads as an
+   intentional code block in both light and dark; wide lines scroll inside it. */
+.bp_trust_disclosure {
+  margin: var(--bp-space-2) 0 0;
+}
+
+.bp_trust_disclosure > summary {
+  cursor: pointer;
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-link);
+}
+
+.bp_trust_disclosure > summary:hover {
+  text-decoration: underline;
+}
+
+.bp_trust_code {
+  margin: var(--bp-space-2) 0 0;
+  padding: var(--bp-space-3);
+  background: var(--bp-color-surface-subtle);
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-md);
+  overflow-x: auto;
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: var(--bp-fs-small, 0.8rem);
+  line-height: 1.5;
+  color: var(--bp-color-text);
+  white-space: pre;
+  tab-size: 2;
+}

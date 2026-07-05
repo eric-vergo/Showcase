@@ -77,6 +77,8 @@ def summaryCss := include_str "../summary.css"
 
 -- Dashboard styling (hero/progress bars + chart layout) rides along with command
 -- module rebuilds; it themes via the same `--bp-color-*` tokens as the summary.
+-- (The hero summary cards + worklist/audit/mathlib CTA links were dropped from the
+-- landing dashboard, so their now-orphaned CSS was removed from dashboard.css.)
 def dashboardCss := include_str "../dashboard.css"
 
 def summaryAssetBundle : BlueprintAssetBundle :=
