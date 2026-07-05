@@ -291,6 +291,23 @@ private def binderInfoTag : BinderInfo → String
   | .strictImplicit => "strictImplicit"
   | .instImplicit => "instImplicit"
 
+/-- Strip Lean's inaccessible-name dagger (`✝`, optionally trailed by superscript
+hygiene digits like `✝¹`) from pretty-printed text. A declaration's type prints
+references to a *private* constant with this marker (e.g. `A362583.t✝`); it must
+never reach `signatureText`, since `✝` is not valid Lean syntax and therefore both
+breaks the purely-syntactic signature highlight (`highlightProofSourceHtml?`, which
+re-parses the text) — leaving `signatureHtml?` empty — and reads as visual noise in
+the plain-text fallback. Removing it yields the plain qualified name; superscripts
+elsewhere (not directly after a dagger) are preserved. -/
+private def stripInaccessibleDagger (s : String) : String :=
+  let isSuper : Char → Bool := fun c => "⁰¹²³⁴⁵⁶⁷⁸⁹".toList.contains c
+  (s.foldl (fun (st : String × Bool) c =>
+      let (acc, dropping) := st
+      if c == '✝' then (acc, true)
+      else if dropping && isSuper c then (acc, true)
+      else (acc.push c, false))
+    ("", false)).1
+
 private def provedStatusTag : Data.ProvedStatus → String
   | .proved => "proved"
   | .missing => "missing"
@@ -302,7 +319,7 @@ private def declParams (type : Expr) : MetaM (Array Param) :=
   forallTelescope type fun xs _body =>
     xs.mapM fun x => do
       let ld ← x.fvarId!.getDecl
-      let tyStr := (← ppExpr ld.type).pretty
+      let tyStr := stripInaccessibleDagger (← ppExpr ld.type).pretty
       pure {
         name := ld.userName.toString
         type := tyStr
@@ -362,7 +379,7 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
   -- dependency edges are computed against the canonical (mangled) names, so this must
   -- be applied uniformly to `name`, deps, and `usedBy` to keep cross-references valid.
   let display := fun (n : Name) => ((privateToUserName? n).getD n).toString
-  let signatureText := (← ppExpr cinfo.type).pretty
+  let signatureText := stripInaccessibleDagger (← ppExpr cinfo.type).pretty
   -- Highlighted signature (syntactic + semantic when info is available); degrade to
   -- `none` on any failure so registry construction never fails on an odd signature.
   -- `private` declarations skip `Signature.forName` (it embeds the leading declaration
