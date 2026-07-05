@@ -144,8 +144,6 @@ def css : String := r##"
 .bp-rail-title {
   font-size: var(--bp-fs-caption, 0.78rem);
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   color: var(--bp-color-text-strong);
 }
 
@@ -188,8 +186,6 @@ def css : String := r##"
   border-radius: var(--bp-radius-pill);
   font-size: var(--bp-fs-badge, 0.72rem);
   font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -247,8 +243,6 @@ def css : String := r##"
   margin: 0 0 var(--bp-space-2);
   font-size: var(--bp-fs-badge, 0.72rem);
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--bp-color-text-subtle);
 }
 
@@ -335,18 +329,20 @@ def css : String := r##"
   gap: var(--bp-space-1);
 }
 
+/* Each dependency name is itself a link to its canonical page (node page when
+   wired, decl page otherwise); the plain-span fallback shares this look. A quiet
+   inline link: brand color, no underline at rest, a subtle background tint on
+   hover. */
 .bp-rail-dep {
   flex: 1 1 auto;
   min-width: 0;
-  text-align: left;
   padding: 0.2rem 0.4rem;
   border: 1px solid transparent;
   border-radius: var(--bp-radius-sm);
-  background: transparent;
   color: var(--bp-color-link);
   font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
   font-size: var(--bp-fs-small, 0.8rem);
-  cursor: pointer;
+  text-decoration: none;
   overflow-wrap: anywhere;
   transition: background-color var(--bp-duration-fast) var(--bp-ease),
     color var(--bp-duration-fast) var(--bp-ease);
@@ -372,19 +368,6 @@ def css : String := r##"
   font-size: var(--bp-fs-badge, 0.72rem);
   color: var(--bp-color-text-faint);
   text-transform: lowercase;
-}
-
-.bp-rail-dep-link {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  color: var(--bp-color-text-subtle);
-  text-decoration: none;
-  padding: 0 0.15rem;
-}
-
-.bp-rail-dep-link:hover {
-  color: var(--bp-color-accent);
 }
 
 .bp-rail-more {
@@ -474,8 +457,6 @@ def css : String := r##"
 .bp-rail-footer-label {
   font-size: var(--bp-fs-badge, 0.72rem);
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--bp-color-text-subtle);
 }
 

@@ -525,30 +525,29 @@ function metaRow(key, value, title) {
 
 function depItem(name, axis) {
   const wired = isWired(name);
-  // Short display name; the fully-qualified name stays on the hover title.
-  const btn = el("button", {
-    class: "bp-rail-dep",
-    attrs: { type: "button", "data-wired": wired ? "true" : "false", title: name },
-    text: shortNameFor(name)
-  });
-  btn.addEventListener("click", function () {
-    select({ declName: name, source: "rail" });
-  });
-  const children = [btn];
-  if (axis) {
-    children.unshift(el("span", { class: "bp-rail-dep-axis", text: axis }));
-  }
-  // Trailing open-link: node page for wired decls, decl page for unwired ones.
+  // The dependency name is itself the link to its canonical page: the node page
+  // when wired, the decl page otherwise (the same target the old trailing arrow
+  // used). The short display name is the link text; the fully-qualified name stays
+  // on the hover title. When no href resolves (should not happen — every dep
+  // reference currently resolves — but defensively), fall back to a plain,
+  // non-navigating span so the row still reads.
   const reg = registryByName ? registryByName.get(name) : null;
   const href = wired ? nodeHrefFor(name) : (reg && reg.declHref) || null;
-  if (href) {
-    const what = wired ? "node page" : "declaration page";
-    const link = el("a", {
-      class: "bp-rail-dep-link",
-      attrs: { href: href, title: "Open " + what, "aria-label": "Open " + what + " for " + name },
-      text: "↗"
-    });
-    children.push(link);
+  const label = shortNameFor(name);
+  const dep = href
+    ? el("a", {
+        class: "bp-rail-dep",
+        attrs: { href: href, "data-wired": wired ? "true" : "false", title: name },
+        text: label
+      })
+    : el("span", {
+        class: "bp-rail-dep",
+        attrs: { "data-wired": wired ? "true" : "false", title: name },
+        text: label
+      });
+  const children = [dep];
+  if (axis) {
+    children.unshift(el("span", { class: "bp-rail-dep-axis", text: axis }));
   }
   return el("div", { class: "bp-rail-dep-item" }, children);
 }
