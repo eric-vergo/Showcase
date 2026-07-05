@@ -115,3 +115,133 @@ a.bp_summary_badge:focus-visible {
   white-space: pre;
   tab-size: 2;
 }
+
+/* When highlighting succeeded, the block wraps its token spans in
+   `<code class="hl lean">`; the token colors come from the shared `--verso-code-*`
+   variables (both themes). Reset any generic inline-code chrome so it reads as one
+   plain code block. */
+.bp_trust_code > code.hl.lean {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: inherit;
+}
+
+/* Outbound source/playground links near the Challenge source and config. */
+.bp_trust_links {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+}
+
+.bp_trust_out_link {
+  color: var(--bp-color-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_trust_out_link:hover,
+.bp_trust_out_link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+/* Gloss of the standard axioms. */
+.bp_trust_gloss {
+  margin: var(--bp-space-2) 0 0;
+}
+
+.bp_trust_gloss dt {
+  margin-top: var(--bp-space-2);
+  font-weight: 600;
+}
+
+.bp_trust_gloss dt code {
+  color: var(--bp-color-text-strong);
+}
+
+.bp_trust_gloss dd {
+  margin: 0 0 0 var(--bp-space-3);
+  color: var(--bp-color-text);
+}
+
+/* Per-theorem kernel axiom evidence cards. */
+.bp_trust_axiom_card {
+  margin: var(--bp-space-3) 0 0;
+  padding: var(--bp-space-3);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-subtle);
+}
+
+.bp_trust_axiom_head {
+  font-size: 1rem;
+  margin-bottom: var(--bp-space-2);
+}
+
+.bp_trust_axiom_label {
+  margin: var(--bp-space-3) 0 var(--bp-space-1);
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_badge_row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2);
+  margin: var(--bp-space-2) 0 0;
+}
+
+/* Declaration name + source link (both on evidence cards and in listings). */
+.bp_trust_decl_link {
+  text-decoration: none;
+  color: var(--bp-color-link);
+}
+
+.bp_trust_decl_link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+.bp_trust_source_link {
+  color: var(--bp-color-text-faint);
+  font-size: var(--bp-fs-caption);
+  text-decoration: none;
+}
+
+.bp_trust_source_link:hover,
+.bp_trust_source_link:focus-visible {
+  color: var(--bp-color-link);
+  text-decoration: underline;
+}
+
+/* Trust-page-local status badge (independent of summary.css, which does not ship on
+   the standalone evidence pages). Token-driven → both themes. */
+.bp_trust_badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1em 0.55em;
+  border-radius: var(--bp-radius-sm, 4px);
+  border: 1px solid var(--bp-color-border);
+  font-size: var(--bp-fs-badge);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--bp-color-text);
+  background: var(--bp-color-surface);
+}
+
+.bp_trust_badge_ok {
+  color: var(--bp-color-accent-success);
+  border-color: var(--bp-color-accent-success);
+}
+
+.bp_trust_badge_warn {
+  color: var(--bp-color-accent-warning);
+  border-color: var(--bp-color-accent-warning);
+}
+
+.bp_trust_badge_err {
+  color: var(--bp-color-accent-danger);
+  border-color: var(--bp-color-accent-danger);
+}

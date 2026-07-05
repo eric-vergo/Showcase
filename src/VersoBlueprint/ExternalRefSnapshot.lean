@@ -356,6 +356,65 @@ def highlightProofSourceHtml? (proofSrc : String) : Lean.CoreM (Option String) :
     catch _ =>
       return none
 
+open SubVerso.Highlighting in
+/--
+Syntactically highlight a whole Lean *module* source string (the module analogue
+of `highlightProofSourceHtml?`), returning a self-contained highlighted-code HTML
+fragment (token spans themed by the shared `--verso-code-*` CSS in both light and
+dark; wrap in `<code class="hl lean">`).
+
+Because a module begins with a header (`module`/`prelude`/`import` lines) that the
+`term`/command parser categories do not accept, we first `parseHeader`, then loop
+`parseCommand` to collect the header plus every top-level command, and highlight
+each with SubVerso's `highlightIncludingUnparsed` fed **empty** info trees and an
+**empty** message log — purely *syntactic* classification (keywords, literals,
+comments, punctuation), no elaboration. Any region a command fails to parse is
+filled verbatim from the source file map, so an unparsable construct degrades to
+plain source text within an otherwise-highlighted module rather than failing.
+
+Degrades to `none` (the caller falls back to escaping the raw source) on any
+exception, on empty input, or if the command loop fails to terminate within a
+generous iteration bound (an anti-hang guard for pathological inputs).
+-/
+def highlightModuleSourceHtml? (moduleSrc : String) : Lean.CoreM (Option String) := do
+  if moduleSrc.trimAscii.isEmpty then return none
+  let env ← getEnv
+  let fileMap := Lean.FileMap.ofString moduleSrc
+  try
+    let ictx := Lean.Parser.mkInputContext moduleSrc "<challenge>"
+    let (headerStx, pstate0, msgs0) ← Lean.Parser.parseHeader ictx
+    let pmctx : Lean.Parser.ParserModuleContext :=
+      { env, options := {}, currNamespace := .anonymous, openDecls := [] }
+    -- Collect the header (only when it carries a real token — a trivia-only header has
+    -- no position) plus every top-level command.
+    let mut stxs : Array Lean.Syntax := if headerStx.raw.getPos?.isSome then #[headerStx] else #[]
+    let mut pstate := pstate0
+    let mut msgs := msgs0
+    let mut guard : Nat := 0
+    repeat
+      guard := guard + 1
+      if guard > 20000 then return none
+      let (cmd, pstate', msgs') := Lean.Parser.parseCommand ictx pmctx pstate msgs
+      stxs := stxs.push cmd
+      pstate := pstate'
+      msgs := msgs'
+      if Lean.Parser.isTerminalCommand cmd then break
+    -- Highlight the whole module in a SINGLE pass over one null node wrapping every
+    -- command. We deliberately let `startPos?` default to the node's own position
+    -- rather than forcing 0: forcing 0 makes the highlighter both *fill* `[0, firstToken]`
+    -- and render that same span again as the first token's leading trivia, duplicating a
+    -- leading block comment. Inter-command comments/whitespace are still filled because
+    -- they lie between child token spans.
+    let allStx := Lean.mkNullNode stxs
+    let act : Lean.Elab.TermElabM Highlighted :=
+      highlightIncludingUnparsed allStx #[] PersistentArray.empty
+    let hl ←
+      withTheReader Lean.Core.Context (fun ctx => { ctx with fileMap }) <|
+        act.run'.run'
+    return some (renderHighlightedSelfContainedHtml hl)
+  catch _ =>
+    return none
+
 /--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.

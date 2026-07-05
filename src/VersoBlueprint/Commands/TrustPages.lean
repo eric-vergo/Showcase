@@ -60,58 +60,198 @@ private def codeItemList (items : List String) : Output.Html :=
   let lis : Array Output.Html := (items.map fun s => {{ <li><code>{{.text true s}}</code></li> }}).toArray
   {{ <ul class="bp_trust_list">{{lis}}</ul> }}
 
+/-! ## Cross-links from the declaration registry
+
+The evidence pages cross-link each named theorem to its blueprint node/decl page and
+its GitHub source. Those hrefs live in the declaration registry (emitted when
+`verso.blueprint.graph.includeAllDecls` is on); we read them from the traversal store
+at generation time and degrade to name-only text when the registry is absent. -/
+
+/-- The internal page href and GitHub source href for one declaration, from the
+registry. Both optional (degrade to plain text / no link). -/
+structure DeclLinks where
+  pageHref : Option String := none
+  sourceHref : Option String := none
+
+/-- Build a declaration-name → `DeclLinks` lookup from the registry JSON (read from the
+traversal store). Returns the empty lookup when the registry was not emitted or fails to
+parse. -/
+private def registryLinks (rawRegistry? : Option String) : String → DeclLinks :=
+  match rawRegistry? with
+  | some raw =>
+    match Json.parse raw with
+    | .ok j =>
+      let decls := (j.getObjValAs? (Array Json) "decls").toOption.getD #[]
+      let pairs : List (String × DeclLinks) := decls.toList.filterMap fun e =>
+        (e.getObjValAs? String "name").toOption.map fun name =>
+          let page := (e.getObjValAs? String "nodeHref").toOption.orElse fun _ =>
+            (e.getObjValAs? String "declHref").toOption
+          let src := (e.getObjValAs? String "sourceHref").toOption
+          (name, ({ pageHref := page, sourceHref := src } : DeclLinks))
+      fun n => (pairs.lookup n).getD {}
+    | .error _ => fun _ => {}
+  | _ => fun _ => {}
+
+/-- Render a declaration name as a link to its blueprint page when known, else plain
+`<code>`; optionally followed by a quiet GitHub source link. -/
+private def declNameWithLinks (name : String) (links : DeclLinks) : Output.Html :=
+  let nameHtml : Output.Html :=
+    match links.pageHref with
+    | some href => {{ <a class="bp_trust_decl_link" href={{href}}><code>{{.text true name}}</code></a> }}
+    | _ => {{ <code>{{.text true name}}</code> }}
+  let src : Output.Html :=
+    match links.sourceHref with
+    | some href => {{ " " <a class="bp_trust_source_link" href={{href}} target="_blank" rel="noopener">"source ↗"</a> }}
+    | _ => .empty
+  {{ <span class="bp_trust_decl">{{nameHtml}}{{src}}</span> }}
+
+/-- Whether two axiom name lists denote the same set (order/duplication-insensitive). -/
+private def axiomSetsAgree (kernel declared : List String) : Bool :=
+  kernel.all declared.contains && declared.all kernel.contains
+
 /-! ## Per-badge page bodies -/
 
-private def sorriesBody (n : Nat) : Output.Html :=
+/-- A small status badge, styled locally by `trust-strip.css` (so it renders correctly
+on the standalone evidence pages without depending on the dashboard's summary.css).
+`variant` is one of `"ok"`/`"warn"`/`"err"`. -/
+private def trustBadge (variant text : String) : Output.Html :=
+  {{ <span class={{s!"bp_trust_badge bp_trust_badge_{variant}"}}>{{.text true text}}</span> }}
+
+/-- A ✓/⚠ verdict badge. -/
+private def verdictBadge (ok : Bool) (text : String) : Output.Html :=
+  trustBadge (if ok then "ok" else "warn") text
+
+private def sorriesBody (trust : TrustData) (links : String → DeclLinks) : Output.Html :=
+  let n := trust.sorryCount.getD 0
+  let kernelCount := trust.sorryDecls.length
+  -- Kernel-derived verdict when the scan ran, cross-checked against the YAML count.
   let evidence : Output.Html :=
-    if n == 0 then
-      {{ <p>"This formalization is "<strong>"sorry-free"</strong>": no declaration in the
-          project admits a goal with "<code>"sorry"</code>". Every stated result is backed by a
-          complete, kernel-checked proof."</p> }}
+    if trust.sorryScanRan then
+      let agree := kernelCount == n
+      let head : Output.Html :=
+        if kernelCount == 0 then
+          {{ <p>"A build-time scan of every declaration in the project namespace found "
+              <strong>"no use of "<code>"sorryAx"</code></strong>" — the kernel primitive every "
+              <code>"sorry"</code>" elaborates to. This "<strong>"sorry-free"</strong>" verdict is
+              computed directly from the elaborated declarations, not read from a file."</p> }}
+        else
+          {{ <p>"A build-time scan found "<strong>{{.text true s!"{kernelCount}"}}</strong>"
+              declaration(s) in the project namespace whose type or value uses "<code>"sorryAx"</code>"."</p> }}
+      let crosscheck : Output.Html :=
+        {{ <p>{{verdictBadge agree
+                (if agree then s!"kernel-derived count {kernelCount} matches formalization.yaml"
+                 else s!"kernel-derived count {kernelCount} differs from declared {n}")}}</p> }}
+      let listing : Output.Html :=
+        if trust.sorryDecls.isEmpty then .empty
+        else
+          let rows : Array Output.Html := (trust.sorryDecls.map fun d =>
+            {{ <li>{{declNameWithLinks d (links d)}}</li> }}).toArray
+          {{ <ul class="bp_trust_list">{{rows}}</ul> }}
+      .seq #[head, crosscheck, listing]
     else
-      {{ <p>"The formalization currently reports "<strong>{{.text true s!"{n}"}}</strong>" "
-          {{.text true (if n == 1 then "sorry" else "sorries")}}". A "<code>"sorry"</code>" admits
-          a goal without proving it, so those results are not yet fully established."</p> }}
+      -- No project namespace configured: present the YAML count honestly as *declared*.
+      {{ <p>"The project "<em>"declares"</em>" "<strong>{{.text true s!"{n}"}}</strong>" "
+          {{.text true (if n == 1 then "sorry" else "sorries")}}" in its "
+          <code>"formalization.yaml"</code>". This count was "<strong>"not"</strong>" independently
+          computed at site build (no project namespace was configured via "
+          <code>"verso.blueprint.declNamePrefix"</code>")."</p> }}
   let repro : Output.Html :=
     {{ <ul>
-        <li>"Search the sources for the token, for example "<code>"grep -rn 'sorry' ."</code>"
-          from the project root."</li>
-        <li>"Build the project: Lean prints a "<code>"declaration uses 'sorry'"</code>" warning
-          for every declaration that still contains one, so a clean build has none."</li>
+        <li>"The site build scans the elaborated environment for declarations whose body uses "
+          <code>"sorryAx"</code>" (the kernel primitive backing every "<code>"sorry"</code>"),
+          restricted to the project namespace."</li>
+        <li>"To check by hand: build the project — Lean prints a "<code>"declaration uses 'sorry'"</code>"
+          warning for each remaining one — or run "<code>"#print axioms <theorem>"</code>", which lists "
+          <code>"sorryAx"</code>" iff the proof transitively depends on a sorry."</li>
       </ul> }}
   trustPageShell "Sorries"
-    "A sorry is a placeholder that admits a proof goal without discharging it. A development with zero sorries has no such gaps."
+    "A sorry admits a proof goal without discharging it. A development with zero sorries has no such gaps — and this page derives that count from the kernel, not from a declared number."
     (.seq #[trustSection "Evidence" evidence, trustSection "How to reproduce" repro])
 
-private def axiomsBody (axioms : List String) : Output.Html :=
-  let nonstandard := axioms.filter (fun a => !standardAxioms.contains a)
-  let standardUsed := axioms.filter (fun a => standardAxioms.contains a)
+/-- One-sentence, mathematician-facing gloss of the three standard axioms. -/
+private def standardAxiomGloss : Output.Html :=
+  {{ <dl class="bp_trust_gloss">
+      <dt><code>"propext"</code></dt>
+      <dd>"Propositional extensionality: two propositions that imply each other are equal."</dd>
+      <dt><code>"Classical.choice"</code></dt>
+      <dd>"The axiom of choice: every nonempty type has a (noncomputable) distinguished element."</dd>
+      <dt><code>"Quot.sound"</code></dt>
+      <dd>"Soundness of quotients: elements related by a quotient's relation are identified in the quotient."</dd>
+    </dl> }}
+
+/-- One card of per-theorem kernel axiom evidence. -/
+private def axiomEvidenceCard (ev : AxiomEvidence) (links : DeclLinks) : Output.Html :=
+  let header := {{ <div class="bp_trust_axiom_head">{{declNameWithLinks ev.declaration links}}</div> }}
+  if !ev.computed then
+    {{ <div class="bp_trust_axiom_card">
+        {{header}}
+        <p>{{verdictBadge false "declared (not independently computed at site build)"}}</p>
+        {{if ev.declaredAxioms.isEmpty then .empty else
+            (.seq #[{{ <p class="bp_trust_axiom_label">"Declared axioms"</p> }},
+                    codeItemList ev.declaredAxioms])}}
+      </div> }}
+  else
+    let nonstd := Informal.Commands.nonstandardAxioms ev.kernelAxioms
+    let agree := axiomSetsAgree ev.kernelAxioms ev.declaredAxioms
+    let statusRow : Output.Html :=
+      {{ <p class="bp_trust_badge_row">
+          {{if nonstd.isEmpty then verdictBadge true "standard axioms only"
+            else trustBadge "err" s!"{nonstd.length} nonstandard axiom(s)"}}
+          {{if ev.declaredAxioms.isEmpty then .empty
+            else verdictBadge agree (if agree then "matches formalization.yaml" else "differs from formalization.yaml")}}
+        </p> }}
+    let nonstdSection : Output.Html :=
+      if nonstd.isEmpty then .empty
+      else .seq #[{{ <p class="bp_trust_axiom_label">"Nonstandard axioms"</p> }}, codeItemList nonstd]
+    let kernelSection : Output.Html :=
+      .seq #[{{ <p class="bp_trust_axiom_label">"Kernel-computed axioms"</p> }},
+        (if ev.kernelAxioms.isEmpty then {{ <p>"None — this result is axiom-free."</p> }}
+         else codeItemList ev.kernelAxioms)]
+    {{ <div class="bp_trust_axiom_card">
+        {{header}}
+        {{statusRow}}
+        {{kernelSection}}
+        {{nonstdSection}}
+      </div> }}
+
+private def axiomsBody (trust : TrustData) (links : String → DeclLinks) : Output.Html :=
+  -- Prefer the kernel-computed evidence for the headline verdict when any main result
+  -- was independently checked, so the page never claims "standard only" while a
+  -- per-theorem card below shows a nonstandard axiom; fall back to the declared set.
+  let computed := trust.axiomEvidence.filter (·.computed)
+  let kernelNonstd :=
+    (computed.flatMap (fun ev => Informal.Commands.nonstandardAxioms ev.kernelAxioms)).eraseDups
+  let nonstandard :=
+    if computed.isEmpty then Informal.Commands.nonstandardAxioms trust.axioms else kernelNonstd
+  let basis := if computed.isEmpty then "declared" else "kernel-computed"
   let verdict : Output.Html :=
     if nonstandard.isEmpty then
-      {{ <p>"Every axiom this development relies on is one of Lean/Mathlib's three "
-          <strong>"standard"</strong>" axioms (below). No custom or nonstandard axiom is used, so
-          the proofs rest only on the foundations every kernel-checked Mathlib result shares."</p> }}
+      {{ <p>"Every "{{.text true basis}}" axiom this development relies on is one of Lean/Mathlib's three "
+          <strong>"standard"</strong>" axioms. No custom or nonstandard axiom is used, so the proofs
+          rest only on the foundations every kernel-checked Mathlib result shares."</p> }}
     else
-      {{ <p>"This development uses "<strong>{{.text true s!"{nonstandard.length}"}}</strong>"
-          axiom(s) beyond the three standard ones. Nonstandard axioms are listed separately below
-          so they can be scrutinised."</p> }}
-  let standardSection : Output.Html :=
-    trustSection "Standard axioms used"
-      (if standardUsed.isEmpty then {{ <p>"None recorded."</p> }} else codeItemList standardUsed)
-  let nonstandardSection : Output.Html :=
-    if nonstandard.isEmpty then .empty
-    else trustSection "Nonstandard axioms" (codeItemList nonstandard)
+      {{ <p>"The "{{.text true basis}}" axiom sets include "
+          <strong>{{.text true s!"{nonstandard.length}"}}</strong>" axiom(s) beyond the three
+          standard ones — listed with the relevant theorem below so they can be scrutinised."</p> }}
+  -- Per-theorem kernel breakdown (Item 7): each main result's kernel-computed axiom set,
+  -- cross-checked against the declared set. Absent when no main results were configured.
+  let breakdown : Output.Html :=
+    if trust.axiomEvidence.isEmpty then .empty
+    else
+      let cards : Array Output.Html := (trust.axiomEvidence.map fun ev =>
+        axiomEvidenceCard ev (links ev.declaration)).toArray
+      trustSection "Per-theorem kernel breakdown" (.seq cards)
+  let glossSection := trustSection "What the standard axioms mean" standardAxiomGloss
   let repro : Output.Html :=
     {{ <ul>
-        <li>"In Lean, run "<code>"#print axioms <theorem>"</code>" on any of the project's main
-          theorems: the kernel prints the complete set of axioms that theorem transitively
-          depends on."</li>
+        <li>"Each theorem's axiom set above is computed at site build with "<code>"Lean.collectAxioms"</code>"
+          — the same walk "<code>"#print axioms <theorem>"</code>" performs — over the elaborated proof."</li>
         <li>"The three standard axioms are "<code>"propext"</code>", "<code>"Classical.choice"</code>",
-          and "<code>"Quot.sound"</code>"."</li>
+          and "<code>"Quot.sound"</code>"; anything else is flagged as nonstandard."</li>
       </ul> }}
   trustPageShell "Axioms"
-    "The theorems here depend only on the axioms listed below. Lean's kernel records every axiom a proof transitively uses, so this set is exhaustive."
-    (.seq #[trustSection "Evidence" verdict, standardSection, nonstandardSection,
+    "The theorems here depend only on the axioms below. Lean's kernel records every axiom a proof transitively uses, and this page recomputes that set at build time rather than trusting a declared list."
+    (.seq #[trustSection "Evidence" verdict, breakdown, glossSection,
       trustSection "How to reproduce" repro])
 
 private def reviewBody (status : String) : Output.Html :=
@@ -127,6 +267,19 @@ private def reviewBody (status : String) : Output.Html :=
   trustPageShell "Review status"
     "Whether the formalization has been read and checked by a human, over and above the kernel's mechanical check."
     (.seq #[trustSection "Evidence" evidence, trustSection "How to reproduce" repro])
+
+/-- A code block on a trust page: highlighted token markup when available (wrapped in
+`<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
+else escaped plain text. -/
+private def trustCodeBlock (extraClass htmlMarkup fallback : String) : Output.Html :=
+  if htmlMarkup.isEmpty then
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>{{.text true fallback}}</pre> }}
+  else
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}><code class="hl lean">{{.text false htmlMarkup}}</code></pre> }}
+
+/-- A quiet outbound link on a trust page. -/
+private def trustOutLink (href label : String) : Output.Html :=
+  {{ <a class="bp_trust_out_link" href={{href}} target="_blank" rel="noopener">{{.text true label}}</a> }}
 
 private def comparatorBody (cmp : TrustComparator) : Output.Html :=
   let verdict : Output.Html :=
@@ -153,20 +306,44 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
     else {{ <p><a class="bp_trust_ci_link" href={{cmp.runUrl}}
               target="_blank" rel="noopener">"View CI run →"</a></p> }}
   -- The comparator's configuration + the challenge Lean statement, embedded
-  -- verbatim (read at build time) so a skeptic can inspect exactly what was
-  -- checked. Both degrade to nothing when their option/file is absent.
+  -- verbatim (read at build time) and syntax-highlighted so a skeptic can inspect
+  -- exactly what was checked. Both degrade to nothing when their option/file is
+  -- absent, and to escaped plain text when highlighting was unavailable.
   let configSection : Output.Html :=
     if cmp.configJson.isEmpty then .empty
-    else trustSection "Comparator configuration"
-      {{ <details class="bp_trust_disclosure">
-           <summary>"Show comparator configuration"</summary>
-           <pre class="bp_trust_code bp_trust_code_json">{{.text true cmp.configJson}}</pre>
-         </details> }}
+    else
+      let cfgLink : Output.Html :=
+        if cmp.githubConfigUrl.isEmpty then .empty
+        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubConfigUrl "View config on GitHub ↗"}}</p> }}
+      trustSection "Comparator configuration"
+        (.seq #[cfgLink,
+          {{ <details class="bp_trust_disclosure">
+               <summary>"Show comparator configuration"</summary>
+               {{trustCodeBlock "bp_trust_code_json" cmp.configHtml cmp.configJson}}
+             </details> }}])
   let challengeSection : Output.Html :=
     if cmp.challengeSource.isEmpty then .empty
-    else trustSection "Challenge statement (Lean)"
-      {{ <p>"The exact Lean statement the comparator checks the formalization against:"</p>
-         <pre class="bp_trust_code bp_trust_code_lean">{{.text true cmp.challengeSource}}</pre> }}
+    else
+      -- Outbound links: GitHub blob at the pinned commit, and the Lean playground
+      -- (which opens against its *current* Mathlib, not the pinned v4.31.0 toolchain).
+      let ghLink : Option Output.Html :=
+        if cmp.githubChallengeUrl.isEmpty then Option.none
+        else Option.some (trustOutLink cmp.githubChallengeUrl "View on GitHub ↗")
+      let pgLink : Option Output.Html :=
+        if cmp.playgroundUrl.isEmpty then Option.none
+        else Option.some (trustOutLink cmp.playgroundUrl "Open in Lean playground (current Mathlib) ↗")
+      let linkItems := ([ghLink, pgLink].filterMap id)
+      let linksRow : Output.Html :=
+        match linkItems with
+        | [] => .empty
+        | first :: rest =>
+          let joined := rest.foldl (init := first) fun acc x => .seq #[acc, {{ " · " }}, x]
+          {{ <p class="bp_trust_links">{{joined}}</p> }}
+      trustSection "Challenge statement (Lean)"
+        (.seq #[
+          {{ <p>"The exact Lean statement the comparator checks the formalization against:"</p> }},
+          linksRow,
+          trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource])
   let repro : Output.Html :=
     {{ <ul>
         <li>"Re-run the statement comparator against the project's "<code>"comparator.json"</code>"
@@ -197,12 +374,15 @@ def emitBlueprintTrustPages : ExtraStep :=
         match fromJson? (α := TrustData) json with
         | .error _ => pure ()
         | .ok trust =>
-          if let some n := trust.sorryCount then
+          -- Registry-backed cross-links (theorem → node/decl page + GitHub source);
+          -- the empty lookup when the registry was not emitted (degrades to plain text).
+          let links := registryLinks (Informal.TraversalIndex.DeclRegistry.raw? state)
+          if trust.sorryCount.isSome then
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-              trustSorriesPath "Sorries" (sorriesBody n)
+              trustSorriesPath "Sorries" (sorriesBody trust links)
           if !trust.axioms.isEmpty then
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-              trustAxiomsPath "Axioms" (axiomsBody trust.axioms)
+              trustAxiomsPath "Axioms" (axiomsBody trust links)
           if !trust.reviewStatus.isEmpty then
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               trustReviewPath "Review status" (reviewBody trust.reviewStatus)

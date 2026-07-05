@@ -393,4 +393,110 @@ private def comparatorJson := r##"{
   hasSubstr strip "formalization.yaml" &&
   empty == ""
 
+/-! ### Phase 1B: kernel-derived enrichment + build-time syntax highlighting -/
+
+/-! `mainResultsDeclared` reads `status.main_results[]`. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let doc := parsed! yamlRealWorld
+  let mr := mainResultsDeclared doc
+  mr.length == 1 &&
+  (mr.head?.map (·.1)) == some "A362583.irrational_x" &&
+  (mr.head?.map (fun p => p.2.length)) == some 3
+
+/-! `nonstandardAxioms` filters out the three standard axioms. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  nonstandardAxioms ["propext", "sorryAx", "Classical.choice", "myAxiom"] == ["sorryAx", "myAxiom"] &&
+  nonstandardAxioms standardAxioms == []
+
+/-! `blobToRawGitHubUrl?` maps a GitHub blob URL to its raw URL, `none` for non-GitHub. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  blobToRawGitHubUrl? "https://github.com/o/r/blob/abc123/Path/File.lean" ==
+    some "https://raw.githubusercontent.com/o/r/abc123/Path/File.lean" &&
+  (blobToRawGitHubUrl? "https://gitlab.com/o/r").isNone
+
+/-! JSON tokenizer: keys → `const`, string values → `literal string`, numbers →
+`literal number`, `true`/`false`/`null` → `keyword`. -/
+
+private def sampleJson := r##"{
+  "status": "verified",
+  "count": 3,
+  "flag": true
+}"##
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := (highlightJsonHtml sampleJson).asString
+  hasSubstr html "class=\"const\"" &&
+  hasSubstr html "class=\"literal string\"" &&
+  hasSubstr html "class=\"literal number\"" &&
+  hasSubstr html "class=\"keyword\"" &&
+  -- the tokenizer is total: values survive verbatim
+  hasSubstr html "verified"
+
+/-! Module highlighter: a whole module (header-less here) → highlighted token spans;
+degrades to `none` only on failure, never throws. -/
+
+private def sampleModule := r##"namespace ChallengeTest
+
+def two : Nat := 2
+
+theorem two_pos : 0 < two := by decide
+
+end ChallengeTest
+"##
+
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  match ← Informal.highlightModuleSourceHtml? sampleModule with
+  | none => return false
+  | some html =>
+    return !html.isEmpty && hasSubstr html "namespace" && hasSubstr html "two" &&
+      hasSubstr html "<span"
+
+/-! Kernel evidence fixtures: a clean theorem and a deliberately-sorried one. -/
+
+-- Rooted (`_root_`) so the env names are exactly `TrustKernelFixture.*`, matching the
+-- string literals below (this file is inside a `namespace`, which would otherwise prefix them).
+theorem _root_.TrustKernelFixture.clean_thm : True := True.intro
+
+/-- warning: declaration uses `sorry` -/
+#guard_msgs in
+theorem _root_.TrustKernelFixture.broken_thm : True := by sorry
+
+/-! `axiomEvidenceFor` computes the kernel's transitive axiom set; `computed := false`
+for an unresolvable declaration. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  let clean ← axiomEvidenceFor "TrustKernelFixture.clean_thm" ["propext"]
+  let broken ← axiomEvidenceFor "TrustKernelFixture.broken_thm" []
+  let missing ← axiomEvidenceFor "TrustKernelFixture.does_not_exist" ["propext"]
+  return clean.computed && clean.kernelAxioms.isEmpty &&
+    broken.computed && broken.kernelAxioms.contains "sorryAx" &&
+    !missing.computed && missing.declaredAxioms == ["propext"]
+
+/-! `collectProjectSorries` finds only the sorried declaration in the namespace, and
+returns nothing when no namespace is configured. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  let inScope ← collectProjectSorries "TrustKernelFixture"
+  let unscoped ← collectProjectSorries ""
+  return inScope.contains "TrustKernelFixture.broken_thm" &&
+    !inScope.contains "TrustKernelFixture.clean_thm" &&
+    unscoped.isEmpty
+
 end Verso.VersoBlueprintTests.BlueprintFormalization
