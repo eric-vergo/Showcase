@@ -19,14 +19,15 @@ supporting node on the all-declarations graph links somewhere. Wired
 declarations' canonical page stays their node page — no duplicate pages.
 
 Each page reuses the node-page chrome and card family: a breadcrumb
-(Book › Modules › module › shortName), the standard two-column `NodeCard` with
-quiet placeholders on the informal side and the highlighted signature + captured
-`:= …` proof/value body on the formal side, and a localized dependency graph
-synthesized from the registry's `statementDeps`/`proofDeps`/`usedBy` edges
-(quietly absent for `private` declarations — which stay out of every graph — and
-for empty neighborhoods). Docstring / source link / uses / used-by are
-intentionally NOT on the page: the always-open properties rail owns them (the
-card's `bp-decl-meta` payload selects the declaration on load).
+(Book › Modules › module › shortName), the standard two-column `NodeCard` with the
+declaration's docstring (or a quiet placeholder when it has none) on the informal
+statement side and the highlighted signature + captured `:= …` proof/value body on
+the formal side, and a localized dependency graph synthesized from the registry's
+`statementDeps`/`proofDeps`/`usedBy` edges (quietly absent for `private`
+declarations — which stay out of every graph — and for empty neighborhoods). Source
+link / uses / used-by are intentionally NOT on the page: the always-open properties
+rail owns them (the card's `bp-decl-meta` payload selects the declaration on load);
+the docstring is shown in both, which is intentional so the page is self-contained.
 
 `emitBlueprintDeclPages` is the generation-time `ExtraStep` (registered in
 `Main.lean` after the catalog pages): it reads the registry and the internal
@@ -114,10 +115,23 @@ private def signatureCell (e : Entry) : Html :=
   | none =>
     {{ <pre class="bp_external_decl_signature signature">{{Html.text true e.signatureText}}</pre> }}
 
-/-- Build the two-column card parts for one unwired registry declaration:
-quiet-placeholder informal side, signature + captured proof/value body formal
-side, and the slim `bp-decl-meta` payload (short name + own decl-page href) so
-the properties rail selects the declaration on page load. -/
+/-- Informal-statement cell for a decl page: the declaration's docstring (already
+rendered to markdown + math HTML in the registry, raw HTML disabled) wrapped as
+prose, else `.empty` so the card falls through to the quiet "No informal statement
+yet." placeholder. Wired only to the statement facet — the informal *proof* is never
+synthesized (there is no informal-proof source for a bare declaration), so proof
+rows keep their placeholder. The docstring is also shown in the properties rail; the
+duplication is intentional so each decl page is self-contained. -/
+private def informalStmtCell (e : Entry) : Html :=
+  match e.docstringHtml? with
+  | some html => {{ <div class="bp_content bp_decl_docstring">{{Html.text false html}}</div> }}
+  | none => .empty
+
+/-- Build the two-column card parts for one unwired registry declaration: the
+docstring (when present) or a quiet placeholder on the informal side, signature +
+captured proof/value body on the formal side, and the slim `bp-decl-meta` payload
+(short name + own decl-page href) so the properties rail selects the declaration on
+page load. -/
 private def declCardParts (bodies : Std.HashMap String Body) (e : Entry) (slug : String) :
     Informal.NodeCard.Parts :=
   let short := displayShort e
@@ -133,7 +147,7 @@ private def declCardParts (bodies : Std.HashMap String Body) (e : Entry) (slug :
     cardId := s!"bp-card-decl-{slug}"
     isTheoremLike := e.kind != "Definition"
     header := cardHeader e
-    informalStmt := .empty
+    informalStmt := informalStmtCell e
     formalStmt := signatureCell e
     formalBody
     declName? := some e.name
