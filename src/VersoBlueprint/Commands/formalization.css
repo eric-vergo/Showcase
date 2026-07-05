@@ -2,6 +2,17 @@
    badge classes for status chips (summary.css ships in this block's asset
    bundle). Token-driven; no raw colors, so light/dark parity is inherited. */
 
+/* Widen the formalization page to the data-column measure (mirrors the dashboard):
+   the alignment table wants more than the 44rem prose measure. The whole document
+   is wrapped in `.bp_formalization`, so cap + centre its `main section` here; the
+   companion `.content-wrapper:has(.bp_formalization)` centring lives with the
+   shared surfaces in summary.css (item-1 reconciliation). `.bp_formalization_table_wrap`
+   keeps `overflow-x:auto` as a safety net for very wide tables at narrow widths. */
+main section:has(.bp_formalization) {
+  max-width: var(--bp-dashboard-column);
+  margin-inline: auto;
+}
+
 .bp_formalization_lead {
   color: var(--bp-color-text-muted);
   font-size: var(--bp-fs-small);

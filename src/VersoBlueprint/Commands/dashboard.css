@@ -6,7 +6,7 @@
    no margin notes, so centre the column (rather than left-aligning it like the
    note-bearing prose) so it doesn't sit left-heavy on mid/wide viewports. */
 main section:has(.bp_dashboard) {
-  max-width: var(--bp-dashboard-column, 58rem);
+  max-width: var(--bp-dashboard-column);
   margin-inline: auto;
 }
 
@@ -16,6 +16,34 @@ main section:has(.bp_dashboard) {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+/* Featured node cards on the landing dashboard. They are two-column node cards
+   (`.bp_card2`) rendered as tiles inside the centred data column — NOT full-bleed
+   node-page cards — so neutralise the node-card full-width breakout (defined in
+   NodeCard.lean) exactly as graft tiles do, and keep them stacked in the
+   dashboard's flex column. `.content-wrapper` + two `:has()` (specificity 0,3,1)
+   beats the breakout rule (0,2,1); `.bp_dashboard .bp_card2` (0,2,0) beats its
+   `.bp_card2` width rule (0,1,0). Token-driven, so both themes come for free. */
+main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) {
+  container-type: normal;
+  max-width: var(--bp-dashboard-column);
+}
+
+main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) > section {
+  max-width: var(--bp-dashboard-column);
+}
+
+.bp_dashboard_featured {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-5);
+}
+
+.bp_dashboard .bp_card2 {
+  width: auto;
+  max-width: 100%;
+  margin-inline: 0;
 }
 
 /* De-chromed dashboard (E): the hero, chart cards and reading map are plain

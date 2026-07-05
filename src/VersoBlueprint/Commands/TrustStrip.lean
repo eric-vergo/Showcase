@@ -185,8 +185,9 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
     trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some trustComparatorHref)
 
 /--
-The rendered strip: a labelled badge row plus (when the document emits a
-formalization-metadata page) a trailing link chip. Empty when no badge has data.
+The rendered strip: a labelled badge row. When the document emits a
+formalization-metadata page, a blue `accent` badge linking to it is appended to
+the row (it replaces the former trailing text link). Empty when no badge has data.
 -/
 def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.none) :
     Output.Html :=
@@ -204,16 +205,20 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
   if badges.isEmpty then
     .empty
   else
-    let details : Output.Html :=
+    -- Append the formalization-metadata badge only when the strip already carries a
+    -- trust signal, preserving the "strip renders only with real trust data" rule.
+    let badges : Array Output.Html :=
       match detailsHref? with
       | Option.some href =>
-        {{ <a class="bp_trust_strip_link" href={{href}}>"Formalization metadata →"</a> }}
-      | Option.none => .empty
+        badges.push <|
+          trustBadgeHtml "formalization.yaml" "accent"
+            (title? := Option.some "Project formalization.yaml metadata")
+            (href? := Option.some href)
+      | Option.none => badges
     {{
       <section class="bp_trust_strip" "aria-label"="Trust signals">
         <span class="bp_trust_strip_label">"Trust"</span>
         <div class="bp_summary_badge_row">{{badges}}</div>
-        {{details}}
       </section>
     }}
 

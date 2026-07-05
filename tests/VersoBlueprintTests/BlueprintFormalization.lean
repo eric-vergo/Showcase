@@ -383,11 +383,14 @@ private def comparatorJson := r##"{
   let strip := (trustStripHtml trust (some "Formalization-Metadata/")).asString
   let empty := (trustStripHtml {} none).asString
   hasSubstr strip "bp_trust_strip" &&
-  -- Each configured badge now renders as an `<a>` linking to its `trust/…` evidence
-  -- page (see `trustBadgeHtml`'s `href?` branch); the strip carries four of them.
-  countSubstr strip "<a class=\"bp_summary_badge" == 4 &&
+  -- Each configured badge renders as an `<a>` linking to its `trust/…` evidence page
+  -- (see `trustBadgeHtml`'s `href?` branch): the four trust badges PLUS the blue
+  -- `accent` formalization.yaml badge that replaced the former trailing text link,
+  -- which links to the formalization-metadata page.
+  countSubstr strip "<a class=\"bp_summary_badge" == 5 &&
+  hasSubstr strip "bp_summary_badge_accent" &&
   hasSubstr strip "href=\"Formalization-Metadata/\"" &&
-  hasSubstr strip "Formalization metadata" &&
+  hasSubstr strip "formalization.yaml" &&
   empty == ""
 
 end Verso.VersoBlueprintTests.BlueprintFormalization

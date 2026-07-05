@@ -53,6 +53,7 @@ def blueprintMainWithFeatures
     (extraSteps :=
       Informal.NodePage.emitBlueprintNodePages extensionImpls
         :: Informal.ExtraPages.emitBlueprintExtraPages
+        :: Informal.ExtraPages.emitBlueprintPmPage
         :: Informal.ExtraPages.emitBlueprintAuditPage
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages

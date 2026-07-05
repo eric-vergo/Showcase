@@ -137,6 +137,12 @@ def mathlibCandidatesHref : String := "mathlib-candidates/"
 /-- Multi-page output path for the candidates page: `mathlib-candidates/index.html`. -/
 def mathlibCandidatesPath : Verso.Multi.Path := #["mathlib-candidates"]
 
+/-- Root-relative href (no leading slash) to the project-management (PM) hub page. -/
+def pmHref : String := "pm/"
+
+/-- Multi-page output path for the PM hub page: `pm/index.html`. -/
+def pmPath : Verso.Multi.Path := #["pm"]
+
 /-!
 Declaration-catalog page routes (Definitions / Theorems / alphabetical Index /
 Modules). Same root-relative, leading-slash-free convention as the routes above so

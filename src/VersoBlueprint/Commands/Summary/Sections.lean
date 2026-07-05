@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary.Html
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphMetrics
@@ -451,7 +452,7 @@ can read it back via `cachedSummary?`.
 -/
 
 /-- A labelled chart mount carrying its server-rendered fallback content. -/
-private def dashboardChartMount (chart title : String) (wide : Bool)
+def dashboardChartMount (chart title : String) (wide : Bool)
     (fallback : Output.Html) : Output.Html :=
   let cls := if wide then "bp_dashboard_chart bp_dashboard_chart_wide" else "bp_dashboard_chart"
   {{
@@ -498,7 +499,7 @@ from the master dependency graph's metrics.
 Each item links to the entry's node page when it has one (falling back to its
 chapter anchor). Pure presentation derived from `masterGraph` + `computeGraphMetrics`.
 -/
-private def dashboardReadingMap (state : TraverseState) : Output.Html :=
+def dashboardReadingMap (state : TraverseState) : Output.Html :=
   let master := Informal.GraphApi.masterGraph state
   if master.nodes.isEmpty then .empty
   else
@@ -564,8 +565,93 @@ private def dashboardReadingMap (state : TraverseState) : Output.Html :=
       </section>
     }}
 
+/-- Overall formalization-progress hero: a large percentage plus a multi-segment
+(closed / ready / blocked / other) progress bar. Extracted from the dashboard block
+so the PM page (`ExtraPages.emitBlueprintPmPage`) renders the identical bar. -/
+def dashboardHero (data : Summary) : Output.Html :=
+  let total := data.totalEntries
+  let closed := data.coverageSplit.fullyClosed
+  let heroReady := data.coverageSplit.readyToFormalize
+  let heroBlocked := data.coverageSplit.blockedOrIncomplete
+  let denom := Nat.max 1 total
+  let pct := closed * 100 / denom
+  -- Mirror the per-chapter multi-segment breakdown (closed / ready / blocked /
+  -- other). Segment widths are percentages of `max 1 total`, matching the chapter bars.
+  let heroClosedPct := closed * 100 / denom
+  let heroReadyPct := heroReady * 100 / denom
+  let heroBlockedPct := heroBlocked * 100 / denom
+  let heroOtherPct := 100 - Nat.min 100 (heroClosedPct + heroReadyPct + heroBlockedPct)
+  let heroSeg := fun (cls : String) (segPct : Nat) =>
+    if segPct == 0 then (.empty : Output.Html)
+    else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
+  let heroSegs : Array Output.Html := #[
+    heroSeg "bp_progress_seg bp_progress_seg_closed" heroClosedPct,
+    heroSeg "bp_progress_seg bp_progress_seg_ready" heroReadyPct,
+    heroSeg "bp_progress_seg bp_progress_seg_blocked" heroBlockedPct,
+    heroSeg "bp_progress_seg bp_progress_seg_other" heroOtherPct
+  ]
+  {{
+    <section class="bp_dashboard_hero">
+      <div class="bp_dashboard_hero_head">
+        <h2 class="bp_dashboard_title">"Formalization progress"</h2>
+        <span class="bp_dashboard_hero_pct">{{.text true s!"{pct}%"}}</span>
+      </div>
+      <div class="bp_progress bp_progress_hero">
+        <div class="bp_progress_track">
+          {{heroSegs}}
+        </div>
+        <div class="bp_progress_legend">
+          {{.text true s!"{closed} of {total} entries fully closed"}}
+        </div>
+      </div>
+    </section>
+  }}
+
+/-- One per-chapter multi-segment progress bar (closed / ready / blocked / other).
+The repeated per-bar `.bp_progress_legend` line is dropped (low signal across many
+near-identical bars); the counts stay accessible via `aria-label`/`title`. Extracted
+so the PM page reuses the dashboard's bar rendering verbatim. -/
+def dashboardChapterBar (label : String) (cClosed cReady cBlocked cTotal : Nat) : Output.Html :=
+  let cDenom := Nat.max 1 cTotal
+  let cClosedPct := cClosed * 100 / cDenom
+  let cReadyPct := cReady * 100 / cDenom
+  let cBlockedPct := cBlocked * 100 / cDenom
+  let cOtherPct := 100 - Nat.min 100 (cClosedPct + cReadyPct + cBlockedPct)
+  let cSeg := fun (cls : String) (segPct : Nat) =>
+    if segPct == 0 then (.empty : Output.Html)
+    else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
+  let cSegs : Array Output.Html := #[
+    cSeg "bp_progress_seg bp_progress_seg_closed" cClosedPct,
+    cSeg "bp_progress_seg bp_progress_seg_ready" cReadyPct,
+    cSeg "bp_progress_seg bp_progress_seg_blocked" cBlockedPct,
+    cSeg "bp_progress_seg bp_progress_seg_other" cOtherPct
+  ]
+  let counts := s!"closed {cClosed} / ready {cReady} / blocked {cBlocked} / total {cTotal}"
+  let cAria := s!"{label}: {cClosed} closed, {cReady} ready, {cBlocked} blocked of {cTotal} total"
+  {{ <div class="bp_progress" role="group" "aria-label"={{cAria}} "title"={{counts}}>
+      <div class="bp_progress_head">
+        <span class="bp_progress_label">{{.text true label}}</span>
+        <span class="bp_progress_pct">{{.text true s!"{cClosedPct}%"}}</span>
+      </div>
+      <div class="bp_progress_track">
+        {{cSegs}}
+      </div>
+    </div> }}
+
+/-- Per-chapter progress bars for a summary (the "chapters" chart fallback), or an
+empty-state note when no multi-entry chapters exist. -/
+def dashboardChaptersFallback (data : Summary) : Output.Html :=
+  let chapterBars : Array Output.Html :=
+    data.groupHealth.toArray.map fun g =>
+      let label := if g.header.isEmpty then toString g.parent else g.header
+      dashboardChapterBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
+  if chapterBars.isEmpty then
+    {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}
+  else
+    {{<div class="bp_dashboard_chapters_list">{{chapterBars}}</div>}}
+
 def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT ExtensionImpls (BuildLogT IO))) :=
-  fun _goI _goB _id json _blocks => do
+  fun _goI goB _id json _blocks => do
     let some data ←
         Informal.ExtensionDecode.decode?
           (α := Summary)
@@ -573,158 +659,26 @@ def dashboardBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT Exten
           (fun err => s!"Malformed data in Block.dashboard.toHtml ({err})")
       | pure .empty
     let s ← HtmlT.state
-    let previewLookupKeys := (data.previewLabels).foldl (init := ({} : Lean.NameMap String)) fun keys label =>
-      match Informal.PreviewSource.traversalSelection? s label with
-      | some selection => keys.insert label selection.key
-      | Option.none => keys
-    let ctx : SummaryHtmlContext := {
-      entryHref? := fun label => Informal.TraversalIndex.Nodes.href? s label
-      declHref? := fun label decl =>
-        Resolve.resolveInformalDeclHref? s label decl
-      previewLookupKey? := fun label => previewLookupKeys.get? label
-      displayLabel := fun label => Informal.NodeRoute.friendlyEntryLabel s label
-    }
-    let previewPanel := Informal.HoverRender.summaryPreviewPanel
-    let summaryAttrs :=
-      #[("class", "bp_summary")] ++
-        Informal.HoverRender.templatePreviewDescriptorAttrs
-          ".bp_summary_preview_panel"
-          "template.bp_summary_preview_tpl[data-bp-preview-label]"
-          ".bp_summary_preview_wrap_active[data-bp-preview-label]"
-          ".bp_summary_preview_panel_title"
-          ".bp_summary_preview_panel_body"
-          ".bp_summary_preview_panel_close"
-          (allowHtmlCache := true)
-    let rows ← SummaryRows.render ctx data
-    -- Hero: overall formalization progress = fullyClosed / max 1 total.
-    let total := data.totalEntries
-    let closed := data.coverageSplit.fullyClosed
-    let heroReady := data.coverageSplit.readyToFormalize
-    let heroBlocked := data.coverageSplit.blockedOrIncomplete
-    let denom := Nat.max 1 total
-    let pct := closed * 100 / denom
-    -- Mirror the per-chapter multi-segment breakdown (closed / ready / blocked /
-    -- other) so the hero encodes the same thing the chapter bars do. Segment
-    -- widths are percentages of `max 1 total`, matching `summaryProgressBar`.
-    let heroClosedPct := closed * 100 / denom
-    let heroReadyPct := heroReady * 100 / denom
-    let heroBlockedPct := heroBlocked * 100 / denom
-    let heroOtherPct := 100 - Nat.min 100 (heroClosedPct + heroReadyPct + heroBlockedPct)
-    let heroSeg := fun (cls : String) (segPct : Nat) =>
-      if segPct == 0 then (.empty : Output.Html)
-      else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
-    let heroSegs : Array Output.Html := #[
-      heroSeg "bp_progress_seg bp_progress_seg_closed" heroClosedPct,
-      heroSeg "bp_progress_seg bp_progress_seg_ready" heroReadyPct,
-      heroSeg "bp_progress_seg bp_progress_seg_blocked" heroBlockedPct,
-      heroSeg "bp_progress_seg bp_progress_seg_other" heroOtherPct
-    ]
-    let hero : Output.Html := {{
-      <section class="bp_dashboard_hero">
-        <div class="bp_dashboard_hero_head">
-          <h2 class="bp_dashboard_title">"Formalization progress"</h2>
-          <span class="bp_dashboard_hero_pct">{{.text true s!"{pct}%"}}</span>
-        </div>
-        <div class="bp_progress bp_progress_hero">
-          <div class="bp_progress_track">
-            {{heroSegs}}
-          </div>
-          <div class="bp_progress_legend">
-            {{.text true s!"{closed} of {total} entries fully closed"}}
-          </div>
-        </div>
-      </section>
-    }}
-    let readingMap := dashboardReadingMap s
-    -- Per-chapter progress bars (the "chapters" chart fallback). This mirrors the
-    -- segment/percentage logic of `summaryProgressBar`, but drops the repeated
-    -- visible `.bp_progress_legend` text line per chapter (low signal-to-noise
-    -- across ~18 near-identical bars). The closed/ready/blocked/total counts stay
-    -- accessible via the bar's `aria-label` and `title`.
-    let chapterBar := fun (label : String) (cClosed cReady cBlocked cTotal : Nat) =>
-      let cDenom := Nat.max 1 cTotal
-      let cClosedPct := cClosed * 100 / cDenom
-      let cReadyPct := cReady * 100 / cDenom
-      let cBlockedPct := cBlocked * 100 / cDenom
-      let cOtherPct := 100 - Nat.min 100 (cClosedPct + cReadyPct + cBlockedPct)
-      let cSeg := fun (cls : String) (segPct : Nat) =>
-        if segPct == 0 then (.empty : Output.Html)
-        else {{ <span class={{cls}} "style"={{s!"width:{segPct}%"}}></span> }}
-      let cSegs : Array Output.Html := #[
-        cSeg "bp_progress_seg bp_progress_seg_closed" cClosedPct,
-        cSeg "bp_progress_seg bp_progress_seg_ready" cReadyPct,
-        cSeg "bp_progress_seg bp_progress_seg_blocked" cBlockedPct,
-        cSeg "bp_progress_seg bp_progress_seg_other" cOtherPct
-      ]
-      let counts := s!"closed {cClosed} / ready {cReady} / blocked {cBlocked} / total {cTotal}"
-      let cAria := s!"{label}: {cClosed} closed, {cReady} ready, {cBlocked} blocked of {cTotal} total"
-      {{ <div class="bp_progress" role="group" "aria-label"={{cAria}} "title"={{counts}}>
-          <div class="bp_progress_head">
-            <span class="bp_progress_label">{{.text true label}}</span>
-            <span class="bp_progress_pct">{{.text true s!"{cClosedPct}%"}}</span>
-          </div>
-          <div class="bp_progress_track">
-            {{cSegs}}
-          </div>
-        </div> }}
-    let chapterBars : Array Output.Html :=
-      data.groupHealth.toArray.map fun g =>
-        let label := if g.header.isEmpty then toString g.parent else g.header
-        chapterBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
-    let chaptersFallback : Output.Html :=
-      if chapterBars.isEmpty then
-        {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}
-      else
-        {{<div class="bp_dashboard_chapters_list">{{chapterBars}}</div>}}
-    -- Cross-link the dashboard owner/tag rollups to their dedicated PM pages
-    -- (emitted by `Informal.ExtraPages.emitBlueprintExtraPages`). These linked
-    -- rows are the server-rendered fallback content, so they remain usable when
-    -- the d3 enhancement does not run.
-    let ownerRollupLinkedRows : Array Output.Html :=
-      data.ownerRollups.toArray.map fun o =>
-        summaryOwnerRollupRowLinked o (Informal.NodeRoute.ownerPageHref o.owner)
-    let tagRollupLinkedRows : Array Output.Html :=
-      data.tagRollups.toArray.map fun t =>
-        summaryTagRollupRowLinked t (Informal.NodeRoute.tagPageHref t.tag)
-    let ownersFallback : Output.Html :=
-      if ownerRollupLinkedRows.isEmpty then
-        {{<p class="bp_summary_empty">"No owners recorded."</p>}}
-      else
-        {{<ul class="bp_summary_list">{{ownerRollupLinkedRows}}</ul>}}
-    let tagsFallback : Output.Html :=
-      if tagRollupLinkedRows.isEmpty then
-        {{<p class="bp_summary_empty">"No tags recorded."</p>}}
-      else
-        {{<ul class="bp_summary_list">{{tagRollupLinkedRows}}</ul>}}
-    let ownerMount : Output.Html :=
-      if data.ownerRollups.isEmpty then .empty
-      else dashboardChartMount "owners" "Owners" false ownersFallback
-    let tagMount : Output.Html :=
-      if data.tagRollups.isEmpty then .empty
-      else dashboardChartMount "tags" "Tags" false tagsFallback
-    -- Escape `</script>`-style breakouts in author-supplied strings (owner/tag/
-    -- chapter/titles) before embedding the JSON verbatim in the `<script>` payload.
-    let chartJson : String :=
-      escapeJsonForScriptEmbed (Lean.Json.compress (toJson data.chartData))
+    -- The de-chromed landing dashboard renders ONLY the consumer-featured
+    -- side-by-side node cards. The hero, reading map, charts, and full summary all
+    -- moved to the PM page (`ExtraPages.emitBlueprintPmPage`); an unconfigured
+    -- consumer (no `featured := "…"`) renders nothing here, leaving a minimal
+    -- title / authors / trust-strip landing.
+    let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? s).getD ""
+    let mut cards : Array Output.Html := #[]
+    for label in data.featuredLabels do
+      match ← renderFeaturedNodeCard? goB s namePrefix label with
+      | some card => cards := cards.push card
+      | Option.none =>
+        Verso.reportWarning
+          s!"blueprint_dashboard: featured node '{label}' has no cached statement preview; \
+             skipping its card (is the label a blueprint node in this document?)"
+    let featured : Output.Html :=
+      if cards.isEmpty then .empty
+      else {{ <div class="bp_dashboard_featured">{{cards}}</div> }}
     pure {{
       <div class="bp_dashboard">
-        {{hero}}
-        {{readingMap}}
-        <div class="bp_dashboard_charts">
-          {{dashboardChartMount "chapters" "Per-chapter progress" true chaptersFallback}}
-          {{ownerMount}}
-          {{tagMount}}
-        </div>
-        <script type="application/json" class="bp-dashboard-data">
-          {{.text false chartJson}}
-        </script>
-        <details class="bp_dashboard_detail">
-          <summary>"Full blueprint summary"</summary>
-          <div {{summaryAttrs}}>
-            {{previewPanel}}
-            {{renderSummaryDetailSections data rows}}
-          </div>
-        </details>
+        {{featured}}
       </div>
     }}
 

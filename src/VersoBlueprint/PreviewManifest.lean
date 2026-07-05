@@ -2174,9 +2174,12 @@ def blueprintMain (text : Part Manual)
 where
   go : ReaderT ExtensionImpls IO UInt32 := do
     let extensionImpls ← read
+    -- `withBuildMetadataAssets` keeps `.bp_build_metadata` CSS in the global head; the
+    -- build-metadata block itself is no longer spliced into `index.html` — it renders
+    -- as a section on the PM page instead (`ExtraPages.emitBlueprintPmPage`, which reads
+    -- `readBuildMetadata` directly). `emitBuildMetadata` / `insertBuildMetadataHtml?`
+    -- stay defined (still unit-tested; reusable splicer).
     let cfg ← parseRenderConfigOptions (withBuildMetadataAssets config) options
-    let buildMetadata ← readBuildMetadata
-    let extraSteps := emitBuildMetadata buildMetadata :: extraSteps
 
     let action : ReaderT ExtensionImpls (BuildLogT IO) Unit := do
       if cfg.emitTeX then

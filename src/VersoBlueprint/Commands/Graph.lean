@@ -230,6 +230,23 @@ private def renderGraphNodeCardTemplate? {m} [Monad m]
       pure a
     return some (Verso.Output.Html.tag "template" attrs card)
 
+/-- Render one consumer-featured node's full two-column card (statement facet plus
+folded proof facet) for embedding directly on the landing dashboard. `none` when the
+label has no cached statement facet — the dashboard skips it (and warns). Mirrors
+`renderGraphNodeCardTemplate?` minus the `<template>` wrapper and the supporting-node
+guard; uses the default `RenderConfig`, matching the node-page card. -/
+def renderFeaturedNodeCard? {m} [Monad m]
+    (goB : Doc.Block Verso.Genre.Manual → Doc.Html.HtmlT Verso.Genre.Manual m Verso.Output.Html)
+    (state : TraverseState) (namePrefix : String) (label : Lean.Name) :
+    Doc.Html.HtmlT Verso.Genre.Manual m (Option Verso.Output.Html) := do
+  match ← renderGraphCardFacet? goB state (Informal.PreviewCache.statementKey label) with
+  | Option.none => return none
+  | some (entry, content) =>
+    let proof? ← renderGraphCardFacet? goB state (Informal.PreviewCache.proofKey label)
+    return some <|
+      Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry content proof?
+        { declNamePrefix := namePrefix }
+
 /-- Render every graph node's inline card template for embedding on the graph
 page (empty for nodes without a card, e.g. supporting nodes). -/
 private def renderGraphNodeCardTemplates {m} [Monad m]

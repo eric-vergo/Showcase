@@ -233,6 +233,10 @@ structure Summary where
   untaggedEntries : List MetadataEntryItem := []
   worklist : List WorklistItem := []
   mathlibCandidates : List MathlibCandidateItem := []
+  /-- Consumer-configured node labels (via the `blueprint_dashboard` `featured := "…"`
+  argument) whose full two-column cards are featured on the landing dashboard, in
+  order. Empty by default; unresolvable labels are skipped at render time. -/
+  featuredLabels : Array Name := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 /--

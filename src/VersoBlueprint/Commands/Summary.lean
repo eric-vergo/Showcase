@@ -17,6 +17,28 @@ namespace Informal.Commands
 
 open Lean Elab Command
 open Informal Data Environment
+open Verso.ArgParse
+
+/-- Parsed arguments of the `blueprint_dashboard` command. `featured` is a
+comma-separated list of blueprint node labels (e.g. `"def:x, thm:main"`) whose full
+two-column cards are featured on the landing dashboard, in order. -/
+structure BlueprintDashboardConfig where
+  featured : Option String := none
+
+instance : FromArgs BlueprintDashboardConfig Verso.Doc.Elab.PartElabM where
+  fromArgs := BlueprintDashboardConfig.mk <$> .named' `featured true
+
+/-- Parse the `featured := "…"` argument into node-label `Name`s. Splits on commas,
+trims each entry, drops the empties, and constructs each label with the raw
+`Name.mkSimple` used for blueprint node labels (see `Informal.LabelNameParsing.parse`),
+so the labels match the graph nodes' cache keys exactly. -/
+def parseFeaturedLabels (featured? : Option String) : Array Name :=
+  match featured? with
+  | none => #[]
+  | some raw =>
+    (raw.splitOn ",").foldl (init := #[]) fun acc part =>
+      let s := part.trimAscii.toString
+      if s.isEmpty then acc else acc.push (Name.mkSimple s)
 
 open Verso Doc Elab Syntax in
 def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
@@ -51,8 +73,10 @@ part with `addBlock`. Placed at the top of the root `#doc` body it renders into
 -/
 @[part_command Lean.Doc.Syntax.command]
 public meta def blueprintDashboardCmd : PartCommand
-  | `(block|command{blueprint_dashboard}) => do
-    let summary ← buildSummary
+  | `(block|command{blueprint_dashboard $args*}) => do
+    let cfg ← Verso.ArgParse.parseThe BlueprintDashboardConfig (← parseArgs args)
+    let base ← buildSummary
+    let summary : Summary := { base with featuredLabels := parseFeaturedLabels cfg.featured }
     if verso.blueprint.debug.commands.get (← Lean.getOptions) then
       logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
     -- Trust strip (additive): only when the `verso.blueprint.trust.*` options

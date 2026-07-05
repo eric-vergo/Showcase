@@ -19,7 +19,8 @@ const CATEGORIES = [
   { label: "Modules", href: "modules/" },
   { label: "Definitions", href: "defs/" },
   { label: "Theorems", href: "theorems/" },
-  { label: "Index", href: "decl-index/" }
+  { label: "Index", href: "decl-index/" },
+  { label: "PM", href: "pm/" }
 ];
 
 function resolve(href) {

@@ -319,19 +319,22 @@
    to the dashboard data column and centre it (these pages carry no margin notes)
    so it doesn't over-stretch or sit left-heavy on mid/wide viewports. */
 .bp_pm_page {
-  max-width: var(--bp-dashboard-column, 58rem);
+  max-width: var(--bp-dashboard-column);
   margin-inline: auto;
 }
 
-/* The core centres `.content-wrapper` at the prose measure (44rem) only at
-   >=1212px; for wrappers hosting a dashboard or a PM page, widen that cap to the
-   data column so the centred data surface isn't clamped back to the prose measure
-   there. Below 1212px the wrapper is uncapped, so the column-level rules above
-   centre the surface directly. */
-@container main (width >= 1212px) {
-  .content-wrapper:has(.bp_dashboard, .bp_pm_page) {
-    max-width: var(--bp-dashboard-column, 58rem);
-  }
+/* Centre the whole content column (the `.content-wrapper`) at the data-column
+   measure whenever it hosts a wide blueprint surface — a dashboard, a PM page, or
+   the formalization table — at ALL container widths, not only at the core's
+   >=1212px centring breakpoint. This keeps the centred data surface and the
+   full-width `.prev-next-buttons` nav sharing a single content edge (no mid-width
+   misalignment); and because `<main>` is the query container, the centring tracks
+   the ToC resize handle. `.content-wrapper` + a `:has(class)` (specificity 0,2,0)
+   out-ranks the core `.content-wrapper` rules (0,1,0) at every width, in both the
+   capped and uncapped directions. */
+.content-wrapper:has(.bp_dashboard, .bp_pm_page, .bp_formalization) {
+  margin-inline: auto;
+  max-width: var(--bp-dashboard-column);
 }
 
 .bp_pm_page .bp_summary_grid {

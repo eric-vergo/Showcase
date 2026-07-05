@@ -27,19 +27,6 @@
   margin-top: 0;
 }
 
-.bp_trust_strip_link {
-  margin-left: auto;
-  font-size: var(--bp-fs-caption);
-  color: var(--bp-color-link);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bp_trust_strip_link:hover,
-.bp_trust_strip_link:focus-visible {
-  text-decoration: underline;
-}
-
 /* Trust badges that link to their evidence page render as <a>. Keep them visually
    identical at rest, add a quiet hover/focus affordance (token-driven, both
    themes). */
