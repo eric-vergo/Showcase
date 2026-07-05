@@ -126,10 +126,11 @@ deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
 playground (`live.lean-lang.org`, `#project=<id>`). The exact id string is a
-deployment detail of the playground; kept as a single easily-changed constant. The
-Zulip-shared links use `mathlib-demo`; verify against the live playground during the
-browser-QA phase and adjust here if it has changed. -/
-def playgroundMathlibProjectId : String := "mathlib-demo"
+deployment detail of the playground; kept as a single easily-changed constant.
+`MathlibDemo` is the `Projects/` folder name in the lean4web deployment (its
+`leanweb-config.json` is `name := "Latest Mathlib"`, `default := true`), so even
+if the id ever drifts the playground falls back to this default project. -/
+def playgroundMathlibProjectId : String := "MathlibDemo"
 
 /-- Extract the trust-relevant fields from a parsed `formalization.yaml` document. -/
 def TrustData.ofFormalizationJson (doc : Json) : TrustData :=
