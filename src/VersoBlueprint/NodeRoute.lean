@@ -41,6 +41,37 @@ def stripNameEscapes (s : String) : String :=
     if c == '«' || c == '»' || c == '‹' || c == '›' then acc else acc.push c
 
 /--
+Transliterate Greek letters to their ASCII names (`χ` → `chi`, `α` → `alpha`, …)
+*before* sluggifying, so identifiers built from Greek letters — e.g. the Dirichlet
+character `χ` in `A362583.χ_natCast_eq_ite` — get a readable slug
+(`A362583___chi_natCast_eq_ite`) instead of the run of underscores the catch-all
+`sluggify` emits for a non-ASCII code point. Any letter outside the table is left
+untouched for `sluggify` to handle. Pure/deterministic; distinct names stay distinct
+(and the emitter's `usedSlugs` guard catches the vanishingly rare collision).
+-/
+def transliterateGreek (s : String) : String :=
+  s.foldl (init := "") fun acc c =>
+    match c with
+    | 'α' => acc ++ "alpha"   | 'β' => acc ++ "beta"    | 'γ' => acc ++ "gamma"
+    | 'δ' => acc ++ "delta"   | 'ε' => acc ++ "epsilon" | 'ζ' => acc ++ "zeta"
+    | 'η' => acc ++ "eta"     | 'θ' => acc ++ "theta"   | 'ι' => acc ++ "iota"
+    | 'κ' => acc ++ "kappa"   | 'λ' => acc ++ "lambda"  | 'μ' => acc ++ "mu"
+    | 'ν' => acc ++ "nu"      | 'ξ' => acc ++ "xi"      | 'ο' => acc ++ "omicron"
+    | 'π' => acc ++ "pi"      | 'ρ' => acc ++ "rho"     | 'σ' => acc ++ "sigma"
+    | 'ς' => acc ++ "sigma"   | 'τ' => acc ++ "tau"     | 'υ' => acc ++ "upsilon"
+    | 'φ' => acc ++ "phi"     | 'χ' => acc ++ "chi"     | 'ψ' => acc ++ "psi"
+    | 'ω' => acc ++ "omega"
+    | 'Α' => acc ++ "Alpha"   | 'Β' => acc ++ "Beta"    | 'Γ' => acc ++ "Gamma"
+    | 'Δ' => acc ++ "Delta"   | 'Ε' => acc ++ "Epsilon" | 'Ζ' => acc ++ "Zeta"
+    | 'Η' => acc ++ "Eta"     | 'Θ' => acc ++ "Theta"   | 'Ι' => acc ++ "Iota"
+    | 'Κ' => acc ++ "Kappa"   | 'Λ' => acc ++ "Lambda"  | 'Μ' => acc ++ "Mu"
+    | 'Ν' => acc ++ "Nu"      | 'Ξ' => acc ++ "Xi"      | 'Ο' => acc ++ "Omicron"
+    | 'Π' => acc ++ "Pi"      | 'Ρ' => acc ++ "Rho"     | 'Σ' => acc ++ "Sigma"
+    | 'Τ' => acc ++ "Tau"     | 'Υ' => acc ++ "Upsilon" | 'Φ' => acc ++ "Phi"
+    | 'Χ' => acc ++ "Chi"     | 'Ψ' => acc ++ "Psi"     | 'Ω' => acc ++ "Omega"
+    | _   => acc.push c
+
+/--
 Slug for a node-page directory derived from the canonical label string.
 
 Pure and deterministic: identical inputs always produce identical slugs, so the
@@ -56,7 +87,7 @@ are removed, so uniqueness across distinct labels is preserved (verified to have
 zero collisions across the showcase's node labels).
 -/
 def nodePageSlugOfString (s : String) : String :=
-  let slug := (stripNameEscapes s).sluggify.toString
+  let slug := (transliterateGreek (stripNameEscapes s)).sluggify.toString
   slug
     |>.replace "_FLQQ_" ""
     |>.replace "_FRQQ_" ""
