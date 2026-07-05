@@ -174,9 +174,12 @@ block_extension Block.informal (data : BlockData) where
           -- refs (snapshotted in `ExternalRefSnapshot`). `render` routes it into
           -- the formal proof cell (theorems) or under the signature (definitions);
           -- empty for inline-authored theorems (runtime tactic-tail relocation).
-          let formalBody := NodeCard.formalSourceBody <|
-            externalDecls.filterMap fun ref =>
-              if ref.present then some (ref.proofHtml?, ref.proofSource?) else none
+          -- Definitions restore a leading `:=` so the value reads under the
+          -- signature; theorem proof bodies keep the default (no prefix).
+          let formalBody := NodeCard.formalSourceBody
+            (externalDecls.filterMap fun ref =>
+              if ref.present then some (ref.proofHtml?, ref.proofSource?) else none)
+            (assignPrefix := !isTheoremLike)
           -- Primary decl name + slim identity metadata for the selection bus /
           -- metadata rail (matches the manifest card path in `BlockRender`): the
           -- first present (else first) `(lean := …)` ref, identity fields only.

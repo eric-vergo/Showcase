@@ -126,15 +126,24 @@ preferred, falling back to escaped raw source when highlighting was unavailable.
 
 Kept Data-free (plain `String` pairs) so this foundational module stays
 independent of the blueprint data model; callers map their external refs to pairs.
+
+`assignPrefix` restores a leading `:=` token in front of each body so a
+definition's captured *value* reads as `:= value` directly under its signature
+(the top-level `:=` is dropped by the source slice, and it cannot be re-parsed as
+part of the value `term`, so it is emitted as a bare `built-in delim` token). Set
+by definition callers only; theorem *proof* bodies keep the default (no prefix).
 -/
-def formalSourceBody (items : Array (Option String × Option String)) : Html :=
+def formalSourceBody (items : Array (Option String × Option String))
+    (assignPrefix : Bool := false) : Html :=
+  let assignTok : Html :=
+    if assignPrefix then {{ <span class="built-in delim token">":= "</span> }} else .empty
   let bodies : Array Html := items.filterMap fun (proofHtml?, proofSource?) =>
     match proofHtml? with
     | some html =>
-      some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{Html.text false html}}</code></pre> }}
+      some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{assignTok}}{{Html.text false html}}</code></pre> }}
     | none =>
       proofSource?.map fun src =>
-        {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{Html.text true src}}</code></pre> }}
+        {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{assignTok}}{{Html.text true src}}</code></pre> }}
   if bodies.isEmpty then .empty else .seq bodies
 
 /-- Does this HTML render as nothing but whitespace? Used to decide whether a card
@@ -291,13 +300,21 @@ def render (parts : Parts) (opts : Options := {}) : Html :=
     -- placeholder, which the runtime tactic-tail relocation (`proof-toggle.mjs`)
     -- replaces wholesale via `replaceChildren` for inline-authored theorems.
     let formalProof := orPlaceholder parts.formalBody "Formal proof not available."
+    -- `.bp_card2_body` wraps the statement grid, the proof toggle, and the
+    -- collapsible proof grid so the single `.bp_card2_divider` line can span all
+    -- of them (statement through proof) and GROW as the proof region expands —
+    -- one continuous divider, never two segments. (Definitions have no proof
+    -- region, so they keep the simpler per-cell border; see `css`.)
     {{
       <div class={{wrapperClass opts}} "data-bp-card"={{parts.cardId}}
           "data-bp-decl"={{parts.declName?.getD ""}}>
         {{metaScriptOf parts}}
         {{header}}
-        {{cardGrid "bp_card2_informal_stmt" "bp_card2_formal_stmt" "" informalStmtCell formalStmtCell}}
-        {{renderProofRegion parts.cardId informalProof formalProof}}
+        <div class="bp_card2_body">
+          <div class="bp_card2_divider" aria-hidden="true"></div>
+          {{cardGrid "bp_card2_informal_stmt" "bp_card2_formal_stmt" "" informalStmtCell formalStmtCell}}
+          {{renderProofRegion parts.cardId informalProof formalProof}}
+        </div>
       </div>
     }}
   else
@@ -350,13 +367,41 @@ def css : String := r##"
   min-width: 0;
 }
 
-/* Hairline divider between the prose column and the Lean column. Suppressed
-   when the formal cell is empty (no-Lean nodes get a blank right column, no
-   stray rule) and when the layout stacks (handled in the responsive block). */
+/* Column inset so the prose and Lean columns clear the vertical divider. The
+   line itself is drawn either by the per-definition border below or, for
+   theorem-like cards, by the single spanning `.bp_card2_divider`. Suppressed
+   when the layout stacks (handled in the responsive block). */
 .bp_card2_formal_stmt:not(:empty),
 .bp_card2_formal_proof:not(:empty) {
-  border-inline-start: 1px solid var(--bp-color-card-divider);
   padding-inline-start: var(--bp-space-4);
+}
+
+/* Definitions (1x2, no proof region) keep a simple per-cell hairline: their
+   formal cell is a direct child of `.bp_card2` — theorem-like cards wrap their
+   grids in `.bp_card2_body` and use the spanning divider instead, so this
+   `.bp_card2 > .bp_card2_grid > …` selector matches definitions only. */
+.bp_card2 > .bp_card2_grid > .bp_card2_formal_stmt:not(:empty) {
+  border-inline-start: 1px solid var(--bp-color-card-divider);
+}
+
+/* Theorem-like cards: ONE continuous vertical divider, statement through proof.
+   `.bp_card2_body` wraps the statement grid, the proof toggle, and the
+   (collapsible) proof grid; the absolutely-positioned line spans the wrapper's
+   full height, so it GROWS with the expanding proof region and never breaks into
+   two segments. Positioned at the column boundary (col-2 start = 50% + half the
+   grid gap), matching both grids' `bp_card2_formal_*` cell edge. */
+.bp_card2_body {
+  position: relative;
+}
+
+.bp_card2_divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% + var(--bp-space-4) / 2);
+  width: 1px;
+  background: var(--bp-color-card-divider);
+  pointer-events: none;
 }
 
 /* ---- Wide breakout (reuses the .bp_graph_fullwidth container-query trick) - */
@@ -394,12 +439,19 @@ def css : String := r##"
     width: 100%;
   }
 
-  /* Stacked: the formal cell sits below the informal one, so the inline
-     divider/inset would read as a stray left rule. Drop it. */
+  /* Stacked: the formal cell sits below the informal one, so any vertical
+     divider/inset would read as a stray left rule. Drop them all. */
+  .bp_card2 > .bp_card2_grid > .bp_card2_formal_stmt:not(:empty) {
+    border-inline-start: 0;
+  }
+
   .bp_card2_formal_stmt:not(:empty),
   .bp_card2_formal_proof:not(:empty) {
-    border-inline-start: 0;
     padding-inline-start: 0;
+  }
+
+  .bp_card2_divider {
+    display: none;
   }
 }
 
@@ -496,13 +548,42 @@ def css : String := r##"
   overflow-x: auto;
 }
 
-/* ---- Definition value body ----------------------------------------------- */
-/* A definition's formal cell shows its signature panel followed by the captured
-   `:= value` body as a highlighted Lean block. Separate it from the signature and
-   match the proof code column (monospace, horizontal scroll, no bleed). */
+/* ---- Definition formal cell: signature + `:= value` as ONE code block ------ */
+/* A definition's formal cell stacks the highlighted signature and the captured
+   `:= value` body. Inside the card, collapse the external-decl scaffold's top
+   offsets and inter-block margins and unify the two <pre>s' type/background so
+   they read as a single contiguous Lean block that top-aligns with the informal
+   column. Scoped to `.bp_card2_formal_stmt` so the external-decl scaffold used
+   elsewhere (hover previews, standalone decl rows) is unchanged. */
+
+/* Kill the scaffold's leading offsets so the signature top-aligns with the prose. */
+.bp_card2_formal_stmt > .bp_code_panel_wrapper,
+.bp_card2_formal_stmt .bp_external_decl_list,
+.bp_card2_formal_stmt .bp_external_decl_rendered {
+  margin-top: 0;
+}
+
+/* Signature <pre> — the scaffold path (`.bp_external_decl_rendered …`) and the
+   bare decl-page path (`> pre.bp_external_decl_signature`) — shares the body's
+   type ramp and drops its top padding so it butts against the value below. */
+.bp_card2_formal_stmt .bp_external_decl_signature,
+.bp_card2_formal_stmt > pre.bp_external_decl_signature {
+  margin: 0;
+  padding: 0 var(--bp-space-1);
+  background: transparent;
+  font-size: var(--bp-fs-control, 0.82rem);
+  line-height: 1.5;
+}
+
+/* The captured `:= value` body sits flush under the signature: no gap, same
+   type/padding/background, so the two <pre>s read as one block. */
 .bp_card2_formal_stmt > .bp_card2_proof_source {
-  margin: var(--bp-space-3) 0 0;
+  margin: 0;
+  padding: 0 var(--bp-space-1);
+  background: transparent;
   overflow-x: auto;
+  font-size: var(--bp-fs-control, 0.82rem);
+  line-height: 1.5;
 }
 
 .bp_card2_formal_stmt > .bp_card2_proof_source > code.hl.lean.block {

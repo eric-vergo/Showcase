@@ -57,7 +57,7 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintAuditPage
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages
-        :: Informal.DeclPage.emitBlueprintDeclPages
+        :: Informal.DeclPage.emitBlueprintDeclPages extensionImpls
         :: Informal.Commands.emitBlueprintTrustPages
         :: extraSteps)
 

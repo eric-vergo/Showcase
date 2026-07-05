@@ -190,8 +190,12 @@ private def formalBodyFromEntry (entry : Entry) : Html :=
   | some (.external refs) =>
     -- Prefer the syntactically-highlighted token markup; fall back to escaped raw
     -- source when highlighting was unavailable. Shared markup via `NodeCard`.
-    Informal.NodeCard.formalSourceBody <| refs.filterMap fun ref =>
-      if ref.present then some (ref.proofHtml?, ref.proofSource?) else none
+    -- Definitions restore a leading `:=` so the value reads under the signature.
+    let isDefinition := !(entry.kind.getD .theorem).isTheoremLike
+    Informal.NodeCard.formalSourceBody
+      (refs.filterMap fun ref =>
+        if ref.present then some (ref.proofHtml?, ref.proofSource?) else none)
+      (assignPrefix := isDefinition)
   | _ => .empty
 
 /-- Registry-aligned status tag for one external reference's snapshot status. -/

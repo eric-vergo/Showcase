@@ -10,6 +10,8 @@ import VersoBlueprint.NodePage
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.NodeCard
 import VersoBlueprint.DeclRegistry
+import VersoBlueprint.PreviewRender
+import VersoBlueprint.Commands.DeclNotes
 import VersoBlueprint.Informal.CodeSummary
 
 /-!
@@ -57,6 +59,22 @@ def declPageCss : String := r##"
   font-weight: 400;
   color: var(--bp-color-text-muted);
   overflow-wrap: anywhere;
+}
+
+/* Quiet provenance marker for the informal-statement cell: whether the shown
+   prose is authored (`:::declNotes`) or derived from the docstring. A restrained
+   hairline chip in the status-dot register (small, muted); tokens only, so both
+   themes come for free. */
+.bp_decl_provenance {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--bp-space-3);
+  padding: 0.05rem var(--bp-space-2);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-pill);
+  font-size: var(--bp-fs-badge, 0.72rem);
+  line-height: 1.5;
+  color: var(--bp-color-text-faint);
 }
 "##
 
@@ -115,29 +133,49 @@ private def signatureCell (e : Entry) : Html :=
   | none =>
     {{ <pre class="bp_external_decl_signature signature">{{Html.text true e.signatureText}}</pre> }}
 
-/-- Informal-statement cell for a decl page: the declaration's docstring (already
-rendered to markdown + math HTML in the registry, raw HTML disabled) wrapped as
-prose, else `.empty` so the card falls through to the quiet "No informal statement
-yet." placeholder. Wired only to the statement facet — the informal *proof* is never
-synthesized (there is no informal-proof source for a bare declaration), so proof
-rows keep their placeholder. The docstring is also shown in the properties rail; the
-duplication is intentional so each decl page is self-contained. -/
-private def informalStmtCell (e : Entry) : Html :=
-  match e.docstringHtml? with
-  | some html => {{ <div class="bp_content bp_decl_docstring">{{Html.text false html}}</div> }}
-  | none => .empty
+/-- Quiet provenance marker shown under the informal-statement prose: whether it
+is authored (`:::declNotes`) or derived from the declaration's docstring. -/
+private def provenanceMarker (source label : String) : Html :=
+  {{ <div class="bp_decl_provenance" "data-source"={{source}}>{{.text true label}}</div> }}
+
+/-- Informal-statement cell for a decl page: authored `:::declNotes` prose when
+present (already rendered to HTML), else the declaration's docstring (rendered to
+markdown + math HTML in the registry, raw HTML disabled) wrapped as prose, else
+`.empty` so the card falls through to the quiet "No informal statement yet."
+placeholder. Either shown source carries a quiet provenance marker. Wired only to
+the statement facet — the informal *proof* is never synthesized (there is no
+informal-proof source for a bare declaration), so proof rows keep their
+placeholder. The docstring is also shown in the properties rail; the duplication
+is intentional so each decl page is self-contained. -/
+private def informalStmtCell (e : Entry) (authoredHtml? : Option String) : Html :=
+  match authoredHtml? with
+  | some html =>
+    Html.seq #[
+      {{ <div class="bp_content bp_decl_notes">{{Html.text false html}}</div> }},
+      provenanceMarker "authored" "Authored"
+    ]
+  | none =>
+    match e.docstringHtml? with
+    | some html =>
+      Html.seq #[
+        {{ <div class="bp_content bp_decl_docstring">{{Html.text false html}}</div> }},
+        provenanceMarker "docstring" "From docstring"
+      ]
+    | none => .empty
 
 /-- Build the two-column card parts for one unwired registry declaration: the
 docstring (when present) or a quiet placeholder on the informal side, signature +
 captured proof/value body on the formal side, and the slim `bp-decl-meta` payload
 (short name + own decl-page href) so the properties rail selects the declaration on
 page load. -/
-private def declCardParts (bodies : Std.HashMap String Body) (e : Entry) (slug : String) :
+private def declCardParts (bodies : Std.HashMap String Body)
+    (authoredNotes : Std.HashMap String String) (e : Entry) (slug : String) :
     Informal.NodeCard.Parts :=
   let short := displayShort e
+  let isDefinition := e.kind == "Definition"
   let formalBody : Html :=
     match bodies.get? e.name with
-    | some b => Informal.NodeCard.formalSourceBody #[(b.html?, b.text?)]
+    | some b => Informal.NodeCard.formalSourceBody #[(b.html?, b.text?)] (assignPrefix := isDefinition)
     | none => .empty
   let shortName? := if short == e.name then none else some short
   let metaJson := Informal.NodeCard.declMetaJson e.name e.kind e.status e.moduleName
@@ -145,9 +183,9 @@ private def declCardParts (bodies : Std.HashMap String Body) (e : Entry) (slug :
     none (shortName := shortName?) (declHref := e.declHref?)
   {
     cardId := s!"bp-card-decl-{slug}"
-    isTheoremLike := e.kind != "Definition"
+    isTheoremLike := !isDefinition
     header := cardHeader e
-    informalStmt := informalStmtCell e
+    informalStmt := informalStmtCell e (authoredNotes.get? e.name)
     formalStmt := signatureCell e
     formalBody
     declName? := some e.name
@@ -184,10 +222,11 @@ two-column card, and the localized dependency graph (ancestors ∪ self ∪
 descendants over the registry graph; quietly absent for private declarations
 and single-node neighborhoods — the same section structure as node pages). -/
 private def renderDeclPageBody (master : Informal.Graph.GraphData)
-    (bodies : Std.HashMap String Body) (bookTitle : String) (e : Entry) (slug : String) :
+    (bodies : Std.HashMap String Body) (authoredNotes : Std.HashMap String String)
+    (bookTitle : String) (e : Entry) (slug : String) :
     Output.Html :=
   let short := displayShort e
-  let card := Informal.NodeCard.render (declCardParts bodies e slug) {}
+  let card := Informal.NodeCard.render (declCardParts bodies authoredNotes e slug) {}
   let graphSection : Output.Html :=
     if e.isPrivate then .empty
     else
@@ -271,16 +310,46 @@ private def writeDeclSearchIndex (mode : Manual.Mode) (cfg : Manual.Config)
   IO.FS.writeFile (dataDir.join "decl-search.json") ((Json.arr records).compress ++ "\n")
 
 /--
+Render every stored `:::declNotes` block set to HTML, keyed by the full decl
+name, for use as the decl page's informal-statement cell (preferred over the
+docstring). The blocks were traversed on their home pages; here they are rendered
+through the same Manual/VBP renderer the node-page previews use, so LaTeX and
+inline code work. Degrades entry-by-entry: a malformed or empty note is skipped
+(the page falls back to the docstring). Absent store ⇒ empty map (no change).
+-/
+private def buildAuthoredNotes (impls : ExtensionImpls) (logger : Verso.Logger IO)
+    (state : TraverseState) : IO (Std.HashMap String String) := do
+  let logError := fun msg => logger.reportError msg
+  let mut out : Std.HashMap String String := {}
+  for decoded in Informal.TraversalIndex.decodeStoreEntries
+      (α := Informal.Commands.StoredDeclNotes) state
+      Informal.TraversalIndex.DeclNotes.domainName do
+    match decoded with
+    | .error err =>
+      logError s!"Blueprint decl notes: malformed declNotes entry {err.canonicalName}: {err.message}"
+    | .ok stored =>
+      let notes := stored.data
+      if notes.blocks.isEmpty then continue
+      let html ← Informal.renderManualBlocksHtmlWithState notes.blocks impls state
+        (logError := logError)
+      let htmlStr := html.asString
+      if htmlStr.trimAscii.isEmpty then continue
+      out := out.insert notes.declName htmlStr
+  pure out
+
+/--
 `ExtraStep` that emits one page per **unwired** registry declaration into
 `decl/<slug>/index.html`, plus the `decl-search.json` palette index.
 
-Self-contained: it reads only the traversal-store registry / bodies / prefix
-payloads (no environment at generation time), so it is order-independent
-relative to the preview-data / node-page / catalog steps. Single-page mode is
-skipped; when no registry was stored (the `includeAllDecls` flag is off) it
-emits nothing — consumers without the flag see no new pages and no change.
+Self-contained: it reads only the traversal-store registry / bodies / prefix /
+declNotes payloads (no environment at generation time), so it is order-independent
+relative to the preview-data / node-page / catalog steps. `extensionImpls` is
+threaded (from `Main`) so authored `:::declNotes` prose can be rendered to HTML.
+Single-page mode is skipped; when no registry was stored (the `includeAllDecls`
+flag is off) it emits nothing — consumers without the flag see no new pages and no
+change.
 -/
-def emitBlueprintDeclPages : ExtraStep :=
+def emitBlueprintDeclPages (extensionImpls : ExtensionImpls) : ExtraStep :=
   fun mode cfg state text => do
     match mode with
     | .single => pure ()
@@ -306,6 +375,9 @@ def emitBlueprintDeclPages : ExtraStep :=
                   (FromJson.fromJson? j : Except String Bodies)) with
               | .error _ => {}
               | .ok bs => bs.bodies.foldl (fun m b => m.insert b.name b) {}
+          -- Authored `:::declNotes` prose, rendered to HTML and keyed by full
+          -- decl name (preferred over the docstring on each page).
+          let authoredNotes ← buildAuthoredNotes extensionImpls logger state
           let entries := registry.decls
           let master := registryGraph entries
           let mut usedSlugs : Std.HashSet String := {}
@@ -319,7 +391,7 @@ def emitBlueprintDeclPages : ExtraStep :=
                 s!"Blueprint decl pages: slug collision for {e.name} (slug {slug}); " ++
                 "decl page may overwrite another declaration's page"
             usedSlugs := usedSlugs.insert slug
-            let body := renderDeclPageBody master bodies text.titleString e slug
+            let body := renderDeclPageBody master bodies authoredNotes text.titleString e slug
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               (Informal.NodeRoute.declPagePath e.name) (displayShort e) body
             searchRecords := searchRecords.push (declSearchRecord e registry.namePrefix)
