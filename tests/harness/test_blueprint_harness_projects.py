@@ -557,7 +557,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
         self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
         self.assertIn("Install PDF toolchain", deploy_workflow_text)
-        self.assertIn("Generate release reference blueprints with PDFs", deploy_workflow_text)
+        self.assertIn("if: ${{ matrix.publish_pdf }}", deploy_workflow_text)
+        self.assertIn("publish_pdf=${{ matrix.publish_pdf }}", deploy_workflow_text)
+        self.assertIn("Generate release reference blueprints", deploy_workflow_text)
         self.assertIn("lualatex --version", deploy_workflow_text)
         self.assertIn("texlive-fonts-extra", deploy_workflow_text)
         self.assertIn("texlive-plain-generic", deploy_workflow_text)
@@ -697,6 +699,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         matrix = deploy_matrix_from_controller_catalog(
             controller_catalog,
             controller_catalog.release_targets,
+            pdf_release_id="v4.29.0",
         )
 
         self.assertEqual(
@@ -725,8 +728,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["generate_command"],
-            ["lake", "exe", "blueprint-gen", "--pdf"],
+            ["lake", "exe", "blueprint-gen"],
         )
+        self.assertFalse(matrix_by_project["old-release-project"]["publish_pdf"])
         self.assertEqual(matrix_by_project["old-release-project"]["project_root"], "old-controller")
         self.assertEqual(matrix_by_project["old-release-project"]["rc"], "")
         self.assertEqual(matrix_by_project["old-release-project"]["toolchain"], "v4.28.0")
@@ -739,6 +743,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             manifest_by_project["new-release-project"]["projects"][0]["generate_command"],
             ["lake", "exe", "blueprint-gen", "--pdf"],
         )
+        self.assertTrue(matrix_by_project["new-release-project"]["publish_pdf"])
         self.assertNotIn("rc", manifest_by_project["new-release-project"]["release_targets"][0])
         self.assertEqual(matrix_by_project["new-release-project"]["rc"], "4.29-rc1")
         self.assertEqual(matrix_by_project["new-release-project"]["toolchain"], "v4.29.0-rc1")
@@ -747,9 +752,50 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             manifest_by_project["new-release-second-project"]["projects"][0]["targets"],
             [{"release": "v4.29.0", "ref": "new-second-controller-ref", "rc": "4.29-rc2"}],
         )
+        self.assertEqual(
+            manifest_by_project["new-release-second-project"]["projects"][0]["generate_command"],
+            ["lake", "exe", "blueprint-gen", "--pdf"],
+        )
+        self.assertTrue(matrix_by_project["new-release-second-project"]["publish_pdf"])
         self.assertEqual(matrix_by_project["new-release-second-project"]["rc"], "4.29-rc2")
         self.assertEqual(matrix_by_project["new-release-second-project"]["toolchain"], "v4.29.0-rc2")
         self.assertEqual(matrix_by_project["new-release-second-project"]["verso_ref"], "v4.29.0-rc2")
+
+    def test_default_deploy_matrix_publishes_pdfs_only_for_default_dev_release(self) -> None:
+        catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
+        branch_policy = load_branch_policy(PACKAGE_ROOT)
+        deployable_targets = tuple(target for target in catalog.release_targets if target.deploy_pages)
+
+        matrix = deploy_matrix_from_controller_catalog(
+            catalog,
+            deployable_targets,
+            pdf_release_id=branch_policy.default_dev_branch,
+        )
+
+        rows = {
+            (entry["release_id"], entry["project_id"]): entry
+            for entry in matrix["include"]
+        }
+        self.assertFalse(rows[("v4.30.0", "spherepackingblueprint")]["publish_pdf"])
+        self.assertFalse(rows[("v4.30.0", "verso-carleson")]["publish_pdf"])
+        self.assertNotIn(
+            "--pdf",
+            rows[("v4.30.0", "spherepackingblueprint")]["project_manifest"]["projects"][0]["generate_command"],
+        )
+        self.assertNotIn(
+            "--pdf",
+            rows[("v4.30.0", "verso-carleson")]["project_manifest"]["projects"][0]["generate_command"],
+        )
+
+        current_release_projects = [
+            entry
+            for (release_id, _project_id), entry in rows.items()
+            if release_id == branch_policy.default_dev_branch
+        ]
+        self.assertTrue(current_release_projects)
+        for entry in current_release_projects:
+            self.assertTrue(entry["publish_pdf"])
+            self.assertIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])
 
     def test_git_checkout_project_is_supported(self) -> None:
         manifest_data = {

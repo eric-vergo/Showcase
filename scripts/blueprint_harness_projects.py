@@ -617,6 +617,8 @@ def deploy_project_manifest(
 def deploy_matrix_from_controller_catalog(
     controller_catalog: HarnessProjectCatalog,
     deployable_targets: tuple[HarnessReleaseTarget, ...],
+    *,
+    pdf_release_id: str | None = None,
 ) -> dict[str, list[dict[str, object]]]:
     include: list[dict[str, object]] = []
     for target in deployable_targets:
@@ -628,6 +630,7 @@ def deploy_matrix_from_controller_catalog(
             )
         for project in controller_projects:
             fields = reference_project_target_fields(project, target)
+            publish_pdf = target.release_id == pdf_release_id
             include.append(
                 {
                     "release_id": target.release_id,
@@ -641,7 +644,8 @@ def deploy_matrix_from_controller_catalog(
                     "reference_cache_key": fields["reference_cache_key"],
                     "artifact_name": deploy_project_artifact_name(project),
                     "artifact_path": deploy_project_artifact_path(project),
-                    "project_manifest": deploy_project_manifest(target, project),
+                    "publish_pdf": publish_pdf,
+                    "project_manifest": deploy_project_manifest(target, project, include_pdf=publish_pdf),
                 }
             )
     return {"include": include}
