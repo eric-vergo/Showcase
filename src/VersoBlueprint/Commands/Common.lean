@@ -118,12 +118,13 @@ def blueprintTokensCss : String := r##"
   --bp-fs-caption: 0.78rem;
   --bp-fs-control: 0.82rem;
   --bp-fs-small: 0.875rem;
-  /* Measure of the landing dashboard / PM / formalization data column: a touch
-     wider than the 44rem prose measure. Scheme-independent (a layout token), so a
-     single definition here covers both color schemes — the `[data-bp-color-scheme]`
-     blocks below only re-declare colors/shadows. Referenced by the dashboard,
-     PM-page, and formalization centring rules. */
-  --bp-dashboard-column: 58rem;
+  /* Measure of the landing dashboard / PM / formalization data column: fills the
+     space between the sidebars, capped at the generous 110rem site measure (matches
+     --verso-content-max-width). Scheme-independent (a layout token), so a single
+     definition here covers both color schemes — the `[data-bp-color-scheme]` blocks
+     below only re-declare colors/shadows. Referenced by the dashboard, PM-page, and
+     formalization centring rules. */
+  --bp-dashboard-column: 110rem;
 }
 
 /*

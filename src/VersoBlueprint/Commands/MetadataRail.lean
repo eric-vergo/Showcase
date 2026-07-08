@@ -246,6 +246,63 @@ def css : String := r##"
   color: var(--bp-color-text-subtle);
 }
 
+/* ---- Collapsible dependency sections (Uses / Used By / See Also) ------------ */
+/* Those sections are native <details> collapsed by default (metadata-rail.mjs
+   `depSection` / `collapsibleSection`), so the rail's identity / docstring /
+   source / signature / metrics stay above the fold. Hide the native marker and
+   draw the same disclosure triangle the verso-core ToC uses, built from existing
+   `--bp-*` tokens only (no new color), so light + dark come for free. The summary
+   keeps the `.bp-rail-section-title` typography (regular capitalization — the rail
+   has no uppercase transforms). */
+.bp-rail-collapsible > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--bp-space-2);
+  list-style: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  margin-bottom: 0;
+}
+
+.bp-rail-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bp-rail-collapsible > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--bp-color-text-subtle);
+  /* Base triangle points down (the open state); rotated -90deg to point right
+     when the section is collapsed. */
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transition: transform var(--bp-duration-fast, 0.12s) var(--bp-ease, ease);
+}
+
+.bp-rail-collapsible:not([open]) > summary::before {
+  transform: rotate(-90deg);
+}
+
+/* Give the title its bottom margin back only when open, so the collapsed summary
+   leaves no trailing gap. */
+.bp-rail-collapsible[open] > summary {
+  margin-bottom: var(--bp-space-2);
+}
+
+.bp-rail-collapsible > summary:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+  border-radius: var(--bp-radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-rail-collapsible > summary::before {
+    transition: none;
+  }
+}
+
 .bp-rail-meta-row {
   display: flex;
   gap: var(--bp-space-2);

@@ -415,8 +415,15 @@ def css : String := r##"
     max-width: none;
   }
 
+  /* Node-page cards live in a `<section>` nested inside `.bp_node_page`, which the
+     `> section` breakout selector above doesn't reach; let that inner section grow
+     so the card doesn't rely on overflowing its invisible section box. */
+  main > .content-wrapper .bp_node_page section {
+    max-width: none;
+  }
+
   .bp_card2 {
-    width: min(100cqw, 90rem);
+    width: min(100cqw, 110rem);
     margin-inline: auto;
   }
 }

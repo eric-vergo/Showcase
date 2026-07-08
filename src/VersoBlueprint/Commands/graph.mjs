@@ -568,9 +568,15 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (!(graphBlock instanceof Element)) return;
       const graphRoot = graphBlock.querySelector(".bp_graph_canvas");
       if (!graphRoot) return;
-      // Static graphs (e.g. node-page localized graphs) opt out of zoom and
-      // variant-switching interactivity; still rendered client-side by d3.
+      // Static graphs (e.g. node-page localized graphs) opt out of variant
+      // switching and the node-card modal; still rendered client-side by d3.
       const isStatic = graphRoot.getAttribute("data-bp-graph-static") === "true";
+      // Zoom + pan are enabled on interactive graphs and on any static embed that
+      // opts in via `data-bp-graph-zoom="true"` (the local node/decl graphs, which
+      // ship a compact −/+/Fit cluster). Variant selectors + the modal stay gated
+      // on `!isStatic`.
+      const zoomEnabled =
+        graphRoot.getAttribute("data-bp-graph-zoom") === "true" || !isStatic;
       if (opts.layout) {
         const layoutMode = graphLayoutMode(graphRoot, opts);
         graphBlock.setAttribute("data-bp-graph-layout", layoutMode);
@@ -1000,7 +1006,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         graphRoot.setAttribute("data-bp-active-direction", options.direction);
         graphRoot.setAttribute("data-bp-active-pack", graphPackAttr(options.pack));
         gv
-          .zoom(!isStatic)
+          .zoom(zoomEnabled)
           .width(width)
           .height(height)
           .fit(true)
@@ -1056,10 +1062,11 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         });
       }
 
-      // STY-GRAPH-12: visible zoom +/- and fit/reset affordances for the
-      // interactive canvas (scroll-zoom + drag are otherwise undiscoverable).
-      // Static graphs omit the controls in markup, so these queries no-op there.
-      if (!isStatic) {
+      // STY-GRAPH-12: visible zoom +/- and fit/reset affordances (scroll-zoom +
+      // drag are otherwise undiscoverable). Wired whenever zoom is enabled — the
+      // interactive canvas and any opted-in static embed (local node/decl graphs).
+      // Static graphs without the cluster omit the buttons, so these queries no-op.
+      if (zoomEnabled) {
         const zoomInBtn = graphBlock.querySelector(".bp_graph_zoom_in");
         const zoomOutBtn = graphBlock.querySelector(".bp_graph_zoom_out");
         const zoomFitBtn = graphBlock.querySelector(".bp_graph_zoom_fit");

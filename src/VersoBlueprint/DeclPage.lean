@@ -237,7 +237,7 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
           <section class="bp_node_page_graph">
             <h2>"Local dependency graph"</h2>
             {{Informal.Commands.renderGraphFullwidth sub #[localVariant] {}
-                s!"bp-decl-graph-{slug}" (static := true)}}
+                s!"bp-decl-graph-{slug}" (static := true) (zoomControls := true)}}
           </section>
         }}
   let sep : Output.Html := {{ <span class="bp_node_breadcrumb_sep">"›"</span> }}

@@ -138,6 +138,13 @@
 
   export function layoutGraphCanvas(graphRoot, graphState, options) {
     if (!(graphRoot instanceof Element)) return;
+    // Static/local embeds (node & decl "Local dependency graph") own their height
+    // via CSS — a fixed box that the SVG fills and `fit(true)` centers the graph
+    // within, drag-resizable via CSS `resize: vertical`. NEVER inline-set a page /
+    // viewport height on them: an inflated inline height overrides the CSS box and
+    // mis-fits the fitted SVG (it collapsed to a sliver at constrained widths). CSS
+    // owns the box; the render path reads its client size for `gv.width()/height()`.
+    if (graphRoot.getAttribute("data-bp-graph-static") === "true") return;
     const layoutMode = graphLayoutMode(graphRoot, options);
     if (layoutMode === "fill") {
       layoutGraphCanvasFill(graphRoot, graphState);

@@ -470,6 +470,7 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
       </section>
     }}
 
+-- Trust-strip stylesheet (centred fit-content strip; see trust-strip.css).
 def trustStripCss := include_str "trust-strip.css"
 
 def trustStripAssetBundle : BlueprintAssetBundle :=

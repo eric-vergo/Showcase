@@ -815,8 +815,10 @@ private def bannerNavModuleMjs : String := include_str "Commands/banner-nav.mjs"
 private def selectionBusModuleMjs : String := include_str "Commands/selection-bus.mjs"
 
 -- Note: editing the `include_str`ed .mjs alone does not retrigger this module's
--- recompile, so touch this line when the asset changes (dep rows became links +
--- rail de-uppercase, 2026-07-05) to force the fresh bytes to re-embed.
+-- recompile, so touch this line when any bundled asset changes to force the fresh
+-- bytes to re-embed. Touched for: rail dep sections → collapsible <details> +
+-- local-graph zoom controls & static-canvas height fix in graph.mjs /
+-- graph-runtime-core.mjs (2026-07-07).
 private def metadataRailModuleMjs : String := include_str "Commands/metadata-rail.mjs"
 
 private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"

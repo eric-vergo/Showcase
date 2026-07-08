@@ -267,7 +267,15 @@ When `static` is `false` (the interactive default used by `Block.graph`) the
 legend, controls, options popover, and preview panels are included and the output
 is byte-identical to the historical inline markup. When `static` is `true` only
 the canvas (carrying `data-bp-graph-static="true"`) and its payloads are emitted;
-`graph.mjs` reads that attribute to skip zoom/variant interactivity.
+`graph.mjs` reads that attribute to skip variant interactivity and the modal.
+
+`zoomControls` (defaulting to `!static`) governs the zoom/pan affordances. On an
+interactive graph the zoom cluster lives inside the full control bar, so the flag
+is redundant there. On a *static* graph, setting it emits a compact standalone
+zoom cluster (only the −/+/Fit group — no legend/view/options/preview chrome) and
+stamps `data-bp-graph-zoom="true"` on the canvas; `graph.mjs` reads that to enable
+d3 zoom+pan and wire the buttons on the otherwise-static embed. Local node/decl
+graphs pass `zoomControls := true` for this.
 
 `idBase` is the resolved HTML id base for the block; control element ids are
 `idBase ++ "--<suffix>"`.
@@ -278,6 +286,7 @@ def renderGraphFullwidth
     (options : Informal.Graph.GraphOptions)
     (idBase : String)
     (static : Bool := false)
+    (zoomControls : Bool := !static)
     (previewMode : Informal.HoverRender.PreviewMode := .pinned)
     (previewPlacement : Informal.HoverRender.PreviewPlacement := .docked)
     (previewTemplates : Verso.Output.Html := .empty) :
@@ -437,6 +446,38 @@ def renderGraphFullwidth
   let groupHoverPanel := Informal.HoverRender.graphGroupPreviewPanel
   let staticCanvasAttrs : Array (String × String) :=
     if static then #[("data-bp-graph-static", "true")] else #[]
+  -- Stamp `data-bp-graph-zoom` on a *static* embed that opts into the zoom cluster
+  -- (interactive graphs already enable zoom via `!isStatic`, so the attribute is
+  -- redundant there and omitted to keep the interactive canvas byte-identical).
+  let zoomAttr : Array (String × String) :=
+    if static && zoomControls then #[("data-bp-graph-zoom", "true")] else #[]
+  -- The −/+/Fit zoom cluster, factored out so it can be reused both inside the
+  -- interactive control bar and as a standalone compact row above a static embed.
+  let zoomClusterHtml : Output.Html := {{
+    <div class="bp_graph_zoom_controls" role="group" aria-label="Zoom">
+      <button
+        type="button"
+        class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_out"
+        aria-label="Zoom out"
+      >
+        <span aria-hidden="true">"−"</span>
+      </button>
+      <button
+        type="button"
+        class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_in"
+        aria-label="Zoom in"
+      >
+        <span aria-hidden="true">"+"</span>
+      </button>
+      <button
+        type="button"
+        class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_fit"
+        aria-label="Fit graph to view"
+      >
+        "Fit"
+      </button>
+    </div>
+  }}
   let controlsHtml : Output.Html :=
     if static then .empty else {{
       <div class="bp_graph_controls">
@@ -456,29 +497,7 @@ def renderGraphFullwidth
           </select>
         </div>
         <div class="bp_graph_controls_actions">
-          <div class="bp_graph_zoom_controls" role="group" aria-label="Zoom">
-            <button
-              type="button"
-              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_out"
-              aria-label="Zoom out"
-            >
-              <span aria-hidden="true">"−"</span>
-            </button>
-            <button
-              type="button"
-              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_in"
-              aria-label="Zoom in"
-            >
-              <span aria-hidden="true">"+"</span>
-            </button>
-            <button
-              type="button"
-              class="bp_graph_controls_button bp_graph_zoom_button bp_graph_zoom_fit"
-              aria-label="Fit graph to view"
-            >
-              "Fit"
-            </button>
-          </div>
+          {{zoomClusterHtml}}
           <button
             type="button"
             class="bp_graph_controls_button bp_graph_options_button"
@@ -491,6 +510,15 @@ def renderGraphFullwidth
         </div>
       </div>
     }}
+  -- Compact standalone zoom cluster for a static embed (node/decl local graphs):
+  -- a slim right-aligned row above the canvas, nothing else. Non-static graphs
+  -- carry the cluster inside `controlsHtml`, so this stays empty for them.
+  let staticZoomControlsHtml : Output.Html :=
+    if static && zoomControls then {{
+      <div class="bp_graph_local_controls">
+        {{zoomClusterHtml}}
+      </div>
+    }} else .empty
   let legendPopoverHtml : Output.Html :=
     if static then .empty else {{
       <div id={{graphLegendPanelId}} class="bp_graph_legend_popover" hidden>
@@ -576,11 +604,13 @@ def renderGraphFullwidth
       {{controlsHtml}}
       {{legendPopoverHtml}}
       {{optionsPopoverHtml}}
+      {{staticZoomControlsHtml}}
       <div
         class="bp_graph_canvas"
         "data-bp-graph-direction"={{options.direction.rankdir}}
         "data-bp-graph-pack"={{graphPackDefault}}
         {{staticCanvasAttrs}}
+        {{zoomAttr}}
       >
         <script type="application/json" class="bp-graph-data">
           {{.text false s!"{publicGraphDataJson}"}}

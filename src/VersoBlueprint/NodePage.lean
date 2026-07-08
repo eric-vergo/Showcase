@@ -224,7 +224,7 @@ private def renderNodePageBody
     if sub.nodes.isEmpty then .empty
     else
       Informal.Commands.renderGraphFullwidth sub #[localVariant] {} s!"bp-node-graph-{slug}"
-        (static := true)
+        (static := true) (zoomControls := true)
   -- "Defined in" back-link to the chapter anchor (state.domains is unmodified, so
   -- these resolvers still return the original chapter href, not the node page).
   let backHref? :=

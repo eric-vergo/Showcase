@@ -117,6 +117,18 @@ def pageOutlineCss : String := r##"
   border-top: 1px solid var(--bp-color-border-soft);
 }
 
+/* Separator above the non-chapter (unnumbered) ToC tail — Dependency Graph,
+   Blueprint Summary, Formalization Metadata, Bibliography — mirroring the
+   "On this page" outline separator above. Verso core's split-toc
+   (`Toc.localHtml` / `splitTocElem`) emits the numbered chapter rows
+   (`tr.numbered`) contiguously, then the unnumbered tail (`tr.unnumbered`); we
+   assume that ordering and draw the rule on the first unnumbered row that
+   directly follows a numbered one. */
+#toc .split-toc.book table tr.numbered + tr.unnumbered td {
+  border-top: 1px solid var(--bp-color-border-soft);
+  padding-top: var(--bp-space-3);
+}
+
 .bp-page-outline-title {
   margin: 0 0 var(--bp-space-2);
   padding: 0 var(--bp-space-2);

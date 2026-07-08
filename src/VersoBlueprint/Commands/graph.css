@@ -49,32 +49,35 @@
 }
 
 /*
- * NODE-5: the per-node "Local dependency graph" is static (no zoom controls), so
- * tall / chain-shaped neighborhoods used to render squished into a sliver. Give
- * the static canvas a comfortable minimum height and let its rendered SVG scale
- * to the container width while preserving aspect ratio (so small graphs fill the
- * space instead of collapsing, and large ones shrink to fit and scroll rather
- * than clip). Scoped to `[data-bp-graph-static="true"]`, so the interactive main
- * Dependency Graph -- and its light-mode appearance -- is unaffected.
+ * NODE-5 / height-fix: the per-node & per-decl "Local dependency graph" is a
+ * static embed. CSS owns its box as the single source of truth — the render path
+ * (graph.mjs) NEVER inline-sets a page/viewport height on a static canvas (see
+ * graph-runtime-core `layoutGraphCanvas`, which returns early for static
+ * canvases). An inflated inline height used to override this box and collapse the
+ * fitted SVG to a sliver at constrained widths. The SVG fills the box exactly and
+ * d3-graphviz `fit(true)` + the viewBox scale/center the graph within it. Scoped
+ * to `[data-bp-graph-static="true"]`, so the interactive main Dependency Graph --
+ * and its light-mode appearance -- is unaffected.
  */
 .bp_graph_canvas[data-bp-graph-static="true"] {
-  /* Fixed default height (drag the corner to resize — `resize: vertical`). */
+  /* Fixed default height (drag the corner to resize — `resize: vertical`), with a
+   * floor so a drag can't collapse the box below a readable size. */
   height: 400px;
+  min-height: 320px;
   resize: vertical;
-  overflow: auto;
+  /* Zoom/pan (when enabled) transforms the graph within the SVG viewport, which
+   * clips its own content, so the box never needs to scroll. */
+  overflow: hidden;
 }
 
 .bp_graph_canvas[data-bp-graph-static="true"] svg {
   display: block;
-  /* Scale the localized graph up to a readable size (small/chain-shaped
-   * neighborhoods otherwise render as a tiny sliver): grow to at least
-   * min-height and to the container width, preserving aspect via the viewBox;
-   * taller graphs scroll inside the fixed-height, resizable canvas. */
-  width: auto;
-  height: auto;
-  min-height: 320px;
-  max-width: 100%;
-  margin: 0 auto;
+  /* Fill the fixed CSS box exactly; `fit(true)` + the viewBox scale and center the
+   * graph within it (small neighborhoods grow to fill, large ones shrink to fit --
+   * no collapse, no clip). Detail comes from the −/+/Fit zoom cluster and
+   * drag-resizing the box, not from overflow scrolling. */
+  width: 100%;
+  height: 100%;
 }
 
 /*
@@ -391,6 +394,37 @@
 
 .bp_graph_zoom_fit {
   font-size: 0.78rem;
+}
+
+/* Compact standalone zoom cluster for a static/local embed (node & decl "Local
+   dependency graph"): a slim right-aligned row directly above the ~400px canvas.
+   Reuses the shared `.bp_graph_controls_button` tokens (so both themes come for
+   free); slightly smaller and shadowless to stay unobtrusive above the small
+   embed. The interactive Dependency-Graph control bar is left pixel-unchanged. */
+.bp_graph_local_controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--bp-space-2, 0.5rem);
+}
+
+.bp_graph_local_controls .bp_graph_zoom_controls {
+  gap: 0.25rem;
+}
+
+.bp_graph_local_controls .bp_graph_zoom_button {
+  padding: 0.22rem 0.45rem;
+  font-size: 0.85rem;
+  box-shadow: none;
+}
+
+.bp_graph_local_controls .bp_graph_zoom_in,
+.bp_graph_local_controls .bp_graph_zoom_out {
+  min-width: 1.7rem;
+  font-size: 0.95rem;
+}
+
+.bp_graph_local_controls .bp_graph_zoom_fit {
+  font-size: 0.72rem;
 }
 
 .bp_graph_legend_button[aria-expanded="true"] {

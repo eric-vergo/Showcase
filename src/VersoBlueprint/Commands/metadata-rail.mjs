@@ -514,6 +514,19 @@ function sectionTitle(text) {
   return el("h2", { class: "bp-rail-section-title", text: text });
 }
 
+// A collapsed-by-default disclosure section for the dependency lists (Uses /
+// Used By / See Also, plus their loading/offline fallbacks). Emits a native
+// `<details>` (collapsed — no `open` attribute) whose `<summary>` reuses the
+// `.bp-rail-section-title` typography; the disclosure triangle + focus style are
+// drawn by MetadataRail.lean (`.bp-rail-collapsible`). Keeping the whole set of
+// dependency sections as `<details>` (even in the fallback branches) keeps the
+// rail structure stable across load states.
+function collapsibleSection(title, children) {
+  const summary = el("summary", { class: "bp-rail-section-title", text: title });
+  const kids = Array.isArray(children) ? children : [children];
+  return el("details", { class: "bp-rail-section bp-rail-collapsible" }, [summary].concat(kids));
+}
+
 function metaRow(key, value, title) {
   const val = el("span", { class: "bp-rail-meta-val", text: value });
   if (title && title !== value) val.setAttribute("title", title);
@@ -559,13 +572,13 @@ function depSection(title, items, cap) {
   shown.forEach(function (it) {
     list.appendChild(depItem(it.name, it.axis));
   });
-  const section = el("div", { class: "bp-rail-section" }, [sectionTitle(title), list]);
+  const children = [list];
   if (items.length > shown.length) {
-    section.appendChild(
+    children.push(
       el("p", { class: "bp-rail-more", text: "+ " + (items.length - shown.length) + " more" })
     );
   }
-  return section;
+  return collapsibleSection(title, children);
 }
 
 function pendingNote() {
@@ -701,7 +714,7 @@ function renderRail(name, hintMeta) {
     });
     if (uses.length > 0) frag.appendChild(depSection("Uses", uses));
   } else {
-    frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Uses"), pendingNote()]));
+    frag.appendChild(collapsibleSection("Uses", pendingNote()));
   }
 
   // --- Used By ------------------------------------------------------------
@@ -710,7 +723,7 @@ function renderRail(name, hintMeta) {
       frag.appendChild(depSection("Used By", vm.usedBy.map(function (n) { return { name: n }; })));
     }
   } else {
-    frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Used By"), pendingNote()]));
+    frag.appendChild(collapsibleSection("Used By", pendingNote()));
   }
 
   // --- See Also (same-module siblings) ------------------------------------
