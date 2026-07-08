@@ -65,6 +65,7 @@ jobs:
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
+          echo "publish_pdf=${{ matrix.publish_pdf }}"
       - name: Match reference target toolchain
         if: ${{ matrix.rc != '' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
@@ -90,6 +91,7 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Install PDF toolchain
+        if: ${{ matrix.publish_pdf }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -137,9 +139,11 @@ jobs:
         run: |
           lean --version
           lake --version
-          lualatex --version | head -n 1
+          if [ "${{ matrix.publish_pdf }}" = "true" ]; then
+            lualatex --version | head -n 1
+          fi
           python3 --version
-      - name: Generate release reference blueprints with PDFs
+      - name: Generate release reference blueprints
         run: |
           python3 -m scripts.blueprint_reference_harness generate \
             --manifest _out/deploy-projects/${{ matrix.project_id }}.json \

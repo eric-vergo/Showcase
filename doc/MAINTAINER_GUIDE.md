@@ -718,8 +718,9 @@ default-development catalog and passes it to the release-branch harness with
 `projects.json` refs. The per-project target entry also owns any RC override,
 so two projects in the same release line can deploy against different release
 candidate tags when needed. Deploy one-project manifests append `--pdf` to the
-selected generator command, so checked-out release branches can publish PDFs
-without needing a new reference-harness CLI flag.
+selected generator command only for the default-development release target, so
+the current published catalog includes PDFs while archived release targets stay
+HTML-only unless their deploy policy is deliberately expanded.
 
 The current published project/release split is intentionally not duplicated
 here. Read `tests/harness/projects.json`; every project target marked
@@ -750,7 +751,7 @@ includes:
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release slices
 - `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
-  selected reference target's deployed PDF
+  selected reference target whose deploy matrix entry enables `publish_pdf`
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
