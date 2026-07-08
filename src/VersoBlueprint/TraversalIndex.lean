@@ -617,32 +617,6 @@ def raw? (state : TraverseState) : Option Json := do
 
 end TrustData
 
-namespace DeclNotes
-
-def spec : StoreSpec := {
-  name := `VersoBlueprint.TraversalIndex.DeclNotes
-  kind := .semanticDomain
-  key := "fully-qualified declaration name"
-  value := "authored sidecar-prose blocks (StoredDeclNotes JSON) plus block anchor id"
-  summary := "Authored informal prose attached to a declaration WITHOUT making it a blueprint node (the `:::declNotes` block). Keyed by the full decl name; read by the decl-page emitter, which renders the blocks as the informal-statement cell (preferred over the docstring). Last-writer-wins on duplicate keys."
-}
-
-def domainName : Name := spec.name
-
-def object? (state : TraverseState) (declName : String) : Option Verso.Multi.Object :=
-  state.getDomainObject? domainName declName
-
-def saveData (state : TraverseState) (declName : String) (data : Json) : TraverseState :=
-  saveObjectData state domainName declName data
-
-def saveId (state : TraverseState) (declName : String) (id : Verso.Multi.InternalId) : TraverseState :=
-  saveObjectId state domainName declName id
-
-def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
-  state.domains.get? domainName
-
-end DeclNotes
-
 /--
 Code-side inventory of the traversal indexes owned by Blueprint.
 
@@ -666,8 +640,7 @@ def allSpecs : Array StoreSpec := #[
   CitationUsages.spec,
   Summary.spec,
   DeclRegistry.spec,
-  TrustData.spec,
-  DeclNotes.spec
+  TrustData.spec
 ]
 
 end Informal.TraversalIndex

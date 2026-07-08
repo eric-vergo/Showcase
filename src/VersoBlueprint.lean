@@ -38,7 +38,6 @@ import VersoBlueprint.DeclIndex
 import VersoBlueprint.DeclPage
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
-import VersoBlueprint.Commands.DeclNotes
 import VersoBlueprint.Commands.Formalization
 import VersoBlueprint.Commands.TrustStrip
 import VersoBlueprint.FormalizationYaml

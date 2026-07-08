@@ -110,11 +110,10 @@ namespace Verso.VersoBlueprintTests.BlueprintDeclPages
     "{\"kind\":\"Definition\",\"module\":\"A.M\",\"name\":\"A.b\",\"status\":\"missing\",\"title\":\"\"}"
 
 -- NB: the Item-9 `:=`-value-prefix (`NodeCard.formalSourceBody (assignPrefix := …)`)
--- and the `:::declNotes` store / preference-over-docstring / provenance marker
--- produce `Html` / carry `Array (Doc.Block Manual)`, which the `#eval`/`#guard_msgs`
--- harness cannot evaluate (no ToExpr/Repr for those types). They are verified
--- end-to-end by the starter smoke build: the `ProjectTemplate.doubleNat` decl page
--- shows its `:= 2 * n` value flush under the signature and the authored prose with
--- an "Authored" marker, while `isEvenNat` shows its docstring with "From docstring".
+-- and the docstring provenance marker produce `Html`, which the `#eval`/`#guard_msgs`
+-- harness cannot evaluate (no ToExpr/Repr for `Html`). They are verified end-to-end
+-- by the starter smoke build: the `ProjectTemplate.doubleNat` decl page shows its
+-- `:= 2 * n` value flush under the signature, and each unwired decl page shows its
+-- docstring with a "From docstring" marker.
 
 end Verso.VersoBlueprintTests.BlueprintDeclPages
