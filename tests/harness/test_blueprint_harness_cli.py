@@ -163,6 +163,13 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertFalse(parser.parse_args(["generate"]).pdf)
         self.assertTrue(parser.parse_args(["generate", "--pdf"]).pdf)
 
+    def test_reference_generation_commands_parse_verbose(self) -> None:
+        parser = reference_harness_mod.build_parser()
+        self.assertFalse(parser.parse_args(["generate"]).verbose)
+        self.assertTrue(parser.parse_args(["generate", "--verbose"]).verbose)
+        self.assertFalse(parser.parse_args(["validate"]).verbose)
+        self.assertTrue(parser.parse_args(["validate", "--verbose"]).verbose)
+
     def test_reference_projects_parses_release_filter(self) -> None:
         parser = reference_harness_mod.build_parser()
         args = parser.parse_args(["projects", "--release", "v4.29.0"])
@@ -1943,7 +1950,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with patched_attrs(
             reference_harness_mod,
             ensure_prebuilt_executable=lambda _package_root, _exe_name: Path("/tmp/demo"),
-            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, *, pdf=False: None,
+            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, *, pdf=False, verbose=False: None,
         ):
             generate_projects(
                 layout,

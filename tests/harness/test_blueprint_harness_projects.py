@@ -1657,7 +1657,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
                 commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
 
-                generate_git_project(layout, output_root, project, skip_build=False, pdf=True)
+                generate_git_project(layout, output_root, project, skip_build=False, pdf=True, verbose=True)
             finally:
                 for name, value in originals.items():
                     if name == "command_rewrite_local_blueprint_dependency":
@@ -1677,7 +1677,13 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(
             any(
                 command[1:]
-                == [*VBP_BUILD_COMMAND, "--output", str(output_root / "external-blueprint"), "--pdf"]
+                == [
+                    *VBP_BUILD_COMMAND,
+                    "--output",
+                    str(output_root / "external-blueprint"),
+                    "--pdf",
+                    "--verbose",
+                ]
                 for command in commands
             )
         )
