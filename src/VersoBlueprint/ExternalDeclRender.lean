@@ -442,12 +442,18 @@ private def renderParentsSection
     }}
 
 private def renderDeclHtmlDocstringFromInfoE
-    (decl : Name) (cinfo : ConstantInfo) : MetaM ExternalDeclRenderResult :=
+    (decl : Name) (cinfo : ConstantInfo)
+    (sourceSig? : Option Verso.Genre.Manual.Signature := none) : MetaM ExternalDeclRenderResult :=
   open Verso.Output.Html in do
   let declType ←
     withOptions (verso.docstring.allowMissing.set · true) <|
       Verso.Genre.Manual.Block.Docstring.DeclType.ofName decl (hideStructureConstructor := true)
-  let signature ← Verso.Genre.Manual.Signature.forName decl
+  -- Prefer the verbatim-source signature (full hovers + author's exact layout) when the
+  -- caller resolved it from local source; otherwise delaborate via `Signature.forName`.
+  let signature ←
+    match sourceSig? with
+    | some s => pure s
+    | none => Verso.Genre.Manual.Signature.forName decl
 
   let rendered := renderWithHoverPayloads <| do
     let ctorSection? : Option ExternalDeclHtml ←
@@ -507,9 +513,10 @@ Render one declaration directly from known declaration facts.
 Errors represent rendering failures only; declaration lookup is handled by callers.
 -/
 def renderDeclHtmlDirectFromInfoE
-    (decl : Name) (cinfo : ConstantInfo) : MetaM ExternalDeclRenderResult := do
+    (decl : Name) (cinfo : ConstantInfo)
+    (sourceSig? : Option Verso.Genre.Manual.Signature := none) : MetaM ExternalDeclRenderResult := do
   try
-    renderDeclHtmlDocstringFromInfoE decl cinfo
+    renderDeclHtmlDocstringFromInfoE decl cinfo sourceSig?
   catch ex =>
     return .error (.exception decl (← ex.toMessageData.toString))
 

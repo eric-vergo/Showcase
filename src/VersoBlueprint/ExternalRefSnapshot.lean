@@ -415,6 +415,106 @@ def highlightModuleSourceHtml? (moduleSrc : String) : Lean.CoreM (Option String)
   catch _ =>
     return none
 
+/-- Whether a declaration's source region is a plain `binders : type` signature
+that can be re-elaborated as an `opaque` for the verbatim-source highlight.
+`inductive`/`structure`/constructor/recursor/quotient declarations are excluded —
+their source is not a signature and their card is rendered from `DeclType`. -/
+def isStatementSignatureCandidate (cinfo : Lean.ConstantInfo) : Bool :=
+  match cinfo with
+  | .defnInfo _ | .thmInfo _ | .opaqueInfo _ | .axiomInfo _ => true
+  | _ => false
+
+/-- Assemble a `declSig` (binders + `: type`) syntax node from a parsed
+`declSig`/`optDeclSig`, reusing the original binder and type-ascription child
+nodes so their *source positions* are preserved (the semantic highlighter matches
+info-tree entries against these positions). `none` when there is no explicit type
+ascription — e.g. a `def` whose type is inferred — since there is then nothing to
+elaborate into a signature. -/
+private def statementDeclSig? (sig : Lean.Syntax) : Option Lean.Syntax :=
+  let binders := sig[0]
+  let typeSpec? : Option Lean.Syntax :=
+    if sig.getKind == ``Lean.Parser.Command.declSig then some sig[1]
+    else if sig.getKind == ``Lean.Parser.Command.optDeclSig && sig[1].getNumArgs > 0 then
+      some sig[1][0]
+    else none
+  typeSpec?.map fun ts =>
+    Lean.Syntax.node .none ``Lean.Parser.Command.declSig #[binders, ts]
+
+open SubVerso.Highlighting Lean Elab in
+/-- The `CommandElabM` core of `highlightStatementFromSource?`: re-elaborate the
+verbatim statement (as a fresh, clash-free `opaque`, so it never collides with the
+real declaration and never needs its proof), then highlight the *original* name +
+signature syntax against the resulting info trees. Runs in an isolated command
+state supplied by the caller. Returns `none` if elaboration reports any error
+(e.g. an identifier that only resolves under the module's `open`s / `variable`s
+that are not in scope here), so the caller degrades to the delaborated signature. -/
+private def highlightStatementAct (declText : String) (deIndentCol : Nat)
+    (declId declSig : Lean.Syntax) :
+    Command.CommandElabM (Option SubVerso.Highlighting.Highlighted) := do
+  let freshId := mkIdentFrom declId (Lean.Name.mkSimple "_versoBlueprintSourceSig")
+  let declIdFresh ← `(Lean.Parser.Command.declId| $freshId:ident)
+  let sigT : Lean.TSyntax ``Lean.Parser.Command.declSig := ⟨declSig⟩
+  -- `unsafe` avoids an `Inhabited` obligation on the result type; `noncomputable`
+  -- because `opaque` has no executable value. The signature is spliced verbatim,
+  -- so its source positions survive into the captured info trees.
+  let cmd ← `(command| noncomputable unsafe opaque $declIdFresh $sigT)
+  let trees ← withoutModifyingEnv do
+    Command.elabCommand cmd
+    pure (← getInfoState).trees
+  if ← Lean.MonadLog.hasErrors then return none
+  let hl ← Command.liftTermElabM <|
+    withTheReader Lean.Core.Context ({· with fileMap := Lean.FileMap.ofString declText}) do
+      let name ← highlight declId #[] trees
+      let sigHl ← highlight declSig #[] trees
+      pure (SubVerso.Highlighting.Highlighted.seq #[name, sigHl])
+  return some (hl.deIndent deIndentCol)
+
+open Lean Elab in
+/--
+Highlight a declaration's **statement** from its verbatim source text, with full
+semantic info (const/type classification and hovers), preserving the author's
+exact layout/whitespace.
+
+Unlike the delaborated `Signature.forName` path (which pretty-prints the *type*
+and re-lays it out at a fixed width, dropping hovers on tokens the delaborator
+never tags), this slices the declaration's source region (`range`), re-parses it,
+re-elaborates just the signature as a fresh `opaque` (so no proof is rerun and no
+name clashes), and runs SubVerso's highlighter over the **original source syntax**
+with the resulting info trees. Every identifier that resolves therefore carries
+its hover payload, and the layout is exactly what the author wrote.
+
+Degrades to `none` — the caller falls back to `Signature.forName` — when the
+source has no explicit type ascription, fails to parse, or fails to elaborate in
+this context (identifiers relying on the module's `open`s that are not in scope).
+-/
+def highlightStatementFromSource? (content : String) (range : Lean.DeclarationRange) :
+    Lean.CoreM (Option SubVerso.Highlighting.Highlighted) := do
+  let fileMap := Lean.FileMap.ofString content
+  let startPos := fileMap.ofPosition range.pos
+  let endPos := fileMap.ofPosition range.endPos
+  let declText := String.Pos.Raw.extract content startPos endPos
+  let env ← getEnv
+  let .ok cmdStx := Lean.Parser.runParserCategory env `command declText "<statement>"
+    | return none
+  let some declId := cmdStx.find? (·.getKind == ``Lean.Parser.Command.declId)
+    | return none
+  let some sigNode := cmdStx.find? (fun s =>
+      s.getKind == ``Lean.Parser.Command.declSig || s.getKind == ``Lean.Parser.Command.optDeclSig)
+    | return none
+  let some declSig := statementDeclSig? sigNode
+    | return none
+  let declFileMap := Lean.FileMap.ofString declText
+  let cctx : Lean.Elab.Command.Context :=
+    { fileName := "<statement>", fileMap := declFileMap, snap? := none, cancelTk? := none }
+  let cmdState : Lean.Elab.Command.State :=
+    { env, maxRecDepth := (← readThe Lean.Core.Context).maxRecDepth, scopes := [{ header := "" }] }
+  try
+    match (← liftM <| EIO.toIO' <|
+        (highlightStatementAct declText range.pos.column declId declSig cctx).run cmdState) with
+    | .error _ => return none
+    | .ok (result, _) => return result
+  catch _ => return none
+
 /--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
@@ -459,12 +559,35 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
     let sourceHref? ←
       liftM <| sourceLinkHref? opts workspaceRoot moduleName? sourcePath? (ranges?.map (fun r => r.range))
-    let renderResult ← (renderDeclHtmlDirectFromInfoE canonical cinfo).run'
+    -- Read the source file once (shared by the verbatim-signature highlight and the
+    -- proof-body capture below); `none` on any missing/unreadable source.
+    let content? : Option String ←
+      match sourcePath? with
+      | some p => (try pure (some (← IO.FS.readFile p)) catch _ => pure none)
+      | none => pure none
+    -- Verbatim-source signature (full hovers + author's layout) for the node card,
+    -- when local source is available and the declaration has an elaboratable
+    -- signature. Structures/inductives/recursors keep the delaborated path (their
+    -- source is not a plain `binders : type` signature). Degrades to `none` (→
+    -- `Signature.forName`) on any parse/elaboration failure.
+    let sourceSig? : Option Verso.Genre.Manual.Signature ←
+      match content?, ranges? with
+      | some content, some ranges =>
+        if isStatementSignatureCandidate cinfo then
+          match ← highlightStatementFromSource? content ranges.range with
+          | some hl => pure (some { wide := hl, narrow := hl })
+          | none => pure none
+        else pure none
+      | _, _ => pure none
+    let renderResult ← (renderDeclHtmlDirectFromInfoE canonical cinfo sourceSig?).run'
     let render : Data.ExternalDeclRender :=
       match renderResult with
       | .ok html => .ok html
       | .error err => .error err
-    let proofSource? ← liftM <| captureProofSource? sourcePath? (ranges?.map (fun r => r.range))
+    let proofSource? : Option String :=
+      match content?, ranges? with
+      | some content, some ranges => proofSourceFromContent? content ranges.range
+      | _, _ => none
     let proofHtml? ←
       match proofSource? with
       | some src => highlightProofSourceHtml? src

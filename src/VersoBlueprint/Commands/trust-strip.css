@@ -30,6 +30,21 @@
   margin-top: 0;
 }
 
+/* Quiet "All checks →" affordance linking the strip to the verification overview. */
+.bp_trust_strip_all {
+  font-size: var(--bp-fs-badge);
+  font-weight: 600;
+  color: var(--bp-color-link);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bp_trust_strip_all:hover,
+.bp_trust_strip_all:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
 /* Trust badges that link to their evidence page render as <a>. Keep them visually
    identical at rest, add a quiet hover/focus affordance (token-driven, both
    themes). */
@@ -147,6 +162,13 @@ a.bp_summary_badge:focus-visible {
 .bp_trust_out_link:focus-visible {
   text-decoration: underline;
   text-underline-offset: 0.14em;
+}
+
+/* Compiled-evaluation caveat + other quiet notes on the trust pages. */
+.bp_trust_note {
+  margin: var(--bp-space-3) 0 0;
+  font-size: var(--bp-fs-small, 0.875rem);
+  color: var(--bp-color-text-muted);
 }
 
 /* Gloss of the standard axioms. */

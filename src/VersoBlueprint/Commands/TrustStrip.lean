@@ -12,6 +12,8 @@ import VersoBlueprint.FormalizationYaml
 import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.TraversalIndex
+import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphChecks
 
 /-!
 Dashboard trust strip.
@@ -63,6 +65,16 @@ register_option verso.blueprint.trust.challengeFile : String := {
 register_option verso.blueprint.trust.solutionFile : String := {
   defValue := ""
   descr := "Path (relative to the build CWD) to the comparator's Solution Lean file; its contents are embedded verbatim on the comparator evidence page (after the Challenge file). Empty or missing ⇒ omitted (probe-and-degrade)."
+}
+
+register_option verso.blueprint.trust.requireConnected : Bool := {
+  defValue := true
+  descr := "Whether a disconnected `uses` graph (more than one weakly-connected component) FAILS the site build. Default true (a coherent formalization should be a single connected development). Set false for a deliberately multi-topic blueprint (independent example chapters): the connectivity check is then reported for information but does not gate the build. Acyclicity always hard-gates regardless."
+}
+
+register_option verso.blueprint.trust.comparatorToolInfo : String := {
+  defValue := ""
+  descr := "Free-text description of the external comparator/lean4export tooling and its pinned versions (e.g. \"lean4export@<sha>, comparator@<sha>\"), shown verbatim in the reproducibility section of the verification-overview page. These SHAs live in the consumer's CI workflow and are not obtainable at site-build time, so the consumer supplies them here. Empty ⇒ omitted."
 }
 
 /-- Comparator verdict extracted from the comparator-status artifact.
@@ -135,6 +147,15 @@ structure TrustData where
   /-- Declarations in the project namespace whose type/value uses `sorryAx`, found by
   the kernel scan (empty for a sorry-free development). -/
   sorryDecls : List String := []
+  /-- Free-text comparator/lean4export tooling + pinned-version description, from the
+  `verso.blueprint.trust.comparatorToolInfo` option (empty ⇒ absent). Surfaced verbatim
+  in the reproducibility section of the verification-overview page; the SHAs live in the
+  consumer's CI workflow and cannot be read at site-build time. -/
+  comparatorToolInfo : String := ""
+  /-- Whether a disconnected `uses` graph fails the build (item 1). Default `true`;
+  a deliberately multi-topic blueprint sets `verso.blueprint.trust.requireConnected`
+  false, and the connectivity check is then reported for information without gating. -/
+  requireConnected : Bool := true
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
@@ -395,6 +416,17 @@ def trustReviewHref : String := "trust/review/"
 def trustReviewPath : Verso.Multi.Path := #["trust", "review"]
 def trustComparatorHref : String := "trust/comparator/"
 def trustComparatorPath : Verso.Multi.Path := #["trust", "comparator"]
+def trustGraphAcyclicHref : String := "trust/graph-acyclicity/"
+def trustGraphAcyclicPath : Verso.Multi.Path := #["trust", "graph-acyclicity"]
+def trustGraphConnectedHref : String := "trust/graph-connectivity/"
+def trustGraphConnectedPath : Verso.Multi.Path := #["trust", "graph-connectivity"]
+def trustChecksHref : String := "trust/checks/"
+def trustChecksPath : Verso.Multi.Path := #["trust", "checks"]
+/-- Root-relative link (resolved via each page's `<base href>`, like the other trust
+hrefs) to the machine-readable audit artifact under the site's `-verso-data/` dir. -/
+def trustAuditJsonHref : String := "-verso-data/trust-audit.json"
+/-- Basename of the machine-readable trust-audit artifact. -/
+def trustAuditJsonFilename : String := "trust-audit.json"
 
 /--
 One trust badge. Reuses the dashboard's `.bp_summary_badge` classes (`variant`
@@ -439,6 +471,66 @@ def trustAxiomsBadge (axioms : List String) : Output.Html :=
 def trustReviewBadge (status : String) : Output.Html :=
   trustBadgeHtml s!"review: {status}" (href? := Option.some trustReviewHref)
 
+/-- Transitive sorry badge: prefers the kernel `sorryAx` scan verdict
+(`sorryDecls`) over the declared `formalization.yaml` count when the scan ran. -/
+def trustSorryBadgeOf (trust : TrustData) : Output.Html :=
+  let n := if trust.sorryScanRan then trust.sorryDecls.length else trust.sorryCount.getD 0
+  let title :=
+    if trust.sorryScanRan then "Kernel-verified: build-time scan for sorryAx over the project namespace"
+    else "Declared in formalization.yaml (not independently computed)"
+  trustBadgeHtml
+    s!"{n} {if n == 1 then "sorry" else "sorries"}"
+    (if n == 0 then "success" else "error")
+    (Option.some title)
+    (href? := Option.some trustSorriesHref)
+
+/-- Transitive axioms badge: prefers the kernel `collectAxioms` verdict over the
+project's main results when it was computed; falls back to the declared axiom list. -/
+def trustAxiomsBadgeOf (trust : TrustData) : Output.Html :=
+  let computed := trust.axiomEvidence.filter (·.computed)
+  if computed.isEmpty then
+    trustAxiomsBadge trust.axioms
+  else
+    let kernelAll := (computed.flatMap (·.kernelAxioms)).eraseDups
+    let nonstd := nonstandardAxioms kernelAll
+    let title := s!"Kernel-computed axioms: {String.intercalate ", " kernelAll}"
+    if nonstd.isEmpty then
+      trustBadgeHtml s!"axioms: standard {kernelAll.length}" "success" (Option.some title)
+        (Option.some trustAxiomsHref)
+    else
+      trustBadgeHtml s!"axioms: {kernelAll.length} ({nonstd.length} nonstandard)" "warn"
+        (Option.some title) (Option.some trustAxiomsHref)
+
+/-- Graph acyclicity badge (kernel-independent structural check over the `uses` graph). -/
+def trustGraphAcyclicBadge (r : Informal.GraphChecks.AcyclicityResult) : Output.Html :=
+  if r.ok then
+    trustBadgeHtml "graph: acyclic" "success"
+      (Option.some s!"No dependency cycle among {r.nodeCount} nodes")
+      (Option.some trustGraphAcyclicHref)
+  else
+    trustBadgeHtml s!"graph: cycle ({r.cycle.size})" "error"
+      (Option.some "A dependency cycle was detected in the uses graph")
+      (Option.some trustGraphAcyclicHref)
+
+/-- Graph weak-connectivity badge. `required` reflects
+`verso.blueprint.trust.requireConnected`: when connectivity is not enforced, a
+multi-component graph reads as a neutral informational badge rather than an error
+(the build is not failed for it). -/
+def trustGraphConnectedBadge (r : Informal.GraphChecks.ConnectivityResult) (required : Bool) :
+    Output.Html :=
+  if r.ok then
+    trustBadgeHtml "graph: connected" "success"
+      (Option.some s!"Single connected component of {r.nodeCount} nodes")
+      (Option.some trustGraphConnectedHref)
+  else if required then
+    trustBadgeHtml s!"graph: {r.componentCount} components" "error"
+      (Option.some s!"{r.stragglers.size} node(s) outside the main component")
+      (Option.some trustGraphConnectedHref)
+  else
+    trustBadgeHtml s!"graph: {r.componentCount} parts" ""
+      (Option.some s!"{r.componentCount} components; connectivity not enforced for this project")
+      (Option.some trustGraphConnectedHref)
+
 def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   let theoremsTitle :=
     if cmp.theoremNames.isEmpty then ""
@@ -459,36 +551,53 @@ The rendered strip: a labelled badge row. When the document emits a
 formalization-metadata page, a blue `accent` badge linking to it is appended to
 the row (it replaces the former trailing text link). Empty when no badge has data.
 -/
-def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.none) :
+def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.none)
+    (checks? : Option Informal.GraphChecks.Results := Option.none) :
     Output.Html :=
+  -- Graph badges (structural `uses`-graph checks) render whenever a non-empty
+  -- master graph exists, independent of `formalization.yaml`/comparator config.
+  let graphBadges : Array Output.Html :=
+    match checks? with
+    | Option.some r =>
+      if r.graphEmpty then #[]
+      else #[trustGraphAcyclicBadge r.acyclic, trustGraphConnectedBadge r.connected trust.requireConnected]
+    | Option.none => #[]
+  let computedAxioms := trust.axiomEvidence.filter (·.computed)
   let badges : Array Output.Html := Id.run do
     let mut out : Array Output.Html := #[]
-    if let some n := trust.sorryCount then
-      out := out.push (trustSorryBadge n)
-    if !trust.axioms.isEmpty then
-      out := out.push (trustAxiomsBadge trust.axioms)
+    -- Transitive verdicts: kernel sorry scan / kernel axiom audit headline the badges.
+    if trust.sorryCount.isSome || trust.sorryScanRan then
+      out := out.push (trustSorryBadgeOf trust)
+    if !trust.axioms.isEmpty || !computedAxioms.isEmpty then
+      out := out.push (trustAxiomsBadgeOf trust)
     if !trust.reviewStatus.isEmpty then
       out := out.push (trustReviewBadge trust.reviewStatus)
     if let some cmp := trust.comparator then
       out := out.push (trustComparatorBadge cmp)
     return out
-  if badges.isEmpty then
+  let allBadges := badges ++ graphBadges
+  if allBadges.isEmpty then
     .empty
   else
     -- Append the formalization-metadata badge only when the strip already carries a
     -- trust signal, preserving the "strip renders only with real trust data" rule.
-    let badges : Array Output.Html :=
+    let allBadges : Array Output.Html :=
       match detailsHref? with
       | Option.some href =>
-        badges.push <|
+        allBadges.push <|
           trustBadgeHtml "formalization.yaml" "accent"
             (title? := Option.some "Project formalization.yaml metadata")
             (href? := Option.some href)
-      | Option.none => badges
+      | Option.none => allBadges
+    -- An "All checks" affordance links the strip to the verification-overview page
+    -- without cluttering the badge row (rendered as a quiet trailing link).
+    let overviewLink : Output.Html :=
+      {{ <a class="bp_trust_strip_all" href={{trustChecksHref}}>"All checks →"</a> }}
     {{
       <section class="bp_trust_strip" "aria-label"="Trust signals">
         <span class="bp_trust_strip_label">"Trust"</span>
-        <div class="bp_summary_badge_row">{{badges}}</div>
+        <div class="bp_summary_badge_row">{{allBadges}}</div>
+        {{overviewLink}}
       </section>
     }}
 
@@ -516,7 +625,8 @@ block_extension Block.trustStrip (trust : TrustData) where
           (fun err => s!"Malformed data in Block.trustStrip.toHtml ({err})")
         | pure .empty
       let st ← HtmlT.state
-      pure (trustStripHtml trust (Informal.TraversalIndex.FormalizationPage.href? st))
+      let checks := Informal.GraphChecks.run (Informal.GraphApi.masterGraph st)
+      pure (trustStripHtml trust (Informal.TraversalIndex.FormalizationPage.href? st) (some checks))
   extraCss := trustStripAssetBundle.css
   extraJs := trustStripAssetBundle.js
 
@@ -588,6 +698,15 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   -- fields, never a build error.
   let namePrefix : String := opts.get `verso.blueprint.declNamePrefix ""
   trust := (← liftM (enrichTrustData opts namePrefix mainResults trust))
+  -- Comparator/lean4export tooling description (item 5): a consumer-supplied option
+  -- carrying the pinned tool SHAs (which live in CI, not readable at build time).
+  let toolInfo : String :=
+    opts.get verso.blueprint.trust.comparatorToolInfo.name
+      verso.blueprint.trust.comparatorToolInfo.defValue
+  let requireConnected : Bool :=
+    opts.get verso.blueprint.trust.requireConnected.name
+      verso.blueprint.trust.requireConnected.defValue
+  trust := { trust with comparatorToolInfo := toolInfo, requireConnected }
   return Option.some trust
 
 end Informal.Commands

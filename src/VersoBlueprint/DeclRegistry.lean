@@ -367,7 +367,8 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     (name : Name) (cinfo : ConstantInfo) (moduleName : Name)
     (sourcePath? : Option System.FilePath) (ranges? : Option DeclarationRanges)
     (statementDeps proofDeps : Array Name)
-    (depth? height? : Option Nat) : MetaM Entry := do
+    (depth? height? : Option Nat)
+    (sigSourceHtml? : Option String := none) : MetaM Entry := do
   let range? : Option Range := ranges?.map fun r =>
     { pos := { line := r.range.pos.line, column := r.range.pos.column }
       endPos := { line := r.range.endPos.line, column := r.range.endPos.column } }
@@ -386,14 +387,21 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
   -- name, which would surface the internal `_private.…` mangling) and instead fall
   -- back to a purely syntactic highlight of the pretty-printed type; consumers degrade
   -- further to an escaped `<pre>` of `signatureText` when that parse fails too.
+  -- Prefer the verbatim-source signature (full hovers + the author's exact layout,
+  -- resolved by the caller from local source) for both public and private decls.
+  -- Fall back to the delaborated `Signature.forName` (public) / syntactic type
+  -- highlight (private) when no local-source signature is available.
   let signatureHtml? ←
-    if isPrivateName name then
-      highlightProofSourceHtml? signatureText
-    else
-      try
-        pure (some ((← Verso.Genre.Manual.Signature.forName name).wide |> renderHighlightedSelfContainedHtml))
-      catch _ =>
-        pure none
+    match sigSourceHtml? with
+    | some html => pure (some html)
+    | none =>
+      if isPrivateName name then
+        highlightProofSourceHtml? signatureText
+      else
+        try
+          pure (some ((← Verso.Genre.Manual.Signature.forName name).wide |> renderHighlightedSelfContainedHtml))
+        catch _ =>
+          pure none
   let params ← declParams cinfo.type
   -- Blueprint labels are keyed by the referenced name; authored decls are public, but
   -- fall back to the de-mangled name for robustness.
@@ -511,12 +519,9 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     let (typeDeps, valueDeps) := fwd[i]!
     let ranges? ← findDeclarationRanges? n
     let sourcePath? ← sourcePathForModule? workspaceRoot modName
-    let entry ← (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
-      n ci modName sourcePath? ranges? typeDeps valueDeps
-      depths[i]! heights[i]!).run'
-    entries := entries.push entry
-    -- Proof/value body, from the per-module cached file content (degrades to no
-    -- body on any read/slice failure — the decl page shows its quiet placeholder).
+    -- Per-module cached file content, read once and shared by the verbatim-source
+    -- signature highlight and the proof/value body capture below (degrades to no
+    -- content on any read failure — both consumers fall back).
     let content? : Option String ←
       match sourcePath? with
       | none => pure none
@@ -532,6 +537,25 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
               pure none
           fileCache := fileCache.insert key read?
           pure read?
+    -- Verbatim-source signature (full hovers + the author's exact layout) when the
+    -- declaration has an elaboratable `binders : type` signature and local source.
+    -- Degrades to `none` (→ delaborated `Signature.forName` in `buildEntry`) on any
+    -- parse/elaboration failure.
+    let sigSourceHtml? : Option String ←
+      match content?, ranges? with
+      | some content, some ranges =>
+        if Informal.isStatementSignatureCandidate ci then
+          match ← Informal.highlightStatementFromSource? content ranges.range with
+          | some hl => pure (some (Informal.renderHighlightedSelfContainedHtml hl))
+          | none => pure none
+        else pure none
+      | _, _ => pure none
+    let entry ← (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
+      n ci modName sourcePath? ranges? typeDeps valueDeps
+      depths[i]! heights[i]! sigSourceHtml?).run'
+    entries := entries.push entry
+    -- Proof/value body, from the per-module cached file content (degrades to no
+    -- body on any read/slice failure — the decl page shows its quiet placeholder).
     let bodyText? : Option String :=
       match content?, ranges? with
       | some content, some ranges =>

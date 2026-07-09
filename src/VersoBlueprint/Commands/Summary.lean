@@ -79,10 +79,13 @@ public meta def blueprintDashboardCmd : PartCommand
     let summary : Summary := { base with featuredLabels := parseFeaturedLabels cfg.featured }
     if verso.blueprint.debug.commands.get (← Lean.getOptions) then
       logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
-    -- Trust strip (additive): only when the `verso.blueprint.trust.*` options
-    -- name artifacts; unconfigured consumers render the dashboard unchanged.
-    if let some trust ← elabTrustData? then
-      PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.trustStrip $(quote trust)) #[]))
+    -- Trust strip: carries the sorry/axiom/review/comparator badges when the
+    -- `verso.blueprint.trust.*` options name artifacts, plus the always-on structural
+    -- `uses`-graph badges (acyclicity / connectivity) computed at render time. The
+    -- strip renders nothing when it would carry no signal (no trust config and an
+    -- empty master graph), so unconfigured consumers see no change.
+    let trust := (← elabTrustData?).getD {}
+    PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.trustStrip $(quote trust)) #[]))
     PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.dashboard $(quote summary)) #[]))
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
