@@ -25,30 +25,44 @@ namespace Informal.DocsChrome
 
 /--
 Styling for the top-nav strip injected into the fixed site banner
-(`Commands/top-nav.mjs`, appended as the trailing flex child of `<header>`).
+(`Commands/top-nav.mjs`, appended inside the banner's `.header-logo-wrapper`).
 
-Wide viewports: an inline row of category links on the right of the banner, the
-active page marked with an accent underline (`aria-current="page"`). At `<=700px`
-(where the core banner hides its logo slot and shows the burger) it folds into a
-compact "Browse" dropdown so the tabs never collide with the title.
+The three category tabs sit beside the Home logo in the banner's first cell, the
+active page marked with an accent underline (`aria-current="page"`). The
+`.header-logo-wrapper:has(.bp-topnav)` rule below turns that cell into a flex row so
+the logo and tabs lay out horizontally (guarded to `>700px` so it never overrides
+the core banner's `<=700px` hide of the logo slot). At `<=700px` the core banner
+hides the logo slot and the tabs with it, showing the ToC burger instead.
 -/
 def topNavCss : String := r##"
+/* Lay the logo + tabs out as a horizontal row inside the banner's first cell. The
+   `:has()` guard scopes this to the wrapper that actually holds our nav, and the
+   min-width media query keeps it from re-showing the logo slot the core banner hides
+   at <=700px (that `display: none` is lower specificity than this rule). */
+@media (min-width: 701px) {
+  .header-logo-wrapper:has(.bp-topnav) {
+    display: flex;
+    align-items: center;
+    gap: var(--bp-space-3);
+    min-width: 0;
+  }
+}
+
 .bp-topnav {
-  /* No `margin-left: auto`: the core banner's `.header-title-wrapper` is `flex: 1`
-     and already consumes the free space, pushing the nav to the right. An auto
-     margin here would instead fight the later-mounted search box (also right-
-     aligned) and the two would overlap. */
-  flex: 0 0 auto;
+  /* Shrinkable (min-width: 0) so a wide "Project management" label never forces the
+     logo cell to overflow; the tabs stay on one line and clip gracefully instead. */
+  flex: 0 1 auto;
+  min-width: 0;
   position: relative;
   display: flex;
   align-items: center;
-  padding: 0 var(--bp-space-3);
 }
 
 .bp-topnav-menu {
   display: flex;
   align-items: center;
   gap: var(--bp-space-1);
+  min-width: 0;
 }
 
 .bp-topnav-link {
@@ -86,11 +100,12 @@ def topNavCss : String := r##"
 }
 
 /* ---- Narrow: hide (the burger owns the left of the banner here) ------------
-   The nav sits before the `flex: 1` title wrapper (so the search box can't
-   overlay it); at <=700px the core banner hides its logo slot and floats the
-   ToC burger over that same left region, so — matching the banner Back/Home
-   controls and the logo slot — the tabs are a desktop/tablet affordance and are
-   hidden here (the command palette + ToC cover navigation on phones). */
+   The nav lives inside `.header-logo-wrapper`, which the core banner sets to
+   `display: none` at <=700px (there the header reverts from grid to flex and the
+   ToC burger floats over that same left region), so the tabs already vanish with
+   the logo slot. This explicit `display: none` is a belt-and-suspenders guard —
+   matching the banner Back/Home controls, the tabs are a desktop/tablet affordance
+   (the command palette + ToC cover navigation on phones). */
 @media (max-width: 700px) {
   .bp-topnav { display: none; }
 }

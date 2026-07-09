@@ -303,6 +303,57 @@ def css : String := r##"
   }
 }
 
+/* ---- Metric labels + shared tooltip -------------------------------------- */
+/* The four Metrics rows (Fan-out / Fan-in / Depth / Height) gloss their meaning in
+   a hover/focus tooltip (metadata-rail.mjs `attachTooltip`). The label carries a
+   dotted-underline "help" affordance; the bubble is `position: fixed` so it escapes
+   the rail body's `overflow-y: auto` clipping. Existing `--bp-*` tokens only, so
+   both color schemes come for free. */
+.bp-rail-metric-key {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--bp-color-border-strong);
+  text-underline-offset: 0.18em;
+  cursor: help;
+}
+
+.bp-rail-metric-key:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+  border-radius: var(--bp-radius-sm);
+}
+
+.bp-rail-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 400;
+  max-width: 18rem;
+  padding: var(--bp-space-2) var(--bp-space-3);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface);
+  box-shadow: var(--bp-shadow-md);
+  color: var(--bp-color-text);
+  font-size: var(--bp-fs-caption, 0.78rem);
+  line-height: 1.45;
+  /* The bubble never intercepts the pointer (avoids hover flicker); it is toggled by
+     the `-visible` class rather than `display` so it retains a measurable box for
+     positioning and is not announced while hidden (aria-hidden + visibility). */
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--bp-duration-fast, 0.12s) var(--bp-ease, ease);
+}
+
+.bp-rail-tooltip.bp-rail-tooltip-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-rail-tooltip { transition: none; }
+}
+
 .bp-rail-meta-row {
   display: flex;
   gap: var(--bp-space-2);

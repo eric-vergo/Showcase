@@ -344,6 +344,20 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
           {{ <p>"The exact Lean statement the comparator checks the formalization against:"</p> }},
           linksRow,
           trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource])
+  -- The Solution file: the project's actual proof of the challenge statement, rendered
+  -- the same way as the challenge (highlighted source + GitHub blob link at the pinned
+  -- commit). Degrades to nothing when the `solutionFile` option/file is absent.
+  let solutionSection : Output.Html :=
+    if cmp.solutionSource.isEmpty then .empty
+    else
+      let ghLink : Output.Html :=
+        if cmp.githubSolutionUrl.isEmpty then .empty
+        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubSolutionUrl "View on GitHub ↗"}}</p> }}
+      trustSection "Solution (Lean)"
+        (.seq #[
+          {{ <p>"The project's Lean proof that discharges the challenge statement:"</p> }},
+          ghLink,
+          trustCodeBlock "bp_trust_code_lean" cmp.solutionHtml cmp.solutionSource])
   let repro : Output.Html :=
     {{ <ul>
         <li>"Re-run the statement comparator against the project's "<code>"comparator.json"</code>"
@@ -352,7 +366,7 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
   trustPageShell "Statement comparator"
     "An independent tool checks that the formal statements proved here really do encode the intended mathematical claims — guarding against a correct proof of the wrong statement."
     (.seq #[trustSection "Evidence" (.seq #[verdict, ciLink]), theorems, note,
-      configSection, challengeSection, trustSection "How to reproduce" repro])
+      configSection, challengeSection, solutionSection, trustSection "How to reproduce" repro])
 
 /--
 `ExtraStep` that emits one trust-evidence page per configured badge under

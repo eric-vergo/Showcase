@@ -429,7 +429,14 @@ private def summaryBlockToHtml : BlockToHtml Manual (ReaderT AllRemotes (ReaderT
 open Verso Doc Elab Genre Manual in
 block_extension Block.summary (summary : Summary) where
   data := toJson summary
-  traverse _id _data _contents := do
+  traverse id _data _contents := do
+    -- Record this block's page anchor so the PM hub can cross-link the standalone
+    -- Blueprint Summary page without guessing its slug (mirrors `Block.formalization`).
+    -- `externalTag` uniquifies the tag, so multiple summary blocks never collide; when
+    -- more than one exists `SummaryPage.href?` resolves to `none` and the link is omitted.
+    let path ← (·.path) <$> read
+    let _ ← Verso.Genre.Manual.externalTag id path "--bp-summary"
+    modify fun st => Informal.TraversalIndex.SummaryPage.saveId st id
     return none
   toTeX := none
   toHtml := some summaryBlockToHtml

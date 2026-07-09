@@ -484,6 +484,37 @@ def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState
 
 end FormalizationPage
 
+namespace SummaryPage
+
+/--
+Singleton key under which the blueprint-summary page anchor is indexed.
+`Block.summary`'s traversal saves the block's anchor id here (mirroring
+`FormalizationPage`) so other surfaces (the PM hub links) can cross-link the
+standalone Blueprint Summary page without guessing its slug. When a document
+carries several `blueprint_summary` blocks, more than one id lands under this key
+and `href?` resolves to `none` (Verso only links a single-target ref), so the
+cross-link is simply omitted rather than pointing at an arbitrary block.
+-/
+def pageKey : String := "summary"
+
+def spec : StoreSpec := {
+  name := Resolve.summaryPageDomainName
+  kind := .semanticDomain
+  key := "singleton summary-page key"
+  value := "blueprint-summary page anchor id"
+  summary := "Anchor index for the standalone blueprint-summary page (PM-hub cross-link)."
+}
+
+def domainName : Name := spec.name
+
+def href? (state : TraverseState) : Option String :=
+  Resolve.resolveDomainHref? state domainName pageKey
+
+def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName pageKey id
+
+end SummaryPage
+
 namespace CitationUsages
 
 def spec : StoreSpec := {
@@ -637,6 +668,7 @@ def allSpecs : Array StoreSpec := #[
   CitationPreviews.spec,
   Bibliography.spec,
   FormalizationPage.spec,
+  SummaryPage.spec,
   CitationUsages.spec,
   Summary.spec,
   DeclRegistry.spec,

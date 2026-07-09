@@ -60,6 +60,11 @@ register_option verso.blueprint.trust.challengeFile : String := {
   descr := "Path (relative to the build CWD) to the comparator's Challenge Lean file; its contents are embedded verbatim on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
 }
 
+register_option verso.blueprint.trust.solutionFile : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to the comparator's Solution Lean file; its contents are embedded verbatim on the comparator evidence page (after the Challenge file). Empty or missing ⇒ omitted (probe-and-degrade)."
+}
+
 /-- Comparator verdict extracted from the comparator-status artifact.
 
 `runUrl`/`configJson`/`challengeSource` are empty-string sentinels (matching the
@@ -76,16 +81,24 @@ structure TrustComparator where
   runUrl : String := ""
   configJson : String := ""
   challengeSource : String := ""
-  /-- Syntactically-highlighted HTML for `configJson` / `challengeSource` (built at
-  elaboration by `enrichTrustData`; empty ⇒ the evidence page falls back to escaped
-  plain text). `challengeHtml` is the inner markup of a `<code class="hl lean">`. -/
+  /-- Verbatim contents of the comparator's Solution Lean file (embedded on the
+  evidence page after the Challenge file, read from the
+  `verso.blueprint.trust.solutionFile` option; probe-and-degrade to empty). -/
+  solutionSource : String := ""
+  /-- Syntactically-highlighted HTML for `configJson` / `challengeSource` /
+  `solutionSource` (built at elaboration by `enrichTrustData`; empty ⇒ the evidence
+  page falls back to escaped plain text). `challengeHtml` / `solutionHtml` are the
+  inner markup of a `<code class="hl lean">`. -/
   configHtml : String := ""
   challengeHtml : String := ""
-  /-- Outbound links for the Challenge source (probe-and-degrade to empty when git
-  info is unavailable): a GitHub blob URL at the pinned commit for the Challenge file
-  and for the comparator config JSON, and a Lean-playground URL that opens the
-  Challenge file against the playground's *current* Mathlib. -/
+  solutionHtml : String := ""
+  /-- Outbound links for the Challenge / Solution sources (probe-and-degrade to empty
+  when git info is unavailable): a GitHub blob URL at the pinned commit for the
+  Challenge file, the Solution file, and the comparator config JSON, and a
+  Lean-playground URL that opens the Challenge file against the playground's *current*
+  Mathlib. -/
   githubChallengeUrl : String := ""
+  githubSolutionUrl : String := ""
   githubConfigUrl : String := ""
   playgroundUrl : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
@@ -337,10 +350,15 @@ def enrichTrustData (opts : Lean.Options) (namePrefix : String)
     if !cmp.challengeSource.isEmpty then
       if let some html ← Informal.highlightModuleSourceHtml? cmp.challengeSource then
         cmp := { cmp with challengeHtml := html }
+    if !cmp.solutionSource.isEmpty then
+      if let some html ← Informal.highlightModuleSourceHtml? cmp.solutionSource then
+        cmp := { cmp with solutionHtml := html }
     -- Blob URLs at the pinned commit, via the shared source-link builder (auto GitHub
     -- when the file is in a checkout with a GitHub `origin`; degrades to none).
     let chalPath := opts.get verso.blueprint.trust.challengeFile.name
       verso.blueprint.trust.challengeFile.defValue
+    let solPath := opts.get verso.blueprint.trust.solutionFile.name
+      verso.blueprint.trust.solutionFile.defValue
     let cfgPath := opts.get verso.blueprint.trust.comparatorConfig.name
       verso.blueprint.trust.comparatorConfig.defValue
     if !chalPath.isEmpty then
@@ -351,6 +369,10 @@ def enrichTrustData (opts : Lean.Options) (namePrefix : String)
           cmp := { cmp with
             playgroundUrl :=
               s!"https://live.lean-lang.org/#project={playgroundMathlibProjectId}&url={System.Uri.escapeUri raw}" }
+    if !solPath.isEmpty then
+      if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+          (some (absOptionPath workspaceRoot solPath)) none then
+        cmp := { cmp with githubSolutionUrl := blob }
     if !cfgPath.isEmpty then
       if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
           (some (absOptionPath workspaceRoot cfgPath)) none then
@@ -542,6 +564,9 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     let chalPath : String :=
       opts.get verso.blueprint.trust.challengeFile.name
         verso.blueprint.trust.challengeFile.defValue
+    let solPath : String :=
+      opts.get verso.blueprint.trust.solutionFile.name
+        verso.blueprint.trust.solutionFile.defValue
     let mut cmp := cmp
     if !cfgPath.isEmpty then
       if (← System.FilePath.pathExists cfgPath) then
@@ -554,6 +579,9 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     if !chalPath.isEmpty then
       if (← System.FilePath.pathExists chalPath) then
         cmp := { cmp with challengeSource := (← IO.FS.readFile chalPath) }
+    if !solPath.isEmpty then
+      if (← System.FilePath.pathExists solPath) then
+        cmp := { cmp with solutionSource := (← IO.FS.readFile solPath) }
     trust := { trust with comparator := Option.some cmp }
   -- Phase 1B: layer on the kernel-derived enrichment (axiom evidence, sorry scan,
   -- syntax highlighting, Challenge source links). Runs in `CoreM`; degrades to empty

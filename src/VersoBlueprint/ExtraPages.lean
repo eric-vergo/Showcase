@@ -780,12 +780,16 @@ def emitBlueprintMathlibCandidatesPage : ExtraStep :=
 
 /-! ## Project-management (PM) hub page
 
-The landing page is now minimal (title / authors / trust strip / featured cards);
-everything else the dashboard used to carry moved here: the reading map, the hero +
-per-chapter progress, a contributor console (worklist/owner/tag rollups), progress
-analytics (status breakdown, dependency-depth distribution, frontier), the full
-summary, and the relocated build-metadata block. Reuses the shared dashboard/summary
-render helpers so it themes and enhances (d3 charts) exactly like the old dashboard. -/
+The landing page is minimal (title / authors / trust strip / featured cards); the PM
+hub is where the orienting overview lives: the overall progress hero, the guided
+reading map, a compact hub of links to every project-management and catalog surface
+(worklist / audit / candidates / modules / index / blueprint summary / formalization
+metadata), the next actionable tasks, per-chapter progress, the dependency-depth
+histogram, and a collapsed build-provenance footer. The full per-entry summary, the
+owner/tag rollups, and the coverage-split status cards are NOT duplicated here — they
+live on their own standalone pages, reached via the hub links. Reuses the shared
+dashboard render helpers so it themes and enhances (d3 charts) like the old
+dashboard. -/
 
 /-- Inline styling for the PM hub page: section spacing, link row, and the
 dependency-depth histogram. Token-driven, so light/dark parity is inherited. -/
@@ -837,129 +841,95 @@ private def pmPageCss : String := r##"
 }
 .bp_pm_hist_bar { display: block; height: 100%; background: var(--bp-color-status-ready); }
 .bp_pm_hist_count { text-align: right; color: var(--bp-color-text-subtle); font-variant-numeric: tabular-nums; }
+.bp_pm_build_details { margin-top: var(--bp-space-6); }
+.bp_pm_build_details > summary {
+  cursor: pointer;
+  color: var(--bp-color-text-subtle);
+  font-size: var(--bp-fs-small);
+  font-weight: 600;
+}
 "##
 
-/-- Contributor console: owner/tag/quick-win rollup cards, the owner/tag rollup
-lists (d3-enhanced chart mounts), the top actionable "ready" tasks, and links to the
-full worklist / audit / candidates pages. Degrades gracefully when owner/tag rollups
-are empty (the showcase's case): the cards still show counts and a quiet note stands
-in for the lists. -/
-private def pmContributorConsole (state : TraverseState) (summary : Summary) : Output.Html :=
-  let consoleCards : Output.Html := {{
-    <div class="bp_summary_grid">
-      {{summaryCard "Owners in use" (toString summary.ownerRollups.length)
-          (some "Distinct owners referenced by blueprint entries.")}}
-      {{summaryCard "Tags in use" (toString summary.tagRollups.length)
-          (some "Distinct tags currently attached to entries.")}}
-      {{summaryCard "Unclaimed" (toString summary.missingOwners.length)
-          (some "Entries with no owner assigned yet.")}}
-      {{summaryCard "Quick wins" (toString summary.quickWins.length)
-          (some "Actionable entries with high priority and small effort.")}}
-    </div>
-  }}
-  let ownerRows : Array Output.Html :=
-    summary.ownerRollups.toArray.map fun o =>
-      summaryOwnerRollupRowLinked o (Informal.NodeRoute.ownerPageHref o.owner)
-  let tagRows : Array Output.Html :=
-    summary.tagRollups.toArray.map fun t =>
-      summaryTagRollupRowLinked t (Informal.NodeRoute.tagPageHref t.tag)
-  let rollups : Output.Html :=
-    if ownerRows.isEmpty && tagRows.isEmpty then
-      {{ <p class="bp_summary_empty">"No ownership or tag metadata recorded yet."</p> }}
-    else
-      {{ <div class="bp_dashboard_charts">
-          {{if ownerRows.isEmpty then .empty
-            else dashboardChartMount "owners" "Owners" false {{<ul class="bp_summary_list">{{ownerRows}}</ul>}}}}
-          {{if tagRows.isEmpty then .empty
-            else dashboardChartMount "tags" "Tags" false {{<ul class="bp_summary_list">{{tagRows}}</ul>}}}}
-        </div> }}
-  let ready := (summary.worklist.filter (fun i => i.readiness == "ready")).take 5
-  let suggested : Output.Html :=
-    if ready.isEmpty then .empty
-    else {{
-      <div>
-        <h3 class="bp_pm_subhead">"Suggested next tasks"</h3>
-        <ul class="bp_summary_list">{{ready.toArray.map (worklistRow state)}}</ul>
-      </div>
-    }}
+/-- The PM hub's navigation row: quiet links to every project-management and catalog
+surface. The Blueprint Summary and Formalization Metadata links are omitted when the
+document carries no such page (their traversal anchors resolve to `none`), so an
+unconfigured consumer degrades gracefully rather than dead-linking. -/
+private def pmHubLinks (state : TraverseState) : Output.Html :=
+  let summaryLink : Output.Html :=
+    match Informal.TraversalIndex.SummaryPage.href? state with
+    | some href => {{ <a href={{href}}>"Blueprint summary →"</a> }}
+    | none => .empty
+  let formalizationLink : Output.Html :=
+    match Informal.TraversalIndex.FormalizationPage.href? state with
+    | some href => {{ <a href={{href}}>"Formalization metadata →"</a> }}
+    | none => .empty
   {{
+    <nav class="bp_pm_links" "aria-label"="Blueprint sections">
+      <a href={{Informal.NodeRoute.worklistHref}}>"Worklist →"</a>
+      <a href={{Informal.NodeRoute.auditHref}}>"Audit & technical debt →"</a>
+      <a href={{Informal.NodeRoute.mathlibCandidatesHref}}>"Mathlib upstream candidates →"</a>
+      <a href={{Informal.NodeRoute.modulesHref}}>"Modules →"</a>
+      <a href={{Informal.NodeRoute.declIndexHref}}>"Index →"</a>
+      {{summaryLink}}
+      {{formalizationLink}}
+    </nav>
+  }}
+
+/-- The next few actionable ("ready") worklist items as a compact preview; empty when
+nothing is ready. The worklist page carries the full, filterable list. -/
+private def pmSuggestedTasks (state : TraverseState) (summary : Summary) : Output.Html :=
+  let ready := (summary.worklist.filter (fun i => i.readiness == "ready")).take 5
+  if ready.isEmpty then .empty
+  else {{
     <section class="bp_pm_section">
-      <h2 class="bp_pm_section_title">"Contributors"</h2>
+      <h2 class="bp_pm_section_title">"Suggested next tasks"</h2>
       <p class="bp_pm_section_intro">
-        "Ownership, tags, and the next actionable tasks. The worklist, owner, and \
-         tag pages carry the full, filterable lists."
+        "The next actionable entries — all prerequisites satisfied. The worklist page \
+         carries the full, filterable list."
       </p>
-      {{consoleCards}}
-      {{rollups}}
-      {{suggested}}
-      <p class="bp_pm_links">
-        <a href={{Informal.NodeRoute.worklistHref}}>"Open the full worklist →"</a>
-        <a href={{Informal.NodeRoute.auditHref}}>"Audit & technical debt →"</a>
-        <a href={{Informal.NodeRoute.mathlibCandidatesHref}}>"Mathlib upstream candidates →"</a>
-      </p>
+      <ul class="bp_summary_list">{{ready.toArray.map (worklistRow state)}}</ul>
     </section>
   }}
 
-/-- Progress analytics: the coverage-split status breakdown, the frontier count
-(entries ready now), and the dependency-depth distribution histogram (computed from
-the master graph's `GraphMetrics`). All server-rendered; no new client deps. -/
-private def pmProgressAnalytics (state : TraverseState) (summary : Summary) : Output.Html :=
-  let cov := summary.coverageSplit
-  let statusCards : Output.Html := {{
-    <div class="bp_summary_grid">
-      {{summaryCard "Fully closed" (toString cov.fullyClosed)
-          (some "Local code and prerequisite closure both complete.")}}
-      {{summaryCard "Ready now" (toString cov.readyToFormalize)
-          (some "All prerequisites satisfied; unblocked for the next step.")}}
-      {{summaryCard "Formalized, ancestors open" (toString cov.formalizedWithoutAncestors)
-          (some "Local Lean work done, prerequisite closure still open.")}}
-      {{summaryCard "Informal only" (toString cov.informalOnly)
-          (some "Statements with no associated Lean code yet.")}}
-      {{summaryCard "Blocked or incomplete" (toString cov.blockedOrIncomplete)
-          (some "Not covered by the readiness buckets above.")}}
-    </div>
-  }}
+/-- The dependency-depth distribution histogram, computed from the master graph's
+`GraphMetrics`. Server-rendered (no new client deps); empty when the graph has no
+nodes. -/
+private def pmDepthHistogram (state : TraverseState) : Output.Html :=
   let master := Informal.GraphApi.masterGraph state
   let metrics := Informal.GraphMetrics.computeGraphMetrics master
-  let depthHist : Output.Html :=
-    if metrics.nodes.isEmpty then .empty
-    else
-      let depths := metrics.nodes.map (·.depth)
-      let maxDepth := depths.foldl Nat.max 0
-      let maxCount :=
-        ((Array.range (maxDepth + 1)).map (fun d => (depths.filter (· == d)).size)).foldl Nat.max 1
-      let histRows := (Array.range (maxDepth + 1)).map fun d =>
-        let cnt := (depths.filter (· == d)).size
-        let pct := cnt * 100 / maxCount
-        {{ <div class="bp_pm_hist_row">
-            <span class="bp_pm_hist_label">{{.text true s!"depth {d}"}}</span>
-            <span class="bp_pm_hist_track">
-              <span class="bp_pm_hist_bar" "style"={{s!"width:{pct}%"}}></span>
-            </span>
-            <span class="bp_pm_hist_count">{{.text true (toString cnt)}}</span>
-          </div> }}
-      {{ <div>
-          <h3 class="bp_pm_subhead">"Dependency-depth distribution"</h3>
-          <div class="bp_pm_hist">{{histRows}}</div>
+  if metrics.nodes.isEmpty then .empty
+  else
+    let depths := metrics.nodes.map (·.depth)
+    let maxDepth := depths.foldl Nat.max 0
+    let maxCount :=
+      ((Array.range (maxDepth + 1)).map (fun d => (depths.filter (· == d)).size)).foldl Nat.max 1
+    let histRows := (Array.range (maxDepth + 1)).map fun d =>
+      let cnt := (depths.filter (· == d)).size
+      let pct := cnt * 100 / maxCount
+      {{ <div class="bp_pm_hist_row">
+          <span class="bp_pm_hist_label">{{.text true s!"depth {d}"}}</span>
+          <span class="bp_pm_hist_track">
+            <span class="bp_pm_hist_bar" "style"={{s!"width:{pct}%"}}></span>
+          </span>
+          <span class="bp_pm_hist_count">{{.text true (toString cnt)}}</span>
         </div> }}
-  {{
-    <section class="bp_pm_section">
-      <h2 class="bp_pm_section_title">"Analytics"</h2>
-      <p class="bp_pm_section_intro">
-        {{.text true s!"Status breakdown across all {summary.totalEntries} entries, the frontier of unblocked work, and how deep the dependency graph runs."}}
-      </p>
-      {{statusCards}}
-      <p class="bp_pm_frontier">
-        {{.text true s!"Frontier: {cov.readyToFormalize} {if cov.readyToFormalize == 1 then "entry has" else "entries have"} all prerequisites satisfied and are ready to formalize now."}}
-      </p>
-      {{depthHist}}
-    </section>
-  }}
+    {{
+      <section class="bp_pm_section">
+        <h2 class="bp_pm_section_title">"Dependency-depth distribution"</h2>
+        <p class="bp_pm_section_intro">
+          "How deep the dependency graph runs — the number of entries at each \
+           longest-path depth."
+        </p>
+        <div class="bp_pm_hist">{{histRows}}</div>
+      </section>
+    }}
 
-/-- Body of the PM hub page: reading map, progress (hero + chapters), contributor
-console, analytics, the full summary expander, and the relocated build-metadata
-block, plus the offline `bp-dashboard-data` JSON that feeds the chart mounts. -/
-private def pmBody (state : TraverseState) (summary : Summary) (rows : SummaryRows)
+/-- Body of the PM hub page: overall progress hero, the guided reading map, a hub of
+quick links to every section, the next actionable tasks, per-chapter progress, the
+dependency-depth histogram, and a collapsed build-provenance footer — plus the offline
+`bp-dashboard-data` JSON that feeds the chart mounts. The full per-entry summary now
+lives on its own standalone Blueprint Summary page, linked from the hub. -/
+private def pmBody (state : TraverseState) (summary : Summary)
     (metadata : Informal.PreviewManifest.BuildMetadata) : Output.Html :=
   -- Escape `</script>`-style breakouts in author-supplied strings before embedding
   -- the chart JSON verbatim (mirrors the old dashboard block).
@@ -971,34 +941,27 @@ private def pmBody (state : TraverseState) (summary : Summary) (rows : SummaryRo
       <header class="bp_node_page_header">
         <h1>"Project management"</h1>
         <p class="bp_pm_page_intro">
-          "This blueprint's status in one place: the guided reading map, formalization \
-           progress, contributor rollups, analytics, the full per-entry summary, and \
-           build provenance."
+          "This blueprint's status in one place: overall formalization progress, a \
+           guided reading map, quick links to every section, the next actionable \
+           tasks, per-chapter progress, and how deep the dependency graph runs."
         </p>
       </header>
-      {{dashboardReadingMap state}}
       <section class="bp_pm_section">
-        <h2 class="bp_pm_section_title">"Progress"</h2>
         {{dashboardHero summary}}
+      </section>
+      {{dashboardReadingMap state}}
+      {{pmHubLinks state}}
+      {{pmSuggestedTasks state summary}}
+      <section class="bp_pm_section">
         <div class="bp_dashboard_charts">
           {{dashboardChartMount "chapters" "Per-chapter progress" true (dashboardChaptersFallback summary)}}
         </div>
       </section>
-      {{pmContributorConsole state summary}}
-      {{pmProgressAnalytics state summary}}
-      <section class="bp_pm_section">
-        <h2 class="bp_pm_section_title">"Full blueprint summary"</h2>
-        <details class="bp_dashboard_detail">
-          <summary>"Expand the full per-entry summary"</summary>
-          <div class="bp_summary">
-            {{renderSummaryDetailSections summary rows}}
-          </div>
-        </details>
-      </section>
-      <section class="bp_pm_section">
-        <h2 class="bp_pm_section_title">"Build"</h2>
+      {{pmDepthHistogram state}}
+      <details class="bp_dashboard_detail bp_pm_build_details">
+        <summary>"Build provenance"</summary>
         {{Informal.PreviewManifest.buildMetadataHtml metadata}}
-      </section>
+      </details>
       <script type="application/json" class="bp-dashboard-data">
         {{.text false chartJson}}
       </script>
@@ -1024,10 +987,9 @@ def emitBlueprintPmPage : ExtraStep :=
           "Blueprint PM page: no cached Summary in traversal state; skipping \
            pm/index.html (is a `blueprint_dashboard` block present?)."
       | some summary =>
-        let rows ← runSummaryHtml state (SummaryRows.render (auditHtmlContext state) summary)
         let metadata ← Informal.PreviewManifest.readBuildMetadata
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-          Informal.NodeRoute.pmPath "Project management" (pmBody state summary rows metadata)
+          Informal.NodeRoute.pmPath "Project management" (pmBody state summary metadata)
 
 /-! ## The ExtraStep -/
 

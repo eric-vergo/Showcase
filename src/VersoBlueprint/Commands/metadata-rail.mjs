@@ -89,6 +89,99 @@ function el(tag, opts, children) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Tooltip primitive (themed, keyboard + hover, escapes the rail's overflow)  */
+/* -------------------------------------------------------------------------- */
+
+// A single shared bubble reused by every trigger. `.bp-rail-body` is
+// `overflow-y: auto`, so a tooltip anchored inside it would be clipped; the bubble
+// is therefore `position: fixed` (see MetadataRail.lean) and positioned from the
+// trigger's viewport rect, flipping above/below to stay on screen. The bubble is
+// only referenced by `aria-describedby` while shown, so screen readers announce the
+// gloss on focus and nothing stale when hidden.
+const TOOLTIP_ID = "bp-rail-tooltip";
+let tooltipEl = null;
+let tooltipTrigger = null;
+let tooltipDismissBound = false;
+
+function ensureTooltipEl() {
+  if (tooltipEl) return tooltipEl;
+  tooltipEl = el("div", {
+    class: "bp-rail-tooltip",
+    attrs: { id: TOOLTIP_ID, role: "tooltip", "aria-hidden": "true" }
+  });
+  document.body.appendChild(tooltipEl);
+  return tooltipEl;
+}
+
+function positionTooltip(trigger) {
+  const bubble = tooltipEl;
+  if (!bubble) return;
+  const r = trigger.getBoundingClientRect();
+  const margin = 8;
+  const bw = bubble.offsetWidth;
+  const bh = bubble.offsetHeight;
+  // Horizontal: align the bubble's left with the trigger, clamped into the viewport.
+  let left = Math.max(margin, Math.min(r.left, window.innerWidth - bw - margin));
+  // Vertical: prefer above the trigger; flip below when there isn't room.
+  let top = r.top - bh - margin;
+  if (top < margin) top = r.bottom + margin;
+  bubble.style.left = left + "px";
+  bubble.style.top = top + "px";
+}
+
+function onTooltipDismiss() {
+  hideTooltip();
+}
+
+function showTooltip(trigger, text) {
+  ensureTooltipEl();
+  tooltipEl.textContent = text;
+  tooltipTrigger = trigger;
+  trigger.setAttribute("aria-describedby", TOOLTIP_ID);
+  tooltipEl.setAttribute("aria-hidden", "false");
+  tooltipEl.classList.add("bp-rail-tooltip-visible");
+  positionTooltip(trigger);
+  if (!tooltipDismissBound) {
+    // A fixed bubble drifts from the trigger when the rail body / page scrolls, so
+    // dismiss on any scroll (capture: catches the rail body's own scroll) or resize.
+    window.addEventListener("scroll", onTooltipDismiss, true);
+    window.addEventListener("resize", onTooltipDismiss);
+    tooltipDismissBound = true;
+  }
+}
+
+function hideTooltip() {
+  if (tooltipDismissBound) {
+    window.removeEventListener("scroll", onTooltipDismiss, true);
+    window.removeEventListener("resize", onTooltipDismiss);
+    tooltipDismissBound = false;
+  }
+  if (tooltipTrigger) {
+    tooltipTrigger.removeAttribute("aria-describedby");
+    tooltipTrigger = null;
+  }
+  if (!tooltipEl) return;
+  tooltipEl.classList.remove("bp-rail-tooltip-visible");
+  tooltipEl.setAttribute("aria-hidden", "true");
+}
+
+// Attach a hover/focus tooltip carrying `text` to `trigger`. The trigger is made
+// keyboard-focusable when it isn't already, so the gloss is reachable without a
+// pointer. Idempotent per element via a `data-bp-tip` guard.
+function attachTooltip(trigger, text) {
+  if (!trigger || trigger.getAttribute("data-bp-tip") === "1") return;
+  trigger.setAttribute("data-bp-tip", "1");
+  if (!trigger.hasAttribute("tabindex")) trigger.setAttribute("tabindex", "0");
+  trigger.addEventListener("mouseenter", function () { showTooltip(trigger, text); });
+  trigger.addEventListener("mouseleave", hideTooltip);
+  trigger.addEventListener("focus", function () { showTooltip(trigger, text); });
+  trigger.addEventListener("blur", hideTooltip);
+  trigger.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") hideTooltip();
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /* Rail shell                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -536,6 +629,17 @@ function metaRow(key, value, title) {
   ]);
 }
 
+// A metric row whose key carries a dotted-underline "help" affordance and reveals a
+// themed gloss tooltip on hover / keyboard focus (see attachTooltip).
+function metricRow(key, value, gloss) {
+  const keyEl = el("span", { class: "bp-rail-meta-key bp-rail-metric-key", text: key });
+  attachTooltip(keyEl, gloss);
+  return el("div", { class: "bp-rail-meta-row" }, [
+    keyEl,
+    el("span", { class: "bp-rail-meta-val", text: value })
+  ]);
+}
+
 function depItem(name, axis) {
   const wired = isWired(name);
   // The dependency name is itself the link to its canonical page: the node page
@@ -688,21 +792,27 @@ function renderRail(name, hintMeta) {
   }
 
   // --- Metrics (fan-in/out client-side; depth/height from the registry) ----
+  // A collapsed disclosure (like Uses / Used By); each metric label carries a
+  // hover/focus tooltip glossing its exact meaning (code-verified semantics).
   const hasDeps = Array.isArray(vm.statementDeps) || Array.isArray(vm.proofDeps);
   if (hasDeps || Array.isArray(vm.usedBy) || vm.depth != null || vm.height != null) {
-    const metrics = el("div", { class: "bp-rail-section" }, [sectionTitle("Metrics")]);
+    const metricRows = [];
     if (hasDeps) {
       const outSet = new Set();
       (vm.statementDeps || []).forEach(function (n) { outSet.add(n); });
       (vm.proofDeps || []).forEach(function (n) { outSet.add(n); });
-      metrics.appendChild(metaRow("Fan-out", String(outSet.size)));
+      metricRows.push(metricRow("Fan-out", String(outSet.size),
+        "Distinct project declarations this one directly references, in its statement or proof."));
     }
     if (Array.isArray(vm.usedBy)) {
-      metrics.appendChild(metaRow("Fan-in", String(vm.usedBy.length)));
+      metricRows.push(metricRow("Fan-in", String(vm.usedBy.length),
+        "Distinct project declarations that directly reference this one."));
     }
-    if (vm.depth != null) metrics.appendChild(metaRow("Depth", String(vm.depth)));
-    if (vm.height != null) metrics.appendChild(metaRow("Height", String(vm.height)));
-    frag.appendChild(metrics);
+    if (vm.depth != null) metricRows.push(metricRow("Depth", String(vm.depth),
+      "Length in edges of the longest dependency chain below this declaration; 0 = no project dependencies."));
+    if (vm.height != null) metricRows.push(metricRow("Height", String(vm.height),
+      "Length in edges of the longest chain of dependents above this declaration; 0 = nothing builds on it."));
+    frag.appendChild(collapsibleSection("Metrics", metricRows));
   }
 
   // --- Uses (statement + proof axes) --------------------------------------

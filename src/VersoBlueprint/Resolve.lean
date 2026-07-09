@@ -48,6 +48,7 @@ is referenced by many blueprint entries.
 def externalRenderedDeclDomainName : Name := Name.mkSimple "Informal.Block.externalRenderedDecl"
 def bibliographyDomainName : Name := Name.mkSimple "Informal.Block.bpCitations"
 def formalizationDomainName : Name := Name.mkSimple "Informal.Block.formalization"
+def summaryPageDomainName : Name := Name.mkSimple "Informal.Block.summaryPage"
 def citationPreviewDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.previews"
 def citationUsageDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.usages"
 /--
