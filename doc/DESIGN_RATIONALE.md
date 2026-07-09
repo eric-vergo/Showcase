@@ -995,8 +995,10 @@ primary label lookup, owner/tag/work-queue extraction, and entry search
 predicates. `Informal.PreviewManifest.previewMetadataLosses` audits whether
 traversal-preview Lean metadata, including bodyless `(lean := ...)` payloads,
 survived manifest construction. Preview-data generation reports non-empty audit
-results as warnings, while `VersoBlueprint.Vbp` formats those results as JSON
-for stricter review workflows; neither should own a parallel selector model.
+results as warnings while traversal state is still available. Generated-data
+tools such as `VersoBlueprint.Vbp` operate after that boundary, so they validate
+manifest/cache consistency instead of reconstructing traversal-only audits;
+neither layer should own a parallel selector model.
 
 ### Traversal Storage Roles
 

@@ -1184,7 +1184,7 @@ end HtmlCache
 structure Files where
   /--
   Semantic preview data. This is the public source of truth for labels, hrefs,
-  relationship topology, Lean-code associations, external-source metadata, and
+  relationship topology, Lean-code associations, external-markup metadata, and
   other facts that generated consumers need.
   -/
   manifest : File := {}
@@ -1288,7 +1288,16 @@ private def graphFinalizePreviewReferences
       variants := graph.variants.map (graphVariantFinalizePreviewReferences index)
   }
 
-private def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
+/--
+Finalize traversal-derived preview references against the manifest/cache pair.
+
+Generated relation, group, Lean-code, and graph preview references are only
+advertised when the target key has both a semantic manifest entry and a rendered
+fragment cache body. Relations and graph nodes that fail that join remain
+present but lose their `previewKey`; Lean-code keys and graph-variant mappings
+are removed so generated JSON does not point at an unavailable preview body.
+-/
+def File.finalizePreviewReferences (file : File) (htmlCache : HtmlCache.File) : File :=
   let index := PreviewArtifactIndex.ofFiles file htmlCache
   {
     file with
@@ -2336,7 +2345,7 @@ completed Manual traversal state.
 
 This is the traversal-to-public-data boundary: traversal domains may contain
 semantic payloads that are not visible as rendered page bodies, such as bodyless
-external-source directives carrying Lean preview keys. Preserve those facts in
+external-markup directives carrying Lean preview keys. Preserve those facts in
 the manifest, and keep rendered fragments in the HTML cache.
 -/
 def buildPreviewDataFiles
