@@ -299,6 +299,14 @@ main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) > section {
   gap: 0.9rem 1.2rem;
 }
 
+/* Let each column shrink below the min-content width of a long unbreakable Lean
+   identifier (grid items default to `min-width: auto`), so a token like
+   `Complex.norm_natCast_cpow_sub_add_…` can't expand its column and overlap the
+   neighbouring one. Paired with the item wrapping rule below. */
+.bp_readingmap_cols > div {
+  min-width: 0;
+}
+
 .bp_readingmap_col_title {
   margin: 0 0 0.35rem;
   font-size: var(--bp-fs-caption);
@@ -322,6 +330,10 @@ main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) > section {
   flex-direction: column;
   gap: 0.25rem;
   font-size: var(--bp-fs-small);
+  /* Break long, unbreakable Lean identifiers so they wrap inside the (now
+     shrinkable) column instead of overflowing it. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bp_readingmap_list {
