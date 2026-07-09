@@ -574,9 +574,15 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
             | none => pure none
           else pure none
         | _, _ => pure none
-    let entry ← (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
-      n ci modName sourcePath? ranges? typeDeps valueDeps
-      depths[i]! heights[i]! sigSourceHtml?).run'
+    -- Re-baseline the heartbeat budget per entry (`withCurrHeartbeats`): the whole
+    -- registry runs in ONE `CoreM` lift of the `{blueprint_graph}` command, whose
+    -- `initHeartbeats` is fixed for the lift — without a reset, the loop's own
+    -- accumulated spend (`ppExpr`, `Signature.forName`, …, over hundreds of decls)
+    -- would eventually trip a later entry's `whnf` budget check.
+    let entry ← withCurrHeartbeats <|
+      (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
+        n ci modName sourcePath? ranges? typeDeps valueDeps
+        depths[i]! heights[i]! sigSourceHtml?).run'
     entries := entries.push entry
     -- Proof/value body, from the per-module cached file content (degrades to no
     -- body on any read/slice failure — the decl page shows its quiet placeholder).

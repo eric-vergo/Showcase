@@ -456,6 +456,33 @@ where
     | .num f' n', .num w' n => if n' == n then go f' w' else none
     | _, _ => none
 
+/--
+Run a *nested* re-elaboration without its heartbeat spend leaking into the
+enclosing command's budget.
+
+Lean's heartbeat counter is thread-local and monotonically increasing; a budget
+check is `getNumHeartbeats - ctx.initHeartbeats > max`. Every nested
+re-elaboration we run (each with its own fresh `initHeartbeats`, taken inside
+`Command.runCore` at each `CoreM` lift) increments that same counter, but the
+ENCLOSING command's `initHeartbeats` is fixed — so after many nested runs (e.g.
+~150 Mathlib-heavy proofs inside one `{blueprint_graph}` command) the outer
+command's next `whnf` sees the accumulated delta and dies with a deterministic
+timeout, far away from any of our `try/catch`es. `withCurrHeartbeats` cannot fix
+this: it re-baselines only the *wrapped* computation, and the reader context
+reverts afterwards, leaving the outer continuation with its stale baseline.
+
+Instead we snapshot the counter and *restore* it after the nested run
+(`IO.setNumHeartbeats`, success or failure), so the nested spend is invisible to
+the caller's budget while each nested run keeps its own cap (its baseline is read
+fresh from the counter we restored).
+-/
+private def withRestoredHeartbeats (act : Lean.CoreM α) : Lean.CoreM α := do
+  let saved ← IO.getNumHeartbeats
+  try
+    act
+  finally
+    IO.setNumHeartbeats saved
+
 open SubVerso.Highlighting Lean Elab in
 /-- The `CommandElabM` core of `highlightStatementFromSource?`: re-elaborate the
 verbatim statement (as a fresh, clash-free `opaque`, so it never collides with the
@@ -538,12 +565,13 @@ def highlightStatementFromSource? (declName : Lean.Name) (content : String)
   let cmdState : Lean.Elab.Command.State :=
     { env, maxRecDepth := (← readThe Lean.Core.Context).maxRecDepth,
       scopes := [{ header := "", currNamespace }] }
-  try
-    match (← liftM <| EIO.toIO' <|
-        (highlightStatementAct declText range.pos.column declId declSig cctx).run cmdState) with
-    | .error _ => return none
-    | .ok (result, _) => return result
-  catch _ => return none
+  withRestoredHeartbeats do
+    try
+      match (← liftM <| EIO.toIO' <|
+          (highlightStatementAct declText range.pos.column declId declSig cctx).run cmdState) with
+      | .error _ => return none
+      | .ok (result, _) => return result
+    catch _ => return none
 
 /-- Whether a declaration is worth *fully re-elaborating* from source (statement +
 body) for real proof-body hover info: only declarations that carry a value/proof —
@@ -674,13 +702,14 @@ def highlightDeclFromSource? (declName : Lean.Name) (content : String)
     { env, maxRecDepth := (← readThe Lean.Core.Context).maxRecDepth,
       scopes := [{ header := "", currNamespace, opts }] }
   let freshName := Lean.Name.mkSimple "_versoBlueprintSourceDecl"
-  try
-    match (← liftM <| EIO.toIO' <|
-        (highlightDeclAct declText range.pos.column cmdStx declId declSig bodyStx? freshName
-          cctx).run cmdState) with
-    | .error _ => return none
-    | .ok (result, _) => return result
-  catch _ => return none
+  withRestoredHeartbeats do
+    try
+      match (← liftM <| EIO.toIO' <|
+          (highlightDeclAct declText range.pos.column cmdStx declId declSig bodyStx? freshName
+            cctx).run cmdState) with
+      | .error _ => return none
+      | .ok (result, _) => return result
+    catch _ => return none
 
 /--
 Build a full snapshot for one external declaration reference using the environment
