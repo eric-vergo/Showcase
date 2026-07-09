@@ -514,6 +514,10 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let mut entries : Array Entry := #[]
   let mut bodies : Array Body := #[]
   let mut fileCache : Std.HashMap String (Option String) := {}
+  -- Coverage counters for the full-declaration (statement + proof) re-elaboration:
+  -- attempts (theorems/defs with local source) and successes, reported below.
+  let mut fullDeclAttempts : Nat := 0
+  let mut fullDeclOk : Nat := 0
   for i in [0:decls.size] do
     let (n, ci, modName) := decls[i]!
     let (typeDeps, valueDeps) := fwd[i]!
@@ -537,19 +541,39 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
               pure none
           fileCache := fileCache.insert key read?
           pure read?
-    -- Verbatim-source signature (full hovers + the author's exact layout) when the
-    -- declaration has an elaboratable `binders : type` signature and local source.
-    -- Degrades to `none` (→ delaborated `Signature.forName` in `buildEntry`) on any
-    -- parse/elaboration failure.
-    let sigSourceHtml? : Option String ←
+    -- Full-declaration re-elaboration (statement + proof body) from verbatim source:
+    -- one real elaboration yielding both the signature highlight and a semantically
+    -- highlighted proof body. Only for theorems/defs with local source; degrades to
+    -- `none` on failure (signature then via the `opaque` path, body via the syntactic
+    -- path), so no declaration is double-elaborated.
+    let fullDecl? : Option (SubVerso.Highlighting.Highlighted ×
+        Option SubVerso.Highlighting.Highlighted) ←
       match content?, ranges? with
       | some content, some ranges =>
-        if Informal.isStatementSignatureCandidate ci then
-          match ← Informal.highlightStatementFromSource? n content ranges.range with
-          | some hl => pure (some (Informal.renderHighlightedSelfContainedHtml hl))
-          | none => pure none
+        if Informal.isFullReelabCandidate ci then
+          fullDeclAttempts := fullDeclAttempts + 1
+          let r ← Informal.highlightDeclFromSource? n content ranges.range
+          if r.isSome then fullDeclOk := fullDeclOk + 1
+          pure r
         else pure none
       | _, _ => pure none
+    -- Verbatim-source signature (full hovers + the author's exact layout) when the
+    -- declaration has an elaboratable `binders : type` signature and local source.
+    -- Prefer the full-decl re-elaboration's signature; else re-elaborate just the
+    -- signature as an `opaque`. Degrades to `none` (→ delaborated `Signature.forName`
+    -- in `buildEntry`) on any parse/elaboration failure.
+    let sigSourceHtml? : Option String ←
+      match fullDecl? with
+      | some (sigHl, _) => pure (some (Informal.renderHighlightedSelfContainedHtml sigHl))
+      | none =>
+        match content?, ranges? with
+        | some content, some ranges =>
+          if Informal.isStatementSignatureCandidate ci then
+            match ← Informal.highlightStatementFromSource? n content ranges.range with
+            | some hl => pure (some (Informal.renderHighlightedSelfContainedHtml hl))
+            | none => pure none
+          else pure none
+        | _, _ => pure none
     let entry ← (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
       n ci modName sourcePath? ranges? typeDeps valueDeps
       depths[i]! heights[i]! sigSourceHtml?).run'
@@ -563,10 +587,16 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
       | _, _ => none
     match bodyText? with
     | some src =>
+      -- Prefer the fully re-elaborated proof body (real hovers); else syntactic.
       let bodyHtml? ←
-        if src.length ≤ highlightBodyCap then highlightProofSourceHtml? src else pure none
+        match fullDecl? with
+        | some (_, some bodyHl) => pure (some (Informal.renderHighlightedSelfContainedHtml bodyHl))
+        | _ =>
+          if src.length ≤ highlightBodyCap then highlightProofSourceHtml? src else pure none
       bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
     | none => pure ()
+  if fullDeclAttempts > 0 then
+    logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
   return (
     { schemaVersion := 2, namePrefix, declCount := entries.size, decls := entries },
     { bodies })

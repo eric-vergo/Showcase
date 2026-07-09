@@ -30,7 +30,7 @@
   margin-top: 0;
 }
 
-/* Quiet "All checks →" affordance linking the strip to the verification overview. */
+/* Quiet "All checks" affordance linking the strip to the verification overview. */
 .bp_trust_strip_all {
   font-size: var(--bp-fs-badge);
   font-weight: 600;

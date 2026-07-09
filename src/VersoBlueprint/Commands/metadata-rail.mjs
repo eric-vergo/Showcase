@@ -751,7 +751,7 @@ function renderRail(name, hintMeta) {
       el("a", {
         class: "bp-rail-open-page bp-rail-source-link",
         attrs: { href: vm.sourceHref, target: "_blank", rel: "noopener" },
-        text: "View source ↗"
+        text: "View source"
       })
     );
   }
@@ -852,7 +852,7 @@ function renderRail(name, hintMeta) {
     const link = el("a", {
       class: "bp-rail-open-page",
       attrs: { href: pageHref },
-      text: vm.nodeHref ? "Open node page →" : "Open declaration page →"
+      text: vm.nodeHref ? "Open node page" : "Open declaration page"
     });
     frag.appendChild(el("div", { class: "bp-rail-section" }, [link]));
   }

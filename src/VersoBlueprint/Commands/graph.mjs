@@ -157,7 +157,7 @@ function ensureGraphModal(previewUtils) {
     "</div>" +
     '<div class="bp_graph_modal_body"></div>' +
     '<div class="bp_graph_modal_footer">' +
-      '<a class="bp_graph_modal_open" href="#">Open node page →</a>' +
+      '<a class="bp_graph_modal_open" href="#">Open node page</a>' +
     "</div>";
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);

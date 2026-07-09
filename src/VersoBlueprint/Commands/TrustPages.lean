@@ -105,7 +105,7 @@ private def declNameWithLinks (name : String) (links : DeclLinks) : Output.Html 
     | _ => {{ <code>{{.text true name}}</code> }}
   let src : Output.Html :=
     match links.sourceHref with
-    | some href => {{ " " <a class="bp_trust_source_link" href={{href}} target="_blank" rel="noopener">"source ↗"</a> }}
+    | some href => {{ " " <a class="bp_trust_source_link" href={{href}} target="_blank" rel="noopener">"source"</a> }}
     | _ => .empty
   {{ <span class="bp_trust_decl">{{nameHtml}}{{src}}</span> }}
 
@@ -129,10 +129,38 @@ private def verdictBadge (ok : Bool) (text : String) : Output.Html :=
 (relative, offline-safe). -/
 private def auditJsonLink : Output.Html :=
   {{ <p class="bp_trust_links">
-       <a class="bp_trust_out_link" href={{trustAuditJsonHref}}>"Machine-readable audit (trust-audit.json) →"</a>
+       <a class="bp_trust_out_link" href={{trustAuditJsonHref}}>"Machine-readable audit (trust-audit.json)"</a>
      </p> }}
 
-private def sorriesBody (trust : TrustData) (links : String → DeclLinks) : Output.Html :=
+/-- A code block on a trust page: highlighted token markup when available (wrapped in
+`<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
+else escaped plain text. -/
+private def trustCodeBlock (extraClass htmlMarkup fallback : String) : Output.Html :=
+  if htmlMarkup.isEmpty then
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>{{.text true fallback}}</pre> }}
+  else
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}><code class="hl lean">{{.text false htmlMarkup}}</code></pre> }}
+
+/-- Embed one check's machine-checkable JSON slice — the same object written to
+`trust-audit.json` — on its evidence page: pretty-printed, JSON-highlighted (reusing
+the comparator page's `bp_trust_code_json` embed styling), and collapsible. `none`
+when the check produced no JSON object (e.g. an empty graph). -/
+private def checkJsonSection (checkJson? : Option Json) : Output.Html :=
+  match checkJson? with
+  | none => .empty
+  | some j =>
+    let pretty := j.pretty
+    trustSection "Machine-checkable evidence"
+      (.seq #[
+        {{ <p>"This check's entry in "<code>"trust-audit.json"</code>", verbatim (id, title,
+            verdict, method, and evidence):"</p> }},
+        {{ <details class="bp_trust_disclosure">
+             <summary>"Show JSON"</summary>
+             {{trustCodeBlock "bp_trust_code_json" (highlightJsonHtml pretty).asString pretty}}
+           </details> }}])
+
+private def sorriesBody (trust : TrustData) (links : String → DeclLinks)
+    (checkJson? : Option Json) : Output.Html :=
   let n := trust.sorryCount.getD 0
   let kernelCount := trust.sorryDecls.length
   -- Kernel-derived verdict when the scan ran, cross-checked against the YAML count.
@@ -177,7 +205,8 @@ private def sorriesBody (trust : TrustData) (links : String → DeclLinks) : Out
       </ul> }}
   trustPageShell "Sorries"
     "A sorry admits a proof goal without discharging it. A development with zero sorries has no such gaps — and this page derives that count from the kernel, not from a declared number."
-    (.seq #[trustSection "Evidence" evidence, trustSection "How to reproduce" repro, auditJsonLink])
+    (.seq #[trustSection "Evidence" evidence, trustSection "How to reproduce" repro,
+      checkJsonSection checkJson?, auditJsonLink])
 
 /-- One-sentence, mathematician-facing gloss of the three standard axioms. -/
 private def standardAxiomGloss : Output.Html :=
@@ -259,7 +288,8 @@ private def criticalAxiomSection (trust : TrustData) : Output.Html :=
             evaluation, not kernel-checked "<code>"Prop"</code>" soundness — they cannot
             introduce an axiom or change which theorems are provable."</p> }} ])
 
-private def axiomsBody (trust : TrustData) (links : String → DeclLinks) : Output.Html :=
+private def axiomsBody (trust : TrustData) (links : String → DeclLinks)
+    (checkJson? : Option Json) : Output.Html :=
   -- Prefer the kernel-computed evidence for the headline verdict when any main result
   -- was independently checked, so the page never claims "standard only" while a
   -- per-theorem card below shows a nonstandard axiom; fall back to the declared set.
@@ -297,7 +327,7 @@ private def axiomsBody (trust : TrustData) (links : String → DeclLinks) : Outp
   trustPageShell "Axioms"
     "The theorems here depend only on the axioms below. Lean's kernel records every axiom a proof transitively uses, and this page recomputes that set at build time rather than trusting a declared list."
     (.seq #[trustSection "Evidence" verdict, breakdown, criticalAxiomSection trust,
-      glossSection, trustSection "How to reproduce" repro, auditJsonLink])
+      glossSection, trustSection "How to reproduce" repro, checkJsonSection checkJson?, auditJsonLink])
 
 private def reviewBody (status : String) : Output.Html :=
   let evidence : Output.Html :=
@@ -312,15 +342,6 @@ private def reviewBody (status : String) : Output.Html :=
   trustPageShell "Review status"
     "Whether the formalization has been read and checked by a human, over and above the kernel's mechanical check."
     (.seq #[trustSection "Evidence" evidence, trustSection "How to reproduce" repro])
-
-/-- A code block on a trust page: highlighted token markup when available (wrapped in
-`<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
-else escaped plain text. -/
-private def trustCodeBlock (extraClass htmlMarkup fallback : String) : Output.Html :=
-  if htmlMarkup.isEmpty then
-    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>{{.text true fallback}}</pre> }}
-  else
-    {{ <pre class={{s!"bp_trust_code {extraClass}"}}><code class="hl lean">{{.text false htmlMarkup}}</code></pre> }}
 
 /-- A quiet outbound link on a trust page. -/
 private def trustOutLink (href label : String) : Output.Html :=
@@ -349,7 +370,7 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
   let ciLink : Output.Html :=
     if cmp.runUrl.isEmpty then .empty
     else {{ <p><a class="bp_trust_ci_link" href={{cmp.runUrl}}
-              target="_blank" rel="noopener">"View CI run →"</a></p> }}
+              target="_blank" rel="noopener">"View CI run"</a></p> }}
   -- The comparator's configuration + the challenge Lean statement, embedded
   -- verbatim (read at build time) and syntax-highlighted so a skeptic can inspect
   -- exactly what was checked. Both degrade to nothing when their option/file is
@@ -359,7 +380,7 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
     else
       let cfgLink : Output.Html :=
         if cmp.githubConfigUrl.isEmpty then .empty
-        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubConfigUrl "View config on GitHub ↗"}}</p> }}
+        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubConfigUrl "View config on GitHub"}}</p> }}
       trustSection "Comparator configuration"
         (.seq #[cfgLink,
           {{ <details class="bp_trust_disclosure">
@@ -373,10 +394,10 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
       -- (which opens against its *current* Mathlib, not the pinned v4.31.0 toolchain).
       let ghLink : Option Output.Html :=
         if cmp.githubChallengeUrl.isEmpty then Option.none
-        else Option.some (trustOutLink cmp.githubChallengeUrl "View on GitHub ↗")
+        else Option.some (trustOutLink cmp.githubChallengeUrl "View on GitHub")
       let pgLink : Option Output.Html :=
         if cmp.playgroundUrl.isEmpty then Option.none
-        else Option.some (trustOutLink cmp.playgroundUrl "Open in Lean playground (current Mathlib) ↗")
+        else Option.some (trustOutLink cmp.playgroundUrl "Open in Lean playground (current Mathlib)")
       let linkItems := ([ghLink, pgLink].filterMap id)
       let linksRow : Output.Html :=
         match linkItems with
@@ -397,7 +418,7 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
     else
       let ghLink : Output.Html :=
         if cmp.githubSolutionUrl.isEmpty then .empty
-        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubSolutionUrl "View on GitHub ↗"}}</p> }}
+        else {{ <p class="bp_trust_links">{{trustOutLink cmp.githubSolutionUrl "View on GitHub"}}</p> }}
       trustSection "Solution (Lean)"
         (.seq #[
           {{ <p>"The project's Lean proof that discharges the challenge statement:"</p> }},
@@ -439,7 +460,7 @@ private def graphNodeItem (master : GraphData) (state : TraverseState) (label : 
 
 open Informal.Graph Informal.GraphChecks in
 private def graphAcyclicityBody (master : GraphData) (r : AcyclicityResult)
-    (state : TraverseState) : Output.Html :=
+    (state : TraverseState) (checkJson? : Option Json) : Output.Html :=
   let evidence : Output.Html :=
     if r.ok then
       {{ <p>{{verdictBadge true "acyclic"}}" A build-time traversal of the dependency graph — "
@@ -463,11 +484,12 @@ private def graphAcyclicityBody (master : GraphData) (r : AcyclicityResult)
       </ul> }}
   trustPageShell "Graph acyclicity"
     "The blueprint's dependency graph must be acyclic: no node may depend, directly or transitively, on itself. This is checked at every site build, and a violation fails the build — so a built site has passed."
-    (.seq #[trustSection "Evidence" evidence, trustSection "Method" method, auditJsonLink])
+    (.seq #[trustSection "Evidence" evidence, trustSection "Method" method,
+      checkJsonSection checkJson?, auditJsonLink])
 
 open Informal.Graph Informal.GraphChecks in
 private def graphConnectivityBody (master : GraphData) (r : ConnectivityResult)
-    (state : TraverseState) (required : Bool) : Output.Html :=
+    (state : TraverseState) (required : Bool) (checkJson? : Option Json) : Output.Html :=
   let evidence : Output.Html :=
     if r.ok then
       {{ <p>{{verdictBadge true "connected"}}" All "
@@ -507,7 +529,8 @@ private def graphConnectivityBody (master : GraphData) (r : ConnectivityResult)
     else
       "This blueprint is deliberately multi-topic, so connectivity is reported for information rather than enforced. A coherent single-development blueprint would require one connected component."
   trustPageShell "Graph connectivity" intro
-    (.seq #[trustSection "Evidence" evidence, trustSection "Method" method, auditJsonLink])
+    (.seq #[trustSection "Evidence" evidence, trustSection "Method" method,
+      checkJsonSection checkJson?, auditJsonLink])
 
 /-! ## Reproducibility: dependency pins from the lake manifest -/
 
@@ -581,6 +604,14 @@ open Informal.GraphChecks in
 private def checksOverviewBody (trust? : Option TrustData) (checks : Results)
     (metadata : Informal.PreviewManifest.BuildMetadata) (deps : Array DepPin)
     (requireConnected : Bool) : Output.Html :=
+  -- The CI run that produced these checks (item 2, consumer-supplied via
+  -- `verso.blueprint.trust.ciRunUrl`); `none` on a local build ⇒ no CI links.
+  let ciRunUrl : Option String := trust?.bind (·.ciRunUrl)
+  -- An arrow-free "CI run" link for a check card, when a CI run URL is available.
+  let ciLink : Option String → Array Output.Html := fun url? =>
+    match url? with
+    | some u => #[({{ <a class="bp_trust_out_link" href={{u}} target="_blank" rel="noopener">"CI run"</a> }} : Output.Html)]
+    | none => #[]
   -- Comparator card.
   let comparatorCard : Output.Html :=
     match trust?.bind (·.comparator) with
@@ -593,10 +624,11 @@ private def checksOverviewBody (trust? : Option TrustData) (checks : Results)
             independent tool — that the formal statement encodes the intended informal claim. "
             <em>"Proves"</em>": the statement being proved is the one meant. "<em>"Does not
             prove"</em>": the wider informal narrative, only the named statement(s)."</p> }}
-      let ci := if cmp.runUrl.isEmpty then #[] else
-        #[({{ <a class="bp_trust_out_link" href={{cmp.runUrl}} target="_blank" rel="noopener">"CI run →"</a> }} : Output.Html)]
+      -- Prefer the shared CI run URL; fall back to the status artifact's own `run_url`.
+      let cmpCiUrl := ciRunUrl.orElse fun _ => if cmp.runUrl.isEmpty then none else some cmp.runUrl
       overviewCard "Statement comparator (kernel replay)" verdictText ok? desc
-        (#[({{ <a class="bp_trust_out_link" href={{trustComparatorHref}}>"Evidence →"</a> }} : Output.Html)] ++ ci)
+        (#[({{ <a class="bp_trust_out_link" href={{trustComparatorHref}}>"Evidence"</a> }} : Output.Html)]
+          ++ ciLink cmpCiUrl)
   -- Transitive axiom audit card.
   let axiomsCard : Output.Html :=
     let computed := (trust?.map (·.axiomEvidence)).getD [] |>.filter (·.computed)
@@ -616,7 +648,8 @@ private def checksOverviewBody (trust? : Option TrustData) (checks : Results)
             not prove"</em>": that the standard axioms themselves are consistent — that is assumed,
             as in all of Mathlib."</p> }}
       overviewCard "Transitive axiom audit" verdictText ok? desc
-        #[({{ <a class="bp_trust_out_link" href={{trustAxiomsHref}}>"Evidence →"</a> }} : Output.Html)]
+        (#[({{ <a class="bp_trust_out_link" href={{trustAxiomsHref}}>"Evidence"</a> }} : Output.Html)]
+          ++ ciLink ciRunUrl)
   -- Sorry scan card.
   let sorriesCard : Output.Html :=
     match trust? with
@@ -636,7 +669,8 @@ private def checksOverviewBody (trust? : Option TrustData) (checks : Results)
               admitted. "<em>"Does not prove"</em>": anything about declarations outside the project
               namespace."</p> }}
         overviewCard "Sorry scan" verdictText ok? desc
-          #[({{ <a class="bp_trust_out_link" href={{trustSorriesHref}}>"Evidence →"</a> }} : Output.Html)]
+          (#[({{ <a class="bp_trust_out_link" href={{trustSorriesHref}}>"Evidence"</a> }} : Output.Html)]
+            ++ ciLink ciRunUrl)
   -- Graph structural cards.
   let graphCards : Output.Html :=
     if checks.graphEmpty then .empty
@@ -652,13 +686,15 @@ private def checksOverviewBody (trust? : Option TrustData) (checks : Results)
       .seq #[
         overviewCard "Graph acyclicity" (if checks.acyclic.ok then "acyclic" else "cycle")
           (some checks.acyclic.ok) acDesc
-          #[({{ <a class="bp_trust_out_link" href={{trustGraphAcyclicHref}}>"Evidence →"</a> }} : Output.Html)],
+          (#[({{ <a class="bp_trust_out_link" href={{trustGraphAcyclicHref}}>"Evidence"</a> }} : Output.Html)]
+            ++ ciLink ciRunUrl),
         overviewCard "Graph connectivity"
           (if checks.connected.ok then "connected"
            else if requireConnected then "split" else s!"{checks.connected.componentCount} parts (informational)")
           (if checks.connected.ok then some true else if requireConnected then some false else none)
           coDesc
-          #[({{ <a class="bp_trust_out_link" href={{trustGraphConnectedHref}}>"Evidence →"</a> }} : Output.Html)] ]
+          (#[({{ <a class="bp_trust_out_link" href={{trustGraphConnectedHref}}>"Evidence"</a> }} : Output.Html)]
+            ++ ciLink ciRunUrl) ]
   -- Reproducibility section.
   let depItems : Array Output.Html := deps.map fun d =>
     let ver : Output.Html :=
@@ -691,12 +727,12 @@ private def jsonCheck (id title verdict method : String) (evidence : Json) : Jso
     ("method", Json.str method), ("evidence", evidence)]
 
 open Informal.GraphChecks in
-/-- Build the `-verso-data/trust-audit.json` payload (item 3). Timestamps use the
-build-time `compiledAt` from build metadata (a `date -u` shell read), never a
-nonexistent Lean `Date.now`. -/
-private def trustAuditJson (trust? : Option TrustData) (checks : Results)
-    (metadata : Informal.PreviewManifest.BuildMetadata) (deps : Array DepPin)
-    (requireConnected : Bool) : Json := Id.run do
+/-- The per-check JSON objects (id/title/verdict/method/evidence), built once and
+shared between the `trust-audit.json` artifact and the per-check evidence-page embeds
+(so each page shows exactly the slice the audit file records for it). Order matches
+the audit file. -/
+private def trustCheckJsons (trust? : Option TrustData) (checks : Results)
+    (requireConnected : Bool) : Array Json := Id.run do
   let mut checkArr : Array Json := #[]
   -- Comparator.
   if let some cmp := trust?.bind (·.comparator) then
@@ -746,6 +782,21 @@ private def trustAuditJson (trust? : Option TrustData) (checks : Results)
         ("componentCount", toJson checks.connected.componentCount),
         ("mainComponentSize", toJson checks.connected.mainComponentSize),
         ("stragglers", toJson (checks.connected.stragglers.map (·.toString)))])
+  return checkArr
+
+/-- Look up one check's JSON object by its `id`, as written by `trustCheckJsons`. -/
+private def findCheckJson (checkArr : Array Json) (id : String) : Option Json :=
+  checkArr.find? fun j => (j.getObjValAs? String "id").toOption == some id
+
+open Informal.GraphChecks in
+/-- Build the `-verso-data/trust-audit.json` payload (item 3). Timestamps use the
+build-time `compiledAt` from build metadata (a `date -u` shell read), never a
+nonexistent Lean `Date.now`. Reuses `trustCheckJsons` so the artifact and the
+per-check page embeds never drift. -/
+private def trustAuditJson (trust? : Option TrustData) (checks : Results)
+    (metadata : Informal.PreviewManifest.BuildMetadata) (deps : Array DepPin)
+    (requireConnected : Bool) : Json := Id.run do
+  let checkArr := trustCheckJsons trust? checks requireConnected
   -- Per-declaration axiom/sorry evidence.
   let declsObj : Json := Json.mkObj <|
     (trust?.map (·.axiomEvidence)).getD [] |>.map fun ev =>
@@ -771,8 +822,10 @@ private def trustAuditJson (trust? : Option TrustData) (checks : Results)
 
 Sibling to `emitBlueprintAuditPage`: single-page mode is skipped, and when no
 trust data was cached (no `verso.blueprint.trust.*` option is set) it emits
-nothing. The emitted pages mirror the badge set in `trustStripHtml`, so a badge
-and its evidence page always appear together.
+nothing. The set of emitted pages is independent of the trust strip's badges: the
+strip carries only the review/comparator verdicts, whereas every configured check
+(sorries, axioms, review, comparator, and the structural graph checks) gets its own
+evidence page, all reachable from the "All checks" verification-overview page.
 -/
 def emitBlueprintTrustPages : ExtraStep :=
   fun mode cfg state text => do
@@ -786,6 +839,9 @@ def emitBlueprintTrustPages : ExtraStep :=
         (Informal.TraversalIndex.TrustData.raw? state).bind fun json =>
           (fromJson? (α := TrustData) json).toOption
       let requireConnected := (trust?.map (·.requireConnected)).getD true
+      -- Per-check JSON slices, built once and shared between the audit artifact and the
+      -- per-check evidence-page embeds (`findCheckJson` by id).
+      let checkArr := trustCheckJsons trust? checks requireConnected
       -- Build gate (item 1): a structural `uses`-graph violation FAILS the build. If the
       -- site built, these checks passed. Acyclicity always gates; connectivity gates when
       -- `verso.blueprint.trust.requireConnected` (default true). Skipped for an empty graph.
@@ -802,10 +858,12 @@ def emitBlueprintTrustPages : ExtraStep :=
       -- Structural-graph evidence pages (whenever a graph exists).
       unless checks.graphEmpty do
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-          trustGraphAcyclicPath "Graph acyclicity" (graphAcyclicityBody master checks.acyclic state)
+          trustGraphAcyclicPath "Graph acyclicity"
+          (graphAcyclicityBody master checks.acyclic state (findCheckJson checkArr "graph-acyclicity"))
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
           trustGraphConnectedPath "Graph connectivity"
-          (graphConnectivityBody master checks.connected state requireConnected)
+          (graphConnectivityBody master checks.connected state requireConnected
+            (findCheckJson checkArr "graph-connectivity"))
       -- Verification-overview page + machine-readable audit artifact (item 3/4/5),
       -- whenever there is either a graph or trust data to report.
       if !checks.graphEmpty || trust?.isSome then
@@ -824,10 +882,10 @@ def emitBlueprintTrustPages : ExtraStep :=
       | some trust =>
         if trust.sorryCount.isSome || trust.sorryScanRan then
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            trustSorriesPath "Sorries" (sorriesBody trust links)
+            trustSorriesPath "Sorries" (sorriesBody trust links (findCheckJson checkArr "sorries"))
         if !trust.axioms.isEmpty || (trust.axiomEvidence.any (·.computed)) then
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            trustAxiomsPath "Axioms" (axiomsBody trust links)
+            trustAxiomsPath "Axioms" (axiomsBody trust links (findCheckJson checkArr "axioms"))
         if !trust.reviewStatus.isEmpty then
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             trustReviewPath "Review status" (reviewBody trust.reviewStatus)

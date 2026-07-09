@@ -857,19 +857,19 @@ unconfigured consumer degrades gracefully rather than dead-linking. -/
 private def pmHubLinks (state : TraverseState) : Output.Html :=
   let summaryLink : Output.Html :=
     match Informal.TraversalIndex.SummaryPage.href? state with
-    | some href => {{ <a href={{href}}>"Blueprint summary →"</a> }}
+    | some href => {{ <a href={{href}}>"Blueprint summary"</a> }}
     | none => .empty
   let formalizationLink : Output.Html :=
     match Informal.TraversalIndex.FormalizationPage.href? state with
-    | some href => {{ <a href={{href}}>"Formalization metadata →"</a> }}
+    | some href => {{ <a href={{href}}>"Formalization metadata"</a> }}
     | none => .empty
   {{
     <nav class="bp_pm_links" "aria-label"="Blueprint sections">
-      <a href={{Informal.NodeRoute.worklistHref}}>"Worklist →"</a>
-      <a href={{Informal.NodeRoute.auditHref}}>"Audit & technical debt →"</a>
-      <a href={{Informal.NodeRoute.mathlibCandidatesHref}}>"Mathlib upstream candidates →"</a>
-      <a href={{Informal.NodeRoute.modulesHref}}>"Modules →"</a>
-      <a href={{Informal.NodeRoute.declIndexHref}}>"Index →"</a>
+      <a href={{Informal.NodeRoute.worklistHref}}>"Worklist"</a>
+      <a href={{Informal.NodeRoute.auditHref}}>"Audit & technical debt"</a>
+      <a href={{Informal.NodeRoute.mathlibCandidatesHref}}>"Mathlib upstream candidates"</a>
+      <a href={{Informal.NodeRoute.modulesHref}}>"Modules"</a>
+      <a href={{Informal.NodeRoute.declIndexHref}}>"Index"</a>
       {{summaryLink}}
       {{formalizationLink}}
     </nav>

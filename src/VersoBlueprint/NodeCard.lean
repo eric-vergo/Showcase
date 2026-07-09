@@ -367,6 +367,18 @@ def css : String := r##"
   min-width: 0;
 }
 
+/* Definition cards (1x2) draw their divider as a `border-inline-start` on the
+   formal cell (below). With the base `align-items: start` that border only
+   reaches the Lean cell's own content height, so a taller informal column leaves
+   the line stopping short. Stretch the definition grid's cells to the full row
+   height so the border spans it; block-flow content still starts at the top.
+   Scoped to `.bp_card2 > .bp_card2_grid` (definition-only) — theorem grids live
+   inside `.bp_card2_body` and keep `align-items: start` with their absolutely
+   positioned `.bp_card2_divider`. */
+.bp_card2 > .bp_card2_grid {
+  align-items: stretch;
+}
+
 /* Column inset so the prose and Lean columns clear the vertical divider. The
    line itself is drawn either by the per-definition border below or, for
    theorem-like cards, by the single spanning `.bp_card2_divider`. Suppressed
