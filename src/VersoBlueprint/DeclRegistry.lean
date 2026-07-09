@@ -545,7 +545,7 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
       match content?, ranges? with
       | some content, some ranges =>
         if Informal.isStatementSignatureCandidate ci then
-          match ← Informal.highlightStatementFromSource? content ranges.range with
+          match ← Informal.highlightStatementFromSource? n content ranges.range with
           | some hl => pure (some (Informal.renderHighlightedSelfContainedHtml hl))
           | none => pure none
         else pure none

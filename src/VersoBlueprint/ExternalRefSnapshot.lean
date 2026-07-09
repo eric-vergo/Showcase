@@ -440,6 +440,22 @@ private def statementDeclSig? (sig : Lean.Syntax) : Option Lean.Syntax :=
   typeSpec?.map fun ts =>
     Lean.Syntax.node .none ``Lean.Parser.Command.declSig #[binders, ts]
 
+/-- The namespace the declaration was written in: the full (de-mangled) name minus
+the name components the author actually wrote after the `theorem`/`def` keyword.
+E.g. full `A362583.exists_norm_LFunction_lt_near_half` written as
+`exists_norm_LFunction_lt_near_half` inside `namespace A362583` yields `A362583`;
+a fully-qualified top-level `theorem A362583.foo` yields `Name.anonymous`. `none`
+when the written name is not a suffix of the full name (unexpected — caller keeps
+the anonymous namespace). -/
+private def declWrittenNamespace? (fullName writtenName : Lean.Name) : Option Lean.Name :=
+  go fullName writtenName
+where
+  go : Lean.Name → Lean.Name → Option Lean.Name
+    | f, .anonymous => some f
+    | .str f' s', .str w' s => if s' == s then go f' w' else none
+    | .num f' n', .num w' n => if n' == n then go f' w' else none
+    | _, _ => none
+
 open SubVerso.Highlighting Lean Elab in
 /-- The `CommandElabM` core of `highlightStatementFromSource?`: re-elaborate the
 verbatim statement (as a fresh, clash-free `opaque`, so it never collides with the
@@ -483,11 +499,18 @@ name clashes), and runs SubVerso's highlighter over the **original source syntax
 with the resulting info trees. Every identifier that resolves therefore carries
 its hover payload, and the layout is exactly what the author wrote.
 
+The re-elaboration runs inside the declaration's own namespace (derived from
+`declName` minus the source-written name — see `declWrittenNamespace?`, with
+private names de-mangled first), so sibling declarations referenced by short name
+(e.g. `χ` for `A362583.χ` inside `namespace A362583`) resolve exactly as they did
+at the original site.
+
 Degrades to `none` — the caller falls back to `Signature.forName` — when the
 source has no explicit type ascription, fails to parse, or fails to elaborate in
 this context (identifiers relying on the module's `open`s that are not in scope).
 -/
-def highlightStatementFromSource? (content : String) (range : Lean.DeclarationRange) :
+def highlightStatementFromSource? (declName : Lean.Name) (content : String)
+    (range : Lean.DeclarationRange) :
     Lean.CoreM (Option SubVerso.Highlighting.Highlighted) := do
   let fileMap := Lean.FileMap.ofString content
   let startPos := fileMap.ofPosition range.pos
@@ -503,11 +526,18 @@ def highlightStatementFromSource? (content : String) (range : Lean.DeclarationRa
     | return none
   let some declSig := statementDeclSig? sigNode
     | return none
+  -- Enter the namespace the author wrote the declaration in, so short-name
+  -- references to namespace siblings resolve. Private names are de-mangled first
+  -- (the source is written against the user-facing name).
+  let userName := (privateToUserName? declName).getD declName
+  let currNamespace :=
+    (declWrittenNamespace? userName declId[0].getId).getD Lean.Name.anonymous
   let declFileMap := Lean.FileMap.ofString declText
   let cctx : Lean.Elab.Command.Context :=
     { fileName := "<statement>", fileMap := declFileMap, snap? := none, cancelTk? := none }
   let cmdState : Lean.Elab.Command.State :=
-    { env, maxRecDepth := (← readThe Lean.Core.Context).maxRecDepth, scopes := [{ header := "" }] }
+    { env, maxRecDepth := (← readThe Lean.Core.Context).maxRecDepth,
+      scopes := [{ header := "", currNamespace }] }
   try
     match (← liftM <| EIO.toIO' <|
         (highlightStatementAct declText range.pos.column declId declSig cctx).run cmdState) with
@@ -574,7 +604,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       match content?, ranges? with
       | some content, some ranges =>
         if isStatementSignatureCandidate cinfo then
-          match ← highlightStatementFromSource? content ranges.range with
+          match ← highlightStatementFromSource? canonical content ranges.range with
           | some hl => pure (some { wide := hl, narrow := hl })
           | none => pure none
         else pure none
