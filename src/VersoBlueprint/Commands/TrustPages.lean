@@ -347,7 +347,7 @@ private def reviewBody (status : String) : Output.Html :=
 private def trustOutLink (href label : String) : Output.Html :=
   {{ <a class="bp_trust_out_link" href={{href}} target="_blank" rel="noopener">{{.text true label}}</a> }}
 
-private def comparatorBody (cmp : TrustComparator) : Output.Html :=
+private def comparatorBody (cmp : TrustComparator) (checkJson? : Option Json) : Output.Html :=
   let verdict : Output.Html :=
     if cmp.status == "verified" then
       let whenTxt := if cmp.verifiedAt.isEmpty then "" else s!" (checked at {cmp.verifiedAt})"
@@ -433,7 +433,7 @@ private def comparatorBody (cmp : TrustComparator) : Output.Html :=
     "An independent tool checks that the formal statements proved here really do encode the intended mathematical claims — guarding against a correct proof of the wrong statement."
     (.seq #[trustSection "Evidence" (.seq #[verdict, ciLink]), theorems, note,
       configSection, challengeSection, solutionSection, trustSection "How to reproduce" repro,
-      auditJsonLink])
+      checkJsonSection checkJson?, auditJsonLink])
 
 /-! ## Structural `uses`-graph evidence pages -/
 
@@ -891,6 +891,7 @@ def emitBlueprintTrustPages : ExtraStep :=
             trustReviewPath "Review status" (reviewBody trust.reviewStatus)
         if let some cmp := trust.comparator then
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            trustComparatorPath "Statement comparator" (comparatorBody cmp)
+            trustComparatorPath "Statement comparator"
+            (comparatorBody cmp (findCheckJson checkArr "comparator"))
 
 end Informal.Commands

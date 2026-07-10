@@ -591,6 +591,33 @@ signature-only path rather than stalling generation. Kept as a hardcoded constan
 (not a lakefile option) since no consumer has needed to tune it. -/
 def fullDeclReelabMaxHeartbeats : Nat := 4 * 200000
 
+open Lean Elab in
+/-- Whether a parsed top-level command is — or macro-expands to — a plain
+`Lean.Parser.Command.declaration`.
+
+Mathlib's `lemma` is its *own* command kind whose `@[macro]` expander rewrites the
+node **in place** (`setKind`/`modifyArg` on the same subtrees, no re-quotation) to a
+`theorem` declaration — so every `declId`/`declSig`/`declVal` node, and hence every
+source position the highlighter matches info-tree entries against, is shared
+between the original and expanded forms. We therefore check *eligibility* by
+expanding step by step (fuel-bounded), while the caller keeps operating on the
+ORIGINAL syntax: the rename/attribute-strip rewrite targets the
+`declId`/`declModifiers` nodes (present verbatim in the original since `lemma` is
+built from the standard declaration parsers), and `Command.elabCommand` performs
+this same macro expansion itself during the real elaboration. Environment-driven —
+no hard dependency on any Mathlib name: in a consumer without the `lemma` macro
+that kind never parses, and a non-`declaration` command that expands to nothing
+yields `false` (caller degrades to the fallback paths). -/
+private partial def expandsToDeclaration (stx : Lean.Syntax) (fuel : Nat := 8) :
+    Command.CommandElabM Bool := do
+  if stx.getKind == ``Lean.Parser.Command.declaration then return true
+  if fuel == 0 then return false
+  try
+    match ← liftMacroM (Lean.Macro.expandMacro? stx) with
+    | some stx' => expandsToDeclaration stx' (fuel - 1)
+    | none => return false
+  catch _ => return false
+
 open SubVerso.Highlighting Lean Elab in
 /-- The `CommandElabM` core of `highlightDeclFromSource?`: elaborate a *spliced*
 copy of the whole declaration (fresh clash-free name, attributes stripped) as a
@@ -605,6 +632,9 @@ private def highlightDeclAct (declText : String) (sigDeIndentCol : Nat)
     (freshName : Lean.Name) :
     Command.CommandElabM (Option (SubVerso.Highlighting.Highlighted ×
         Option SubVerso.Highlighting.Highlighted)) := do
+  -- Accept only commands that are — or macro-expand to (e.g. Mathlib's `lemma`) —
+  -- a plain single declaration; `mutual`/`example`/arbitrary commands fall back.
+  unless ← expandsToDeclaration origCmd do return none
   let origPos := declId.getPos?
   let freshIdent := mkIdentFrom declId[0] freshName
   let declIdKind := ``Lean.Parser.Command.declId
@@ -653,7 +683,9 @@ that one elaboration it produces BOTH the signature `Highlighted` (same shape th
 Seeded with the declaration's written namespace (see `declWrittenNamespace?`) and
 capped at `fullDeclReelabMaxHeartbeats`. Degrades to `none` — caller falls back to
 the `opaque`-signature + syntactic-body paths — when the source is not a single
-declaration, has no explicit type ascription, uses a non-simple `:=` body with
+declaration (commands that macro-expand to one, e.g. Mathlib's `lemma`, are
+accepted — see `expandsToDeclaration`), has no explicit type ascription, uses a
+non-simple `:=` body with
 `where`/termination clauses (kept whole by the text path instead), or fails to
 parse/elaborate in this context (module-level `open`/`variable`/`section` state that
 is not in scope here). The body component is `none` (signature still returned) when
@@ -670,8 +702,11 @@ def highlightDeclFromSource? (declName : Lean.Name) (content : String)
   let env ← getEnv
   let .ok cmdStx := Lean.Parser.runParserCategory env `command declText "<decl>"
     | return none
-  -- Must be a single ordinary declaration; `mutual`/`example`/malformed slices fall back.
-  if cmdStx.getKind != ``Lean.Parser.Command.declaration then return none
+  -- Eligibility (single plain declaration, possibly behind a declaration-producing
+  -- macro like Mathlib's `lemma`) is checked inside the act (`expandsToDeclaration`,
+  -- which needs `CommandElabM` for macro expansion). Here we only require the
+  -- standard declaration nodes to be present in the ORIGINAL syntax — they are, for
+  -- both `declaration` and `lemma`-style commands built from the standard parsers.
   let some declId := cmdStx.find? (·.getKind == ``Lean.Parser.Command.declId)
     | return none
   let some sigNode := cmdStx.find? (fun s =>
