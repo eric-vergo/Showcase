@@ -143,6 +143,12 @@ def pmHref : String := "pm/"
 /-- Multi-page output path for the PM hub page: `pm/index.html`. -/
 def pmPath : Verso.Multi.Path := #["pm"]
 
+/-- Root-relative href (no leading slash) to the statement-comparator page. -/
+def comparatorHref : String := "comparator/"
+
+/-- Multi-page output path for the comparator page: `comparator/index.html`. -/
+def comparatorPath : Verso.Multi.Path := #["comparator"]
+
 /-!
 Declaration-catalog page routes (Definitions / Theorems / alphabetical Index /
 Modules). Same root-relative, leading-slash-free convention as the routes above so

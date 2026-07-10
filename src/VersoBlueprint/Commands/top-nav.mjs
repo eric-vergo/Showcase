@@ -1,12 +1,13 @@
 // Top-nav category strip injected into the fixed site banner (the `<body> > header`
 // element). JS-only: no verso-core template edit (same pattern as banner-nav.mjs).
 //
-// Tabs: Definitions / Theorems / Project management -> `defs/`, `theorems/`, `pm/`.
-// Each href is resolved against `document.baseURI` (every page carries a
-// `<base href>` pointing at the site root), so the tabs work correctly from a 2-deep
-// node page and under file://. The active tab is marked `aria-current="page"`; the
-// Project-management tab is active on the PM hub *and* on every project-management
-// route (`pm/`, `worklist/`, `audit/`, `mathlib-candidates/`, `owners/`, `tags/`).
+// Tab: a single "Project management" tab -> `pm/` (the PM hub, from which every other
+// surface — Definitions, Theorems, worklist, audit, comparator, ... — is reachable).
+// Its href is resolved against `document.baseURI` (every page carries a `<base href>`
+// pointing at the site root), so the tab works correctly from a 2-deep node page and
+// under file://. The tab is marked `aria-current="page"` on the PM hub *and* on every
+// project-management / catalog route (`pm/`, `worklist/`, `audit/`,
+// `mathlib-candidates/`, `owners/`, `tags/`, `defs/`, `theorems/`).
 //
 // Placement: the nav is appended INSIDE the banner's `.header-logo-wrapper` (its
 // first cell) so the tabs sit beside the Home logo and leave the grid banner's
@@ -21,14 +22,13 @@ const NAV_CLASS = "bp-topnav";
 const MENU_ID = "bp-topnav-menu";
 
 const CATEGORIES = [
-  { label: "Definitions", href: "defs/" },
-  { label: "Theorems", href: "theorems/" },
-  // The Project-management tab is active on its hub page and on every top-level
-  // project-management route (worklist / audit / candidates / owner / tag pages).
+  // The single Project-management tab is active on its hub page and on every top-level
+  // project-management / catalog route (worklist / audit / candidates / owner / tag /
+  // definitions / theorems pages), all of which the hub links to.
   {
     label: "Project management",
     href: "pm/",
-    also: ["worklist/", "audit/", "mathlib-candidates/", "owners/", "tags/"]
+    also: ["worklist/", "audit/", "mathlib-candidates/", "owners/", "tags/", "defs/", "theorems/"]
   }
 ];
 

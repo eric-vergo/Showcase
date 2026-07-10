@@ -1,7 +1,7 @@
-/* Dashboard trust strip (fed by formalization.yaml + a comparator-status
-   artifact). The strip only ever renders alongside the dashboard block, whose
+/* Dashboard trust strip (fed by a comparator-status artifact) + the standalone
+   comparator page. The strip only ever renders alongside the dashboard block, whose
    asset bundle ships summary.css, so the shared .bp_summary_badge* classes are
-   always available. Token-driven; no raw colors. */
+   always available. Token-driven; no raw colors, so both themes are covered. */
 
 .bp_trust_strip {
   display: flex;
@@ -30,24 +30,8 @@
   margin-top: 0;
 }
 
-/* Quiet "All checks" affordance linking the strip to the verification overview. */
-.bp_trust_strip_all {
-  font-size: var(--bp-fs-badge);
-  font-weight: 600;
-  color: var(--bp-color-link);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bp_trust_strip_all:hover,
-.bp_trust_strip_all:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 0.14em;
-}
-
-/* Trust badges that link to their evidence page render as <a>. Keep them visually
-   identical at rest, add a quiet hover/focus affordance (token-driven, both
-   themes). */
+/* Trust badges that link to a page render as <a>. Keep them visually identical at
+   rest, add a quiet hover/focus affordance (token-driven, both themes). */
 a.bp_summary_badge {
   text-decoration: none;
   cursor: pointer;
@@ -67,8 +51,7 @@ a.bp_summary_badge:focus-visible {
   outline-offset: 2px;
 }
 
-/* Trust-evidence pages (trust/sorries, /axioms, /review, /comparator). Reuse the
-   shared PM-page chrome; just space the titled sections and code lists. */
+/* Comparator page. Reuse the shared PM-page chrome; just space the titled sections. */
 .bp_trust_section {
   margin-top: var(--bp-space-5);
 }
@@ -80,16 +63,7 @@ a.bp_summary_badge:focus-visible {
   color: var(--bp-color-text-strong);
 }
 
-.bp_trust_list {
-  margin: var(--bp-space-2) 0;
-  padding-left: var(--bp-space-5);
-}
-
-.bp_trust_list li {
-  margin: var(--bp-space-1) 0;
-}
-
-/* External CI-run link on the comparator evidence page. */
+/* External CI-run link on the comparator page. */
 .bp_trust_ci_link {
   color: var(--bp-color-link);
   font-weight: 600;
@@ -102,8 +76,8 @@ a.bp_summary_badge:focus-visible {
   text-underline-offset: 0.14em;
 }
 
-/* Embedded config JSON / Challenge Lean source. Token-driven, so it reads as an
-   intentional code block in both light and dark; wide lines scroll inside it. */
+/* Embedded config JSON / Challenge & Solution Lean source. Token-driven, so it reads as
+   an intentional code block in both light and dark; wide lines scroll inside it. */
 .bp_trust_disclosure {
   margin: var(--bp-space-2) 0 0;
 }
@@ -146,7 +120,7 @@ a.bp_summary_badge:focus-visible {
   white-space: inherit;
 }
 
-/* Outbound source/playground links near the Challenge source and config. */
+/* Outbound source/playground links near the Challenge/Solution source and config. */
 .bp_trust_links {
   margin: var(--bp-space-2) 0 0;
   font-size: var(--bp-fs-caption);
@@ -162,111 +136,4 @@ a.bp_summary_badge:focus-visible {
 .bp_trust_out_link:focus-visible {
   text-decoration: underline;
   text-underline-offset: 0.14em;
-}
-
-/* Compiled-evaluation caveat + other quiet notes on the trust pages. */
-.bp_trust_note {
-  margin: var(--bp-space-3) 0 0;
-  font-size: var(--bp-fs-small, 0.875rem);
-  color: var(--bp-color-text-muted);
-}
-
-/* Gloss of the standard axioms. */
-.bp_trust_gloss {
-  margin: var(--bp-space-2) 0 0;
-}
-
-.bp_trust_gloss dt {
-  margin-top: var(--bp-space-2);
-  font-weight: 600;
-}
-
-.bp_trust_gloss dt code {
-  color: var(--bp-color-text-strong);
-}
-
-.bp_trust_gloss dd {
-  margin: 0 0 0 var(--bp-space-3);
-  color: var(--bp-color-text);
-}
-
-/* Per-theorem kernel axiom evidence cards. */
-.bp_trust_axiom_card {
-  margin: var(--bp-space-3) 0 0;
-  padding: var(--bp-space-3);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-md);
-  background: var(--bp-color-surface-subtle);
-}
-
-.bp_trust_axiom_head {
-  font-size: 1rem;
-  margin-bottom: var(--bp-space-2);
-}
-
-.bp_trust_axiom_label {
-  margin: var(--bp-space-3) 0 var(--bp-space-1);
-  font-size: var(--bp-fs-caption);
-  font-weight: 600;
-  color: var(--bp-color-text-faint);
-}
-
-.bp_trust_badge_row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--bp-space-2);
-  margin: var(--bp-space-2) 0 0;
-}
-
-/* Declaration name + source link (both on evidence cards and in listings). */
-.bp_trust_decl_link {
-  text-decoration: none;
-  color: var(--bp-color-link);
-}
-
-.bp_trust_decl_link:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.14em;
-}
-
-.bp_trust_source_link {
-  color: var(--bp-color-text-faint);
-  font-size: var(--bp-fs-caption);
-  text-decoration: none;
-}
-
-.bp_trust_source_link:hover,
-.bp_trust_source_link:focus-visible {
-  color: var(--bp-color-link);
-  text-decoration: underline;
-}
-
-/* Trust-page-local status badge (independent of summary.css, which does not ship on
-   the standalone evidence pages). Token-driven → both themes. */
-.bp_trust_badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1em 0.55em;
-  border-radius: var(--bp-radius-sm, 4px);
-  border: 1px solid var(--bp-color-border);
-  font-size: var(--bp-fs-badge);
-  font-weight: 600;
-  line-height: 1.5;
-  color: var(--bp-color-text);
-  background: var(--bp-color-surface);
-}
-
-.bp_trust_badge_ok {
-  color: var(--bp-color-accent-success);
-  border-color: var(--bp-color-accent-success);
-}
-
-.bp_trust_badge_warn {
-  color: var(--bp-color-accent-warning);
-  border-color: var(--bp-color-accent-warning);
-}
-
-.bp_trust_badge_err {
-  color: var(--bp-color-accent-danger);
-  border-color: var(--bp-color-accent-danger);
 }

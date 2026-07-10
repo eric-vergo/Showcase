@@ -58,7 +58,8 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages
         :: Informal.DeclPage.emitBlueprintDeclPages
-        :: Informal.Commands.emitBlueprintTrustPages
+        :: Informal.Commands.emitBlueprintGraphGate
+        :: Informal.Commands.emitBlueprintComparatorPage
         :: extraSteps)
 
 end Informal.PreviewManifest

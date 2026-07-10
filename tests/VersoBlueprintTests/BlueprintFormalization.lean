@@ -328,45 +328,14 @@ private def comparatorJson := r##"{
 /-- info: true -/
 #guard_msgs in
 #eval
-  let zero := (trustSorryBadge 0).asString
-  let one := (trustSorryBadge 1).asString
-  let two := (trustSorryBadge 2).asString
-  hasSubstr zero "bp_summary_badge_success" && hasSubstr zero "0 sorries" &&
-  hasSubstr one "bp_summary_badge_error" && hasSubstr one "1 sorry" &&
-  hasSubstr two "bp_summary_badge_error" && hasSubstr two "2 sorries"
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let standard := (trustAxiomsBadge standardAxioms).asString
-  let nonstd := (trustAxiomsBadge ["propext", "sorryAx"]).asString
-  let noneRec := (trustAxiomsBadge []).asString
-  hasSubstr standard "bp_summary_badge_success" &&
-  hasSubstr standard "axioms: standard 3" &&
-  hasSubstr standard "Classical.choice" &&
-  hasSubstr nonstd "bp_summary_badge_warn" &&
-  hasSubstr nonstd "nonstandard" &&
-  hasSubstr noneRec "none recorded" &&
-  !hasSubstr noneRec "bp_summary_badge_success"
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let review := (trustReviewBadge "agent-reviewed").asString
-  hasSubstr review "review: agent-reviewed" &&
-  !hasSubstr review "bp_summary_badge_warn" &&
-  !hasSubstr review "bp_summary_badge_error" &&
-  !hasSubstr review "bp_summary_badge_success"
-
-/-- info: true -/
-#guard_msgs in
-#eval
   let configured := (trustComparatorBadge { status := "configured", note := "runs on CI" }).asString
   let verified := (trustComparatorBadge
     { status := "verified", verifiedAt := "2026-07-03T12:00:00Z" }).asString
   hasSubstr configured "bp_summary_badge_warn" &&
   hasSubstr configured "not yet run" &&
   hasSubstr configured "runs on CI" &&
+  -- The badge links to the standalone `comparator/` page (not the removed `trust/…`).
+  hasSubstr configured "href=\"comparator/\"" &&
   hasSubstr verified "bp_summary_badge_success" &&
   hasSubstr verified "comparator: verified" &&
   hasSubstr verified "2026-07-03"
@@ -382,29 +351,24 @@ private def comparatorJson := r##"{
   }
   let strip := (trustStripHtml trust (some "Formalization-Metadata/")).asString
   let empty := (trustStripHtml {} none).asString
+  let noComparator := (trustStripHtml { reviewStatus := "agent-reviewed" } (some "Formalization-Metadata/")).asString
   hasSubstr strip "bp_trust_strip" &&
-  -- Each configured badge renders as an `<a>` linking to its `trust/…` evidence page
-  -- (see `trustBadgeHtml`'s `href?` branch): the four trust badges PLUS the blue
-  -- `accent` formalization.yaml badge that replaced the former trailing text link,
-  -- which links to the formalization-metadata page.
-  countSubstr strip "<a class=\"bp_summary_badge" == 5 &&
+  -- The strip carries only the comparator verdict badge (linking to `comparator/`) plus
+  -- the blue `accent` formalization.yaml badge — two `<a class="bp_summary_badge…"`.
+  countSubstr strip "<a class=\"bp_summary_badge" == 2 &&
+  hasSubstr strip "href=\"comparator/\"" &&
   hasSubstr strip "bp_summary_badge_accent" &&
   hasSubstr strip "href=\"Formalization-Metadata/\"" &&
   hasSubstr strip "formalization.yaml" &&
+  -- The deprecated "All checks" affordance and review badge are gone.
+  !hasSubstr strip "All checks" &&
+  !hasSubstr strip "review:" &&
+  -- "Renders only with real trust data": no comparator ⇒ no strip (the accent badge
+  -- alone never triggers it).
+  noComparator == "" &&
   empty == ""
 
-/-! ### Phase 1B: kernel-derived enrichment + build-time syntax highlighting -/
-
-/-! `mainResultsDeclared` reads `status.main_results[]`. -/
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let doc := parsed! yamlRealWorld
-  let mr := mainResultsDeclared doc
-  mr.length == 1 &&
-  (mr.head?.map (·.1)) == some "A362583.irrational_x" &&
-  (mr.head?.map (fun p => p.2.length)) == some 3
+/-! ### Build-time syntax highlighting + source-link helpers -/
 
 /-! `nonstandardAxioms` filters out the three standard axioms. -/
 
@@ -463,40 +427,5 @@ end ChallengeTest
   | some html =>
     return !html.isEmpty && hasSubstr html "namespace" && hasSubstr html "two" &&
       hasSubstr html "<span"
-
-/-! Kernel evidence fixtures: a clean theorem and a deliberately-sorried one. -/
-
--- Rooted (`_root_`) so the env names are exactly `TrustKernelFixture.*`, matching the
--- string literals below (this file is inside a `namespace`, which would otherwise prefix them).
-theorem _root_.TrustKernelFixture.clean_thm : True := True.intro
-
-/-- warning: declaration uses `sorry` -/
-#guard_msgs in
-theorem _root_.TrustKernelFixture.broken_thm : True := by sorry
-
-/-! `axiomEvidenceFor` computes the kernel's transitive axiom set; `computed := false`
-for an unresolvable declaration. -/
-
-/-- info: true -/
-#guard_msgs in
-#eval show CoreM Bool from do
-  let clean ← axiomEvidenceFor "TrustKernelFixture.clean_thm" ["propext"]
-  let broken ← axiomEvidenceFor "TrustKernelFixture.broken_thm" []
-  let missing ← axiomEvidenceFor "TrustKernelFixture.does_not_exist" ["propext"]
-  return clean.computed && clean.kernelAxioms.isEmpty &&
-    broken.computed && broken.kernelAxioms.contains "sorryAx" &&
-    !missing.computed && missing.declaredAxioms == ["propext"]
-
-/-! `collectProjectSorries` finds only the sorried declaration in the namespace, and
-returns nothing when no namespace is configured. -/
-
-/-- info: true -/
-#guard_msgs in
-#eval show CoreM Bool from do
-  let inScope ← collectProjectSorries "TrustKernelFixture"
-  let unscoped ← collectProjectSorries ""
-  return inScope.contains "TrustKernelFixture.broken_thm" &&
-    !inScope.contains "TrustKernelFixture.clean_thm" &&
-    unscoped.isEmpty
 
 end Verso.VersoBlueprintTests.BlueprintFormalization

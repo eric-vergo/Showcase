@@ -524,7 +524,9 @@ private def runSummaryHtml (state : TraverseState) {α : Type} (act : SummaryHtm
     definitionIds := state.definitionIds ctxt
     linkTargets :=
       state.localTargets ++ remotes.remoteTargets ++ Informal.NodeRoute.blueprintNodeTargets state
-    codeOptions := {}
+    -- No inline proof-state toggles in blueprint decl rendering (see PreviewRender /
+    -- ExternalDeclRender); keeps summary-surface decl spans consistent + hoverable.
+    codeOptions := { inlineProofStates := false }
   }
   let (a, _) ← (act.run htmlCtx).run {} |>.run remotes |>.run extensionImpls |>.run logger
   pure a
@@ -850,10 +852,23 @@ private def pmPageCss : String := r##"
 }
 "##
 
+/-- Whether a statement comparator is configured (from the cached trust-strip payload),
+so the PM hub should link to the `comparator/` page. Reads the raw cached JSON to avoid
+an import dependency on the trust-strip module. -/
+private def comparatorConfigured (state : TraverseState) : Bool :=
+  match Informal.TraversalIndex.TrustData.raw? state with
+  | some j =>
+    match j.getObjVal? "comparator" with
+    | .ok Json.null => false
+    | .ok _ => true
+    | .error _ => false
+  | none => false
+
 /-- The PM hub's navigation row: quiet links to every project-management and catalog
-surface. The Blueprint Summary and Formalization Metadata links are omitted when the
-document carries no such page (their traversal anchors resolve to `none`), so an
-unconfigured consumer degrades gracefully rather than dead-linking. -/
+surface. The Blueprint Summary, Formalization Metadata, and Statement Comparator links
+are omitted when the document carries no such page (their traversal anchors / trust
+payload resolve to `none`), so an unconfigured consumer degrades gracefully rather than
+dead-linking. -/
 private def pmHubLinks (state : TraverseState) : Output.Html :=
   let summaryLink : Output.Html :=
     match Informal.TraversalIndex.SummaryPage.href? state with
@@ -863,13 +878,20 @@ private def pmHubLinks (state : TraverseState) : Output.Html :=
     match Informal.TraversalIndex.FormalizationPage.href? state with
     | some href => {{ <a href={{href}}>"Formalization metadata"</a> }}
     | none => .empty
+  let comparatorLink : Output.Html :=
+    if comparatorConfigured state then
+      {{ <a href={{Informal.NodeRoute.comparatorHref}}>"Statement comparator"</a> }}
+    else .empty
   {{
     <nav class="bp_pm_links" "aria-label"="Blueprint sections">
+      <a href={{Informal.NodeRoute.defsHref}}>"Definitions"</a>
+      <a href={{Informal.NodeRoute.theoremsHref}}>"Theorems"</a>
       <a href={{Informal.NodeRoute.worklistHref}}>"Worklist"</a>
       <a href={{Informal.NodeRoute.auditHref}}>"Audit & technical debt"</a>
       <a href={{Informal.NodeRoute.mathlibCandidatesHref}}>"Mathlib upstream candidates"</a>
       <a href={{Informal.NodeRoute.modulesHref}}>"Modules"</a>
       <a href={{Informal.NodeRoute.declIndexHref}}>"Index"</a>
+      {{comparatorLink}}
       {{summaryLink}}
       {{formalizationLink}}
     </nav>

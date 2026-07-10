@@ -14,26 +14,28 @@ import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
+import VersoBlueprint.NodeRoute
 
 /-!
 Dashboard trust strip.
 
-A compact badge row surfaced with `blueprint_dashboard`: sorry count, axiom
-hygiene, review status, and the statement-comparator verdict. It is fed by two
-build options naming machine-readable artifacts, both read at elaboration time
-(paths resolve against the build CWD, i.e. the consumer package root):
+A compact badge row surfaced with `blueprint_dashboard`: the statement-comparator
+verdict plus a link to the project's `formalization.yaml` metadata page. It is fed
+by build options naming machine-readable artifacts, read at elaboration time (paths
+resolve against the build CWD, i.e. the consumer package root):
 
 - `verso.blueprint.trust.formalizationYaml` — the project's
-  `formalization.yaml` (v0.3); supplies the sorry/axioms/review badges.
+  `formalization.yaml` (v0.3).
 - `verso.blueprint.trust.comparatorStatus` — a comparator-status JSON artifact
   (`{status, theorem_names, verified_at, note, ...}`); supplies the comparator
-  badge.
+  badge, which links to the standalone `comparator/` page.
 
-Degrades gracefully: an unset option silently omits its badges; a *set* option
+Degrades gracefully: an unset option silently omits its badge; a *set* option
 naming a missing or unparsable file is a build error (a configured trust signal
 must not vanish silently). When the document also renders a
 `blueprint_formalization` page, the strip links to it (resolved through the
-`FormalizationPage` traversal store, never a guessed slug).
+`FormalizationPage` traversal store, never a guessed slug). The strip renders only
+when it carries a real trust signal (a configured comparator).
 -/
 
 namespace Informal.Commands
@@ -74,12 +76,7 @@ register_option verso.blueprint.trust.requireConnected : Bool := {
 
 register_option verso.blueprint.trust.ciRunUrl : String := {
   defValue := ""
-  descr := "URL of the CI run that produced these checks (e.g. a GitHub Actions run). When set, every check card on the verification-overview page gets a \"CI run\" link to it; the comparator card prefers this over the status artifact's own run_url. Empty ⇒ no CI links (local builds). The consumer supplies this from its CI environment (it is not obtainable at site-build time)."
-}
-
-register_option verso.blueprint.trust.comparatorToolInfo : String := {
-  defValue := ""
-  descr := "Free-text description of the external comparator/lean4export tooling and its pinned versions (e.g. \"lean4export@<sha>, comparator@<sha>\"), shown verbatim in the reproducibility section of the verification-overview page. These SHAs live in the consumer's CI workflow and are not obtainable at site-build time, so the consumer supplies them here. Empty ⇒ omitted."
+  descr := "URL of the CI run that produced the comparator verdict (e.g. a GitHub Actions run). Used as a fallback for the comparator page's \"View CI run\" link when the status artifact carries no run_url of its own. Empty ⇒ no CI link (local builds). The consumer supplies this from its CI environment (it is not obtainable at site-build time)."
 }
 
 /-- Comparator verdict extracted from the comparator-status artifact.
@@ -120,52 +117,24 @@ structure TrustComparator where
   playgroundUrl : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- Kernel-derived axiom evidence for one named theorem (Phase 1B): the transitive
-axiom set the kernel records for `declaration` (via `Lean.collectAxioms`, computed at
-elaboration) versus the axiom set the project declared for it in `formalization.yaml`.
-`computed := false` when the declaration was not resolvable in the build environment
-(import-dependent) — the page then presents the declared list marked as *not*
-independently computed, never as verified. -/
-structure AxiomEvidence where
-  declaration : String := ""
-  computed : Bool := false
-  kernelAxioms : List String := []
-  declaredAxioms : List String := []
-deriving Inhabited, FromJson, ToJson, Quote
-
 /-- Trust-strip payload: only fields present in the configured artifacts are set.
-The `axiomEvidence` / `sorryScanRan` / `sorryDecls` fields carry the Phase-1B
-kernel-derived enrichment (all defaulted, so serialized payloads stay
-back-compatible with pre-1B artifacts). -/
+The `formalization.yaml`-derived scalars (`sorryCount` / `axioms` / `reviewStatus`)
+are captured for downstream use; the strip and comparator page draw on `comparator`,
+and the graph gate on `requireConnected`. -/
 structure TrustData where
   sorryCount : Option Nat := none
   axioms : List String := []
   reviewStatus : String := ""
   comparator : Option TrustComparator := none
-  /-- Per-main-result kernel-derived axiom evidence (empty when `formalization.yaml`
-  lists no `status.main_results`). -/
-  axiomEvidence : List AxiomEvidence := []
-  /-- Whether a kernel sorry scan actually ran (a project namespace was configured via
-  `verso.blueprint.declNamePrefix`). `false` ⇒ the sorries page reports the YAML count
-  as *declared*, not independently computed. -/
-  sorryScanRan : Bool := false
-  /-- Declarations in the project namespace whose type/value uses `sorryAx`, found by
-  the kernel scan (empty for a sorry-free development). -/
-  sorryDecls : List String := []
-  /-- Free-text comparator/lean4export tooling + pinned-version description, from the
-  `verso.blueprint.trust.comparatorToolInfo` option (empty ⇒ absent). Surfaced verbatim
-  in the reproducibility section of the verification-overview page; the SHAs live in the
-  consumer's CI workflow and cannot be read at site-build time. -/
-  comparatorToolInfo : String := ""
   /-- Whether a disconnected `uses` graph fails the build (item 1). Default `true`;
   a deliberately multi-topic blueprint sets `verso.blueprint.trust.requireConnected`
   false, and the connectivity check is then reported for information without gating. -/
   requireConnected : Bool := true
-  /-- URL of the CI run that produced these checks, from the
+  /-- URL of the CI run that produced the comparator verdict, from the
   `verso.blueprint.trust.ciRunUrl` option (`none` ⇒ unset, e.g. a local build).
-  When set, each check card on the verification-overview page links to it; the
-  comparator card prefers it over the status artifact's own `run_url`. The SHA/run
-  id lives in CI and is not readable at site-build time, so the consumer supplies it. -/
+  Used as a fallback for the comparator page's "View CI run" link when the status
+  artifact carries no `run_url` of its own. The SHA/run id lives in CI and is not
+  readable at site-build time, so the consumer supplies it. -/
   ciRunUrl : Option String := none
 deriving Inhabited, FromJson, ToJson, Quote
 
@@ -186,19 +155,6 @@ def TrustData.ofFormalizationJson (doc : Json) : TrustData :=
     axioms := (status.getObjValAs? (List String) "axioms").toOption.getD []
     reviewStatus := (review.getObjValAs? String "status").toOption.getD ""
   }
-
-/-- The `(declaration, declared-axioms)` pairs from `status.main_results[]`, used to
-drive the per-theorem kernel axiom breakdown. A result's declared axiom set is its own
-`axioms` when present, else the top-level `status.axioms` (a project that declares a
-single shared axiom set need not repeat it per result). Empty when the document lists
-no main results. -/
-def mainResultsDeclared (doc : Json) : List (String × List String) :=
-  let status := (doc.getObjVal? "status").toOption.getD Json.null
-  let topAxioms := (status.getObjValAs? (List String) "axioms").toOption.getD []
-  let results := (status.getObjValAs? (Array Json) "main_results").toOption.getD #[]
-  results.toList.filterMap fun r =>
-    (r.getObjValAs? String "declaration").toOption.map fun decl =>
-      (decl, (r.getObjValAs? (List String) "axioms").toOption.getD topAxioms)
 
 /-- Extract the comparator verdict from a comparator-status artifact (`verified_at` may be `null`).
 `run_url` is optional (absent in older artifacts ⇒ empty). The embedded config /
@@ -296,49 +252,14 @@ def highlightJsonHtml (src : String) : Output.Html := Id.run do
   return .seq out
 
 /-!
-## Kernel-derived enrichment
+## Comparator-source enrichment
 
 At elaboration time the full environment (project + Mathlib) is available, so we can
-compute *independent* trust evidence rather than merely transcribing
-`formalization.yaml`: the kernel's transitive axiom set per named theorem
-(`Lean.collectAxioms`) and a scan for declarations that use `sorryAx`. Everything here
-probes-and-degrades — an unresolvable declaration or missing git remote yields empty
-fields, never a build error.
+syntax-highlight the comparator's config/Challenge/Solution blocks and resolve their
+outbound source links (GitHub blob at the pinned commit + Lean-playground). Everything
+here probes-and-degrades — a missing file or git remote yields empty fields, never a
+build error.
 -/
-
-/-- The kernel's transitive axiom evidence for one named theorem: resolve it in the
-environment and, when present, collect the axioms it actually depends on. -/
-def axiomEvidenceFor (declStr : String) (declared : List String) :
-    Lean.CoreM AxiomEvidence := do
-  let name := declStr.toName
-  match (← getEnv).find? name with
-  | some _ =>
-    let kernel := (← Lean.collectAxioms name).toList.map toString
-    return {
-      declaration := declStr
-      computed := true
-      kernelAxioms := kernel
-      declaredAxioms := declared
-    }
-  | _ => return { declaration := declStr, computed := false, declaredAxioms := declared }
-
-/-- Scan the project namespace (`namePrefix`, e.g. `A362583`) for declarations whose
-type or value uses `sorryAx`, returning their user-facing names. Bounded to the
-project by a cheap name-prefix filter (the expensive `Expr.hasSorry` traversal only
-runs on matches), and skips compiler-internal names. Empty when no prefix is
-configured or the development is sorry-free (the showcase's case). -/
-def collectProjectSorries (namePrefix : String) : Lean.CoreM (Array String) := do
-  if namePrefix.isEmpty then return #[]
-  let root := namePrefix.toName
-  let env ← getEnv
-  let found := env.constants.fold (init := #[]) fun acc name cinfo =>
-    -- `allowOpaque := true`: a `sorry` proof is stored as an opaque body, so the default
-    -- `value?` (which hides opaque bodies) would miss it — matching `ProvedStatus`.
-    if (root == name || root.isPrefixOf name) && !name.isInternalDetail &&
-        (cinfo.type.hasSorry || ((cinfo.value? (allowOpaque := true)).map (·.hasSorry)).getD false) then
-      acc.push name.toString
-    else acc
-  return found
 
 /-- Derive the `raw.githubusercontent.com` URL for a GitHub *blob* URL (splitting on
 the first `/blob/` so a path segment literally named `blob` is preserved). `none` for
@@ -358,22 +279,13 @@ private def absOptionPath (workspaceRoot : System.FilePath) (p : String) : Syste
   if fp.isAbsolute then fp else workspaceRoot / p
 
 open Informal in
-/-- Fill in the Phase-1B kernel-derived enrichment: per-main-result axiom evidence, the
-project sorry scan, syntax-highlighted config/Challenge blocks, and the Challenge
-source links (GitHub blob at the pinned commit + Lean-playground). Runs in `CoreM`
-(environment + git available at elaboration); every enrichment degrades to empty
-rather than failing. -/
-def enrichTrustData (opts : Lean.Options) (namePrefix : String)
-    (mainResults : List (String × List String)) (trust : TrustData) : Lean.CoreM TrustData := do
+/-- Fill in the comparator-source enrichment: syntax-highlighted config/Challenge/
+Solution blocks and their source links (GitHub blob at the pinned commit +
+Lean-playground). Runs in `CoreM` (environment + git available at elaboration); every
+enrichment degrades to empty rather than failing. -/
+def enrichTrustData (opts : Lean.Options) (trust : TrustData) : Lean.CoreM TrustData := do
   let workspaceRoot ← Informal.workspaceRoot
-  -- Per-main-result kernel axiom evidence.
-  let axiomEvidence ← mainResults.mapM (fun (d, ax) => axiomEvidenceFor d ax)
-  -- Kernel sorry scan over the project namespace.
-  let sorries ← collectProjectSorries namePrefix
-  let mut trust := { trust with
-    axiomEvidence
-    sorryScanRan := !namePrefix.isEmpty
-    sorryDecls := sorries.toList }
+  let mut trust := trust
   -- Comparator: highlight the config/Challenge blocks and resolve the source links.
   if let some cmp := trust.comparator then
     let mut cmp := cmp
@@ -412,38 +324,11 @@ def enrichTrustData (opts : Lean.Options) (namePrefix : String)
     trust := { trust with comparator := some cmp }
   return trust
 
-/-!
-Evidence-page routes. Each configured badge links to a generated evidence page
-under `trust/`; these root-relative hrefs (no leading slash) resolve against each
-page's `<base href>`, matching the worklist/audit route convention. The paired
-`Verso.Multi.Path`s are the multi-page output locations `TrustPages` writes to.
--/
-
-def trustSorriesHref : String := "trust/sorries/"
-def trustSorriesPath : Verso.Multi.Path := #["trust", "sorries"]
-def trustAxiomsHref : String := "trust/axioms/"
-def trustAxiomsPath : Verso.Multi.Path := #["trust", "axioms"]
-def trustReviewHref : String := "trust/review/"
-def trustReviewPath : Verso.Multi.Path := #["trust", "review"]
-def trustComparatorHref : String := "trust/comparator/"
-def trustComparatorPath : Verso.Multi.Path := #["trust", "comparator"]
-def trustGraphAcyclicHref : String := "trust/graph-acyclicity/"
-def trustGraphAcyclicPath : Verso.Multi.Path := #["trust", "graph-acyclicity"]
-def trustGraphConnectedHref : String := "trust/graph-connectivity/"
-def trustGraphConnectedPath : Verso.Multi.Path := #["trust", "graph-connectivity"]
-def trustChecksHref : String := "trust/checks/"
-def trustChecksPath : Verso.Multi.Path := #["trust", "checks"]
-/-- Root-relative link (resolved via each page's `<base href>`, like the other trust
-hrefs) to the machine-readable audit artifact under the site's `-verso-data/` dir. -/
-def trustAuditJsonHref : String := "-verso-data/trust-audit.json"
-/-- Basename of the machine-readable trust-audit artifact. -/
-def trustAuditJsonFilename : String := "trust-audit.json"
-
 /--
 One trust badge. Reuses the dashboard's `.bp_summary_badge` classes (`variant`
 is one of `""`/`success`/`warn`/`error`/`accent`); `title?` becomes a tooltip.
-When `href?` is set the badge renders as an `<a>` linking to its evidence page;
-otherwise it is a plain `<span>`.
+When `href?` is set the badge renders as an `<a>` linking to a page; otherwise it is
+a plain `<span>`.
 -/
 def trustBadgeHtml (text : String) (variant : String := "")
     (title? : Option String := Option.none) (href? : Option String := Option.none) :
@@ -460,28 +345,7 @@ def trustBadgeHtml (text : String) (variant : String := "")
   | Option.some href => .tag "a" (attrs.push ("href", href)) (.text true text)
   | Option.none => .tag "span" attrs (.text true text)
 
-def trustSorryBadge (n : Nat) : Output.Html :=
-  trustBadgeHtml
-    s!"{n} {if n == 1 then "sorry" else "sorries"}"
-    (if n == 0 then "success" else "error")
-    (href? := Option.some trustSorriesHref)
-
-def trustAxiomsBadge (axioms : List String) : Output.Html :=
-  if axioms.isEmpty then
-    trustBadgeHtml "axioms: none recorded" (href? := Option.some trustAxiomsHref)
-  else
-    let nonstandard := axioms.filter (fun a => !standardAxioms.contains a)
-    let title := s!"Axioms: {String.intercalate ", " axioms}"
-    if nonstandard.isEmpty then
-      trustBadgeHtml s!"axioms: standard {axioms.length}" "success" (Option.some title)
-        (Option.some trustAxiomsHref)
-    else
-      trustBadgeHtml s!"axioms: {axioms.length} ({nonstandard.length} nonstandard)" "warn"
-        (Option.some title) (Option.some trustAxiomsHref)
-
-def trustReviewBadge (status : String) : Output.Html :=
-  trustBadgeHtml s!"review: {status}" (href? := Option.some trustReviewHref)
-
+/-- The comparator verdict badge, linking to the standalone `comparator/` page. -/
 def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   let theoremsTitle :=
     if cmp.theoremNames.isEmpty then ""
@@ -489,30 +353,27 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   if cmp.status == "verified" then
     let when := if cmp.verifiedAt.isEmpty then "Independently verified" else s!"Verified at {cmp.verifiedAt}"
     trustBadgeHtml "comparator: verified" "success" (Option.some s!"{when}{theoremsTitle}")
-      (Option.some trustComparatorHref)
+      (Option.some Informal.NodeRoute.comparatorHref)
   else if cmp.status == "configured" then
     let title := if cmp.note.isEmpty then s!"Comparator configured{theoremsTitle}" else cmp.note
     trustBadgeHtml "comparator: configured — not yet run" "warn" (Option.some title)
-      (Option.some trustComparatorHref)
+      (Option.some Informal.NodeRoute.comparatorHref)
   else
-    trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some trustComparatorHref)
+    trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some Informal.NodeRoute.comparatorHref)
 
 /--
-The rendered strip: a labelled badge row. When the document emits a
-formalization-metadata page, a blue `accent` badge linking to it is appended to
-the row (it replaces the former trailing text link). Empty when no badge has data.
+The rendered strip: a labelled badge row. Carries the comparator verdict badge and,
+when the document emits a formalization-metadata page, a blue `accent` badge linking
+to it. Empty when no comparator is configured (the "renders only with real trust
+data" rule).
 -/
 def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.none)
     (_checks? : Option Informal.GraphChecks.Results := Option.none) :
     Output.Html :=
-  -- The strip carries only the review + comparator verdicts (plus the
-  -- formalization.yaml link below). The sorry / axioms / graph checks live on the
-  -- verification-overview page reached via the "All checks" link — the strip stays
-  -- a compact signal row rather than mirroring every evidence page.
+  -- The strip carries only the comparator verdict (plus the formalization.yaml link
+  -- below), a compact signal row rather than mirroring every metadata field.
   let badges : Array Output.Html := Id.run do
     let mut out : Array Output.Html := #[]
-    if !trust.reviewStatus.isEmpty then
-      out := out.push (trustReviewBadge trust.reviewStatus)
     if let some cmp := trust.comparator then
       out := out.push (trustComparatorBadge cmp)
     return out
@@ -530,15 +391,10 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
             (title? := Option.some "Project formalization.yaml metadata")
             (href? := Option.some href)
       | Option.none => allBadges
-    -- An "All checks" affordance links the strip to the verification-overview page
-    -- without cluttering the badge row (rendered as a quiet trailing link).
-    let overviewLink : Output.Html :=
-      {{ <a class="bp_trust_strip_all" href={{trustChecksHref}}>"All checks"</a> }}
     {{
       <section class="bp_trust_strip" "aria-label"="Trust signals">
         <span class="bp_trust_strip_label">"Trust"</span>
         <div class="bp_summary_badge_row">{{allBadges}}</div>
-        {{overviewLink}}
       </section>
     }}
 
@@ -552,9 +408,9 @@ open Verso Doc Elab Genre Manual in
 block_extension Block.trustStrip (trust : TrustData) where
   data := toJson trust
   traverse _id data _contents := do
-    -- Stash the trust payload so the generation-time `TrustPages` ExtraStep can
-    -- emit one evidence page per configured badge. `data` is the block's already
-    -- `toJson`ed `TrustData`.
+    -- Stash the trust payload so the generation-time ExtraSteps (`emitBlueprintGraphGate`
+    -- for `requireConnected`, `emitBlueprintComparatorPage` for the comparator verdict)
+    -- can read it. `data` is the block's already `toJson`ed `TrustData`.
     modify fun st => Informal.TraversalIndex.TrustData.saveData st data
     return none
   toTeX := none
@@ -589,7 +445,6 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   if yamlPath.isEmpty && cmpPath.isEmpty then
     return Option.none
   let mut trust : TrustData := {}
-  let mut mainResults : List (String × List String) := []
   if !yamlPath.isEmpty then
     if !(← System.FilePath.pathExists yamlPath) then
       throwError "option 'verso.blueprint.trust.formalizationYaml' names a missing file (resolved against the build directory): {yamlPath}"
@@ -597,15 +452,14 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     | .error err => throwError "could not parse {yamlPath}: {err}"
     | .ok doc =>
       trust := TrustData.ofFormalizationJson doc
-      mainResults := mainResultsDeclared doc
   if !cmpPath.isEmpty then
     if !(← System.FilePath.pathExists cmpPath) then
       throwError "option 'verso.blueprint.trust.comparatorStatus' names a missing file (resolved against the build directory): {cmpPath}"
     match Json.parse (← IO.FS.readFile cmpPath) with
     | .error err => throwError "could not parse {cmpPath}: {err}"
     | .ok j => trust := { trust with comparator := Option.some (TrustComparator.ofJson j) }
-  -- Embed the comparator's config JSON + Challenge Lean source verbatim on the
-  -- evidence page. Unlike the two required options above, these degrade silently
+  -- Embed the comparator's config JSON + Challenge/Solution Lean source verbatim on the
+  -- comparator page. Unlike the two required options above, these degrade silently
   -- when their file is empty/missing (probe-and-degrade) and only attach when a
   -- comparator verdict exists.
   if let some cmp := trust.comparator then
@@ -634,16 +488,9 @@ def elabTrustData? : PartElabM (Option TrustData) := do
       if (← System.FilePath.pathExists solPath) then
         cmp := { cmp with solutionSource := (← IO.FS.readFile solPath) }
     trust := { trust with comparator := Option.some cmp }
-  -- Phase 1B: layer on the kernel-derived enrichment (axiom evidence, sorry scan,
-  -- syntax highlighting, Challenge source links). Runs in `CoreM`; degrades to empty
-  -- fields, never a build error.
-  let namePrefix : String := opts.get `verso.blueprint.declNamePrefix ""
-  trust := (← liftM (enrichTrustData opts namePrefix mainResults trust))
-  -- Comparator/lean4export tooling description (item 5): a consumer-supplied option
-  -- carrying the pinned tool SHAs (which live in CI, not readable at build time).
-  let toolInfo : String :=
-    opts.get verso.blueprint.trust.comparatorToolInfo.name
-      verso.blueprint.trust.comparatorToolInfo.defValue
+  -- Layer on the comparator-source enrichment (syntax highlighting + source links).
+  -- Runs in `CoreM`; degrades to empty fields, never a build error.
+  trust := (← liftM (enrichTrustData opts trust))
   let requireConnected : Bool :=
     opts.get verso.blueprint.trust.requireConnected.name
       verso.blueprint.trust.requireConnected.defValue
@@ -651,7 +498,7 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     let u := opts.get verso.blueprint.trust.ciRunUrl.name
       verso.blueprint.trust.ciRunUrl.defValue
     if u.isEmpty then none else some u
-  trust := { trust with comparatorToolInfo := toolInfo, requireConnected, ciRunUrl }
+  trust := { trust with requireConnected, ciRunUrl }
   return Option.some trust
 
 end Informal.Commands

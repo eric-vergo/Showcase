@@ -87,7 +87,11 @@ private def highlightedHtmlContext : Verso.Code.HighlightHtmlM.Context Verso.Gen
   linkTargets := {}
   traverseContext := {}
   definitionIds := {}
-  options := {}
+  -- Disable Verso's inline proof-state widgets: decl bodies are rendered for
+  -- per-token type hovers, and the `.tactic` toggle wrappers (a) swallow those hovers
+  -- and (b) emit stray stadium glyphs. Rendering proofs as plain highlighted tokens
+  -- keeps every identifier hoverable.
+  options := { inlineProofStates := false }
 }
 
 private def runHighlightedHtml

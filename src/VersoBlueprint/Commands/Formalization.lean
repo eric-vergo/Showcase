@@ -232,6 +232,32 @@ private def sourcesSection (doc : Json) : Output.Html :=
       }}
     sectionHtml "Sources" #[{{ <ul class="bp_formalization_list">{{items}}</ul> }}]
 
+/-! Plain (non-linking) status badges for the formalization-metadata page. They mirror
+the `formalization.yaml`-declared sorry/axiom/review figures; unlike the former trust
+strip badges they carry no href (the standalone trust-evidence pages were removed). -/
+
+/-- A sorry-count badge (green at zero, red otherwise). -/
+private def sorryBadge (n : Nat) : Output.Html :=
+  trustBadgeHtml s!"{n} {if n == 1 then "sorry" else "sorries"}" (if n == 0 then "success" else "error")
+
+/-- An axioms badge: green when only the standard axioms are declared, amber when the
+declared set includes nonstandard axioms. -/
+private def axiomsBadge (axioms : List String) : Output.Html :=
+  if axioms.isEmpty then
+    trustBadgeHtml "axioms: none recorded"
+  else
+    let nonstandard := nonstandardAxioms axioms
+    let title := s!"Axioms: {String.intercalate ", " axioms}"
+    if nonstandard.isEmpty then
+      trustBadgeHtml s!"axioms: standard {axioms.length}" "success" (Option.some title)
+    else
+      trustBadgeHtml s!"axioms: {axioms.length} ({nonstandard.length} nonstandard)" "warn"
+        (Option.some title)
+
+/-- A review-status badge. -/
+private def reviewBadge (status : String) : Output.Html :=
+  trustBadgeHtml s!"review: {status}"
+
 private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Lean.Name))
     (doc : Json) : Output.Html :=
   match objVal? doc "status" with
@@ -240,22 +266,22 @@ private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Le
     let badges : Array Output.Html := Id.run do
       let mut out : Array Output.Html := #[]
       if let some n := natField? stj "sorry_count" then
-        out := out.push (trustSorryBadge n)
+        out := out.push (sorryBadge n)
       if let some n := natField? stj "sorry_in_definitions" then
         out := out.push
           (trustBadgeHtml s!"sorries in definitions: {n}" (if n == 0 then "success" else "error"))
       let axs := strArrField stj "axioms"
       if !axs.isEmpty then
-        out := out.push (trustAxiomsBadge axs.toList)
+        out := out.push (axiomsBadge axs.toList)
       return out
     let resultItems := arrField stj "main_results" |>.map fun r =>
       let rBadges : Array Output.Html := Id.run do
         let mut out : Array Output.Html := #[]
         if let some n := natField? r "sorry_count" then
-          out := out.push (trustSorryBadge n)
+          out := out.push (sorryBadge n)
         let axs := strArrField r "axioms"
         if !axs.isEmpty then
-          out := out.push (trustAxiomsBadge axs.toList)
+          out := out.push (axiomsBadge axs.toList)
         return out
       let litDepsRow :=
         match objVal? r "literature_dependencies" with
@@ -330,7 +356,7 @@ private def reviewSection (doc : Json) : Output.Html :=
   | Option.some r =>
     let statusBadge :=
       match strField? r "status" with
-      | Option.some s => badgeRow #[trustReviewBadge s]
+      | Option.some s => badgeRow #[reviewBadge s]
       | Option.none => .empty
     let reviewers :=
       match objVal? r "reviewers" with
