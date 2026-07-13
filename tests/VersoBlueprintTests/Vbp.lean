@@ -195,6 +195,119 @@ private def sampleGraphReferenceCache : HtmlCacheFile := {
   ]
 }
 
+private def sampleUnfinalizedReferenceManifest : ManifestFile := {
+  previews := #[
+    {
+      key := "informal:reference_source:statement"
+      targetKind := .block
+      label := label "reference_source"
+      facet := .statement
+      kind := some .theorem
+      title := "Reference source"
+      leanCodePreviewKeys := #[
+        "lean:Valid",
+        "lean:MissingManifest",
+        "lean:MissingCache"
+      ]
+      uses := #[
+        related "valid_target" "Valid target" "informal:valid_target:statement",
+        related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
+        related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
+      ]
+      usedBy := #[
+        related "valid_target" "Valid target" "informal:valid_target:statement",
+        related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
+        related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
+      ]
+      group := some {
+        label := label "reference_group"
+        title := "Reference group"
+        declared := true
+        entries := #[
+          related "valid_target" "Valid target" "informal:valid_target:statement",
+          related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
+          related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
+        ]
+      }
+    },
+    {
+      key := "informal:valid_target:statement"
+      targetKind := .block
+      label := label "valid_target"
+      facet := .statement
+      kind := some .definition
+      title := "Valid target"
+    },
+    {
+      key := "informal:missing_cache_target:statement"
+      targetKind := .block
+      label := label "missing_cache_target"
+      facet := .statement
+      kind := some .definition
+      title := "Missing-cache target"
+    },
+    {
+      key := "lean:Valid"
+      targetKind := .leanDecl
+      label := label "Valid"
+      facet := .statement
+      title := "Valid"
+    },
+    {
+      key := "lean:MissingCache"
+      targetKind := .leanDecl
+      label := label "MissingCache"
+      facet := .statement
+      title := "MissingCache"
+    }
+  ]
+  graphs := #[{
+    key := "reference-finalization"
+    nodes := #[
+      {
+        label := label "valid_target"
+        title := "Valid target"
+        displayLabel := "Valid target"
+        previewKey := Informal.PreviewKey.ofString? "informal:valid_target:statement"
+        visual := { fillcolor := "#ffffff" }
+      },
+      {
+        label := label "cache_only_target"
+        title := "Cache-only target"
+        displayLabel := "Cache-only target"
+        previewKey := Informal.PreviewKey.ofString? "informal:cache_only_target:statement"
+        visual := { fillcolor := "#ffffff" }
+      },
+      {
+        label := label "missing_cache_target"
+        title := "Missing-cache target"
+        displayLabel := "Missing-cache target"
+        previewKey := Informal.PreviewKey.ofString? "informal:missing_cache_target:statement"
+        visual := { fillcolor := "#ffffff" }
+      }
+    ]
+    variants := #[{
+      key := "full"
+      label := "Full"
+      dot := "digraph {}"
+      previewKeyByNodeId := #[
+        ("valid-node", "informal:valid_target:statement"),
+        ("cache-only-node", "informal:cache_only_target:statement"),
+        ("missing-cache-node", "informal:missing_cache_target:statement")
+      ]
+    }]
+  }]
+}
+
+private def sampleUnfinalizedReferenceCache : HtmlCacheFile := {
+  entries := #[
+    { key := "informal:reference_source:statement", html := "<div>reference source</div>" },
+    { key := "informal:valid_target:statement", html := "<div>valid target</div>" },
+    { key := "informal:cache_only_target:statement", html := "<div>cache only target</div>" },
+    { key := "lean:Valid", html := "<pre>Valid</pre>" }
+  ]
+}
+
 private def sampleCache : HtmlCacheFile := {
   entries := #[
     { key := "informal:addition_spec:statement", html := "<div>addition spec</div>" },
@@ -269,6 +382,18 @@ private def jsonArrayHasStringField (values : Array Json) (field expected : Stri
 
 private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool :=
   values.any (fun json => jsonNullField json field)
+
+private def previewKeyValue? (key? : Option Informal.PreviewKey) : Option String :=
+  key?.map (·.value)
+
+private def relatedPreviewKeys (entries : Array RelatedEntry) : Array (String × Option String) :=
+  entries.map fun entry =>
+    (Informal.PreviewManifest.labelString entry.label, previewKeyValue? entry.previewKey)
+
+private def graphNodePreviewKeys
+    (nodes : Array Informal.Graph.NodeData) : Array (String × Option String) :=
+  nodes.map fun node =>
+    (Informal.PreviewManifest.labelString node.label, previewKeyValue? node.previewKey)
 
 /-- info: true -/
 #guard_msgs in
@@ -349,6 +474,36 @@ private def jsonArrayHasNullField (values : Array Json) (field : String) : Bool 
           sampleMetadataManifest.tagValues == #["alpha", "beta", "zeta"] &&
           sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
             #["zeta_statement", "alpha_statement"]
+    | _, _ => false
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    let finalized :=
+      sampleUnfinalizedReferenceManifest.finalizePreviewReferences sampleUnfinalizedReferenceCache
+    match finalized.findEntry? "informal:reference_source:statement",
+        finalized.graphs.find? (fun graph => graph.key == "reference-finalization") with
+    | some source, some graph =>
+        let expectedRelatedKeys := #[
+          ("valid_target", some "informal:valid_target:statement"),
+          ("cache_only_target", none),
+          ("missing_cache_target", none)
+        ]
+        let groupKeys :=
+          match source.group with
+          | some group => relatedPreviewKeys group.entries
+          | none => #[]
+        let variantKeys :=
+          match graph.variants[0]? with
+          | some variant => variant.previewKeyByNodeId
+          | none => #[]
+        source.leanCodePreviewKeys == #["lean:Valid"] &&
+          relatedPreviewKeys source.uses == expectedRelatedKeys &&
+          relatedPreviewKeys source.usedBy == expectedRelatedKeys &&
+          groupKeys == expectedRelatedKeys &&
+          graphNodePreviewKeys graph.nodes == expectedRelatedKeys &&
+          variantKeys == #[("valid-node", "informal:valid_target:statement")]
     | _, _ => false
 
 private partial def freshVbpFixtureRoot : IO System.FilePath := do

@@ -171,7 +171,7 @@ In practice:
 
 Generator-side data flow is source-to-traversal-to-public JSON. During Manual
 traversal, Blueprint records preview identities, rendered bodies, Lean-code
-associations, citations, graph data, and external-source witnesses in traversal
+associations, citations, graph data, and external-markup witnesses in traversal
 state and traversal domains. `Informal.PreviewManifest.buildPreviewDataFiles`
 then normalizes those phase-local records into the semantic manifest and the
 rendered-fragment cache. Generated ESM APIs load those two files; they do not
@@ -305,7 +305,7 @@ def workQueueLabels
   manifest.workQueueEntries.map (·.authoredLabel)
 ```
 
-Generator-side Lean callers can configure source-backed external-source cache
+Generator-side Lean callers can configure source-backed external-markup cache
 fragments with `Informal.ExternalMarkupRender.Config`. The
 default mode, `.markdown`, renders selected Markdown slots through MD4Lean with
 raw HTML disabled and falls back to escaped source if MD4Lean cannot render the
