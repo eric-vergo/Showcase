@@ -24,7 +24,7 @@ If you want to start a Blueprint project today, start here:
 1. [project_template/README.md](./project_template/README.md)
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)
 3. [doc/MANUAL.md](./doc/MANUAL.md)
-4. [doc/API.md](./doc/API.md) when you need stable Lean, generated-data, or
+4. [doc/API.md](./doc/API.md) when you need documented Lean, generated-data, or
    browser integration APIs; start with
    [Choosing an API](./doc/API.md#choosing-an-api)
 
@@ -300,7 +300,7 @@ manifest, its schema, and the rendered-fragment cache
 hover payloads needed by cached Lean fragments. These are command-line flags
 passed to the generator entry point, such as
 `--dump-manifest`, `--dump-html-cache`, and `--dump-schema`. See
-[doc/API.md](./doc/API.md) for the stable generated-data contract.
+[doc/API.md](./doc/API.md) for the current generated-data contract.
 
 ### JavaScript API tooling
 
@@ -413,7 +413,7 @@ Read these in order:
 3. [doc/MANUAL.md](./doc/MANUAL.md): authoring and rendering reference
 4. [JavaScript API reference](https://leanprover.github.io/verso-blueprint/js-api/):
    browser-facing data, preview, graph, and shared type APIs
-5. [doc/API.md](./doc/API.md): stable Lean, generated-data, and browser APIs.
+5. [doc/API.md](./doc/API.md): documented Lean, generated-data, and browser APIs.
    Start with [Choosing an API](./doc/API.md#choosing-an-api), then jump to
    [Browser ESM APIs](./doc/API.md#browser-esm-apis),
    [Graph Data APIs](./doc/API.md#graph-data-apis), or
@@ -444,7 +444,7 @@ post-edit checks.
 `lake exe vbp build` is the normal Blueprint generation interface for projects.
 It discovers the project generator entry point and runs it through Lake's Lean
 wrapper internally. Treat `vbp` query JSON as an unstable agent interface, not a
-public compatibility contract.
+public compatibility contract and not part of the documented integration API.
 
 ### Maintainer CLI Split
 

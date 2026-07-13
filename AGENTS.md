@@ -75,9 +75,23 @@
 - Keep local worktree names, write-scope notes, and coordination details out of
   public PR bodies unless they materially help review.
 
-## Release Status
+## Development Model
 
-- The code is near release.
+- This project develops continuously on the default-development branch and
+  maintains release lines aligned with Lean releases.
+- Correctness, simplicity, maintainability, and a coherent data model take
+  priority over compatibility.
+- No compatibility is promised between revisions or releases, including for
+  documented Lean APIs, generated-data schemas, command-line interfaces, or
+  browser APIs.
+- Do not add compatibility layers or preserve obsolete interfaces solely to
+  avoid downstream changes.
+- Keep each change internally coherent by updating affected tests,
+  documentation, templates, examples, and reference blueprints. Explain the
+  required migration and help downstream users update when necessary.
+
+## Product Direction
+
 - The reference blueprints now live in their own repositories:
   `ejgallego/verso-noperthedron` and `ejgallego/verso-sphere-packing`.
 - A smaller starter example, a reusable template, and `lake exe bp new` are
@@ -89,8 +103,8 @@
 - End-user docs should also explain the current standard Verso workflow
   honestly: a Blueprint project owns both the Blueprint source modules and a
   generator entry point that writes `_out/` when invoked by `vbp build`.
-- When editing docs or agent guidance, distinguish clearly between current
-  behavior and planned release behavior.
+- When editing docs or agent guidance, distinguish clearly between current and
+  planned behavior.
 
 ## Commands
 
