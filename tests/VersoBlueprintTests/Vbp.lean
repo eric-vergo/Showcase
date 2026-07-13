@@ -426,6 +426,18 @@ private def graphNodePreviewKeys
 #guard_msgs in
 #eval
   show Bool from
+    (VersoBlueprint.Vbp.Main.conventionalGeneratorFiles "ProjectTemplate").map (·.toString) ==
+        #["ProjectTemplateMain.lean", "Main.lean", "BlueprintMain.lean"] &&
+      VersoBlueprint.Vbp.Main.generatorModuleFromFile (System.FilePath.mk "ProjectTemplateMain.lean") ==
+        "ProjectTemplateMain" &&
+      VersoBlueprint.Vbp.Main.generatorModuleFromFile
+          (System.FilePath.mk "Blueprint" / "Main.lean") ==
+        "Blueprint.Main"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
     let text := Informal.PreviewManifest.helpText
     text.contains "Blueprint PDF options:" &&
       text.contains "--pdf" &&

@@ -47,6 +47,9 @@ from scripts.blueprint_harness_references import (
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+VBP_BUILD_COMMAND = ("lake", "exe", "vbp", "build")
+VBP_BUILD_OUTPUT_COMMAND = (*VBP_BUILD_COMMAND, "--output", "{output_dir}")
+VBP_BUILD_PDF_COMMAND = (*VBP_BUILD_COMMAND, "--pdf")
 
 
 def load_project_catalog_text(text: str, manifest_path: Path | str):
@@ -59,12 +62,12 @@ def load_project_catalog_text(text: str, manifest_path: Path | str):
 class BlueprintHarnessProjectsTests(unittest.TestCase):
     def test_command_with_pdf_appends_pdf_once(self) -> None:
         self.assertEqual(
-            command_with_pdf(("lake", "exe", "blueprint-gen")),
-            ("lake", "exe", "blueprint-gen", "--pdf"),
+            command_with_pdf(VBP_BUILD_COMMAND),
+            VBP_BUILD_PDF_COMMAND,
         )
         self.assertEqual(
-            command_with_pdf(("lake", "exe", "blueprint-gen", "--pdf")),
-            ("lake", "exe", "blueprint-gen", "--pdf"),
+            command_with_pdf(VBP_BUILD_PDF_COMMAND),
+            VBP_BUILD_PDF_COMMAND,
         )
 
     def init_git_repo(self, root: Path) -> None:
@@ -228,7 +231,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="0123456789abcdef0123456789abcdef01234567",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -244,7 +247,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="0123456789abcdef0123456789abcdef01234567",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -260,7 +263,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="fedcba9876543210fedcba9876543210fedcba98",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -286,7 +289,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -336,7 +339,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -387,7 +390,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -454,7 +457,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -642,7 +645,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 }
                             ],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         },
                         {
                             "id": "new-release-older-project",
@@ -653,7 +656,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                             },
                             "targets": [{"release": "v4.29.0", "ref": "new-older-controller-ref"}],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         },
                         {
                             "id": "new-release-project",
@@ -671,7 +674,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 }
                             ],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         },
                         {
                             "id": "new-release-second-project",
@@ -689,7 +692,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 }
                             ],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         }
                     ],
                 }
@@ -728,7 +731,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest_by_project["old-release-project"]["projects"][0]["generate_command"],
-            ["lake", "exe", "blueprint-gen"],
+            list(VBP_BUILD_COMMAND),
         )
         self.assertFalse(matrix_by_project["old-release-project"]["publish_pdf"])
         self.assertEqual(matrix_by_project["old-release-project"]["project_root"], "old-controller")
@@ -741,7 +744,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest_by_project["new-release-project"]["projects"][0]["generate_command"],
-            ["lake", "exe", "blueprint-gen", "--pdf"],
+            list(VBP_BUILD_PDF_COMMAND),
         )
         self.assertTrue(matrix_by_project["new-release-project"]["publish_pdf"])
         self.assertNotIn("rc", manifest_by_project["new-release-project"]["release_targets"][0])
@@ -754,7 +757,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest_by_project["new-release-second-project"]["projects"][0]["generate_command"],
-            ["lake", "exe", "blueprint-gen", "--pdf"],
+            list(VBP_BUILD_PDF_COMMAND),
         )
         self.assertTrue(matrix_by_project["new-release-second-project"]["publish_pdf"])
         self.assertEqual(matrix_by_project["new-release-second-project"]["rc"], "4.29-rc2")
@@ -824,7 +827,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         }
                     ],
                     "build_command": ["lake", "build"],
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                     "site_subdir": "html-multi"
                 }
             ]
@@ -837,7 +840,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
 
         self.assertEqual(len(projects), 1)
         self.assertTrue(projects[0].git_checkout)
-        self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
+        self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_in_repo_command_project_is_supported(self) -> None:
         manifest_data = {
@@ -864,7 +867,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                         }
                     ],
                     "build_command": ["lake", "build"],
-                    "generate_command": ["lake", "exe", "blueprint-gen", "--output", "{output_dir}"],
+                    "generate_command": list(VBP_BUILD_OUTPUT_COMMAND),
                     "site_subdir": "html-multi",
                 }
             ],
@@ -880,7 +883,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(projects[0].in_repo_command_project)
         self.assertEqual(projects[0].project_root, "project_template")
         self.assertEqual(projects[0].build_command, ("lake", "build"))
-        self.assertEqual(projects[0].generate_command, ("lake", "exe", "blueprint-gen", "--output", "{output_dir}"))
+        self.assertEqual(projects[0].generate_command, VBP_BUILD_OUTPUT_COMMAND)
 
     def test_resolve_projects_for_release_filters_to_matching_targets(self) -> None:
         self.assert_resolved_projects_match_manifest("v4.30.0")
@@ -922,7 +925,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                             },
                             "targets": [{"release": "v4.29.0", "ref": "validation-ref"}],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         },
                         {
                             "id": "published",
@@ -939,7 +942,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                 }
                             ],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         },
                     ],
                 }
@@ -983,7 +986,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                             },
                             "targets": [{"release": "v4.29.0", "ref": "validation-ref"}],
                             "build_command": ["lake", "build"],
-                            "generate_command": ["lake", "exe", "blueprint-gen"],
+                            "generate_command": list(VBP_BUILD_COMMAND),
                         }
                     ],
                 }
@@ -1059,7 +1062,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                                     }
                                 ],
                                 "build_command": ["lake", "build"],
-                                "generate_command": ["lake", "exe", "blueprint-gen"],
+                                "generate_command": list(VBP_BUILD_COMMAND),
                             }
                         ],
                     }
@@ -1189,7 +1192,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1255,7 +1258,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1319,7 +1322,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1435,7 +1438,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repository=str(remote),
                 ref=first,
                 build_command=None,
-                generate_command=("lake", "exe", "blueprint-gen"),
+                generate_command=VBP_BUILD_COMMAND,
                 site_subdir="html-multi",
                 panel_regression_script=None,
                 browser_tests_path=None,
@@ -1463,7 +1466,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="9b50e39c17434ee1a574fd27ed97006adfdc5dc1",
             build_command=None,
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1506,7 +1509,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repository=str(remote),
                 ref=target,
                 build_command=None,
-                generate_command=("lake", "exe", "blueprint-gen"),
+                generate_command=VBP_BUILD_COMMAND,
                 site_subdir="html-multi",
                 panel_regression_script=None,
                 browser_tests_path=None,
@@ -1550,7 +1553,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
                 repository=str(remote),
                 ref=target,
                 build_command=None,
-                generate_command=("lake", "exe", "blueprint-gen"),
+                generate_command=VBP_BUILD_COMMAND,
                 site_subdir="html-multi",
                 panel_regression_script=None,
                 browser_tests_path=None,
@@ -1583,7 +1586,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1674,7 +1677,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertTrue(
             any(
                 command[1:]
-                == ["lake", "exe", "blueprint-gen", "--output", str(output_root / "external-blueprint"), "--pdf"]
+                == [*VBP_BUILD_COMMAND, "--output", str(output_root / "external-blueprint"), "--pdf"]
                 for command in commands
             )
         )
@@ -1691,7 +1694,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1806,7 +1809,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1892,7 +1895,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            generate_command=VBP_BUILD_OUTPUT_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1969,7 +1972,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2034,7 +2037,7 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             repository="https://github.com/example/external-blueprint.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=("lake", "exe", "blueprint-gen"),
+            generate_command=VBP_BUILD_COMMAND,
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,

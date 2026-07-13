@@ -94,13 +94,15 @@
 
 - The reference blueprints now live in their own repositories:
   `ejgallego/verso-noperthedron` and `ejgallego/verso-sphere-packing`.
-- End-user docs should treat `lake exe blueprint-gen` as the preferred
-  Blueprint generation interface.
+- A smaller starter example, a reusable template, and `lake exe bp new` are
+  planned but not landed yet.
+- End-user docs should treat `lake exe vbp build` as the preferred Blueprint
+  generation interface.
 - End-user docs should not require Python helper scripts or a system Graphviz
   installation for normal package usage.
 - End-user docs should also explain the current standard Verso workflow
   honestly: a Blueprint project owns both the Blueprint source modules and a
-  small `lean_exe` generator binary that writes `_out/`.
+  generator entry point that writes `_out/` when invoked by `vbp build`.
 - When editing docs or agent guidance, distinguish clearly between current and
   planned behavior.
 
@@ -109,7 +111,7 @@
 - Run long `lake`, `lean`, `elan`, and `.lake/build/bin/*` commands via
   `scripts/lean-low-priority ...`.
 - Preferred user-facing interface:
-  - `lake exe blueprint-gen ...`
+  - `lake exe vbp build ...`
 - Main build/test commands:
   - `scripts/lean-low-priority lake build`
   - `scripts/lean-low-priority lake test`
