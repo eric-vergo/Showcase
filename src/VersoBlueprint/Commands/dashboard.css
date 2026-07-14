@@ -330,10 +330,12 @@ main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) > section {
   flex-direction: column;
   gap: 0.25rem;
   font-size: var(--bp-fs-small);
-  /* Break long, unbreakable Lean identifiers so they wrap inside the (now
-     shrinkable) column instead of overflowing it. */
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  /* Long Lean identifiers carry injected <wbr> break points (Sections.lean
+     `withIdentifierBreaks`) after each `_`/`.`, so wrapping prefers those segment
+     boundaries; `break-word` only splits an otherwise-unbreakable token as a last
+     resort (avoiding a lone trailing character on its own line). */
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .bp_readingmap_list {

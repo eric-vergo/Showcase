@@ -27,14 +27,15 @@
   resize: vertical;
   overflow: hidden;
   /*
-   * STY-GRAPH-01 (#32a): the graph's node fills and edge strokes are baked into
-   * the SVG at build time tuned for a light background (the DOT `bgcolor` is now
-   * `transparent`, see Graph.lean), so the canvas contents cannot theme-switch
-   * at runtime. Give the canvas a deliberate, theme-invariant light "figure
-   * card" -- soft off-white fill + hairline frame + radius + soft shadow -- so
-   * the graph reads as an intentional framed figure in dark mode instead of a
-   * raw white bleed, and stays clean in light mode. The fill is intentionally
-   * NOT themed: the baked SVG is only legible on a light surface.
+   * STY-GRAPH-01: the graph's node fills, edge strokes, and legend swatches are
+   * baked into the SVG at build time tuned for a LIGHT background (the DOT
+   * `bgcolor` is `transparent`, see Graph.lean), so the contents cannot pick up
+   * `--bp-color-*` tokens at runtime. In LIGHT mode the canvas is a soft off-white
+   * "figure card" -- fill + hairline frame + radius + soft shadow. In DARK mode
+   * (see the dark blocks below) the canvas is recessed into a dark well and the
+   * baked-light SVG is run through a lightness-inverting, hue-preserving filter
+   * (`invert(0.93) hue-rotate(180deg)`), which flips black<->white while keeping
+   * the status hues; the legend swatches get the same filter so the key matches.
    *
    * No element padding on purpose: the SVG is sized from `clientWidth`
    * (graph.mjs), which includes padding, so internal padding would overflow and
@@ -46,6 +47,52 @@
   border: 1px solid #cbd5e1;
   border-radius: var(--bp-radius-lg);
   box-shadow: var(--bp-shadow-sm);
+}
+
+/*
+ * STY-GRAPH-01 (dark mode): recess the light "figure card" into a dark well and
+ * invert the baked-light SVG + legend swatches. Scoping mirrors Common.lean's
+ * convention: the `[data-bp-color-scheme="dark"]` form handles a forced-dark
+ * choice; the `@media (prefers-color-scheme: dark)` +
+ * `:root:not([data-bp-color-scheme="light"])` form handles an OS dark preference
+ * UNLESS the reader forced light. Light mode (the rules above) is the base and is
+ * left pixel-identical. Keep the two dark lists below in sync.
+ *
+ * The well hexes are deliberate: `#101826` sits a touch below --bp-color-surface
+ * (#15212e dark) so the figure reads as recessed; `#2b3648` is a hairline between
+ * --bp-color-border (#22303f) and --bp-color-border-strong (#3a4b5c). The filter
+ * is on the SVG only (not the canvas), so the dark well shows through the SVG's
+ * transparent background; `invert(0.93)` softens pure black/white, and the added
+ * `hue-rotate(180deg)` restores the status hues after inversion.
+ */
+[data-bp-color-scheme="dark"] .bp_graph_canvas {
+  background: #101826;
+  border-color: #2b3648;
+}
+[data-bp-color-scheme="dark"] .bp_group_hover_preview_graph {
+  background: #101826;
+}
+[data-bp-color-scheme="dark"] .bp_graph_canvas svg,
+[data-bp-color-scheme="dark"] .bp_group_hover_preview_graph svg,
+[data-bp-color-scheme="dark"] .bp_graph_legend_swatch,
+[data-bp-color-scheme="dark"] .bp_graph_legend_edge_swatch {
+  filter: invert(0.93) hue-rotate(180deg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-bp-color-scheme="light"]) .bp_graph_canvas {
+    background: #101826;
+    border-color: #2b3648;
+  }
+  :root:not([data-bp-color-scheme="light"]) .bp_group_hover_preview_graph {
+    background: #101826;
+  }
+  :root:not([data-bp-color-scheme="light"]) .bp_graph_canvas svg,
+  :root:not([data-bp-color-scheme="light"]) .bp_group_hover_preview_graph svg,
+  :root:not([data-bp-color-scheme="light"]) .bp_graph_legend_swatch,
+  :root:not([data-bp-color-scheme="light"]) .bp_graph_legend_edge_swatch {
+    filter: invert(0.93) hue-rotate(180deg);
+  }
 }
 
 /*
@@ -225,11 +272,9 @@
   border: 1px solid var(--bp-color-border-soft);
   border-radius: 0.4rem;
   /*
-   * STY-GRAPH-01 (#32a): this is a graphviz render target (group-hover mini
-   * graph). It previously relied on the SVG's baked white `bgcolor`; with the
-   * DOT background now transparent, give it the same theme-invariant light
-   * "figure card" fill as `.bp_graph_canvas` so the light-tuned baked nodes stay
-   * legible on the dark preview panel.
+   * STY-GRAPH-01: a graphviz render target (group-hover mini graph). Same story
+   * as `.bp_graph_canvas` -- light "figure card" fill in light mode; in dark mode
+   * the dark-mode blocks below recess it and invert its baked-light SVG.
    */
   background: #f7f9fb;
 }

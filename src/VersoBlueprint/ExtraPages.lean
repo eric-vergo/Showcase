@@ -121,9 +121,15 @@ private def worklistRow (state : TraverseState) (item : WorklistItem) : Output.H
     if labelStr.toList.any (· == ' ') then labelStr else humanizeIdentifier labelStr
   let labelNode : Output.Html :=
     if Informal.NodeRoute.hasNodePage state item.label then
-      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true displayLabel}}</a> }}
+      {{ <a href={{Informal.NodeRoute.nodePageHref item.label}}>{{withIdentifierBreaks displayLabel}}</a> }}
     else
-      {{ <span>{{.text true displayLabel}}</span> }}
+      {{ <span>{{withIdentifierBreaks displayLabel}}</span> }}
+  -- Drop the parenthetical kind chip when the title already leads with that kind
+  -- word (node display titles are often "Lemma foo", duplicating "(Lemma)").
+  let leadingWord := (displayLabel.splitOn " ").headD ""
+  let kindMeta : Output.Html :=
+    if !item.kind.isEmpty && leadingWord.map Char.toLower == item.kind.map Char.toLower then .empty
+    else {{ <span class="bp_summary_item_meta">{{.text true s!"({item.kind})"}}</span> }}
   let owner := item.ownerDisplayName.getD ""
   let effort := item.effort.getD ""
   let tagsAttr := String.intercalate " " item.tags
@@ -165,7 +171,7 @@ private def worklistRow (state : TraverseState) (item : WorklistItem) : Output.H
     <li {{liAttrs}}>
       <div class="bp_summary_item_top">
         <span class="bp_summary_item_head">{{labelNode}}</span>
-        <span class="bp_summary_item_meta">{{.text true s!"({item.kind})"}}</span>
+        {{kindMeta}}
       </div>
       <div class="bp_summary_badge_row">{{badges}}</div>
     </li>
@@ -713,9 +719,9 @@ private def mathlibCandidateRow (state : TraverseState) (item : MathlibCandidate
   let titleNode : Output.Html :=
     if Informal.NodeRoute.hasNodePage state item.label then
       {{ <a class="bp_mathlib_candidate_title"
-            href={{Informal.NodeRoute.nodePageHref item.label}}>{{.text true title}}</a> }}
+            href={{Informal.NodeRoute.nodePageHref item.label}}>{{withIdentifierBreaks title}}</a> }}
     else
-      {{ <span class="bp_mathlib_candidate_title">{{.text true title}}</span> }}
+      {{ <span class="bp_mathlib_candidate_title">{{withIdentifierBreaks title}}</span> }}
   let chapterNode : Output.Html :=
     if chapter.isEmpty then .empty
     else {{ <span class="bp_mathlib_candidate_chapter">{{.text true s!"in {chapter}"}}</span> }}
@@ -953,6 +959,17 @@ dependency-depth histogram, and a collapsed build-provenance footer — plus the
 lives on its own standalone Blueprint Summary page, linked from the hub. -/
 private def pmBody (state : TraverseState) (summary : Summary)
     (metadata : Informal.PreviewManifest.BuildMetadata) : Output.Html :=
+  -- Resolve a short chapter title for each group's per-chapter progress bar from a
+  -- representative child's in-chapter href (the group `header` is a long
+  -- descriptive sentence, unusable as a bar label). Leaves `title` empty when
+  -- unresolvable so the fallback (`header`) applies, and clears the transient
+  -- `chapterLabel?` so it never bloats the emitted chart JSON.
+  let summary := { summary with
+    groupHealth := summary.groupHealth.map fun g =>
+      let title := match g.chapterLabel? with
+        | some l => candidateChapter state l
+        | none => ""
+      { g with title, chapterLabel? := none } }
   -- Escape `</script>`-style breakouts in author-supplied strings before embedding
   -- the chart JSON verbatim (mirrors the old dashboard block).
   let chartJson : String :=

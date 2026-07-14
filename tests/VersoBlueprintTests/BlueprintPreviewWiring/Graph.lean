@@ -105,10 +105,14 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "class=\"bp_graph_options_popover\"" &&
       hasSubstr out "class=\"bp_graph_controls_select bp_graph_direction_select\"" &&
       hasSubstr out "class=\"bp_graph_pack_input\"" &&
+      hasSubstr out "class=\"bp_graph_all_edges_input\"" &&
+      hasSubstr out "Show all edges" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
       hasSubstr out "data-bp-graph-pack=\"false\"" &&
       hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
-      hasSubstr out "\"options\":{\"direction\":\"TB\",\"pack\":false}" &&
+      hasSubstr out "data-bp-graph-all-edges=\"false\"" &&
+      hasSubstr out "data-bp-graph-default-all-edges=\"false\"" &&
+      hasSubstr out "\"options\":{\"allEdges\":false,\"direction\":\"TB\",\"pack\":false}" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
@@ -172,9 +176,11 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "data-bp-graph-default-direction=\"LR\"" &&
       hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
       (hasSubstr out "selected value=\"LR\"" || hasSubstr out "value=\"LR\" selected") &&
-      hasSubstr out "\"options\":{\"direction\":\"LR\",\"pack\":false}" &&
+      hasSubstr out "\"options\":{\"allEdges\":false,\"direction\":\"LR\",\"pack\":false}" &&
       hasSubstr out "rankdir=LR;" &&
       hasSubstr out "pack=false;" &&
+      hasSubstr out "newrank=true;" &&
+      hasSubstr out "concentrate=true;" &&
       !hasSubstr out "dotByDirection"
     )
 

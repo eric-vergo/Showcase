@@ -47,6 +47,26 @@ private def groupTitle? (state : TraverseState) (label : Name) : Option String :
     let title := groupData.header.trimAscii.toString
     if title.isEmpty then none else some title
 
+/-- Human-readable chapter name from the chapter slug embedded in an in-chapter
+href (`Nonlinearity-of-the-Prime-Race/#…` → `Nonlinearity of the Prime Race`).
+The 2-liner precedent is `ExtraPages.candidateChapter`. -/
+private def chapterTitleFromHref (href : String) : String :=
+  ((href.splitOn "/").headD "").replace "-" " "
+
+/-- Compact cluster title for a group: the chapter name of a representative member,
+resolved from the member's raw in-chapter href in the traversal node index. Uses
+`TraversalIndex.Nodes.href?` deliberately — NOT the enriched `NodeData.href`, which
+may point at a `nodes/…` page and would yield the bogus chapter "nodes". `none` when
+no member has a resolvable chapter href. -/
+private def groupShortTitle? (state : TraverseState) (group : Informal.Graph.GroupData) :
+    Option String :=
+  group.children.findSome? fun child =>
+    match Informal.TraversalIndex.Nodes.href? state child with
+    | some href =>
+      let title := chapterTitleFromHref href
+      if title.isEmpty then none else some title
+    | none => none
+
 private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) :
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
@@ -66,8 +86,12 @@ private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) 
 
 private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
     Informal.Graph.GroupData :=
-  match groupTitle? state group.label with
-  | some title => { group with title, declared := true }
+  let group :=
+    match groupTitle? state group.label with
+    | some title => { group with title, declared := true }
+    | none => group
+  match groupShortTitle? state group with
+  | some short => { group with shortTitle := short }
   | none => group
 
 /--
@@ -159,7 +183,8 @@ def masterGraph (state : TraverseState) : Informal.Graph.GraphData :=
               children := group.children.foldl (init := existing.children) fun ch c =>
                 if ch.contains c then ch else ch.push c
               declared := existing.declared || group.declared
-              title := if existing.title.isEmpty then group.title else existing.title } }
+              title := if existing.title.isEmpty then group.title else existing.title
+              shortTitle := if existing.shortTitle.isEmpty then group.shortTitle else existing.shortTitle } }
       | none => { acc with groups := acc.groups.push group }
 
 end Informal.GraphApi

@@ -45,6 +45,11 @@ register_option verso.blueprint.graph.defaultPack : Bool := {
   descr := "Default Graphviz component packing for `blueprint_graph` when `(pack := ...)` is omitted"
 }
 
+register_option verso.blueprint.graph.defaultAllEdges : Bool := {
+  defValue := false
+  descr := "Show every drawn dependency edge by default for `blueprint_graph` (including the transitively-redundant ones the default view hides) when `(allEdges := ...)` is omitted"
+}
+
 register_option verso.blueprint.graph.defaultPreviewMode : String := {
   defValue := "pinned"
   descr := "Default preview behavior for `blueprint_graph` when `(preview := ...)` is omitted (`pinned` or `hover`)"
@@ -99,6 +104,7 @@ def parseGraphPreviewPlacement? (s : String) : Option Informal.HoverRender.Previ
 -- Keep this module rebuilt when the embedded graph assets change.
 -- This module owns the embedded graph CSS/JS boundary, so adjacent edits here
 -- should land whenever graph runtime assets are intentionally refreshed.
+-- Asset touch: graph.css dark-mode inversion (canvas well + SVG/legend filter).
 def graphCss := include_str "graph.css"
 
 def fallbackGraphControlId (id : Verso.Multi.InternalId) (suffix : String) : String :=
@@ -402,6 +408,7 @@ def renderGraphFullwidth
   let graphStatusSelectId : String := idBase ++ "--status"
   let graphDirectionSelectId : String := idBase ++ "--direction"
   let graphPackInputId : String := idBase ++ "--pack"
+  let graphAllEdgesInputId : String := idBase ++ "--all-edges"
   let graphPreviewModeSelectId : String := idBase ++ "--preview-mode"
   let graphPreviewPlacementSelectId : String := idBase ++ "--preview-placement"
   let graphLegendPanelId : String := idBase ++ "--legend"
@@ -415,6 +422,9 @@ def renderGraphFullwidth
   let graphPackChecked : Array (String × String) :=
     if options.pack then #[("checked", "checked")] else #[]
   let graphPackDefault : String := if options.pack then "true" else "false"
+  let graphAllEdgesChecked : Array (String × String) :=
+    if options.allEdges then #[("checked", "checked")] else #[]
+  let graphAllEdgesDefault : String := if options.allEdges then "true" else "false"
   let previewModeDefault : String := previewMode.dataValue
   let graphPreviewModeOptions : Array Output.Html := #[
     if previewMode == .pinned then
@@ -557,6 +567,15 @@ def renderGraphFullwidth
               {{graphPackChecked}}/>
             <span>"Pack disconnected components"</span>
           </label>
+          <label class="bp_graph_option_toggle" for={{graphAllEdgesInputId}}>
+            <input
+              id={{graphAllEdgesInputId}}
+              type="checkbox"
+              class="bp_graph_all_edges_input"
+              data-bp-graph-default-all-edges={{graphAllEdgesDefault}}
+              {{graphAllEdgesChecked}}/>
+            <span>"Show all edges"</span>
+          </label>
           <label class="bp_graph_controls_label" for={{graphStatusSelectId}}>"Status"</label>
           <select
             id={{graphStatusSelectId}}
@@ -609,6 +628,7 @@ def renderGraphFullwidth
         class="bp_graph_canvas"
         "data-bp-graph-direction"={{options.direction.rankdir}}
         "data-bp-graph-pack"={{graphPackDefault}}
+        "data-bp-graph-all-edges"={{graphAllEdgesDefault}}
         {{staticCanvasAttrs}}
         {{zoomAttr}}
       >
@@ -848,6 +868,7 @@ instance : FromArgVal Informal.HoverRender.PreviewPlacement Verso.Doc.Elab.PartE
 structure BlueprintGraphConfig where
   direction : Option GraphDirection := none
   pack : Option Bool := none
+  allEdges : Option Bool := none
   preview : Option Informal.HoverRender.PreviewMode := none
   previewPlacement : Option Informal.HoverRender.PreviewPlacement := none
 
@@ -856,6 +877,7 @@ instance : FromArgs BlueprintGraphConfig Verso.Doc.Elab.PartElabM where
     BlueprintGraphConfig.mk <$>
       .named' `direction true <*>
       .named' `pack true <*>
+      .named' `allEdges true <*>
       .named' `preview true <*>
       .named' `previewPlacement true
 
@@ -880,7 +902,12 @@ def parseGraphOptions (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Gr
       (← getOptions).get
         verso.blueprint.graph.defaultPack.name
         verso.blueprint.graph.defaultPack.defValue
-  pure { direction, pack }
+  let allEdges :=
+    cfg.allEdges.getD <|
+      (← getOptions).get
+        verso.blueprint.graph.defaultAllEdges.name
+        verso.blueprint.graph.defaultAllEdges.defValue
+  pure { direction, pack, allEdges }
 
 def parseGraphPreviewMode
     (cfg : BlueprintGraphConfig) : Verso.Doc.Elab.PartElabM Informal.HoverRender.PreviewMode := do

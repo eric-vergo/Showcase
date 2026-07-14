@@ -85,6 +85,14 @@ deriving Inhabited, FromJson, ToJson, Quote
 structure GroupHealthItem where
   parent : Name
   header : String := ""
+  /-- Short, human-readable chapter title for the per-chapter progress bar label
+  (e.g. "The Digit Layer"), resolved at PM-page emit from `chapterLabel?`. Empty
+  when unresolved, in which case consumers fall back to `header`/`parent`. -/
+  title : String := ""
+  /-- A representative child entry of this group, captured at elaboration so the
+  emit-time step can resolve the containing chapter title from its in-chapter
+  href (see `ExtraPages`). Cleared before the chart JSON is serialized. -/
+  chapterLabel? : Option Name := none
   totalEntries : Nat := 0
   closedEntries : Nat := 0
   localOnlyEntries : Nat := 0

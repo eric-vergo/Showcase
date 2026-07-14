@@ -495,6 +495,24 @@ private def cleanReadingMapLabel (raw : String) : String :=
   String.intercalate ":" (dropLabelTagPrefixes (deg.splitOn ":"))
 
 /--
+Render a display string, inserting `<wbr>` break opportunities after each `_` and
+`.` so long Lean identifiers (e.g. `Complex.norm_natCast_cpow_sub_add_one_cpow_le`)
+wrap at segment boundaries in narrow columns instead of overflowing or breaking a
+lone trailing character. A string with no `_`/`.` renders as a single text node, so
+ordinary titles ("Lemma 7.7") keep byte-identical output. Shared by the reading map
+and the worklist / Mathlib-candidate rows (`ExtraPages`).
+-/
+def withIdentifierBreaks (s : String) : Output.Html :=
+  if s.all (fun c => c != '_' && c != '.') then .text true s
+  else
+    let wbr : Output.Html := {{<wbr/>}}
+    let (parts, cur) := s.toList.foldl (init := ((#[] : Array Output.Html), "")) fun (parts, cur) c =>
+      let cur := cur.push c
+      if c == '_' || c == '.' then (parts.push (.text true cur) |>.push wbr, "")
+      else (parts, cur)
+    .seq (if cur.isEmpty then parts else parts.push (.text true cur))
+
+/--
 "Start here" reading map: an orienting, clickable guided reading path computed
 from the master dependency graph's metrics.
 
@@ -523,7 +541,7 @@ def dashboardReadingMap (state : TraverseState) : Output.Html :=
     -- Navigable friendly-title link to a label's node page. Only meaningful for
     -- labels that actually have a node page (`hasNodePage`).
     let nodePageLink := fun (label : Lean.Name) =>
-      {{ <a href={{Informal.NodeRoute.nodePageHref label}}>{{.text true (friendlyTitle label)}}</a> }}
+      {{ <a href={{Informal.NodeRoute.nodePageHref label}}>{{withIdentifierBreaks (friendlyTitle label)}}</a> }}
     let cap := 12
     -- Foundations / Goals: include only entries that resolve to a node page,
     -- rendered as friendly-title links; page-less code-only nodes are dropped.
@@ -538,7 +556,7 @@ def dashboardReadingMap (state : TraverseState) : Output.Html :=
     -- friendly-title links; page-less steps render a cleaned, non-linked label.
     let spineItem := fun (label : Lean.Name) =>
       if Informal.NodeRoute.hasNodePage state label then nodePageLink label
-      else {{ <span>{{.text true (cleanReadingMapLabel label.toString)}}</span> }}
+      else {{ <span>{{withIdentifierBreaks (cleanReadingMapLabel label.toString)}}</span> }}
     let spineList : Output.Html :=
       if spine.isEmpty then
         {{<p class="bp_readingmap_col_hint">"No critical path in the current graph."</p>}}
@@ -650,7 +668,12 @@ empty-state note when no multi-entry chapters exist. -/
 def dashboardChaptersFallback (data : Summary) : Output.Html :=
   let chapterBars : Array Output.Html :=
     data.groupHealth.toArray.map fun g =>
-      let label := if g.header.isEmpty then toString g.parent else g.header
+      -- Prefer the short chapter title (resolved at emit); fall back to the long
+      -- group header, then the raw parent label.
+      let label :=
+        if !g.title.isEmpty then g.title
+        else if !g.header.isEmpty then g.header
+        else toString g.parent
       dashboardChapterBar label g.closedEntries g.readyEntries g.blockedEntries g.totalEntries
   if chapterBars.isEmpty then
     {{<p class="bp_summary_empty">"No grouped chapters with multiple entries yet."</p>}}

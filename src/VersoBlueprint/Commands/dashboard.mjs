@@ -100,7 +100,11 @@ function drawStackedBars(d3, mount, rows, keys, pal) {
   if (rows.length === 0) return false;
 
   const host = chartHost(mount);
-  const margin = { top: 4, right: 8, bottom: 4, left: 110 };
+  // Wide left gutter so real chapter titles ("The Digit Layer") fit without
+  // truncation; long titles still ellipsize (last resort) with the full text on
+  // the row's <title> tooltip.
+  const margin = { top: 4, right: 8, bottom: 4, left: 170 };
+  const labelMax = 26;
   const rowH = 26;
   const innerW = 360;
   const width = margin.left + innerW + margin.right;
@@ -125,8 +129,8 @@ function drawStackedBars(d3, mount, rows, keys, pal) {
   rows.forEach(function (r, i) {
     const yPos = y(i);
     const bandH = y.bandwidth();
-    // label
-    svg
+    // label (ellipsized only as a last resort; full text on the <title> tooltip)
+    const lbl = svg
       .append("text")
       .attr("x", margin.left - 8)
       .attr("y", yPos + bandH / 2)
@@ -134,7 +138,8 @@ function drawStackedBars(d3, mount, rows, keys, pal) {
       .attr("text-anchor", "end")
       .attr("fill", pal.textMuted)
       .attr("font-size", "11")
-      .text(r.label.length > 18 ? r.label.slice(0, 17) + "…" : r.label);
+      .text(r.label.length > labelMax ? r.label.slice(0, labelMax - 1) + "…" : r.label);
+    lbl.append("title").text(r.full || r.label);
     // track
     svg
       .append("rect")
@@ -173,13 +178,19 @@ function drawStackedBars(d3, mount, rows, keys, pal) {
 
 function drawChapterBars(d3, mount, data, pal) {
   const rows = (data.groupHealth || []).map(function (g) {
-    const label = g.header && g.header.length ? g.header : String(g.parent || "");
+    // Label the bar with the short chapter title (resolved at emit); fall back to
+    // the long group header, then the raw parent label. Keep the full header as
+    // the hover/aria tooltip.
+    const label =
+      g.title && g.title.length ? g.title
+        : g.header && g.header.length ? g.header : String(g.parent || "");
+    const full = g.header && g.header.length ? g.header : label;
     const closed = g.closedEntries || 0;
     const ready = g.readyEntries || 0;
     const blocked = g.blockedEntries || 0;
     const total = g.totalEntries || 0;
     const other = Math.max(0, total - closed - ready - blocked);
-    return { label: label, closed: closed, ready: ready, blocked: blocked, other: other, total: total };
+    return { label: label, full: full, closed: closed, ready: ready, blocked: blocked, other: other, total: total };
   });
   const keys = [
     { key: "closed", color: pal.closed },

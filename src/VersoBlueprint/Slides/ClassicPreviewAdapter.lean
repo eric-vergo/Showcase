@@ -225,6 +225,9 @@ window.VersoBlueprint.onRenderReady(function (previewUtils) {
 });
 "##
 
+-- include_str staleness: touch this module when the embedded graph runtime changes
+-- so Lake re-embeds fresh bytes. Touched for the "Show all edges" toggle (graph
+-- declutter round: graph.mjs + graph-runtime-core.mjs).
 private def graphRuntimeCoreModuleMjs : String :=
   include_str "../Commands/graph-runtime-core.mjs"
 

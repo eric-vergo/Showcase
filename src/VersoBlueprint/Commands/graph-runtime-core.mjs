@@ -50,7 +50,9 @@
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
       direction: normalizeGraphDirection(options.direction),
-      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : false)
+      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : false),
+      // Reuses the pack boolean coercion (handles true/false/"true"/"false"/undefined).
+      allEdges: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "allEdges") ? options.allEdges : false)
     };
   }
 
@@ -60,7 +62,10 @@
 
   export function graphOptionsKey(options) {
     const normalized = normalizeGraphOptions(options);
-    return normalized.direction + "|" + graphPackAttr(normalized.pack);
+    // `allEdges` is part of the key so toggling it forces a re-layout: the reduced
+    // and unreduced DOT are different graphs, not a CSS show/hide.
+    return normalized.direction + "|" + graphPackAttr(normalized.pack) +
+      "|" + (normalized.allEdges ? "all" : "reduced");
   }
 
   export function graphLayoutMode(graphRoot, options) {

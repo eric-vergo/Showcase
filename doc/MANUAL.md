@@ -633,6 +633,7 @@ or with explicit graph layout options:
 ```lean
 {blueprint_graph (direction := LR)}
 {blueprint_graph (direction := LR) (pack := true)}
+{blueprint_graph (allEdges := true)}
 {blueprint_graph (preview := hover)}
 {blueprint_graph (preview := hover) (previewPlacement := anchored)}
 ```
@@ -643,6 +644,16 @@ is omitted, the command falls back to the
 The `(pack := true | false)` option controls Graphviz component packing for
 disconnected graph components. It defaults to
 `verso.blueprint.graph.defaultPack`, which is `false`.
+The `(allEdges := true | false)` option controls whether transitively-redundant
+dependency edges are drawn. By default the graph is **transitively reduced**: an
+edge `a → b` is dropped whenever `b` is already reachable from `a` through a longer
+path in the union of statement and proof dependencies, so the layout shows the
+essential dependency spine instead of a hairball. The public graph data
+(`bp-graph-data`, the ancestors/descendants traversals, and the metrics) always
+keeps the full edge set — only the drawn DOT is reduced. Setting `allEdges := true`
+(or the `verso.blueprint.graph.defaultAllEdges` option, which is `false`) draws every
+edge; the rendered `Graph options` popover also carries a **Show all edges** toggle
+that re-lays-out the graph on demand.
 The `(preview := pinned | hover)` option chooses the initial graph-node preview
 behavior. The default is `pinned`: clicking a node opens a persistent preview
 panel that stays open until closed. `hover` opens a transient preview that
@@ -667,8 +678,9 @@ The command-side options and the runtime graph controls are compatible:
 - `(direction := ...)` chooses the initial graph direction when the page first
   loads
 - the rendered `Graph options` control lets readers switch among the supported
-  directions, toggle component packing, and choose between pinned and
-  hover previews and docked or anchored placement without regenerating the site
+  directions, toggle component packing, show all edges (the transitively-redundant
+  ones the default view hides), and choose between pinned and hover previews and
+  docked or anchored placement without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
@@ -1110,6 +1122,11 @@ prefixes with document-order block counts.
   - default: `false`
   - sets the fallback Graphviz component packing behavior for
     `blueprint_graph` when `(pack := ...)` is omitted
+- `verso.blueprint.graph.defaultAllEdges`
+  - default: `false`
+  - sets the fallback for whether transitively-redundant dependency edges are
+    drawn for `blueprint_graph` when `(allEdges := ...)` is omitted (`false` draws
+    the transitively-reduced graph)
 - `verso.blueprint.graph.defaultPreviewMode`
   - default: `pinned`
   - sets the fallback graph-node preview behavior for `blueprint_graph` when

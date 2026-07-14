@@ -170,7 +170,8 @@
  * @typedef {Object} BlueprintGraphVariant
  * @property {string} key Variant key.
  * @property {string} label Human-readable variant label.
- * @property {string} dot DOT source.
+ * @property {string} dot DOT source (transitively reduced).
+ * @property {string} [dotFull] Unreduced DOT source for the "Show all edges" toggle; present only when reduction dropped edges.
  * @property {Record<string, unknown>} [options] Rendering options emitted with the fallback.
  * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
  * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.

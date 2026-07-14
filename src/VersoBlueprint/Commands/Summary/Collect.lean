@@ -584,6 +584,9 @@ private def collectGroupHealth (ctx : SummaryBuildContext) : List GroupHealthIte
       acc.push {
         parent
         header := ctx.groupHeaders.getD parent parent.toString
+        -- Representative child (first entry): the emit step resolves the chapter
+        -- title from its in-chapter href. `title` stays empty until then.
+        chapterLabel? := (childEntries[0]?).map (·.1)
         totalEntries := counts.totalEntries
         closedEntries := counts.closedEntries
         localOnlyEntries := counts.localOnlyEntries

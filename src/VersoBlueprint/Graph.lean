@@ -118,6 +118,12 @@ structure GraphOptions where
   the SVG into the canvas.
   -/
   pack : Bool := false
+  /--
+  Show every drawn dependency edge, including the transitively-redundant ones the
+  default view removes. Selects the unreduced `dotFull` render variant when one
+  exists; layout is recomputed because the redundant edges change the graph shape.
+  -/
+  allEdges : Bool := false
 deriving Inhabited, BEq, FromJson, ToJson, Quote
 
 private def graphPackAttr (pack : Bool) : String :=
@@ -168,8 +174,12 @@ structure GraphRenderVariant where
   key : String
   /-- Human-readable view label. -/
   label : String
-  /-- DOT source for this view. -/
+  /-- DOT source for this view (transitively reduced). -/
   dot : String
+  /-- Unreduced DOT source with every drawn edge, for the "Show all edges" toggle.
+  Present only when transitive reduction actually dropped edges; the derived ToJson
+  omits it (`none`) otherwise, so unreduced variants carry no extra payload. -/
+  dotFull : Option String := none
   /-- Initial layout options used to build the DOT source. -/
   options : GraphOptions := {}
   /-- Node ids that switch to another variant when selected. -/
@@ -234,9 +244,18 @@ deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
 structure GroupData where
   label : Name
   title : String
+  /-- Compact cluster label (typically the chapter name derived from a member's
+  in-chapter href). Empty when no short form is known; renderers then fall back to
+  `title`. Kept distinct from `title` so a long descriptive `title` can still be
+  surfaced as a cluster tooltip. -/
+  shortTitle : String := ""
   declared : Bool := false
   children : Array Name := #[]
 deriving Inhabited, Repr, DecidableEq, ToJson, FromJson, Quote
+
+/-- Cluster display title: the compact `shortTitle` when set, else the full `title`. -/
+def GroupData.displayTitle (group : GroupData) : String :=
+  if group.shortTitle.isEmpty then group.title else group.shortTitle
 
 /--
 Stable per-node graph data for Lean, manifest, and browser consumers.
@@ -324,6 +343,21 @@ def GraphData.toGraph (data : GraphData) : Graph String :=
 def GraphData.groupTitleMap (data : GraphData) : Lean.NameMap String :=
   data.groups.foldl (init := ({} : Lean.NameMap String)) fun acc group =>
     acc.insert group.label group.title
+
+/-- Cluster display titles (compact `shortTitle` where present, else `title`). Used
+as the rendered DOT cluster label. -/
+def GraphData.groupDisplayTitleMap (data : GraphData) : Lean.NameMap String :=
+  data.groups.foldl (init := ({} : Lean.NameMap String)) fun acc group =>
+    acc.insert group.label group.displayTitle
+
+/-- Cluster tooltips: the long `title`, emitted only when a distinct nonempty
+`shortTitle` actually abbreviates the cluster label (so the tooltip surfaces the
+full sentence the short label stands in for). No entry when nothing was shortened. -/
+def GraphData.groupClusterTooltipMap (data : GraphData) : Lean.NameMap String :=
+  data.groups.foldl (init := ({} : Lean.NameMap String)) fun acc group =>
+    if !group.shortTitle.isEmpty && !group.title.isEmpty && group.shortTitle != group.title then
+      acc.insert group.label group.title
+    else acc
 
 structure LegendSwatch where
   background : String := "#ffffff"
@@ -1283,7 +1317,8 @@ def graphNodeSvgId (label : Name) : String :=
 
 partial def emitGroupClusterLines (nodeDefs : NameMap String) (groupMembers : NameMap (Array Name))
     (groupChildren : NameMap (Array Name)) (groupIds : NameMap Nat)
-    (groupLabel? : Name → Option String) (group : Name) (level fuel : Nat)
+    (groupLabel? : Name → Option String) (groupTooltip? : Name → Option String)
+    (group : Name) (level fuel : Nat)
     (visited : NameSet) : Array String × NameSet :=
   if fuel == 0 || visited.contains group then
     (#[], visited)
@@ -1299,25 +1334,34 @@ partial def emitGroupClusterLines (nodeDefs : NameMap String) (groupMembers : Na
         if label.isEmpty then toString group else label
       | none => toString group
     let openLine := pad ++ s!"subgraph \"{escapeDotString clusterName}\" " ++ "{"
-    let clusterMeta : Array String := #[
-      s!"{pad2}label=\"{escapeDotString groupLabel}\";",
-      s!"{pad2}style=\"rounded,dashed\";",
-      s!"{pad2}color=\"#cbd5e1\";",
-      s!"{pad2}penwidth=1.2;"
-    ]
+    let clusterMeta : Array String :=
+      let base : Array String := #[
+        s!"{pad2}label=\"{escapeDotString groupLabel}\";",
+        s!"{pad2}style=\"rounded,dashed\";",
+        s!"{pad2}color=\"#cbd5e1\";",
+        s!"{pad2}penwidth=1.2;"
+      ]
+      -- Surface the full descriptive title on hover when the label was abbreviated.
+      match groupTooltip? group with
+      | some tip =>
+        let tip := tip.trimAscii.toString
+        if tip.isEmpty then base
+        else base.push s!"{pad2}tooltip=\"{escapeDotString tip}\";"
+      | none => base
     let memberLines := (groupMembers.getD group #[]).foldl (init := (#[] : Array String)) fun acc label =>
       match nodeDefs.get? label with
       | some line => acc.push s!"{pad2}{line}"
       | none => acc
     let (childLines, visited) :=
       (groupChildren.getD group #[]).foldl (init := ((#[] : Array String), visited)) fun (acc, visited) child =>
-        let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? child (level + 2) (fuel - 1) visited
+        let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? groupTooltip? child (level + 2) (fuel - 1) visited
         (acc ++ lines, visited)
     let closeLine := pad ++ "}"
     ((#[openLine] ++ clusterMeta ++ memberLines ++ childLines).push closeLine, visited)
 
 def Graph.toDot (g : Graph Ref) (header : String)
     (groupLabel? : Option (Name → Option String) := none)
+    (groupTooltip? : Option (Name → Option String) := none)
     (refAttrs? : Option (Ref → Option String) := none) : String :=
   let known : NameSet := g.foldl (init := {}) fun acc node => acc.insert node.label
   let defLike : NameSet := g.foldl (init := {}) fun acc node =>
@@ -1471,16 +1515,17 @@ def Graph.toDot (g : Graph Ref) (header : String)
     let roots := groups.filter (fun group => !(groupParent.contains group))
     if roots.isEmpty then groups else roots
   let groupLabel? := groupLabel?.getD (fun _ => none)
+  let groupTooltip? := groupTooltip?.getD (fun _ => none)
   let (clusterLines, visitedGroups) :=
     rootGroups.foldl (init := ((#[] : Array String), ({} : NameSet))) fun (acc, visited) group =>
-      let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? group 2 (groups.size + 1) visited
+      let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? groupTooltip? group 2 (groups.size + 1) visited
       (acc ++ lines, visited)
   let (clusterLines, _visitedGroups) :=
     groups.foldl (init := (clusterLines, visitedGroups)) fun (acc, visited) group =>
       if visited.contains group then
         (acc, visited)
       else
-        let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? group 2 (groups.size + 1) visited
+        let (lines, visited) := emitGroupClusterLines nodeDefs groupMembers groupChildren groupIds groupLabel? groupTooltip? group 2 (groups.size + 1) visited
         (acc ++ lines, visited)
   let ungroupedNodeLines :=
     g.foldl (init := (#[] : Array String)) fun acc node =>
@@ -1495,10 +1540,79 @@ def Graph.toDot (g : Graph Ref) (header : String)
   lines.foldl (init := "") fun acc line =>
     if acc.isEmpty then line else acc ++ "\n" ++ line
 
+/-- Cycle-guarded reachability closure over an adjacency map. -/
+private partial def reachableClosure (adj : Lean.NameMap (Array Name)) :
+    List Name → Lean.NameSet → Lean.NameSet
+  | [], visited => visited
+  | n :: rest, visited =>
+    if visited.contains n then
+      reachableClosure adj rest visited
+    else
+      let visited := visited.insert n
+      reachableClosure adj ((adj.getD n #[]).toList ++ rest) visited
+
+/-- Total drawn-edge count (statement + proof deps) of a graph. Used to tell whether
+`transitiveReduce` actually removed any edges (it only ever removes). -/
+private def graphEdgeCount (g : Graph Ref) : Nat :=
+  g.foldl (init := 0) fun acc node => acc + node.deps.size + node.proofDeps.size
+
+/--
+Union-semantics transitive reduction of the *drawn* dependency edges.
+
+Builds one union adjacency from `deps ∪ proofDeps` (source dependency → dependent),
+restricted to known node labels and excluding self-deps, then drops edge `d → b`
+whenever `b` is reachable from some *other* dependent `c` of `d` — i.e. there is a
+path `d → c → … → b` of length ≥ 2 in the union graph. A redundant pair loses both
+its statement and proof edge families together: `Graph.toDot` derives per-edge
+intent/origin from the merged use-refs, so `deps`, `proofDeps`, `statementUses`, and
+`proofUses` are filtered in sync. `Array.filter` preserves order, keeping the DOT
+deterministic.
+
+Redundancy is decided against the union graph exactly as passed in, so apply this
+LAST — after any restriction/aggregation/intent-filtering — or a path through nodes
+outside the current subgraph could delete an edge that is essential within it.
+
+The reachability witness for `d → b` seeds the DFS visited-set with `d`, so the
+witness path can never re-enter `d`. That both preserves the length-≥2 guarantee and
+makes the search cycle-safe, so exotic dependency cycles terminate (they simply see
+fewer edges dropped rather than producing a non-DAG). Cost is O(E·(V+E)); build-time
+only, at ≤~200 nodes. -/
+def transitiveReduce (graph : Graph Ref) : Graph Ref :=
+  let known : Lean.NameSet := graph.foldl (init := {}) fun acc node => acc.insert node.label
+  -- Union adjacency: dependency source → dependents.
+  let adj : Lean.NameMap (Array Name) :=
+    graph.foldl (init := ({} : Lean.NameMap (Array Name))) fun acc node =>
+      (eraseDups (node.deps ++ node.proofDeps)).foldl (init := acc) fun acc dep =>
+        if known.contains dep && dep != node.label then
+          let cur := acc.getD dep #[]
+          if cur.contains node.label then acc else acc.insert dep (cur.push node.label)
+        else acc
+  -- For each source `d`, the dependents made redundant by a length-≥2 path.
+  let redundant : Lean.NameMap Lean.NameSet :=
+    adj.foldl (init := ({} : Lean.NameMap Lean.NameSet)) fun acc d succs =>
+      -- Memoize the reachable set from each successor (visited seeded with `d`).
+      let closures : Lean.NameMap Lean.NameSet :=
+        succs.foldl (init := ({} : Lean.NameMap Lean.NameSet)) fun cAcc c =>
+          if cAcc.contains c then cAcc
+          else cAcc.insert c (reachableClosure adj [c] (({} : Lean.NameSet).insert d))
+      let redSet : Lean.NameSet :=
+        succs.foldl (init := ({} : Lean.NameSet)) fun rAcc b =>
+          if succs.any (fun c => c != b && (closures.getD c {}).contains b) then rAcc.insert b
+          else rAcc
+      acc.insert d redSet
+  graph.map fun node =>
+    let isRedundant (dep : Name) : Bool := (redundant.getD dep {}).contains node.label
+    { node with
+      deps := node.deps.filter (fun dep => !isRedundant dep)
+      proofDeps := node.proofDeps.filter (fun dep => !isRedundant dep)
+      statementUses := node.statementUses.filter (fun u => !isRedundant (u.label : Name))
+      proofUses := node.proofUses.filter (fun u => !isRedundant (u.label : Name)) }
+
 /-- Node count at or above which a graph is treated as "dense" and gets the
-breathe-out layout (see `graphDotHeader`). The all-declarations Full/Essential
-graphs (~100+ nodes) cross this; per-node, group, and parent sub-graphs stay well
-below it, so their DOT is unchanged. -/
+breathe-out spacing (tighter `nodesep`, looser `ranksep`; see `graphDotHeader`).
+`newrank`/`concentrate` apply to every graph regardless. The all-declarations
+Full/Essential graphs (~100+ nodes) cross this; per-node, group, and parent
+sub-graphs stay well below it, so their spacing is unchanged. -/
 def graphDenseNodeThreshold : Nat := 48
 
 /-- Common DOT header for rendered Blueprint graphs.
@@ -1506,17 +1620,22 @@ def graphDenseNodeThreshold : Nat := 48
 `pack=true` keeps disconnected graph components compact before d3-graphviz fits
 the SVG into the canvas.
 
-When `dense := true` (large all-declarations graphs), the layout is loosened to
-fight the flat, very-wide fit-zoom band: horizontal `nodesep` is tightened while
-`concentrate=true` merges shared edge trunks (both cut the width) and `ranksep`
-is opened up for vertical breathing. Together with the shrunken supporting nodes
-(`Graph.toDot`) and de-emphasized inferred edges this roughly halves the width and
-the aspect ratio. Small graphs keep the original spacing byte-for-byte. -/
+`newrank=true` and `concentrate=true` are emitted unconditionally: `newrank` lets
+Graphviz rank nodes across cluster boundaries (chapter clusters no longer distort
+the global layering) and `concentrate` merges shared edge trunks into a single
+segment. Paired with the transitive reduction of the drawn edges (`transitiveReduce`),
+these turn the former hairball into a legible layered graph. Accepted trade-off:
+`concentrate` can merge trunk segments of differently-styled edges.
+
+When `dense := true` (large all-declarations graphs), the spacing is loosened to
+fight the flat, very-wide fit-zoom band: horizontal `nodesep` is tightened and
+`ranksep` is opened up for vertical breathing. Together with the shrunken supporting
+nodes (`Graph.toDot`) and de-emphasized inferred edges this roughly halves the width
+and the aspect ratio. Small graphs keep the original spacing byte-for-byte. -/
 def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {})
     (dense : Bool := false) : String :=
   let nodesep := if dense then "0.18" else "0.35"
   let ranksep := if dense then "0.8" else "0.45"
-  let denseAttrs := if dense then "    concentrate=true;\n" else ""
   "strict digraph \"\" {\n" ++
   s!"    rankdir={options.direction.rankdir};\n" ++
   -- STY-GRAPH-01 (#32a): emit a transparent SVG background so the canvas
@@ -1527,9 +1646,10 @@ def graphDotHeader (options : GraphOptions := {}) (style : GraphDotStyle := {})
   "    bgcolor=\"transparent\";\n" ++
   (if style.includePack then s!"    pack={graphPackAttr options.pack};\n" else "") ++
   "    splines=true;\n" ++
+  "    newrank=true;\n" ++
+  "    concentrate=true;\n" ++
   s!"    nodesep={nodesep};\n" ++
   s!"    ranksep={ranksep};\n" ++
-  denseAttrs ++
   s!"    node [shape=box, style=\"rounded,filled\", fontname=\"Helvetica\", fontsize={style.nodeFontSize}, margin=\"{style.nodeMargin}\", color=\"#6b7280\", penwidth={style.nodePenwidth}];\n" ++
   s!"    edge [color=\"#6b7280\", arrowhead=vee, arrowsize={style.edgeArrowsize}, penwidth={style.edgePenwidth}];\n" ++
   "    graph [fontname=\"Helvetica\"];\n" ++
@@ -1544,22 +1664,34 @@ type or compact DOT styling.
 -/
 def graphToDotWith (g : Graph Ref) (options : GraphOptions := {}) (style : GraphDotStyle := {})
     (resolveGroupTitle : Name → Option String := fun _ => none)
+    (resolveGroupTooltip : Name → Option String := fun _ => none)
     (refAttrs? : Option (Ref → Option String) := none) : String :=
   Graph.toDot g (graphDotHeader options style (dense := g.size ≥ graphDenseNodeThreshold))
     (groupLabel? := some resolveGroupTitle)
+    (groupTooltip? := some resolveGroupTooltip)
     (refAttrs? := refAttrs?)
 
 /-- Render a page graph with string refs interpreted as same-page hrefs. -/
 def graphToDot (g : Graph String) (options : GraphOptions := {})
-    (resolveGroupTitle : Name → Option String := fun _ => none) : String :=
-  graphToDotWith g options {} resolveGroupTitle
-    (some fun href => some s!"URL=\"{href}\", target=\"_self\"")
+    (resolveGroupTitle : Name → Option String := fun _ => none)
+    (resolveGroupTooltip : Name → Option String := fun _ => none) : String :=
+  graphToDotWith g options {} (resolveGroupTitle := resolveGroupTitle)
+    (resolveGroupTooltip := resolveGroupTooltip)
+    (refAttrs? := some fun href => some s!"URL=\"{href}\", target=\"_self\"")
 
-/-- Render finalized graph data to DOT using its href and group-title fields. -/
+/-- Render finalized graph data to DOT using its href and group-title fields.
+
+Drops transitively-redundant edges by default (`allEdges := false`); pass
+`allEdges := true` for the unreduced graph. This covers the static node/decl/widget
+graphs and the `dot-source` fallback with no call-site changes — they render reduced
+and carry no "show all edges" toggle. -/
 def GraphData.toDotWith (data : GraphData) (options : GraphOptions := {})
-    (style : GraphDotStyle := {}) : String :=
-  graphToDotWith data.toGraph options style (fun group => data.groupTitleMap.get? group)
-    (some fun href => some s!"URL=\"{href}\", target=\"_self\"")
+    (style : GraphDotStyle := {}) (allEdges : Bool := false) : String :=
+  let g := if allEdges then data.toGraph else transitiveReduce data.toGraph
+  graphToDotWith g options style
+    (resolveGroupTitle := fun group => data.groupDisplayTitleMap.get? group)
+    (resolveGroupTooltip := fun group => data.groupClusterTooltipMap.get? group)
+    (refAttrs? := some fun href => some s!"URL=\"{href}\", target=\"_self\"")
 
 /-- Stable key for the synthetic group overview variant. -/
 def groupVariantKey : String := "group"
@@ -1597,9 +1729,6 @@ private def wrapGraphLabel (title : String) (lineWidth : Nat := 26) (maxLines : 
   | _ =>
     let lines := wrapGraphLabelWords words lineWidth maxLines "" #[]
     String.intercalate "\n" lines.toList
-
-private def graphParentDisplayLabel (groupTitles : Lean.NameMap String) (parent : Name) : String :=
-  wrapGraphLabel (groupTitle groupTitles parent)
 
 private def hexNibble? (c : Char) : Option Nat :=
   match c with
@@ -1710,7 +1839,7 @@ Each parent with multiple children becomes one aggregate node whose colors are
 derived from its children and whose edges summarize cross-group dependencies.
 -/
 def mkParentOverviewGraph (graph : Graph String) (parents : Array Name)
-    (groupTitles : Lean.NameMap String) : Graph String :=
+    (groupTitles : Lean.NameMap String) (shortTitles : Lean.NameMap String := {}) : Graph String :=
   let parentChildren := graphParentChildren graph
   let nodeByLabel : Lean.NameMap (GraphNode String) :=
     graph.foldl (init := ({} : Lean.NameMap (GraphNode String))) fun acc node =>
@@ -1751,9 +1880,15 @@ def mkParentOverviewGraph (graph : Graph String) (parents : Array Name)
     let mixedFillColor := mixedNodeColor childNodes (·.fillcolor) "#e2e8f0"
     let mixedBorderColor := mixedNodeColor childNodes (·.color) "#475569"
     let title := groupTitle groupTitles parent
+    -- Aggregate node label = compact short title (wrapped); the long `title` stays
+    -- on the tooltip below.
+    let shortTitle :=
+      match shortTitles.get? parent with
+      | some s => let s := s.trimAscii.toString; if s.isEmpty then title else s
+      | none => title
     {
       label := parent
-      displayLabel? := some (graphParentDisplayLabel groupTitles parent)
+      displayLabel? := some (wrapGraphLabel shortTitle)
       deps := parentStatementDeps.getD parent #[]
       proofDeps := parentProofDeps.getD parent #[]
       shape := "tab"
@@ -1796,27 +1931,50 @@ parent group.
 -/
 def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
-    (previewKeyForLabel : Name → String := PreviewCache.statementKey) :
+    (previewKeyForLabel : Name → String := PreviewCache.statementKey)
+    (groupShortTitles : Lean.NameMap String := {})
+    (groupTooltips : Lean.NameMap String := {}) :
     Array GraphRenderVariant :=
   let previewKeyByNodeId (graph : Graph String) : Array (String × String) :=
     graph.map fun node =>
       (graphNodeSvgId node.label, previewKeyForLabel node.label)
-  let resolveGroupTitle : Name → Option String := fun group =>
-    groupTitles.get? group
+  -- Cluster label = compact display title (short where known, else long); the long
+  -- title rides `resolveGroupTooltip` as a cluster hover, emitted only when it
+  -- actually differs (see `groupClusterTooltipMap`).
+  let resolveGroupDisplay : Name → Option String := fun group =>
+    match groupShortTitles.get? group with
+    | some t => some t
+    | none => groupTitles.get? group
+  let resolveGroupTooltip : Name → Option String := fun group => groupTooltips.get? group
+  -- Each variant bakes the transitively-reduced DOT as `dot` and — only when
+  -- reduction actually dropped edges — the unreduced DOT as `dotFull`, for the
+  -- "Show all edges" toggle. Layout must be recomputed per variant (CSS hiding can't
+  -- restore the removed edges), so both strings are full DOT sources.
+  let dotPair (g : Graph String) (gt gtt : Name → Option String) : String × Option String :=
+    let reduced := transitiveReduce g
+    let reducedDot := graphToDot reduced options gt gtt
+    if graphEdgeCount reduced < graphEdgeCount g then
+      (reducedDot, some (graphToDot g options gt gtt))
+    else
+      (reducedDot, none)
   let essential := essentialGraph graph
+  let (fullDot, fullDotFull?) := dotPair graph resolveGroupDisplay resolveGroupTooltip
   let fullVariant : GraphRenderVariant := {
     key := "full"
     label := "Full Graph"
-    dot := graphToDot graph options resolveGroupTitle
+    dot := fullDot
+    dotFull := fullDotFull?
     options
     selectOnNodeId := #[]
     hoverOnNodeId := #[]
     previewKeyByNodeId := previewKeyByNodeId graph
   }
+  let (essentialDot, essentialDotFull?) := dotPair essential resolveGroupDisplay resolveGroupTooltip
   let essentialVariant : GraphRenderVariant := {
     key := essentialVariantKey
     label := "Essential dependencies"
-    dot := graphToDot essential options resolveGroupTitle
+    dot := essentialDot
+    dotFull := essentialDotFull?
     options
     selectOnNodeId := #[]
     hoverOnNodeId := #[]
@@ -1832,10 +1990,14 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     #[fullVariant, essentialVariant]
   else
     let parentVariantRefs := parents.map (fun parent => (graphNodeSvgId parent, parentVariantKey parent))
+    let (groupDot, groupDotFull?) :=
+      dotPair (mkParentOverviewGraph graph parents groupTitles groupShortTitles)
+        (fun _ => none) (fun _ => none)
     let groupVariant : GraphRenderVariant := {
       key := groupVariantKey
       label := "Group View"
-      dot := graphToDot (mkParentOverviewGraph graph parents groupTitles) options (fun _ => none)
+      dot := groupDot
+      dotFull := groupDotFull?
       options
       selectOnNodeId := parentVariantRefs
       hoverOnNodeId := parentVariantRefs
@@ -1844,10 +2006,12 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     let parentVariants := parents.map fun parent =>
       let parentSubgraph := subgraphForParent graph parent
       let title := groupTitle groupTitles parent
+      let (parentDot, parentDotFull?) := dotPair parentSubgraph resolveGroupDisplay resolveGroupTooltip
       {
         key := parentVariantKey parent
         label := title
-        dot := graphToDot parentSubgraph options resolveGroupTitle
+        dot := parentDot
+        dotFull := parentDotFull?
         options
         selectOnNodeId := #[]
         hoverOnNodeId := #[]
@@ -1877,17 +2041,6 @@ def GraphData.reverseAdj (data : GraphData) : Lean.NameMap (Array Name) :=
     let cur := acc.getD edge.target #[]
     if cur.contains edge.source then acc
     else acc.insert edge.target (cur.push edge.source)
-
-/-- Cycle-guarded reachability closure over an adjacency map. -/
-private partial def reachableClosure (adj : Lean.NameMap (Array Name)) :
-    List Name → Lean.NameSet → Lean.NameSet
-  | [], visited => visited
-  | n :: rest, visited =>
-    if visited.contains n then
-      reachableClosure adj rest visited
-    else
-      let visited := visited.insert n
-      reachableClosure adj ((adj.getD n #[]).toList ++ rest) visited
 
 /--
 All ancestors (transitive dependencies) of `label` via the reverse adjacency.
@@ -1928,5 +2081,7 @@ def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array
     | some node => node.previewKey
     | none => PreviewCache.statementKey label
   mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
+    (groupShortTitles := data.groupDisplayTitleMap)
+    (groupTooltips := data.groupClusterTooltipMap)
 
 end Informal.Graph

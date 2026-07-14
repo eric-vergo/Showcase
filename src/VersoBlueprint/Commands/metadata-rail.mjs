@@ -589,6 +589,23 @@ function nodeHrefFor(name) {
   return null;
 }
 
+// True when `href` resolves to the page currently being viewed. Used to suppress
+// the "Open node/declaration page" CTA when the rail's selection IS this page
+// (e.g. the default selection on a node/decl page targets itself). Normalizes a
+// trailing `index.html` and slash so a directory href matches its index.
+function isCurrentPage(href) {
+  if (!href) return false;
+  try {
+    const target = new URL(href, document.baseURI);
+    const norm = function (p) {
+      return p.replace(/index\.html?$/i, "").replace(/\/+$/, "");
+    };
+    return norm(target.pathname) === norm(window.location.pathname);
+  } catch (_err) {
+    return false;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Rendering                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -846,9 +863,10 @@ function renderRail(name, hintMeta) {
 
   // --- Open node / declaration page ----------------------------------------
   // Every registry decl has exactly one canonical page: the node page when
-  // wired, its own decl page otherwise.
+  // wired, its own decl page otherwise. Suppress the CTA when that page is the
+  // one already being viewed (the target would be a no-op self-link).
   const pageHref = vm.nodeHref || vm.declHref;
-  if (pageHref) {
+  if (pageHref && !isCurrentPage(pageHref)) {
     const link = el("a", {
       class: "bp-rail-open-page",
       attrs: { href: pageHref },

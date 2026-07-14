@@ -302,7 +302,11 @@ function dotWithGraphOptions(dot, options) {
 
 function dotForVariantOptions(variant, options) {
   if (!variant || typeof variant !== "object") return "";
-  return dotWithGraphOptions(variant.dot, options);
+  const normalized = normalizeGraphOptions(options);
+  // "Show all edges" selects the unreduced DOT when this variant has one; otherwise
+  // (nothing was reduced) `dotFull` is absent and the reduced `dot` is already full.
+  const source = normalized.allEdges && variant.dotFull ? variant.dotFull : variant.dot;
+  return dotWithGraphOptions(source, options);
 }
 
 function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId, graphModal, cardMeta) {
@@ -604,6 +608,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       const statusSelector = graphBlock.querySelector(".bp_graph_status_select");
       const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
+      const allEdgesInput = graphBlock.querySelector(".bp_graph_all_edges_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
       const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
@@ -682,6 +687,12 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         const key = String(variant.key || "").trim();
         const label = String(variant.label || key).trim();
         const dot = String(variant.dot || "").trim();
+        // Unreduced DOT for the "Show all edges" toggle; absent when reduction
+        // dropped nothing (then the reduced `dot` already shows every edge).
+        const dotFull =
+          typeof variant.dotFull === "string" && variant.dotFull.trim()
+            ? variant.dotFull.trim()
+            : "";
         const options = normalizeGraphOptions(
           variant.options && typeof variant.options === "object"
             ? variant.options
@@ -695,6 +706,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           key: key,
           label: label || key,
           dot: dot,
+          dotFull: dotFull,
           options: options,
           selectOnNodeId: selectOnNodeId,
           hoverOnNodeId: hoverOnNodeId,
@@ -744,10 +756,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           : graphContainer.attr("data-bp-graph-direction"),
         pack: packInput
           ? packInput.getAttribute("data-bp-graph-default-pack")
-          : graphContainer.attr("data-bp-graph-pack")
+          : graphContainer.attr("data-bp-graph-pack"),
+        allEdges: allEdgesInput
+          ? allEdgesInput.getAttribute("data-bp-graph-default-all-edges")
+          : graphContainer.attr("data-bp-graph-all-edges")
       });
       if (directionSelector) directionSelector.value = activeOptions.direction;
       if (packInput) packInput.checked = activeOptions.pack;
+      if (allEdgesInput) allEdgesInput.checked = activeOptions.allEdges;
       syncLegend(graphBlock, activeKey);
       const legendPopover = bindLegendPopover(previewUtils, graphBlock);
       const optionsPopover = bindOptionsPopover(previewUtils, graphBlock);
@@ -919,12 +935,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             : activeOptions.direction,
           pack: Object.prototype.hasOwnProperty.call(rawNextOptions, "pack")
             ? rawNextOptions.pack
-            : activeOptions.pack
+            : activeOptions.pack,
+          allEdges: Object.prototype.hasOwnProperty.call(rawNextOptions, "allEdges")
+            ? rawNextOptions.allEdges
+            : activeOptions.allEdges
         });
         if (graphOptionsKey(normalized) === graphOptionsKey(activeOptions)) return;
         activeOptions = normalized;
         if (directionSelector) directionSelector.value = normalized.direction;
         if (packInput) packInput.checked = normalized.pack;
+        if (allEdgesInput) allEdgesInput.checked = normalized.allEdges;
         renderGraph();
       };
 
@@ -934,6 +954,10 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
 
       const switchPack = function (nextPack) {
         switchGraphOptions({ pack: nextPack });
+      };
+
+      const switchAllEdges = function (nextAllEdges) {
+        switchGraphOptions({ allEdges: nextAllEdges });
       };
 
       const scheduleRender = debounce(function () {
@@ -1049,6 +1073,11 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (packInput) {
         packInput.addEventListener("change", function () {
           switchPack(packInput.checked);
+        });
+      }
+      if (allEdgesInput) {
+        allEdgesInput.addEventListener("change", function () {
+          switchAllEdges(allEdgesInput.checked);
         });
       }
       if (previewModeSelector) {

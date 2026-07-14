@@ -816,9 +816,9 @@ private def selectionBusModuleMjs : String := include_str "Commands/selection-bu
 
 -- Note: editing the `include_str`ed .mjs alone does not retrigger this module's
 -- recompile, so touch this line when any bundled asset changes to force the fresh
--- bytes to re-embed. Touched for: rail dep sections → collapsible <details> +
--- local-graph zoom controls & static-canvas height fix in graph.mjs /
--- graph-runtime-core.mjs (2026-07-07).
+-- bytes to re-embed. Touched for: dashboard.mjs per-chapter bar titles + tooltips
+-- and metadata-rail.mjs "Open page" self-link suppression (UI review round); and
+-- graph.mjs + graph-runtime-core.mjs "Show all edges" toggle (graph declutter round).
 private def metadataRailModuleMjs : String := include_str "Commands/metadata-rail.mjs"
 
 private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"
