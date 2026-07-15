@@ -432,7 +432,9 @@ private def graphNodePreviewKeys
         "ProjectTemplateMain" &&
       VersoBlueprint.Vbp.Main.generatorModuleFromFile
           (System.FilePath.mk "Blueprint" / "Main.lean") ==
-        "Blueprint.Main"
+        "Blueprint.Main" &&
+      VersoBlueprint.Vbp.Main.packageOLeanTarget "ProjectTemplate" == "+ProjectTemplate:olean" &&
+      VersoBlueprint.Vbp.Main.packageOLeanTarget "Contents" == "+Contents:olean"
 
 /-- info: true -/
 #guard_msgs in
