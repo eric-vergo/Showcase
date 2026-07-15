@@ -364,10 +364,11 @@ you want to enable it.
 
 ## Reference Blueprints
 
-The repository also tracks a release-versioned reference catalog. On the
-current `v4.32.0` line, the in-repo starter template is the active reference
-target. External blueprints keep their last published release links until their
-upstream repositories have been updated and validated for the new Lean release.
+The repository also tracks a current, release-versioned reference catalog.
+Each external Blueprint is published only for its intended current release:
+Noperthedron and FLT on `v4.32.0`, and Sphere Packing and Carleson on
+`v4.30.0`. The in-repo starter template continues to validate maintained
+release lines.
 
 - [project_template/](./project_template/), the in-repo starter template,
   [rendered site for v4.32.0](https://leanprover.github.io/verso-blueprint/reference-blueprints/v4.32.0/project-template/)
