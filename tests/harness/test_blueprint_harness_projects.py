@@ -167,7 +167,9 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
         self.assertIsNotNone(default_template_target)
-        self.assertTrue(default_template_target.publish_reference)
+        self.assertFalse(default_template_target.publish_reference)
+        self.assertFalse(any(target.publish_reference for target in projects[0].targets))
+        self.assertFalse(catalog.release_target("v4.31.0").deploy_pages)
         self.assertEqual(current_release.release_toolchain, current_release.toolchain)
         self.assertEqual(current_release.release_verso_ref, current_release.verso_ref)
         if current_release.deploy_pages:
@@ -556,13 +558,34 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertIn("reference-deps-v2-${{ matrix.reference_cache_key }}", workflow_text)
         self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
         self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
+        self.assertIn(
+            "group: ${{ github.repository }}-reference-blueprints-pages",
+            deploy_workflow_text,
+        )
+        self.assertNotIn("reference-blueprints-pages-release-", deploy_workflow_text)
+        self.assertNotIn("reference-blueprints-pages-dispatch-", deploy_workflow_text)
         self.assertIn("Install PDF toolchain", deploy_workflow_text)
-        self.assertIn("if: ${{ matrix.publish_pdf }}", deploy_workflow_text)
+        self.assertIn(
+            "if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.publish_pdf }}",
+            deploy_workflow_text,
+        )
         self.assertIn("publish_pdf=${{ matrix.publish_pdf }}", deploy_workflow_text)
         self.assertIn("Generate release reference blueprints", deploy_workflow_text)
         self.assertIn("lualatex --version", deploy_workflow_text)
         self.assertIn("texlive-fonts-extra", deploy_workflow_text)
         self.assertIn("texlive-plain-generic", deploy_workflow_text)
+        self.assertIn("uses: actions/cache/restore@v5", deploy_workflow_text)
+        self.assertIn("uses: actions/cache/save@v5", deploy_workflow_text)
+        self.assertIn(
+            "reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}",
+            deploy_workflow_text,
+        )
+        self.assertIn("reference_artifact_identity.py create", deploy_workflow_text)
+        self.assertIn("reference_artifact_identity.py install", deploy_workflow_text)
+        self.assertIn("reference_artifact_identity.py validate", deploy_workflow_text)
+        self.assertIn("reference_artifact_identity.py expected-matrix", deploy_workflow_text)
+        self.assertIn("--expected-identities _out/expected-reference-artifacts.json", deploy_workflow_text)
+        self.assertIn("steps.generated-site-cache.outputs.cache-hit != 'true'", deploy_workflow_text)
 
         for entry in matrix["include"]:
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")
@@ -776,6 +799,15 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             (entry["release_id"], entry["project_id"]): entry
             for entry in matrix["include"]
         }
+        self.assertEqual(
+            set(rows),
+            {
+                ("v4.30.0", "spherepackingblueprint"),
+                ("v4.30.0", "verso-carleson"),
+                ("v4.32.0", "noperthedron"),
+                ("v4.32.0", "verso-flt"),
+            },
+        )
         self.assertFalse(rows[("v4.30.0", "spherepackingblueprint")]["publish_pdf"])
         self.assertFalse(rows[("v4.30.0", "verso-carleson")]["publish_pdf"])
         self.assertNotIn(
