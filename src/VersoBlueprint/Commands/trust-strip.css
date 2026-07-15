@@ -1,7 +1,8 @@
-/* Dashboard trust strip (fed by a comparator-status artifact) + the standalone
-   comparator page. The strip only ever renders alongside the dashboard block, whose
-   asset bundle ships summary.css, so the shared .bp_summary_badge* classes are
-   always available. Token-driven; no raw colors, so both themes are covered. */
+/* Dashboard trust strip (fed by a comparator-status artifact) + the standalone claim-first
+   comparator page (verdict header, prose sections, three-tier reproduce list). The strip only
+   ever renders alongside the dashboard block, whose asset bundle ships summary.css, so the
+   shared .bp_summary_badge* classes are always available. Token-driven; no raw colors, so both
+   light and dark are covered from Common.lean's dual token definitions. */
 
 .bp_trust_strip {
   display: flex;
@@ -63,17 +64,108 @@ a.bp_summary_badge:focus-visible {
   color: var(--bp-color-text-strong);
 }
 
-/* External CI-run link on the comparator page. */
-.bp_trust_ci_link {
-  color: var(--bp-color-link);
-  font-weight: 600;
-  text-decoration: none;
+/* Verdict header: status pill + date + CI link on one row, then a compact meta grid of
+   certified theorems / permitted axioms. */
+.bp_trust_verdict {
+  margin-top: var(--bp-space-4);
 }
 
-.bp_trust_ci_link:hover,
-.bp_trust_ci_link:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 0.14em;
+.bp_trust_verdict_row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2) var(--bp-space-3);
+}
+
+.bp_trust_verdict_date {
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_verdict_meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--bp-space-1) var(--bp-space-3);
+  margin: var(--bp-space-3) 0 0;
+}
+
+/* Each row is a <div> wrapping <dt>/<dd>; `display: contents` lets them land in the grid. */
+.bp_trust_verdict_meta > div {
+  display: contents;
+}
+
+.bp_trust_verdict_meta dt {
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_verdict_meta dd {
+  margin: 0;
+}
+
+.bp_trust_verdict_meta code {
+  overflow-wrap: anywhere;
+}
+
+/* Static prose sections + their outbound-link footer row. */
+.bp_trust_prose {
+  margin: 0;
+  max-width: 44rem;
+  line-height: 1.6;
+  color: var(--bp-color-text);
+}
+
+.bp_trust_prose_links {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+}
+
+/* Reproduce-it-yourself list: one tier per <li>. */
+.bp_trust_repro {
+  margin: var(--bp-space-3) 0 0;
+  padding-left: var(--bp-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-3);
+  line-height: 1.6;
+  color: var(--bp-color-text);
+}
+
+.bp_trust_repro > li {
+  padding-left: var(--bp-space-1);
+}
+
+/* Quiet caveats under the shell block (sandbox note + missing-field fallbacks). */
+.bp_trust_note {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_note code {
+  overflow-wrap: anywhere;
+}
+
+/* Shell command block: same code chrome as .bp_trust_code, but wrap long lines instead of
+   scrolling so the copy-pasteable commands stay fully visible. The compound selector keeps
+   it winning over .bp_trust_code's `white-space: pre` regardless of source order. */
+.bp_trust_code.bp_trust_code_shell {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Collapse the verdict meta grid to a single stacked column on narrow viewports. */
+@media (max-width: 40rem) {
+  .bp_trust_verdict_meta {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .bp_trust_verdict_meta > div {
+    display: block;
+    margin-top: var(--bp-space-2);
+  }
 }
 
 /* Embedded config JSON / Challenge & Solution Lean source. Token-driven, so it reads as

@@ -93,6 +93,24 @@ structure TrustComparator where
   theoremNames : List String := []
   note : String := ""
   runUrl : String := ""
+  /-- The permitted axioms recorded in the comparator status artifact
+  (`permitted_axioms`); rendered as the verdict header's axiom list. Empty ⇒ the row is
+  omitted. -/
+  permittedAxioms : List String := []
+  /-- The comparator tool version the verdict was produced with (the status artifact's
+  `tool_ref`, written by CI alongside the pinned checkout tag). Drives the `--branch` flag
+  in the tier-3 reproduce commands; empty ⇒ no pinned version (the section shows a
+  "check out the tag matching `lean-toolchain`" note instead). -/
+  toolRef : String := ""
+  /-- The comparator config path as passed on the command line (the status artifact's
+  `config`, repo-root-relative) — exactly the argument the tier-3 reproduce command needs.
+  Empty ⇒ recovered from the config blob URL when possible (`enrichTrustData`), else the
+  run line is replaced by a README pointer. -/
+  configArgPath : String := ""
+  /-- The project's repository URL (derived from the first resolved challenge/solution/config
+  blob URL in `enrichTrustData`). Adds a "clone the project" step to the tier-3 reproduce
+  commands; empty ⇒ the commands run from the reader's own checkout. -/
+  repoUrl : String := ""
   configJson : String := ""
   challengeSource : String := ""
   /-- Verbatim contents of the comparator's Solution Lean file (embedded on the
@@ -157,8 +175,9 @@ def TrustData.ofFormalizationJson (doc : Json) : TrustData :=
   }
 
 /-- Extract the comparator verdict from a comparator-status artifact (`verified_at` may be `null`).
-`run_url` is optional (absent in older artifacts ⇒ empty). The embedded config /
-Challenge sources are filled in later from their own options (`elabTrustData?`). -/
+`run_url`, `permitted_axioms`, `tool_ref`, and `config` are all optional (absent in older
+artifacts ⇒ empty-sentinel default). The embedded config / Challenge sources are filled in
+later from their own options (`elabTrustData?`). -/
 def TrustComparator.ofJson (j : Json) : TrustComparator :=
   {
     status := (j.getObjValAs? String "status").toOption.getD ""
@@ -166,6 +185,9 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     theoremNames := (j.getObjValAs? (List String) "theorem_names").toOption.getD []
     note := (j.getObjValAs? String "note").toOption.getD ""
     runUrl := (j.getObjValAs? String "run_url").toOption.getD ""
+    permittedAxioms := (j.getObjValAs? (List String) "permitted_axioms").toOption.getD []
+    toolRef := (j.getObjValAs? String "tool_ref").toOption.getD ""
+    configArgPath := (j.getObjValAs? String "config").toOption.getD ""
   }
 
 /-- The axioms every kernel-checked Mathlib development is expected to use. -/
@@ -273,6 +295,54 @@ def blobToRawGitHubUrl? (blob : String) : Option String :=
     | [] => Option.none
   else Option.none
 
+/-- The repository URL (everything before the first `/blob/`) of a GitHub *blob* URL, e.g.
+`https://github.com/o/r/blob/<sha>/Path.lean` ↦ `https://github.com/o/r`. Splits on the
+first `/blob/` only (so a path segment literally named `blob` is preserved). `none` for a
+non-GitHub URL or one with no `/blob/` segment → degrade. -/
+def blobToRepoUrl? (blob : String) : Option String :=
+  let gh := "https://github.com/"
+  if blob.startsWith gh then
+    match ((blob.drop gh.length).toString).splitOn "/blob/" with
+    | ownerRepo :: _ :: _ => some s!"https://github.com/{ownerRepo}"
+    | _ => Option.none
+  else Option.none
+
+/-- The repo-root-relative path (everything after `/blob/<commit>/`) of a GitHub *blob* URL,
+e.g. `https://github.com/o/r/blob/<sha>/Path/File.lean` ↦ `Path/File.lean`. Splits on the
+first `/blob/` only, so a path segment literally named `blob` survives. `none` for a
+non-GitHub URL or one with no `/blob/` segment → degrade. -/
+def blobToRepoRelPath? (blob : String) : Option String :=
+  let gh := "https://github.com/"
+  if blob.startsWith gh then
+    match ((blob.drop gh.length).toString).splitOn "/blob/" with
+    | _ownerRepo :: rest@(_ :: _) =>
+      -- `rest` rejoined is `<commit>/<path…>`; drop the leading commit segment.
+      match (String.intercalate "/blob/" rest).splitOn "/" with
+      | _commit :: pathSegs@(_ :: _) => some (String.intercalate "/" pathSegs)
+      | _ => Option.none
+    | _ => Option.none
+  else Option.none
+
+/-- The tier-3 "reproduce it yourself" shell commands, as a list of lines, derived purely
+from a `TrustComparator` (unit-testable, total). Degrades with the data: the project-clone
+line appears only with a `repoUrl`, the `--branch` flag only with a `toolRef`, and the final
+`comparator` run line only with a `configArgPath` (otherwise the reproduce section points the
+reader at the project README rather than guessing the config path). The tool is always cloned
+as `comparator-tool` — a distinct directory that cannot collide with a project's own in-repo
+`comparator/` folder (mirroring the CI checkout). -/
+def reproCommands (cmp : TrustComparator) : List String :=
+  let branchFlag := if cmp.toolRef.isEmpty then "" else s!"--branch {cmp.toolRef} "
+  let cloneTool := s!"git clone {branchFlag}https://github.com/leanprover/comparator.git comparator-tool"
+  let buildTool := "(cd comparator-tool && lake build lean4export comparator)"
+  let projectClone := if cmp.repoUrl.isEmpty then [] else [s!"git clone {cmp.repoUrl}"]
+  let projectDir :=
+    if cmp.repoUrl.isEmpty then "path/to/your/project"
+    else ((cmp.repoUrl.splitOn "/").getLast?).getD "your-project"
+  let runLines :=
+    if cmp.configArgPath.isEmpty then []
+    else [s!"cd {projectDir}", s!"lake env ../comparator-tool/.lake/build/bin/comparator {cmp.configArgPath}"]
+  projectClone ++ [cloneTool, buildTool] ++ runLines
+
 /-- Absolute path of an option-configured path (relative to the build CWD). -/
 private def absOptionPath (workspaceRoot : System.FilePath) (p : String) : System.FilePath :=
   let fp := System.FilePath.mk p
@@ -321,6 +391,17 @@ def enrichTrustData (opts : Lean.Options) (trust : TrustData) : Lean.CoreM Trust
       if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
           (some (absOptionPath workspaceRoot cfgPath)) none then
         cmp := { cmp with githubConfigUrl := blob }
+    -- Project repo URL for the tier-3 "clone the project" step: the repository of the first
+    -- blob we managed to resolve. Degrades to empty when no GitHub remote is available.
+    if let some blob := [cmp.githubChallengeUrl, cmp.githubSolutionUrl, cmp.githubConfigUrl].find?
+        (fun u => !u.isEmpty) then
+      if let some repo := blobToRepoUrl? blob then
+        cmp := { cmp with repoUrl := repo }
+    -- Config arg path for the tier-3 run line: prefer the status JSON's own `config` (already
+    -- parsed by `ofJson`); otherwise recover it from the config blob's repo-root path.
+    if cmp.configArgPath.isEmpty && !cmp.githubConfigUrl.isEmpty then
+      if let some rel := blobToRepoRelPath? cmp.githubConfigUrl then
+        cmp := { cmp with configArgPath := rel }
     trust := { trust with comparator := some cmp }
   return trust
 
@@ -398,7 +479,8 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
       </section>
     }}
 
--- Trust-strip stylesheet (centred fit-content strip; see trust-strip.css).
+-- Trust-strip stylesheet: the centred fit-content dashboard strip plus the claim-first
+-- comparator page (verdict header, prose sections, reproduce list). See trust-strip.css.
 def trustStripCss := include_str "trust-strip.css"
 
 def trustStripAssetBundle : BlueprintAssetBundle :=

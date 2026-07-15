@@ -387,6 +387,70 @@ private def comparatorJson := r##"{
     some "https://raw.githubusercontent.com/o/r/abc123/Path/File.lean" &&
   (blobToRawGitHubUrl? "https://gitlab.com/o/r").isNone
 
+/-! `blobToRepoUrl?` / `blobToRepoRelPath?` split a GitHub blob URL into its repo URL and
+repo-root path, splitting on the first `/blob/` only (so a literal `blob` path segment
+survives); `none` off GitHub or with no `/blob/`. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  blobToRepoUrl? "https://github.com/o/r/blob/abc123/Path/File.lean" == some "https://github.com/o/r" &&
+  blobToRepoRelPath? "https://github.com/o/r/blob/abc123/Path/File.lean" == some "Path/File.lean" &&
+  -- A path segment literally named `blob` survives (split on the first `/blob/` only).
+  blobToRepoUrl? "https://github.com/o/r/blob/abc123/blob/File.lean" == some "https://github.com/o/r" &&
+  blobToRepoRelPath? "https://github.com/o/r/blob/abc123/blob/File.lean" == some "blob/File.lean" &&
+  -- Non-GitHub and no-`/blob/` URLs degrade to none.
+  (blobToRepoUrl? "https://gitlab.com/o/r").isNone &&
+  (blobToRepoRelPath? "https://gitlab.com/o/r").isNone &&
+  (blobToRepoUrl? "https://github.com/o/r").isNone
+
+/-! `TrustComparator.ofJson` reads the new `permitted_axioms` / `tool_ref` / `config`
+fields and tolerates their absence (empty-sentinel defaults). -/
+
+private def statusWithFields := r##"{
+  "status": "verified",
+  "theorem_names": ["Foo.bar"],
+  "permitted_axioms": ["propext", "Quot.sound"],
+  "tool_ref": "v4.31.0",
+  "config": "comparator/comparator.json"
+}"##
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let withFields := TrustComparator.ofJson ((Json.parse statusWithFields).toOption.getD Json.null)
+  let without := TrustComparator.ofJson ((Json.parse r##"{ "status": "configured" }"##).toOption.getD Json.null)
+  withFields.permittedAxioms == ["propext", "Quot.sound"] &&
+  withFields.toolRef == "v4.31.0" &&
+  withFields.configArgPath == "comparator/comparator.json" &&
+  without.permittedAxioms == [] &&
+  without.toolRef == "" &&
+  without.configArgPath == ""
+
+/-! `reproCommands` degrades with the data: project-clone only with a `repoUrl`, `--branch`
+only with a `toolRef`, run line only with a `configArgPath`; the tool is always cloned as the
+collision-safe `comparator-tool`. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let full : TrustComparator :=
+    { repoUrl := "https://github.com/o/r", toolRef := "v4.31.0", configArgPath := "comparator/comparator.json" }
+  let fullS := String.intercalate "\n" (reproCommands full)
+  let noRepo := String.intercalate "\n" (reproCommands { toolRef := "v4.31.0", configArgPath := "c.json" })
+  let noBranch := String.intercalate "\n" (reproCommands { repoUrl := "https://github.com/o/r", configArgPath := "c.json" })
+  let noConfig := String.intercalate "\n" (reproCommands { repoUrl := "https://github.com/o/r", toolRef := "v4.31.0" })
+  -- Full data: project clone + branched tool clone + run line with the config path.
+  countSubstr fullS "git clone " == 2 &&
+  hasSubstr fullS "--branch v4.31.0 https://github.com/leanprover/comparator.git comparator-tool" &&
+  hasSubstr fullS "lake env ../comparator-tool/.lake/build/bin/comparator comparator/comparator.json" &&
+  -- No repo ⇒ only the tool clone (no project clone line).
+  countSubstr noRepo "git clone " == 1 &&
+  -- No toolRef ⇒ no `--branch` flag.
+  !hasSubstr noBranch "--branch" &&
+  -- No configArgPath ⇒ the run line is omitted (a README pointer replaces it in the page).
+  !hasSubstr noConfig "lake env"
+
 /-! JSON tokenizer: keys → `const`, string values → `literal string`, numbers →
 `literal number`, `true`/`false`/`null` → `keyword`. -/
 
