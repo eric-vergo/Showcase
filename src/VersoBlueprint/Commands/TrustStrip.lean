@@ -133,6 +133,12 @@ structure TrustComparator where
   githubSolutionUrl : String := ""
   githubConfigUrl : String := ""
   playgroundUrl : String := ""
+  /-- Whether the comparator's independent nanoda-kernel replay is enabled, parsed from
+  `enable_nanoda` in the comparator *config* JSON (the file behind
+  `verso.blueprint.trust.comparatorConfig`) — NOT the status artifact, which carries no such
+  field. Drives the nanoda clone/build lines in `reproCommands` and the "nanoda kernel" prose on
+  the comparator page. Default `false` renders every page byte-identically to before. -/
+  enableNanoda : Bool := false
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- Trust-strip payload: only fields present in the configured artifacts are set.
@@ -329,19 +335,29 @@ line appears only with a `repoUrl`, the `--branch` flag only with a `toolRef`, a
 `comparator` run line only with a `configArgPath` (otherwise the reproduce section points the
 reader at the project README rather than guessing the config path). The tool is always cloned
 as `comparator-tool` — a distinct directory that cannot collide with a project's own in-repo
-`comparator/` folder (mirroring the CI checkout). -/
+`comparator/` folder (mirroring the CI checkout). When the comparator config enables the
+independent nanoda kernel (`enableNanoda`), the flow also clones and builds `nanoda_lib` and
+points the comparator at it via `COMPARATOR_NANODA`; the relative `../nanoda_lib/…` path resolves
+because the run line first cd's into the project directory, a sibling of the two clones. -/
 def reproCommands (cmp : TrustComparator) : List String :=
   let branchFlag := if cmp.toolRef.isEmpty then "" else s!"--branch {cmp.toolRef} "
   let cloneTool := s!"git clone {branchFlag}https://github.com/leanprover/comparator.git comparator-tool"
   let buildTool := "(cd comparator-tool && lake build lean4export comparator)"
+  let nanodaBuild :=
+    if cmp.enableNanoda then
+      ["git clone https://github.com/ammkrn/nanoda_lib.git",
+       "(cd nanoda_lib && cargo build --release --locked)"]
+    else []
+  let nanodaEnv :=
+    if cmp.enableNanoda then "COMPARATOR_NANODA=../nanoda_lib/target/release/nanoda_bin " else ""
   let projectClone := if cmp.repoUrl.isEmpty then [] else [s!"git clone {cmp.repoUrl}"]
   let projectDir :=
     if cmp.repoUrl.isEmpty then "path/to/your/project"
     else ((cmp.repoUrl.splitOn "/").getLast?).getD "your-project"
   let runLines :=
     if cmp.configArgPath.isEmpty then []
-    else [s!"cd {projectDir}", s!"lake env ../comparator-tool/.lake/build/bin/comparator {cmp.configArgPath}"]
-  projectClone ++ [cloneTool, buildTool] ++ runLines
+    else [s!"cd {projectDir}", s!"{nanodaEnv}lake env ../comparator-tool/.lake/build/bin/comparator {cmp.configArgPath}"]
+  projectClone ++ [cloneTool, buildTool] ++ nanodaBuild ++ runLines
 
 /-- Absolute path of an option-configured path (relative to the build CWD). -/
 private def absOptionPath (workspaceRoot : System.FilePath) (p : String) : System.FilePath :=
@@ -558,11 +574,16 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     if !cfgPath.isEmpty then
       if (← System.FilePath.pathExists cfgPath) then
         let raw ← IO.FS.readFile cfgPath
-        -- Pretty-print when it parses as JSON; fall back to the raw file text.
-        let pretty := match Json.parse raw with
-          | .ok j => j.pretty
-          | .error _ => raw
-        cmp := { cmp with configJson := pretty }
+        -- Pretty-print when it parses as JSON; fall back to the raw file text. The parsed
+        -- config also carries `enable_nanoda`, driving the nanoda-aware repro lines and kernel
+        -- prose (absent field / bad JSON / missing file ⇒ false, i.e. the unchanged page).
+        match Json.parse raw with
+        | .ok j =>
+          cmp := { cmp with
+            configJson := j.pretty
+            enableNanoda := (j.getObjValAs? Bool "enable_nanoda").toOption.getD false }
+        | .error _ =>
+          cmp := { cmp with configJson := raw }
     if !chalPath.isEmpty then
       if (← System.FilePath.pathExists chalPath) then
         cmp := { cmp with challengeSource := (← IO.FS.readFile chalPath) }

@@ -429,7 +429,8 @@ private def statusWithFields := r##"{
 
 /-! `reproCommands` degrades with the data: project-clone only with a `repoUrl`, `--branch`
 only with a `toolRef`, run line only with a `configArgPath`; the tool is always cloned as the
-collision-safe `comparator-tool`. -/
+collision-safe `comparator-tool`. With `enableNanoda`, the flow also clones/builds `nanoda_lib`
+and prefixes the run line with `COMPARATOR_NANODA=`; by default no nanoda line appears. -/
 
 /-- info: true -/
 #guard_msgs in
@@ -440,6 +441,7 @@ collision-safe `comparator-tool`. -/
   let noRepo := String.intercalate "\n" (reproCommands { toolRef := "v4.31.0", configArgPath := "c.json" })
   let noBranch := String.intercalate "\n" (reproCommands { repoUrl := "https://github.com/o/r", configArgPath := "c.json" })
   let noConfig := String.intercalate "\n" (reproCommands { repoUrl := "https://github.com/o/r", toolRef := "v4.31.0" })
+  let withNanoda := String.intercalate "\n" (reproCommands { full with enableNanoda := true })
   -- Full data: project clone + branched tool clone + run line with the config path.
   countSubstr fullS "git clone " == 2 &&
   hasSubstr fullS "--branch v4.31.0 https://github.com/leanprover/comparator.git comparator-tool" &&
@@ -449,7 +451,12 @@ collision-safe `comparator-tool`. -/
   -- No toolRef ⇒ no `--branch` flag.
   !hasSubstr noBranch "--branch" &&
   -- No configArgPath ⇒ the run line is omitted (a README pointer replaces it in the page).
-  !hasSubstr noConfig "lake env"
+  !hasSubstr noConfig "lake env" &&
+  -- Nanoda enabled ⇒ clone/build lines + the COMPARATOR_NANODA env prefix on the run line.
+  hasSubstr withNanoda "nanoda_lib" &&
+  hasSubstr withNanoda "COMPARATOR_NANODA=" &&
+  -- Default (flag false) ⇒ no nanoda anywhere.
+  !hasSubstr fullS "nanoda"
 
 /-! JSON tokenizer: keys → `const`, string values → `literal string`, numbers →
 `literal number`, `true`/`false`/`null` → `keyword`. -/

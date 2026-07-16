@@ -142,10 +142,17 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
       </li> }}
   let tier2 : Option Output.Html :=
     match ciUrl? with
-    | some u => some {{
+    | some u =>
+      -- With the independent nanoda replay enabled, name both kernels here.
+      let replayNote :=
+        if cmp.enableNanoda then
+          " — the exact run that produced this verdict, Lean-kernel and nanoda replays included."
+        else
+          " — the exact run that produced this verdict, kernel replay included."
+      some {{
         <li>
           {{trustOutLink u "The CI verification record"}}
-          " — the exact run that produced this verdict, kernel replay included."
+          {{.text true replayNote}}
         </li> }}
     | none => none
   let toolRefNote : Output.Html :=
@@ -210,6 +217,14 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Ou
       trustSection "The claim"
         (.seq #[linksRow, trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource])
   -- 3. What this page certifies (static prose).
+  let kernelClause : Output.Html :=
+    if cmp.enableNanoda then
+      {{ "Lean kernel — and, independently, the nanoda kernel, a separate reimplementation of "
+         "Lean's type checker — to confirm that the solution proves exactly the challenge "
+         "statements, using only the permitted axioms listed above." }}
+    else
+      {{ "Lean kernel to confirm that the solution proves exactly the challenge statements, using "
+         "only the permitted axioms listed above." }}
   let certifiesSection : Output.Html :=
     trustSection "What this page certifies"
       {{
@@ -217,8 +232,7 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Ou
           "The statement comparator is an independent checking tool maintained by the Lean "
           "project. It elaborates the challenge and the solution in separate environments, so the "
           "solution cannot weaken or restate the claims it is measured against, and then asks the "
-          "Lean kernel to confirm that the solution proves exactly the challenge statements, using "
-          "only the permitted axioms listed above."
+          {{kernelClause}}
         </p> }}
   -- 4. What you must still check yourself (the one non-automatable step).
   let reproducedClause : Output.Html :=
