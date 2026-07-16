@@ -204,6 +204,8 @@ private def sampleUnfinalizedReferenceManifest : ManifestFile := {
       facet := .statement
       kind := some .theorem
       title := "Reference source"
+      parent := some (label "reference_group")
+      parentTitle := some "Reference group"
       leanCodePreviewKeys := #[
         "lean:Valid",
         "lean:MissingManifest",
@@ -219,16 +221,6 @@ private def sampleUnfinalizedReferenceManifest : ManifestFile := {
         related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
         related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
       ]
-      group := some {
-        label := label "reference_group"
-        title := "Reference group"
-        declared := true
-        entries := #[
-          related "valid_target" "Valid target" "informal:valid_target:statement",
-          related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
-          related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
-        ]
-      }
     },
     {
       key := "informal:valid_target:statement"
@@ -261,6 +253,16 @@ private def sampleUnfinalizedReferenceManifest : ManifestFile := {
       title := "MissingCache"
     }
   ]
+  groups := #[{
+    label := label "reference_group"
+    title := "Reference group"
+    declared := true
+    entries := #[
+      related "valid_target" "Valid target" "informal:valid_target:statement",
+      related "cache_only_target" "Cache-only target" "informal:cache_only_target:statement",
+      related "missing_cache_target" "Missing-cache target" "informal:missing_cache_target:statement"
+    ]
+  }]
   graphs := #[{
     key := "reference-finalization"
     nodes := #[
@@ -552,7 +554,7 @@ private def graphNodePreviewKeys
           ("missing_cache_target", none)
         ]
         let groupKeys :=
-          match source.group with
+          match finalized.groupForEntry? source with
           | some group => relatedPreviewKeys group.entries
           | none => #[]
         let variantKeys :=
@@ -598,11 +600,17 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     let json := toJson sampleManifest
     match
       jsonNatField? json Informal.PreviewManifest.manifestInternalSchemaVersionField,
-      jsonArrayField? json "previews" with
-    | some version, some previews =>
+      jsonArrayField? json "previews",
+      jsonArrayField? json "groups" with
+    | some version, some previews, some groups =>
         version == Informal.PreviewManifest.manifestInternalSchemaVersion &&
-          previews.foldl (fun ok entry => ok && (jsonField? entry "sourceLocation").isSome) true
-    | _, _ => false
+          previews.foldl
+            (fun ok entry =>
+              ok && (jsonField? entry "sourceLocation").isSome &&
+                (jsonField? entry "group").isNone)
+            true &&
+          groups == sampleManifest.groups.map toJson
+    | _, _, _ => false
 
 /-- info: true -/
 #guard_msgs in
