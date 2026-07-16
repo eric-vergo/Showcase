@@ -544,7 +544,21 @@ private def graphNodePreviewKeys
     let items := sampleMetadataManifest.workQueueItems
     items.map (fun item => (item.entry.authoredLabel, item.nextStep)) ==
         #[("zeta_statement", "statement"), ("proof_statement", "proof")] &&
-      items.all fun item => item.graphNode.actionableStage? == some item.nextStep
+      items.all fun item =>
+        item.graphNode.label == item.entry.label &&
+          item.graphNode.actionableStage? == some item.nextStep
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  show Bool from
+    match
+      sampleMetadataManifest.actionableGraphNode? (label "proof_statement"),
+      sampleMetadataManifest.actionableGraphNode? (label "alpha_statement") with
+    | some proofNode, none =>
+        proofNode.label == label "proof_statement" &&
+          proofNode.actionableStage? == some "proof"
+    | _, _ => false
 
 /-- info: true -/
 #guard_msgs in
