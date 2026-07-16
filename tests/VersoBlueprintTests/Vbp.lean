@@ -335,6 +335,14 @@ private def sampleMetadataManifest : ManifestFile := {
       title := "Alpha"
       ownerDisplayName := some "Alpha"
       tags := #["beta"]
+    },
+    {
+      key := "informal:proof_statement:statement"
+      targetKind := .block
+      label := label "proof_statement"
+      facet := .statement
+      kind := some .theorem
+      title := "Proof statement"
     }
   ]
   graphs := #[{
@@ -346,6 +354,7 @@ private def sampleMetadataManifest : ManifestFile := {
         displayLabel := "Zeta"
         kind := some .definition
         statementStatus := .ready
+        proofStatus := .ready
         visual := { fillcolor := "#ffffff" }
       },
       {
@@ -354,6 +363,15 @@ private def sampleMetadataManifest : ManifestFile := {
         displayLabel := "Alpha"
         kind := some .definition
         statementStatus := .blocked
+        visual := { fillcolor := "#ffffff" }
+      },
+      {
+        label := label "proof_statement"
+        title := "Proof statement"
+        displayLabel := "Proof statement"
+        kind := some .theorem
+        statementStatus := .formalized
+        proofStatus := .incomplete
         visual := { fillcolor := "#ffffff" }
       }
     ]
@@ -516,7 +534,7 @@ private def graphNodePreviewKeys
           sampleMetadataManifest.metadataEntries.map (·.authoredLabel) ==
             #["zeta_statement", "alpha_statement"] &&
           sampleMetadataManifest.workQueueEntries.map (·.authoredLabel) ==
-            #["zeta_statement"]
+            #["zeta_statement", "proof_statement"]
     | _, _ => false
 
 /-- info: true -/
@@ -611,10 +629,19 @@ private def writeRawManifestOnlySite (site : System.FilePath) (manifestJson : Js
     | .ok json =>
         match jsonArrayField? json "entries" with
         | some entries =>
-            entries.size == 1 &&
-              jsonArrayHasStringField entries "label" "zeta_statement" &&
-              jsonArrayHasStringField entries "nextStep" "statement" &&
-              jsonArrayHasStringField entries "statementStatus" "ready to formalize"
+            match
+              entries.find? (fun entry => jsonStringField? entry "label" == some "zeta_statement"),
+              entries.find? (fun entry => jsonStringField? entry "label" == some "proof_statement") with
+            | some statementEntry, some proofEntry =>
+                entries.size == 2 &&
+                  jsonHasApiStability json &&
+                  jsonStringField? statementEntry "nextStep" == some "statement" &&
+                  jsonStringField? statementEntry "statementStatus" == some "ready to formalize" &&
+                  jsonStringField? statementEntry "proofStatus" == some "ready to formalize" &&
+                  jsonStringField? proofEntry "nextStep" == some "proof" &&
+                  jsonStringField? proofEntry "statementStatus" == some "formalized" &&
+                  jsonStringField? proofEntry "proofStatus" == some "Lean code incomplete"
+            | _, _ => false
         | none => false
     | .error _ => false
 
