@@ -1,10 +1,15 @@
 import Lake
 open Lake DSL
 
--- While the split is in progress, the extracted blueprint package depends on
--- the parent repo root, which remains a checkout of Verso.
--- require verso from "../verso"
-require verso from git "https://github.com/leanprover/verso"@"v4.32.0"
+-- Our Verso fork, which self-hosts `marked` for offline / strict-CSP viewing instead of
+-- loading it from a CDN. Required before verso-slides' transitive (upstream) verso so this
+-- fork wins resolution. Git-pinned to the eric-vergo fork's `blueprint` branch so published
+-- consumers (the A362583 showcase) and standalone clones resolve the same fork tree.
+require verso from git "https://github.com/eric-vergo/verso.git"@"blueprint"
+-- SubVerso fork for VSCode-faithful highlighting (const type/function split + bracket-pair depth).
+-- Root-level require so it wins over verso's transitive subverso pin and all manifests stay
+-- consistent; points at the same eric-vergo/subverso `blueprint` branch verso itself requires.
+require subverso from git "https://github.com/eric-vergo/subverso.git"@"blueprint"
 require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.32.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 
@@ -33,12 +38,14 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintAutoDeps,
     `VersoBlueprintTests.BlueprintAttribute,
     `VersoBlueprintTests.BlueprintCodeRenderMatrix,
+    `VersoBlueprintTests.BlueprintDeclPages,
     `VersoBlueprintTests.BlueprintImportedDuplicates.Direct,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderA,
     `VersoBlueprintTests.BlueprintImportedDuplicates.ProviderB,
     `VersoBlueprintTests.BlueprintImportedDuplicates.Reexport,
     `VersoBlueprintTests.BlueprintImportedDuplicates.Transitive,
     `VersoBlueprintTests.BlueprintExternalHeadingStatus,
+    `VersoBlueprintTests.BlueprintFormalization,
     `VersoBlueprintTests.BlueprintGraft,
     `VersoBlueprintTests.BlueprintGraph,
     `VersoBlueprintTests.BlueprintHeaderExtras,
@@ -54,11 +61,9 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,
     `VersoBlueprintTests.BlueprintPreviewWiring,
-    `VersoBlueprintTests.BlueprintSource,
     `VersoBlueprintTests.BlueprintRustCode,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,
-    `VersoBlueprintTests.BlueprintTeXCleanup,
     `VersoBlueprintTests.BlueprintTexMacros,
     `VersoBlueprintTests.BlueprintExternalMarkup,
     `VersoBlueprintTests.ExternalDeclRender,
