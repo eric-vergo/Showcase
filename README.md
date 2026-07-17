@@ -15,6 +15,70 @@ A Blueprint project combines:
 - rendered overview pages such as dependency graphs and progress summaries
 - HTML output with previews, navigation, and exported metadata
 
+## What this fork changes vs upstream
+
+This is **eric-vergo/verso-blueprint**, a fork of
+[leanprover/verso-blueprint](https://github.com/leanprover/verso-blueprint) that
+turns the Blueprint genre into a browsable, self-contained documentation site for
+mathematicians and formalization contributors. It is the genre powering the
+**A362583 irrationality showcase** — <https://eric-vergo.github.io/OEIS-A362583-Irrationality/>.
+
+The fork's feature program, layered over upstream's genre:
+
+- **Per-node & per-declaration pages.** Every blueprint node gets its own page
+  (slug routing with Greek-letter transliteration) with a side-by-side
+  informal ↔ Lean card (proof bodies hidden by default), plus per-declaration
+  pages, short display names, and declaration index / catalog pages.
+- **Dependency graph, dashboard & project-management hub.** A transitive-reduction
+  dependency graph (show-all-edges toggle, all-declarations mode, essential view,
+  status filter, dark-mode framed cards) drawn with **self-hosted** d3 / d3-graphviz;
+  a landing dashboard with self-hosted d3 charts; and a single "Project management"
+  top-nav feeding a `pm/` hub (worklist, owners, tags, audit, Mathlib candidates,
+  definitions, theorems, modules, index).
+- **Claim-first comparator / trust surface.** A comparator page with a trust strip
+  and a `formalization.yaml` metadata page, an unconditional acyclicity build gate
+  plus an optional single-connectivity gate, and `verso.blueprint.trust.*` /
+  `declNamePrefix` / `graph.includeAllDecls` / `math.lint` /
+  `externalCode.strictResolve` lakefile options.
+- **Verbatim-source signatures & faithful highlighting.** Node signatures are the
+  author's verbatim source, re-elaborated in the declaration's own namespace (with a
+  delaborated fallback); proof bodies render without inline proof-state toggles so
+  per-token type hovers work; build-time TikZ → SVG offline figures.
+- **Full light/dark theming.** Everything themes via `data-bp-color-scheme` with the
+  `--bp-color-*` / `--bp-space-*` / `--bp-duration-*` / `--bp-fs-*` token scales, a
+  restrained dev-tool-docs visual identity, and **offline / self-contained** emitted
+  output (no CDN or off-origin assets in the generated site).
+
+### Wiring
+
+The fork pins its own upstream forks from git so it resolves standalone and for
+published consumers:
+
+- `verso`    → **git `eric-vergo/verso` @ `blueprint`** (Verso fork that self-hosts
+  `marked` for strict-CSP / offline viewing; v4.32-based)
+- `subverso` → **git `eric-vergo/subverso` @ `blueprint`** (SubVerso fork for
+  VSCode-faithful semantic highlighting: const type/function split + bracket-pair
+  depth; classification only, no colors/HTML)
+- `verso-slides` → `leanprover/verso-slides` @ `v4.32.0`,
+  `proofwidgets` → `ProofWidgets4` @ `v0.0.104`
+- toolchain **`leanprover/lean4:v4.32.0`**
+
+### Branch layout
+
+- **`blueprint`** — the fork's work branch (default). Rebased onto upstream
+  `v4.32.0`.
+- Upstream release branches (`v4.28.0` … `v4.32.0`) are retained for reference and
+  to track upstream.
+
+Because upstream v4.32.0 and this fork independently rewrote the shared
+graph / preview / manifest subsystem (upstream added a `GraphModel`/`GraphData`
+split and a strict `PreviewKey` type; the fork kept a combined `GraphData` with
+`String` preview keys under a large feature layer), the fork's `src/` is carried as
+a coherent unit adapted to build on v4.32 Verso. Upstream v4.32 preview/graph
+capabilities that are inseparable from that replaced subsystem (external-markup /
+foreign-LSP refs, TeX/PDF export, standalone-slide + source-metadata runtime) are
+not currently carried over.
+
 ## Start Here
 
 ### Start a project
