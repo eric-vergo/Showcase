@@ -19,18 +19,6 @@ def require_box(locator: Locator):
     return box
 
 
-def assert_source_location_path(result: dict, needle: str):
-    source_location = result["sourceLocation"]
-    assert source_location["ok"] is True
-    assert needle in source_location["location"]["path"]
-
-
-def assert_source_location_error(result: dict, needle: str):
-    source_location = result["sourceLocation"]
-    assert source_location["ok"] is False
-    assert needle in source_location["error"]
-
-
 class TestPreviewRuntimeRegressions:
     def test_public_xref_excludes_internal_blueprint_indexes(self, server: str):
         with urllib.request.urlopen(f"{server}/xref.json") as response:
@@ -368,154 +356,6 @@ class TestPreviewRuntimeRegressions:
 
         assert_no_runtime_errors(errors)
 
-    def test_blueprint_summary_external_markup_entries_have_previews(
-        self, server: str, page: Page
-    ):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Blueprint-Summary/")
-        wait_for_blueprint_render_api(page)
-        page.locator(".bp_summary[data-bp-template-preview-bound='1']").wait_for()
-
-        page.locator("details").evaluate_all("els => els.forEach(el => { el.open = true; })")
-
-        trigger = page.locator(
-            '.bp_summary_item_head '
-            '.bp_summary_preview_wrap_active'
-            '[data-bp-preview-key="externalMarkup:custom_client_external_markdown"]'
-        ).first
-        expect(trigger).to_have_count(1)
-        trigger.scroll_into_view_if_needed()
-        trigger.hover()
-
-        panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
-        expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text(
-            "custom_client_external_markdown"
-        )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text(
-            "External Markdown source"
-        )
-        expect(panel.locator(".bp_summary_preview_panel_body")).to_contain_text("only Markdown")
-
-        assert_no_runtime_errors(errors)
-
-    def test_blueprint_summary_preview_title_uses_manifest_display_title(
-        self, server: str, page: Page
-    ):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Blueprint-Summary/")
-        wait_for_blueprint_render_api(page)
-        page.locator(".bp_summary[data-bp-template-preview-bound='1']").wait_for()
-
-        page.locator("details").evaluate_all("els => els.forEach(el => { el.open = true; })")
-
-        trigger = page.locator(
-            '.bp_summary_item_head '
-            '.bp_summary_preview_wrap_active'
-            '[data-bp-preview-key="preview_base--statement"]'
-        ).first
-        expect(trigger).to_have_count(1)
-        trigger.scroll_into_view_if_needed()
-        trigger.hover()
-
-        panel = page.locator(".bp_summary_preview_panel:not([hidden])").first
-        expect(panel).to_be_visible()
-        expect(panel.locator(".bp_summary_preview_panel_title")).to_have_text("Definition 1.1")
-
-        assert_no_runtime_errors(errors)
-
-    def test_mobile_block_header_extras_wrap_without_page_overflow(self, server: str, page: Page):
-        page.set_viewport_size({"width": 390, "height": 844})
-        page.goto(f"{server}/Core-Previews/")
-        page.locator(".bp_wrapper").first.wait_for()
-
-        metrics = page.evaluate(
-            """() => {
-                const viewportRight = window.innerWidth + 1;
-                const headings = Array.from(document.querySelectorAll(".bp_heading"));
-                const overflowing = headings.flatMap((heading) => {
-                    const extras = heading.querySelector(".bp_extras");
-                    if (!extras) return [];
-                    const headingRect = heading.getBoundingClientRect();
-                    const extrasRect = extras.getBoundingClientRect();
-                    const spillsViewport =
-                        extrasRect.right > viewportRight ||
-                        heading.scrollWidth > heading.clientWidth + 1;
-                    if (!spillsViewport) return [];
-                    return [{
-                        headingText: heading.textContent.trim().replace(/\\s+/g, " ").slice(0, 120),
-                        headingWidth: headingRect.width,
-                        headingScrollWidth: heading.scrollWidth,
-                        extrasRight: extrasRect.right,
-                        extrasWidth: extrasRect.width
-                    }];
-                });
-                return {
-                    documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-                    viewportWidth: window.innerWidth,
-                    overflowing
-                };
-            }"""
-        )
-
-        assert metrics["overflowing"] == []
-
-    def test_mobile_summary_decl_names_wrap_without_page_overflow(self, server: str, page: Page):
-        page.set_viewport_size({"width": 390, "height": 844})
-        page.goto(f"{server}/Blueprint-Summary/")
-        page.locator(".bp_summary_decl_list").first.wait_for(state="attached")
-        page.locator("details").evaluate_all("els => els.forEach(el => { el.open = true; })")
-
-        metrics = page.evaluate(
-            """() => {
-                const viewportRight = window.innerWidth + 1;
-                const overflowItem = (node) => {
-                    const rect = node.getBoundingClientRect();
-                    return node.scrollWidth > node.clientWidth + 1 || rect.right > viewportRight;
-                };
-                const declLists = Array.from(document.querySelectorAll(".bp_summary_decl_list"));
-                const links = Array.from(document.querySelectorAll(".bp_summary_decl_list .bp_inline_preview_ref"));
-                const overflowingLists = declLists.filter((list) => list.scrollWidth > list.clientWidth + 1);
-                const overflowingItems = Array.from(
-                    document.querySelectorAll(
-                        ".bp_summary_item_head, .bp_summary_item_body, .bp_summary_item_actions"
-                    )
-                ).flatMap((node) => {
-                    if (!overflowItem(node)) return [];
-                    const rect = node.getBoundingClientRect();
-                    return [{
-                        text: node.textContent.trim().replace(/\\s+/g, " ").slice(0, 160),
-                        right: rect.right,
-                        width: rect.width,
-                        scrollWidth: node.scrollWidth,
-                        clientWidth: node.clientWidth
-                    }];
-                });
-                const overflowingLinks = links.flatMap((link) => {
-                    const rect = link.getBoundingClientRect();
-                    if (rect.right <= viewportRight) return [];
-                    return [{
-                        text: link.textContent.trim().replace(/\\s+/g, " ").slice(0, 160),
-                        right: rect.right,
-                        width: rect.width
-                    }];
-                });
-                return {
-                    linkCount: links.length,
-                    documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-                    viewportWidth: window.innerWidth,
-                    overflowingLists: overflowingLists.length,
-                    overflowingItems,
-                    overflowingLinks
-                };
-            }"""
-        )
-
-        assert metrics["linkCount"] > 0
-        assert metrics["overflowingLists"] == 0
-        assert metrics["overflowingItems"] == []
-        assert metrics["overflowingLinks"] == []
-
     def test_exact_cache_keys_keep_statement_and_proof_previews_distinct(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
@@ -565,86 +405,6 @@ class TestPreviewRuntimeRegressions:
         assert previews["statement"]["href"].endswith("preview_facets--statement")
         assert previews["proof"]["href"].endswith("preview_facets--proof")
         assert "bp_label_preview_tpl" not in page.content()
-
-        assert_no_runtime_errors(errors)
-
-    def test_preview_runtime_resolves_labels_and_declarations(self, server: str, page: Page):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Preview-Relationships/")
-
-        previews = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const { createPreviewData } = await import(api.dataApiModuleUrl());
-                const data = createPreviewData();
-                function resolutionSnapshot(result) {
-                    const snapshot = {
-                        ok: result.ok,
-                        reason: result.reason,
-                        key: result.key,
-                        href: result.href,
-                        sourceLocation: result.sourceLocation,
-                        targetKind: result.manifestEntry ? result.manifestEntry.targetKind : null
-                    };
-                    if ("label" in result) snapshot.label = result.label;
-                    if ("facet" in result) snapshot.facet = result.facet;
-                    if ("declaration" in result) snapshot.declaration = result.declaration;
-                    return snapshot;
-                }
-                return {
-                    labelStatement: resolutionSnapshot(await api.resolveLabel("preview_facets")),
-                    labelProof: resolutionSnapshot(await api.resolveLabel("preview_facets", { facet: "proof" })),
-                    missingLabel: resolutionSnapshot(await api.resolveLabel("missing_preview_runtime_label")),
-                    declaration: resolutionSnapshot(await api.resolveDeclaration("Nat.add")),
-                    missingDeclaration: resolutionSnapshot(
-                        await api.resolveDeclaration("Missing.Declaration.For.Runtime")
-                    ),
-                    dataLabelStatement: resolutionSnapshot(await data.resolveLabel("preview_facets")),
-                    dataDeclaration: resolutionSnapshot(await data.resolveDeclaration("Nat.add"))
-                };
-                """
-            )
-        )
-
-        assert previews["labelStatement"]["ok"]
-        assert previews["labelStatement"]["reason"] == ""
-        assert previews["labelStatement"]["key"] == "preview_facets--statement"
-        assert previews["labelStatement"]["label"] == "preview_facets"
-        assert previews["labelStatement"]["facet"] == "statement"
-        assert previews["labelStatement"]["href"].endswith("preview_facets--statement")
-        assert_source_location_path(previews["labelStatement"], "PreviewRelationships.lean")
-        assert previews["labelProof"]["ok"]
-        assert previews["labelProof"]["reason"] == ""
-        assert previews["labelProof"]["key"] == "preview_facets--proof"
-        assert previews["labelProof"]["label"] == "preview_facets"
-        assert previews["labelProof"]["facet"] == "proof"
-        assert previews["labelProof"]["href"].endswith("preview_facets--proof")
-        assert_source_location_path(previews["labelProof"], "PreviewRelationships.lean")
-        assert previews["missingLabel"]["ok"] is False
-        assert previews["missingLabel"]["reason"] == "label-entry-missing"
-        assert previews["missingLabel"]["key"] == "missing_preview_runtime_label--statement"
-        assert_source_location_error(previews["missingLabel"], "label entry missing")
-        assert previews["declaration"]["ok"]
-        assert previews["declaration"]["reason"] == ""
-        assert previews["declaration"]["declaration"] == "Nat.add"
-        assert previews["declaration"]["key"] == "Informal.LeanCodePreview.Nat.add"
-        assert previews["declaration"]["targetKind"] == "leanDecl"
-        assert previews["declaration"]["href"].startswith("Core-Previews/")
-        assert "#--informal-preview-" in previews["declaration"]["href"]
-        assert_source_location_path(previews["declaration"], "Init/Prelude.lean")
-        assert previews["missingDeclaration"]["ok"] is False
-        assert previews["missingDeclaration"]["reason"] == "declaration-entry-missing"
-        assert previews["missingDeclaration"]["declaration"] == "Missing.Declaration.For.Runtime"
-        assert previews["missingDeclaration"]["key"] == (
-            "Informal.LeanCodePreview.Missing.Declaration.For.Runtime"
-        )
-        assert_source_location_error(previews["missingDeclaration"], "declaration entry missing")
-        assert previews["dataLabelStatement"]["ok"]
-        assert previews["dataLabelStatement"]["key"] == "preview_facets--statement"
-        assert_source_location_path(previews["dataLabelStatement"], "PreviewRelationships.lean")
-        assert previews["dataDeclaration"]["ok"]
-        assert previews["dataDeclaration"]["key"] == "Informal.LeanCodePreview.Nat.add"
-        assert_source_location_path(previews["dataDeclaration"], "Init/Prelude.lean")
 
         assert_no_runtime_errors(errors)
 
@@ -719,11 +479,6 @@ class TestPreviewRuntimeRegressions:
                         }
                     );
                     const customCalls = [];
-                    const unavailableSourceLocation = {
-                        ok: false,
-                        location: null,
-                        error: "source location unavailable"
-                    };
                     const customFetchJson = function (url) {
                         customCalls.push(url);
                         if (url.endsWith("blueprint-manifest.json")) {
@@ -733,11 +488,18 @@ class TestPreviewRuntimeRegressions:
                                         key: "custom_loader--statement",
                                         label: "custom_loader",
                                         facet: "statement",
-                                        title: "Custom loader",
-                                        sourceLocation: unavailableSourceLocation
+                                        title: "Custom loader"
                                     }
                                 ],
-                                groups: []
+                                graphs: [
+                                    {
+                                        schemaVersion: 1,
+                                        key: "graph:custom-loader",
+                                        nodes: [],
+                                        edges: [],
+                                        groups: []
+                                    }
+                                ]
                             });
                         }
                         if (url.endsWith("blueprint-html-cache.json")) {
@@ -764,6 +526,13 @@ class TestPreviewRuntimeRegressions:
                         customHost,
                         "custom_loader--statement",
                         { hydrate: false, renderMath: false }
+                    );
+                    const graphModule = await import(
+                      new URL("../-verso-data/api/graph.mjs", window.location.href).href
+                    );
+                    const customGraphs = await graphModule.loadManifestGraphs(
+                      customApi.manifestUrl(),
+                      { fetchJson: customFetchJson }
                     );
                     const afterCustomHost = document.createElement("section");
                     document.body.appendChild(afterCustomHost);
@@ -797,6 +566,7 @@ class TestPreviewRuntimeRegressions:
                         customOk: customResult.ok,
                         customText: customText,
                         customCalls: customCalls,
+                        customGraphCount: customGraphs.length,
                         afterCustomOk: afterCustomResult.ok,
                         afterCustomText: afterCustomText,
                         constructorHydrator: constructorHydrator,
@@ -831,6 +601,7 @@ class TestPreviewRuntimeRegressions:
             call.endswith("blueprint-html-cache.json")
             for call in standalone_module["customCalls"]
         )
+        assert standalone_module["customGraphCount"] == 1
         assert standalone_module["constructorHydrator"] == "constructorOption"
         assert standalone_module["callConstructorHydrator"] == ""
         assert standalone_module["callHydrator"] == "options"
@@ -1017,9 +788,6 @@ class TestPreviewRuntimeRegressions:
         expect(external_markdown_card).to_have_attribute(
             "data-bp-external-markup-slot", "original"
         )
-        expect(
-            external_markdown_card.locator("[data-bp-custom-client-summary]").first
-        ).to_contain_text("Source refs 1")
         external_markdown_body = external_markdown_card.locator(
             '[data-bp-custom-client-body="external-markdown"]'
         ).first
@@ -1175,214 +943,6 @@ class TestPreviewRuntimeRegressions:
         expect(missing_body).to_contain_text("missing_custom_client_target--statement")
 
         assert_no_runtime_errors(errors)
-
-    def test_public_data_api_requires_manifest_source_location(
-        self, server: str, page: Page
-    ):
-        page.goto(f"{server}/Custom-Render-Client/")
-
-        result = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const { createPreviewData } = await import(api.dataApiModuleUrl());
-                const data = createPreviewData({
-                    fetchJson(url) {
-                        if (url.endsWith("blueprint-manifest.json")) {
-                            return Promise.resolve({
-                                previews: [
-                                    {
-                                        key: "missing_source_location--statement",
-                                        label: "missing_source_location",
-                                        facet: "statement",
-                                        title: "Missing source location"
-                                    }
-                                ],
-                                groups: [],
-                                graphs: []
-                            });
-                        }
-                        throw new Error("Unexpected custom loader URL: " + url);
-                    }
-                });
-                const manifest = await data.loadManifest();
-                const status = data.readManifestStatus();
-                return {
-                    state: status.state,
-                    message: status.lastError,
-                    manifestSize: manifest.size
-                };
-                """
-            )
-        )
-
-        assert result["state"] == "error"
-        assert result["manifestSize"] == 0
-        assert "missing sourceLocation" in result["message"]
-
-    def test_public_data_api_rejects_invalid_group_catalogs(
-        self, server: str, page: Page
-    ):
-        page.goto(f"{server}/Custom-Render-Client/")
-
-        result = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const { createPreviewData } = await import(api.dataApiModuleUrl());
-                async function loadStatus(payload) {
-                    const data = createPreviewData({
-                        fetchJson(url) {
-                            if (url.endsWith("blueprint-manifest.json")) {
-                                return Promise.resolve(payload);
-                            }
-                            throw new Error("Unexpected custom loader URL: " + url);
-                        }
-                    });
-                    const groups = await data.loadGroups();
-                    return {
-                        state: data.readManifestStatus().state,
-                        message: data.readManifestStatus().lastError,
-                        groupCount: groups.length
-                    };
-                }
-                const sourceLocation = {
-                    ok: false,
-                    location: null,
-                    error: "source location unavailable"
-                };
-                const member = {
-                    label: "group_member",
-                    title: "Group member",
-                    href: null,
-                    previewKey: null,
-                    axes: []
-                };
-                const entry = {
-                    key: "informal:group_member:statement",
-                    targetKind: "block",
-                    label: "group_member",
-                    facet: "statement",
-                    title: "Group member",
-                    sourceLocation,
-                    parent: "sample_group",
-                    parentTitle: "Sample group"
-                };
-                const group = {
-                    label: "sample_group",
-                    title: "Sample group",
-                    declared: true,
-                    entries: [member]
-                };
-                const secondGroup = {
-                    label: "second_group",
-                    title: "Second group",
-                    declared: true,
-                    entries: []
-                };
-                function manifest(previews, groups) {
-                    return { previews, groups, graphs: [] };
-                }
-                const valid = manifest([entry], [group]);
-                const duplicateMemberGroup = {
-                    ...group,
-                    entries: [member, member]
-                };
-                const crossGroup = {
-                    ...secondGroup,
-                    entries: [member]
-                };
-                const payloads = {
-                    missing: { previews: [], graphs: [] },
-                    valid,
-                    validExternal: manifest([
-                        {
-                            ...entry,
-                            key: "externalMarkup:group_member",
-                            targetKind: "externalMarkup"
-                        }
-                    ], [group]),
-                    duplicate: manifest([], [group, group]),
-                    duplicateMember: manifest([], [duplicateMemberGroup]),
-                    crossGroupMember: manifest([], [group, crossGroup]),
-                    missingMember: manifest([entry], [{ ...group, entries: [] }]),
-                    orphanMember: manifest([], [group]),
-                    mismatchedParent: manifest([
-                        { ...entry, parent: "second_group", parentTitle: "Second group" }
-                    ], [group, secondGroup]),
-                    mismatchedTitle: manifest([
-                        { ...entry, parentTitle: "Stale group title" }
-                    ], [group]),
-                    unparentedMember: manifest([
-                        { ...entry, parent: null, parentTitle: null }
-                    ], [group]),
-                    emptyGroupLabel: manifest([entry], [{ ...group, label: " " }]),
-                    emptyGroupTitle: manifest([entry], [{ ...group, title: " " }]),
-                    emptyMemberLabel: manifest([entry], [{
-                        ...group,
-                        entries: [{ ...member, label: " " }]
-                    }]),
-                    emptyEntryLabel: manifest([{ ...entry, label: " " }], [group]),
-                    invalidParent: manifest([{ ...entry, parent: " " }], [group])
-                };
-                const statuses = {};
-                for (const [name, payload] of Object.entries(payloads)) {
-                    statuses[name] = await loadStatus(payload);
-                }
-                return statuses;
-                """
-            )
-        )
-
-        assert result["missing"]["state"] == "error"
-        assert result["missing"]["groupCount"] == 0
-        assert "missing groups array" in result["missing"]["message"]
-        assert result["valid"]["state"] == "ready"
-        assert result["valid"]["groupCount"] == 1
-        assert result["validExternal"]["state"] == "ready"
-        assert result["validExternal"]["groupCount"] == 1
-        assert result["duplicate"]["state"] == "error"
-        assert result["duplicate"]["groupCount"] == 0
-        assert "duplicate group sample_group" in result["duplicate"]["message"]
-        assert (
-            "duplicate member group_member in group sample_group"
-            in result["duplicateMember"]["message"]
-        )
-        assert (
-            "member group_member belongs to multiple groups"
-            in result["crossGroupMember"]["message"]
-        )
-        assert (
-            "entry informal:group_member:statement is missing from group sample_group"
-            in result["missingMember"]["message"]
-        )
-        assert (
-            "group sample_group member group_member has no matching manifest entry"
-            in result["orphanMember"]["message"]
-        )
-        assert (
-            "entry informal:group_member:statement belongs to group "
-            "sample_group but references second_group"
-            in result["mismatchedParent"]["message"]
-        )
-        assert (
-            "entry informal:group_member:statement has inconsistent parentTitle"
-            in result["mismatchedTitle"]["message"]
-        )
-        assert (
-            "entry informal:group_member:statement has no parent but is listed in "
-            "group sample_group"
-            in result["unparentedMember"]["message"]
-        )
-        assert "missing label" in result["emptyGroupLabel"]["message"]
-        assert "missing title" in result["emptyGroupTitle"]["message"]
-        assert "member 0 is missing label" in result["emptyMemberLabel"]["message"]
-        assert (
-            "entry informal:group_member:statement is missing label"
-            in result["emptyEntryLabel"]["message"]
-        )
-        assert (
-            "entry informal:group_member:statement has invalid parent"
-            in result["invalidParent"]["message"]
-        )
 
     def test_render_node_external_markup_diagnostics(self, server: str, page: Page):
         errors = record_runtime_errors(page)
@@ -1556,7 +1116,7 @@ class TestPreviewRuntimeRegressions:
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
 
-        public_client_methods = runtime_api_methods("publicCustomClientApi")
+        stable_client_methods = runtime_api_methods("stableCustomClientApi")
         bundled_helper_methods = runtime_api_methods("bundledFeatureRenderHelpers")
         rendered = page.evaluate(
             blueprint_render_api_script(
@@ -1568,12 +1128,12 @@ class TestPreviewRuntimeRegressions:
                 const mutatedHtmlCacheStatus = api.readHtmlCacheStatus();
                 mutatedManifestStatus.state = "mutated";
                 mutatedHtmlCacheStatus.state = "mutated";
-                const publicClientMethods = __PUBLIC_CLIENT_METHODS__;
+                const stableClientMethods = __STABLE_CLIENT_METHODS__;
                 const bundledHelperMethods = __BUNDLED_HELPER_METHODS__;
                 return {
                     hasApi: true,
-                    publicClientApiTypes: Object.fromEntries(
-                        publicClientMethods.map((name) => [name, typeof api[name]])
+                    stableClientApiTypes: Object.fromEntries(
+                        stableClientMethods.map((name) => [name, typeof api[name]])
                     ),
                     bundledHelperApiTypes: Object.fromEntries(
                         bundledHelperMethods.map((name) => [name, typeof api[name]])
@@ -1609,13 +1169,13 @@ class TestPreviewRuntimeRegressions:
                     htmlCacheStatusAfterMutation: api.readHtmlCacheStatus()
                 };
                 """
-                .replace("__PUBLIC_CLIENT_METHODS__", json.dumps(public_client_methods))
+                .replace("__STABLE_CLIENT_METHODS__", json.dumps(stable_client_methods))
                 .replace("__BUNDLED_HELPER_METHODS__", json.dumps(bundled_helper_methods))
             )
         )
 
         assert rendered["hasApi"]
-        assert set(rendered["publicClientApiTypes"].values()) == {"function"}
+        assert set(rendered["stableClientApiTypes"].values()) == {"function"}
         assert set(rendered["bundledHelperApiTypes"].values()) == {"function"}
         assert rendered["publicSurface"] == {
             "hasReadPreviewTemplate": False,
@@ -1647,472 +1207,6 @@ class TestPreviewRuntimeRegressions:
         assert rendered["manifestStatusAfterMutation"]["state"] == "ready"
         assert rendered["htmlCacheStatusAfterMutation"]["state"] == "ready"
 
-        assert_no_runtime_errors(errors)
-
-    def test_generated_manifest_carries_source_metadata_for_external_markup(self, server: str):
-        with urllib.request.urlopen(f"{server}/-verso-data/blueprint-manifest.json") as response:
-            manifest = json.load(response)
-
-        source_document = next(
-            document
-            for document in manifest["sourceDocuments"]
-            if document["id"] == "custom-client-paper"
-        )
-        entry = next(
-            entry
-            for entry in manifest["previews"]
-            if entry["key"] == "externalMarkup:custom_client_external_markdown_metadata"
-        )
-        source_ref = entry["sources"][0]
-        span = source_ref["spans"][0]
-
-        assert source_document == {
-            "id": "custom-client-paper",
-            "imageRoot": "source/pages/images",
-            "kind": "pdf",
-            "pageRoot": "source/pages",
-            "pdf": "source/paper.pdf",
-            "title": "Representation Theory",
-        }
-        assert entry["targetKind"] == "externalMarkup"
-        assert entry["label"] == "custom_client_external_markdown_metadata"
-        assert source_ref["document"] == "custom-client-paper"
-        assert span["page"] == "42"
-        assert span["text"]["path"] == "source/pages/page-42.md"
-        assert span["text"]["startLine"] == 10
-        assert span["text"]["endLine"] == 12
-        assert span["pdf"]["path"] == "source/pages/page-42.pdf"
-        assert span["pdf"]["image"] == "source/pages/images/page-42.png"
-        assert span["pdf"]["box"] == {
-            "pageHeight": 2200,
-            "pageWidth": 1600,
-            "scale": 2,
-            "xMax": 980,
-            "xMin": 120,
-            "yMax": 520,
-            "yMin": 240,
-        }
-
-    def test_public_apis_resolve_source_documents_from_manifest(self, server: str, page: Page):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Custom-Render-Client/")
-
-        result = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const {
-                    createPreviewData,
-                    resolveSourceMetadata: resolveSourceMetadataFromDataModule,
-                    statementPreviewKey: moduleStatementPreviewKey
-                } = await import(api.dataApiModuleUrl());
-                const { createPreview } = await import(api.previewApiModuleUrl());
-                const dataCalls = [];
-                const moduleCalls = [];
-                const previewCalls = [];
-                const unavailableSourceLocation = {
-                    ok: false,
-                    location: null,
-                    error: "source location unavailable"
-                };
-                const manifestPayload = {
-                    sourceDocuments: [
-                        {
-                            id: "paper",
-                            title: "Representation Theory",
-                            kind: "pdf",
-                            pdf: "source/paper.pdf",
-                            pageRoot: "source/pages",
-                            imageRoot: "source/pages/images"
-                        }
-                    ],
-                    previews: [
-                        {
-                            key: "sample_node--statement",
-                            label: "sample_node",
-                            authoredLabel: "sample_node",
-                            facet: "statement",
-                            sourceLocation: unavailableSourceLocation,
-                            sources: [
-                                {
-                                    document: "paper",
-                                    spans: [
-                                        {
-                                            page: "42",
-                                            pdf: {
-                                                path: "source/pages/p42.pdf",
-                                                image: "source/pages/images/p42.png"
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    ],
-                    groups: [],
-                    graphs: []
-                };
-                const data = createPreviewData({
-                    fetchJson(url) {
-                        dataCalls.push(url);
-                        return manifestPayload;
-                    }
-                });
-                const preview = createPreview({
-                    fetchJson(url) {
-                        previewCalls.push(url);
-                        return manifestPayload;
-                    }
-                });
-                const sourceDocuments = await data.loadSourceDocuments();
-                const entry = await data.loadManifestEntry(data.statementPreviewKey("sample_node"));
-                const sourceDocument = await data.loadSourceDocument(entry.sources[0].document);
-                const sameDocument = await data.loadSourceDocument("paper");
-                const missingDocument = await data.loadSourceDocument("missing");
-                const emptyDocument = await data.loadSourceDocument("");
-                const sourceMetadata = await data.resolveSourceMetadata(
-                    data.statementPreviewKey("sample_node")
-                );
-                const moduleSourceMetadata = await resolveSourceMetadataFromDataModule(
-                    moduleStatementPreviewKey("sample_node"),
-                    {
-                        fetchJson(url) {
-                            moduleCalls.push(url);
-                            return manifestPayload;
-                        }
-                    }
-                );
-                const manifest = await data.loadManifest();
-                const previewSourceDocument = await preview.loadSourceDocument("paper");
-                const previewSourceDocuments = await preview.loadSourceDocuments();
-                const previewEntry = await preview.loadManifestEntry(
-                    preview.statementPreviewKey("sample_node")
-                );
-
-                return {
-                    dataCalls: dataCalls.length,
-                    moduleCalls: moduleCalls.length,
-                    previewCalls: previewCalls.length,
-                    manifestSize: manifest.size,
-                    sourceDocumentCount: sourceDocuments.length,
-                    sourceDocumentId: sourceDocument && sourceDocument.id,
-                    sourceDocumentTitle: sourceDocument && sourceDocument.title,
-                    sourceDocumentPdf: sourceDocument && sourceDocument.pdf,
-                    entrySourceDocument: entry && entry.sources[0].document,
-                    sameObject: sourceDocument === sameDocument,
-                    missingDocument,
-                    emptyDocument,
-                    dataHasSourceMetadataResolver:
-                        typeof data.resolveSourceMetadata === "function",
-                    moduleHasSourceMetadataResolver:
-                        typeof resolveSourceMetadataFromDataModule === "function",
-                    dataSourceMetadataOk: sourceMetadata.ok,
-                    dataSourceMetadataDocumentTitle: sourceMetadata.sources[0].document.title,
-                    dataSourceMetadataPage: sourceMetadata.sources[0].spans[0].page,
-                    moduleSourceMetadataOk: moduleSourceMetadata.ok,
-                    moduleSourceMetadataDocumentTitle:
-                        moduleSourceMetadata.sources[0].document.title,
-                    moduleSourceMetadataPage: moduleSourceMetadata.sources[0].spans[0].page,
-                    previewSourceDocumentId: previewSourceDocument && previewSourceDocument.id,
-                    previewSourceDocumentCount: previewSourceDocuments.length,
-                    previewEntrySourceDocument: previewEntry && previewEntry.sources[0].document
-                };
-                """
-            )
-        )
-
-        assert result["dataCalls"] == 1
-        assert result["moduleCalls"] == 1
-        assert result["previewCalls"] == 1
-        assert result["manifestSize"] == 1
-        assert result["sourceDocumentCount"] == 1
-        assert result["sourceDocumentId"] == "paper"
-        assert result["sourceDocumentTitle"] == "Representation Theory"
-        assert result["sourceDocumentPdf"] == "source/paper.pdf"
-        assert result["entrySourceDocument"] == "paper"
-        assert result["sameObject"] is True
-        assert result["missingDocument"] is None
-        assert result["emptyDocument"] is None
-        assert result["dataHasSourceMetadataResolver"] is True
-        assert result["moduleHasSourceMetadataResolver"] is True
-        assert result["dataSourceMetadataOk"] is True
-        assert result["dataSourceMetadataDocumentTitle"] == "Representation Theory"
-        assert result["dataSourceMetadataPage"] == "42"
-        assert result["moduleSourceMetadataOk"] is True
-        assert result["moduleSourceMetadataDocumentTitle"] == "Representation Theory"
-        assert result["moduleSourceMetadataPage"] == "42"
-        assert result["previewSourceDocumentId"] == "paper"
-        assert result["previewSourceDocumentCount"] == 1
-        assert result["previewEntrySourceDocument"] == "paper"
-        assert_no_runtime_errors(errors)
-
-    def test_public_preview_api_resolves_source_metadata(self, server: str, page: Page):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Custom-Render-Client/")
-
-        result = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const { createPreview } = await import(api.previewApiModuleUrl());
-                const calls = [];
-                const unavailableSourceLocation = {
-                    ok: false,
-                    location: null,
-                    error: "source location unavailable"
-                };
-                const manifestPayload = {
-                    sourceDocuments: [
-                        {
-                            id: "paper",
-                            title: "Representation Theory",
-                            kind: "pdf",
-                            pdf: "source/paper.pdf",
-                            pageRoot: "source/pages",
-                            imageRoot: "source/pages/images"
-                        }
-                    ],
-                    previews: [
-                        {
-                            key: "sample_node--statement",
-                            label: "sample_node",
-                            authoredLabel: "sample_node",
-                            facet: "statement",
-                            sourceLocation: unavailableSourceLocation,
-                            sources: [
-                                {
-                                    document: "paper",
-                                    spans: [
-                                        {
-                                            page: "42",
-                                            text: {
-                                                path: "source/pages/page-42.md",
-                                                startLine: 10,
-                                                endLine: 12,
-                                                startCharacter: 3,
-                                                endCharacter: 20
-                                            },
-                                            pdf: {
-                                                path: "source/pages/page-42.pdf",
-                                                image: "source/pages/images/page-42.png",
-                                                box: {
-                                                    scale: 2,
-                                                    pageWidth: 1600,
-                                                    pageHeight: 2200,
-                                                    xMin: 120,
-                                                    yMin: 240,
-                                                    xMax: 980,
-                                                    yMax: 520
-                                                }
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            key: "externalMarkup:external_node",
-                            label: "external_node",
-                            authoredLabel: "external_node",
-                            sourceLocation: unavailableSourceLocation,
-                            externalMarkup: [
-                                {
-                                    language: "markdown",
-                                    slot: "original",
-                                    raw: "External source"
-                                }
-                            ],
-                            sources: [
-                                {
-                                    document: "paper",
-                                    spans: [
-                                        {
-                                            page: "43",
-                                            pdf: {
-                                                path: "source/pages/page-43.pdf"
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
-                        },
-                        {
-                            key: "unsourced--statement",
-                            label: "unsourced",
-                            authoredLabel: "unsourced",
-                            facet: "statement",
-                            sourceLocation: unavailableSourceLocation
-                        },
-                        {
-                            key: "unknown_source_document--statement",
-                            label: "unknown_source_document",
-                            authoredLabel: "unknown_source_document",
-                            facet: "statement",
-                            sourceLocation: unavailableSourceLocation,
-                            sources: [
-                                {
-                                    document: "missing-paper",
-                                    spans: [
-                                        {
-                                            page: "44"
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    ],
-                    groups: [],
-                    graphs: []
-                };
-                const preview = createPreview({
-                    fetchJson(url) {
-                        calls.push(url);
-                        return manifestPayload;
-                    }
-                });
-
-                const native = await preview.resolveSourceMetadata(
-                    preview.statementPreviewKey("sample_node")
-                );
-                const externalEntry = await preview.loadManifestEntry("externalMarkup:external_node");
-                const external = await preview.resolveSourceMetadata(externalEntry);
-                const renderResult = {
-                    ok: true,
-                    key: externalEntry.key,
-                    manifestEntry: externalEntry,
-                    html: "<section>Rendered externally</section>",
-                    renderMode: "external-markup"
-                };
-                const externalFromRenderResult = await preview.resolveSourceMetadata(renderResult);
-                const failedRenderResult = {
-                    ok: false,
-                    key: preview.statementPreviewKey("sample_node"),
-                    reason: "html-cache-entry-missing",
-                    manifestEntry: null,
-                    diagnosticHtml: "<p>Missing rendered body</p>"
-                };
-                const nativeFromFailedRenderResult = await preview.resolveSourceMetadata(
-                    failedRenderResult
-                );
-                const missing = await preview.resolveSourceMetadata("missing--statement");
-                const unsourced = await preview.resolveSourceMetadata("unsourced--statement");
-                const unknownDocument = await preview.resolveSourceMetadata(
-                    "unknown_source_document--statement"
-                );
-
-                return {
-                    calls: calls.length,
-                    hasRenderHelper: typeof preview.renderSourceMetadataInto === "function",
-                    native: {
-                        ok: native.ok,
-                        key: native.key,
-                        sourceCount: native.sources.length,
-                        documentTitle: native.sources[0].document.title,
-                        documentId: native.sources[0].documentId,
-                        textPath: native.sources[0].spans[0].text.path,
-                        textStartLine: native.sources[0].spans[0].text.startLine,
-                        textEndLine: native.sources[0].spans[0].text.endLine,
-                        textStartCharacter: native.sources[0].spans[0].text.startCharacter,
-                        textEndCharacter: native.sources[0].spans[0].text.endCharacter,
-                        pdfPath: native.sources[0].spans[0].pdf.path,
-                        pdfImage: native.sources[0].spans[0].pdf.image,
-                        pdfBox: native.sources[0].spans[0].pdf.box,
-                        hasHtml: Object.prototype.hasOwnProperty.call(native, "html"),
-                        hasDiagnosticHtml:
-                            Object.prototype.hasOwnProperty.call(native, "diagnosticHtml")
-                    },
-                    external: {
-                        ok: external.ok,
-                        sourceCount: external.sources.length,
-                        documentTitle: external.sources[0].document.title,
-                        page: external.sources[0].spans[0].page,
-                        pdfPath: external.sources[0].spans[0].pdf.path
-                    },
-                    externalFromRenderResult: {
-                        ok: externalFromRenderResult.ok,
-                        key: externalFromRenderResult.key,
-                        sourceCount: externalFromRenderResult.sources.length,
-                        documentId: externalFromRenderResult.sources[0].documentId
-                    },
-                    nativeFromFailedRenderResult: {
-                        ok: nativeFromFailedRenderResult.ok,
-                        key: nativeFromFailedRenderResult.key,
-                        sourceCount: nativeFromFailedRenderResult.sources.length,
-                        documentId: nativeFromFailedRenderResult.sources[0].documentId
-                    },
-                    missing: {
-                        ok: missing.ok,
-                        reason: missing.reason
-                    },
-                    unsourced: {
-                        ok: unsourced.ok,
-                        reason: unsourced.reason,
-                        sourceCount: unsourced.sources.length
-                    },
-                    unknownDocument: {
-                        ok: unknownDocument.ok,
-                        sourceCount: unknownDocument.sources.length,
-                        documentId: unknownDocument.sources[0].documentId,
-                        documentMissing: unknownDocument.sources[0].document === null,
-                        page: unknownDocument.sources[0].spans[0].page
-                    }
-                };
-                """
-            )
-        )
-
-        assert result["calls"] == 1
-        assert result["hasRenderHelper"] is False
-        assert result["native"]["ok"] is True
-        assert result["native"]["key"] == "sample_node--statement"
-        assert result["native"]["sourceCount"] == 1
-        assert result["native"]["documentTitle"] == "Representation Theory"
-        assert result["native"]["documentId"] == "paper"
-        assert result["native"]["textPath"] == "source/pages/page-42.md"
-        assert result["native"]["textStartLine"] == 10
-        assert result["native"]["textEndLine"] == 12
-        assert result["native"]["textStartCharacter"] == 3
-        assert result["native"]["textEndCharacter"] == 20
-        assert result["native"]["pdfPath"] == "source/pages/page-42.pdf"
-        assert result["native"]["pdfImage"] == "source/pages/images/page-42.png"
-        assert result["native"]["pdfBox"] == {
-            "scale": 2,
-            "pageWidth": 1600,
-            "pageHeight": 2200,
-            "xMin": 120,
-            "yMin": 240,
-            "xMax": 980,
-            "yMax": 520,
-        }
-        assert result["native"]["hasHtml"] is False
-        assert result["native"]["hasDiagnosticHtml"] is False
-
-        assert result["external"]["ok"] is True
-        assert result["external"]["sourceCount"] == 1
-        assert result["external"]["documentTitle"] == "Representation Theory"
-        assert result["external"]["page"] == "43"
-        assert result["external"]["pdfPath"] == "source/pages/page-43.pdf"
-
-        assert result["externalFromRenderResult"]["ok"] is True
-        assert result["externalFromRenderResult"]["key"] == "externalMarkup:external_node"
-        assert result["externalFromRenderResult"]["sourceCount"] == 1
-        assert result["externalFromRenderResult"]["documentId"] == "paper"
-
-        assert result["nativeFromFailedRenderResult"]["ok"] is True
-        assert result["nativeFromFailedRenderResult"]["key"] == "sample_node--statement"
-        assert result["nativeFromFailedRenderResult"]["sourceCount"] == 1
-        assert result["nativeFromFailedRenderResult"]["documentId"] == "paper"
-
-        assert result["missing"]["ok"] is False
-        assert result["missing"]["reason"] == "manifest-entry-missing"
-
-        assert result["unsourced"]["ok"] is False
-        assert result["unsourced"]["reason"] == "source-missing"
-        assert result["unsourced"]["sourceCount"] == 0
-
-        assert result["unknownDocument"]["ok"] is True
-        assert result["unknownDocument"]["sourceCount"] == 1
-        assert result["unknownDocument"]["documentId"] == "missing-paper"
-        assert result["unknownDocument"]["documentMissing"] is True
-        assert result["unknownDocument"]["page"] == "44"
         assert_no_runtime_errors(errors)
 
     def test_summary_preview_retries_after_html_cache_fetch_failure(self, server: str, page: Page):
@@ -2180,75 +1274,6 @@ class TestPreviewRuntimeRegressions:
         assert attempts["count"] > 1
         assert_no_runtime_errors(errors)
 
-    def test_semantic_only_external_markup_preview_has_explicit_reason(
-        self, server: str, page: Page
-    ):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Custom-Render-Client/")
-
-        result = page.evaluate(
-            blueprint_render_api_script(
-                """
-                const { createPreview } = await import(api.previewApiModuleUrl());
-                const unavailableSourceLocation = {
-                    ok: false,
-                    location: null,
-                    error: "source location unavailable"
-                };
-                const manifestPayload = {
-                    sourceDocuments: [],
-                    previews: [
-                        {
-                            key: "externalMarkup:semantic_only_external",
-                            targetKind: "externalMarkup",
-                            label: "semantic_only_external",
-                            authoredLabel: "semantic_only_external",
-                            facet: "statement",
-                            title: "Semantic-only external theorem",
-                            sourceLocation: unavailableSourceLocation,
-                            externalMarkup: [],
-                            sources: []
-                        }
-                    ],
-                    groups: [],
-                    graphs: []
-                };
-                const htmlCachePayload = { entries: [] };
-                const preview = createPreview({
-                    fetchJson(url) {
-                        return String(url).includes("blueprint-html-cache.json")
-                            ? htmlCachePayload
-                            : manifestPayload;
-                    }
-                });
-                const host = document.createElement("div");
-                document.body.appendChild(host);
-                const key = "externalMarkup:semantic_only_external";
-                const resolved = await preview.resolvePreview(key);
-                const rendered = await preview.renderPreviewInto(host, key);
-                return {
-                    resolvedOk: resolved.ok,
-                    resolvedReason: resolved.reason,
-                    renderedOk: rendered.ok,
-                    renderedReason: rendered.reason,
-                    manifestStatus: preview.readManifestStatus(),
-                    htmlCacheStatus: preview.readHtmlCacheStatus(),
-                    html: host.innerHTML
-                };
-                """
-            )
-        )
-
-        assert result["resolvedOk"] is False
-        assert result["resolvedReason"] == "semantic-preview-body-missing"
-        assert result["renderedOk"] is False
-        assert result["renderedReason"] == "semantic-preview-body-missing"
-        assert result["manifestStatus"]["state"] == "ready"
-        assert result["htmlCacheStatus"]["state"] == "ready"
-        assert "Preview body unavailable" in result["html"]
-        assert "Preview HTML cache unavailable" not in result["html"]
-        assert_no_runtime_errors(errors)
-
     def test_used_by_panel_loads_html_cache_backed_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Preview-Relationships/")
@@ -2258,107 +1283,44 @@ class TestPreviewRuntimeRegressions:
         assert "bp_relation_preview_fallback_tpl" not in page.content()
 
         chip = wrap.locator(".bp_relation_chip").first
-        panel = wrap.locator(":scope > .bp_relation_panel")
-        relation_list = panel.locator(":scope > .bp_relation_panel_body > .bp_relation_list")
-        preview_surface = panel.locator(
-            ":scope > .bp_relation_panel_body > .bp_relation_preview_surface"
-        )
-        payload = relation_list.locator(":scope > script.bp-relation-entries")
-        expect(payload).to_have_count(1)
         chip.hover()
-        expect(payload).to_have_count(0)
 
-        expect(
-            panel.locator(":scope > .bp_relation_panel_header > .bp_relation_panel_meta")
-        ).to_have_text("Reverse dependency previews")
-        expect(
-            relation_list.locator(":scope > .bp_relation_item.bp_relation_item_active")
-        ).to_have_count(1)
+        expect(wrap.locator(".bp_relation_panel .bp_relation_panel_meta")).to_have_text(
+            "Reverse dependency previews"
+        )
+        expect(wrap.locator(".bp_relation_item.bp_relation_item_active")).to_have_count(1)
 
-        statement_item = relation_list.locator(
-            ':scope > .bp_relation_item[data-bp-relation-preview-key="used_statement--statement"]'
+        statement_item = wrap.locator(
+            '.bp_relation_item[data-bp-relation-preview-key="used_statement--statement"]'
         ).first
         expect(statement_item).to_be_visible()
         statement_item.hover()
         expect(statement_item).to_have_class(re.compile(r"bp_relation_item_active"))
-        expect(statement_item.locator(".bp_relation_badge_statement")).to_have_text(
-            "statement"
-        )
-        expect(
-            statement_item.locator(".bp_relation_badge_origin_automatic")
-        ).to_have_attribute("title", "Origin: automatic")
-        expect(
-            statement_item.locator(".bp_relation_badge_intent_technical")
-        ).to_have_attribute("title", "Intent: technical")
 
-        header_label = preview_surface.locator(".bp_relation_preview_header_label")
+        header_label = wrap.locator(".bp_relation_preview_header_label")
         expect(header_label).to_be_visible()
         expect(header_label).to_contain_text("used_statement")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_statement"))
 
-        body = preview_surface.locator(".bp_relation_preview_body")
+        body = wrap.locator(".bp_relation_preview_body")
         page.wait_for_function(
             "(el) => !!el && el.innerHTML.includes('<p')",
             arg=body.element_handle(),
         )
-        expect(preview_surface.locator(".bp_relation_preview_title")).to_have_text("Lemma 6.3")
         expect(body).to_contain_text("Statement depends on")
 
-        proof_item = relation_list.locator(
-            ':scope > .bp_relation_item[data-bp-relation-preview-key="used_proof--statement"]'
+        proof_item = wrap.locator(
+            '.bp_relation_item[data-bp-relation-preview-key="used_proof--statement"]'
         ).first
         proof_item.hover()
         expect(proof_item).to_have_class(re.compile(r"bp_relation_item_active"))
-        expect(proof_item.locator(".bp_relation_badge_proof")).to_have_text("proof")
-        expect(
-            proof_item.locator(".bp_relation_badge_intent_auxiliary")
-        ).to_have_attribute("title", "Intent: auxiliary")
         expect(header_label).to_contain_text("used_proof")
         expect(header_label).to_have_attribute("href", re.compile(r"#--informal-preview-used_proof"))
         page.wait_for_function(
             "(el) => !!el && el.textContent.includes('Statement facet marker for preview relationships.')",
             arg=body.element_handle(),
         )
-        expect(preview_surface.locator(".bp_relation_preview_title")).to_have_text("Theorem 6.4")
         expect(body).to_contain_text("Statement facet marker for preview relationships.")
-
-        assert_no_runtime_errors(errors)
-
-    def test_source_header_chip_opens_source_preview(self, server: str, page: Page):
-        errors = record_runtime_errors(page)
-        page.goto(f"{server}/Custom-Render-Client/")
-        client = page.locator("#custom-render-client-example").first
-        expect(client).to_have_attribute("data-bp-custom-client-status", "ready")
-
-        statement = page.locator(
-            '.bp_wrapper[title="custom_client_external_markdown_metadata"]'
-        ).first
-        source_slot = statement.locator(".bp_extra_slot_source").first
-        chip = source_slot.locator(".bp_source_ref_chip").first
-        expect(chip).to_have_text("source 1")
-
-        uses_chip = statement.locator(".bp_extra_slot_uses .bp_relation_chip").first
-        source_box = require_box(chip)
-        uses_box = require_box(uses_chip)
-        source_bottom = source_box["y"] + source_box["height"]
-        uses_bottom = uses_box["y"] + uses_box["height"]
-        assert abs(source_bottom - uses_bottom) < 1
-
-        chip.hover()
-
-        panel = source_slot.locator(".bp_source_ref_panel").first
-        expect(panel).to_be_visible()
-        expect(panel.locator(".bp_relation_panel_title")).to_have_text("Original source")
-        expect(panel.locator(".bp_relation_panel_meta")).to_have_text("Source provenance preview")
-
-        preview = panel.locator(".bp_relation_preview_surface").first
-        expect(preview).to_be_visible()
-        expect(preview.locator(".bp_relation_preview_title")).to_have_text("Original source")
-        body = preview.locator(".bp_source_ref_preview_body").first
-        expect(body).to_contain_text("custom-client-paper")
-        expect(body).to_contain_text("custom-client-paper p. 42")
-        expect(body).to_contain_text("source/pages/page-42.md:10-12")
-        expect(body).to_contain_text("source/pages/page-42.pdf")
 
         assert_no_runtime_errors(errors)
 

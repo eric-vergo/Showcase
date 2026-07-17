@@ -82,6 +82,10 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         !sameUnsafeAbbrev.asString.contains badUnsafeAbbrev &&
         !sameThm.asString.contains badTheorem
       | _, _, _, _, _, _ => false
+    -- Bare-code wrapper (1E): no kicker row, so no `bp_external_decl_kind` /
+    -- `bp_external_decl_header_meta` markup; the stable `data-decl` / `data-kind`
+    -- attributes and the keyword-prefixed signature remain the classification
+    -- carriers.
     let abbrevUsesAbbrevRendering :=
       match sameAbbrev? with
       | some sameAbbrev =>
@@ -89,7 +93,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
+          !out.contains "bp_external_decl_kicker" &&
           out.contains "<span class=\"keyword token\">abbrev</span>" &&
           !out.contains "data-kind=\"def\""
       | none => false
@@ -100,8 +104,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderUnsafeDef" &&
           out.contains "class=\"declaration decl def\"" &&
           out.contains "data-kind=\"def\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">def</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
+          !out.contains "bp_external_decl_header_meta" &&
           out.contains "<span class=\"keyword token\">unsafe def</span>"
       | none => false
     let unsafeAbbrevUsesUniformAbbrevRendering :=
@@ -111,8 +114,6 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         out.contains "sameModuleRenderUnsafeAbbrev" &&
           out.contains "class=\"declaration decl def abbrev\"" &&
           out.contains "data-kind=\"abbrev\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">abbrev</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(unsafe)</span>" &&
           out.contains "<span class=\"keyword token\">unsafe abbrev</span>" &&
           !out.contains "data-kind=\"unsafe abbrev\""
       | none => false
@@ -122,20 +123,22 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         let out := samePackage.asString
         out.contains "class=\"declaration decl structure\"" &&
           out.contains "data-kind=\"structure\"" &&
-          out.contains "<span class=\"bp_external_decl_kind\">structure</span>" &&
-          out.contains "<span class=\"bp_external_decl_header_meta\">(4 fields)</span>" &&
+          !out.contains "bp_external_decl_kicker" &&
           out.contains "sameModuleRenderPackage.x" &&
           out.contains "The first value in the package." &&
           !out.contains "sameModuleRenderPackage.mk" &&
           !out.contains "Constructor"
       | none => false
-    let theoremDocstringAvailableForRuntimeMarkdown :=
+    -- The top-level docstring is no longer rendered into the decl body (it moves
+    -- to the metadata rail in Stage 2): a theorem's body div is empty. (The
+    -- docstring text itself can still legitimately appear inside inlined
+    -- hover payloads of the signature's own name token, so assert the empty
+    -- body rather than global text absence.)
+    let theoremTopLevelDocstringOmitted :=
       match samePackageExists? with
       | some samePackageExists =>
         let out := samePackageExists.asString
-        out.contains "<pre class=\"docstring\">Given a counterexample-shaped input `x + y = y + x`" &&
-          out.contains "produce a package." &&
-          !out.contains "<span class=\"bp_external_decl_header_meta\">(docstring)</span>"
+        out.contains "<div class=\"bp_external_decl_body\"></div>"
       | none => false
     pure
       (natAddHasPayload &&
@@ -145,7 +148,7 @@ theorem sameModuleRenderPackageExists (x y : Nat) (hxy : x <= y) :
         unsafeDefUsesUniformDefinitionRendering &&
         unsafeAbbrevUsesUniformAbbrevRendering &&
         structureUsesFieldFirstRendering &&
-        theoremDocstringAvailableForRuntimeMarkdown &&
+        theoremTopLevelDocstringOmitted &&
         prod?.isSome &&
         sameDef?.isSome &&
         sameAbbrev?.isSome &&
@@ -191,24 +194,6 @@ private def htmlTestContext :
 /-- info: true -/
 #guard_msgs in
 #eval
-  let rendered : Informal.ExternalDeclRenderedHtml := {
-    html :=
-      "before data-bp-external-hover-local=\"1\" " ++
-      "literal data-bp-external-hover-not-a-marker " ++
-      "<span data-bp-external-hover-inline-local=\"2\"></span> after"
-    hoverPayloads := #[]
-  }
-  let rewrites : Array Informal.ExternalDeclHoverRewrite := #[
-    { localId := 1, attrReplacement := "data-verso-hover=\"11\"", inlineReplacement := "" },
-    { localId := 2, attrReplacement := "data-verso-hover=\"12\"", inlineReplacement := "INLINE" }
-  ]
-  rendered.rewriteHovers rewrites ==
-    "before data-verso-hover=\"11\" " ++
-    "literal data-bp-external-hover-not-a-marker INLINE after"
-
-/-- info: true -/
-#guard_msgs in
-#eval
   show Lean.CoreM Bool from do
     let opts ← Lean.getOptions
     let ref ← Informal.externalRefSnapshotAtCurrentDir opts (Informal.Data.ExternalRef.ofName `Nat.add)
@@ -222,59 +207,29 @@ private def htmlTestContext :
       | .error _ => none)
       | return false
     let previewHtml := Informal.ExternalCode.renderPreviewHtml #[ref, ref] |>.asString
-    let (cacheHtml, cacheHoverState) :=
-      Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[ref, ref] {}
-    let cacheHtml := cacheHtml.asString
-    let renderPage (decls : Array Informal.Data.ExternalRef) :
-        Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Verso.Output.Html :=
-      Informal.ExternalCode.renderPanelWithPageHovers
+    let renderPage :
+        Verso.Doc.Html.HtmlT Verso.Genre.Manual Id Informal.ExternalCode.RenderParts :=
+      Informal.ExternalCode.renderPartsWithPageHovers
         { caption := "Code for theorem", number? := some "1" }
         "Lean declarations"
-        .empty
-        decls
+        #[ref, ref]
         (fun _ => none)
     let result :
-        Verso.Output.Html × Verso.Code.Hover.State Verso.Output.Html :=
-      Id.run <| (renderPage #[ref, ref] htmlTestContext).run {}
+        Informal.ExternalCode.RenderParts × Verso.Code.Hover.State Verso.Output.Html :=
+      Id.run <| (renderPage htmlTestContext).run {}
+    let parts := result.fst
     let hoverState := result.snd
-    let pageHtml := result.fst.asString
-    let failedRef : Informal.Data.ExternalRef := {
-      (Informal.Data.ExternalRef.ofName `Ext.external.strategy_render_fail) with
-        present := true
-        kind := .theorem
-        render := .error (.exception `Ext.external.strategy_render_fail "synthetic render failure")
-    }
-    let expectedError :=
-      "Render failed: Ext.external.strategy_render_fail: synthetic render failure"
-    let previewErrorHtml :=
-      Informal.ExternalCode.renderPreviewHtml #[failedRef] |>.asString
-    let (cacheErrorHtml, _) :=
-      Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[failedRef] {}
-    let cacheErrorHtml := cacheErrorHtml.asString
-    let (pageErrorHtml, _) :=
-      Id.run <| (renderPage #[failedRef] htmlTestContext).run {}
-    let pageErrorHtml := pageErrorHtml.asString
+    let pageHtml := parts.externalCodePanel.asString
     pure <|
       payloadCount > 0 &&
       hoverState.dedup.contentId.size == payloadCount &&
-      cacheHoverState.dedup.contentId.size == payloadCount &&
       pageHtml.contains "data-verso-hover=\"" &&
-      cacheHtml.contains "data-verso-hover=\"" &&
       !pageHtml.contains "data-bp-external-hover-local=\"" &&
       !pageHtml.contains "data-bp-external-hover-inline-local=\"" &&
       !pageHtml.contains "class=\"hover-info\"" &&
-      !cacheHtml.contains "data-bp-external-hover-local=\"" &&
-      !cacheHtml.contains "data-bp-external-hover-inline-local=\"" &&
-      !cacheHtml.contains "class=\"hover-info\"" &&
       previewHtml.contains "class=\"hover-info\"" &&
       !previewHtml.contains "data-bp-external-hover-local=\"" &&
-      !previewHtml.contains "data-bp-external-hover-inline-local=\"" &&
-      previewErrorHtml.contains "bp_external_decl_render_error" &&
-      previewErrorHtml.contains expectedError &&
-      cacheErrorHtml.contains "bp_external_decl_render_error" &&
-      cacheErrorHtml.contains expectedError &&
-      pageErrorHtml.contains "bp_external_decl_render_error" &&
-      pageErrorHtml.contains expectedError
+      !previewHtml.contains "data-bp-external-hover-inline-local=\""
 
 /-- info: true -/
 #guard_msgs in

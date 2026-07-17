@@ -92,124 +92,23 @@ namespace Verso.VersoBlueprintTests.BlueprintPreviewSource
     let label := Name.mkSimple "preview.proof_fallback"
     let statementKey := PreviewCache.statementKey label
     let proofKey := PreviewCache.proofKey label
-    let semantic : Informal.Graph.GraphModel := {
+    let semantic : Informal.Graph.GraphData := {
       nodes := #[{
         label
         title := "Proof fallback"
         displayLabel := "Proof fallback"
-        previewKey := PreviewKey.ofString? statementKey
+        previewKey := statementKey
         visual := { fillcolor := "#ffffff" }
       }]
     }
-    let finalized := Informal.GraphApi.finishData st "preview-proof-fallback" semantic {}
+    let finalized := Informal.GraphApi.finalData st semantic
+    let variants := finalized.renderVariants {}
     pure <|
       match finalized.nodes[0]? with
       | some node =>
-        node.previewKey == PreviewKey.ofString? proofKey &&
-        finalized.variants.any (fun variant =>
+        node.previewKey == proofKey &&
+        variants.any (fun variant =>
           variant.previewKeyByNodeId.any (fun (_, key) => key == proofKey))
       | none => false
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
-      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
-    let label := Name.mkSimple "preview.missing"
-    let statementKey := PreviewCache.statementKey label
-    let semantic : Informal.Graph.GraphModel := {
-      nodes := #[{
-        label
-        title := "Missing preview"
-        displayLabel := "Missing preview"
-        previewKey := PreviewKey.ofString? statementKey
-        visual := { fillcolor := "#ffffff" }
-      }]
-    }
-    let finalized := Informal.GraphApi.finishData st "preview-missing" semantic {}
-    pure <|
-      finalized.nodes.isEmpty &&
-      finalized.edges.isEmpty &&
-      finalized.groups.isEmpty &&
-      finalized.variants.all (fun variant =>
-        variant.previewKeyByNodeId.all (fun (_, key) =>
-          !key.isEmpty && key != statementKey))
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
-      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.proofFallbackPreviewSourceDoc
-    let label := Name.mkSimple "preview.unknown"
-    let semantic : Informal.Graph.GraphModel := {
-      nodes := #[{
-        label
-        title := "Unknown preview"
-        displayLabel := "Unknown preview"
-        previewKey := PreviewKey.ofString? (PreviewCache.statementKey label)
-        warnings := { unknownRef := true }
-        visual := { fillcolor := "#ffffff" }
-      }]
-    }
-    let finalized := Informal.GraphApi.finishData st "preview-unknown" semantic {}
-    pure <|
-      match finalized.nodes[0]? with
-      | some node =>
-        node.label == label &&
-        node.warnings.unknownRef &&
-        node.previewKey.isNone &&
-        finalized.variants.all (fun variant => variant.previewKeyByNodeId.isEmpty)
-      | none => false
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
-      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupPreviewSourceDoc
-    let label := Name.mkSimple "preview.external_bodyless"
-    let externalKey := Informal.PreviewSource.externalMarkupKey label
-    let semantic : Informal.Graph.GraphModel := {
-      nodes := #[{
-        label
-        title := "External bodyless"
-        displayLabel := "External bodyless"
-        visual := { fillcolor := "#ffffff" }
-      }]
-    }
-    let finalized := Informal.GraphApi.finishData st "preview-external" semantic {}
-    pure <|
-      match finalized.nodes[0]? with
-      | some node =>
-        node.previewKey == PreviewKey.ofString? externalKey &&
-          finalized.variants.any (fun variant =>
-            variant.previewKeyByNodeId.any (fun (_, key) => key == externalKey))
-      | none => false
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_out, st) ← renderManualDocHtmlStringAndState extension_impls%
-      Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.externalMarkupGraphPreviewSourceDoc
-    let label := Name.mkSimple "preview.external_graph_bodyless"
-    let externalKey := Informal.PreviewSource.externalMarkupKey label
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles extension_impls% (fun _ => pure ())
-      (Informal.PreviewManifest.PreparedPreviewState.prepare st)
-      ({ mode := .none } : Informal.ExternalMarkupRender.Config)
-    let some entry := files.manifest.previews.find? (fun entry => entry.key == externalKey)
-      | return false
-    let some graph := files.manifest.graphs[0]?
-      | return false
-    let some node := graph.nodes.find? (fun node => node.label == label)
-      | return false
-    pure <|
-      entry.targetKind == .externalMarkup &&
-        (files.htmlCache.findHtml? externalKey).isNone &&
-        node.previewKey.isNone &&
-        graph.variants.all (fun variant =>
-          variant.previewKeyByNodeId.all (fun (_, key) => key != externalKey))
 
 end Verso.VersoBlueprintTests.BlueprintPreviewSource

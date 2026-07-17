@@ -34,13 +34,6 @@ private partial def collectBlocks (part : Doc.Part Genre.Manual) : Array (Doc.Bl
     acc ++ collectBlocks child
   part.content ++ childBlocks
 
-def traverseManualDocBlocksAndState
-    (impls : ExtensionImpls)
-    (doc : Doc.VersoDoc Genre.Manual)
-    (logError : String → IO Unit := fun _ => pure ()) :
-    IO (Array (Doc.Block Genre.Manual) × TraverseState) :=
-  Informal.traverseManualBlocks (collectBlocks doc.toPart) impls logError
-
 private def discardLogger : Logger IO where
   log _severity _text _loc := pure ()
   errors := pure #[]
@@ -53,7 +46,7 @@ def renderManualDocHtmlAndState
   let opts : Doc.Html.Options := {
     headerLevel := 1
   }
-  let (blocks, st) ← traverseManualDocBlocksAndState impls doc
+  let (blocks, st) ← Informal.traverseManualBlocks (collectBlocks doc.toPart) impls
   let ctxt : TraverseContext := {}
   let definitionIds : Lean.NameMap String := {}
   let linkTargets : Code.LinkTargets TraverseContext := {}

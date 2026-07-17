@@ -59,14 +59,6 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     kind := "curated_doc"
   },
   {
-    slug := "external-markup-source"
-    title := "External Markup Source Showcase"
-    category := "Preview"
-    summary := "Guided Markdown and TeX source-migration examples for native and bodyless nodes."
-    tags := #["external", "markup", "source", "markdown", "tex", "lean", "bodyless"]
-    kind := "curated_doc"
-  },
-  {
     slug := "metadata-panel"
     title := "Blueprint Metadata Panel"
     category := "Metadata"
@@ -182,7 +174,7 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     slug := "lean-code-link-preview"
     title := "Blueprint Lean Code Link Preview Wiring"
     category := "Preview"
-    summary := "Inline Lean code preview links inside the summary."
+    summary := "Inline Lean declaration preview links inside the summary."
     tags := #["preview", "inline", "lean"]
     kind := "curated_doc"
   },

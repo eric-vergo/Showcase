@@ -26,9 +26,6 @@ from scripts.blueprint_harness_projects import (
 from scripts.blueprint_harness_worktrees import GitWorktree
 
 
-VBP_BUILD_COMMAND = ("lake", "exe", "vbp", "build")
-
-
 @contextmanager
 def patched_attrs(target: object, **replacements: object) -> Iterator[None]:
     originals = {name: getattr(target, name) for name in replacements}
@@ -84,7 +81,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/published.git",
             ref="published-ref",
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -122,27 +119,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
 
-    def test_reference_compose_parses_editable_source_and_nested_project(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        args = parser.parse_args(
-            [
-                "compose",
-                "/tmp/external-blueprint",
-                "--project-root",
-                "blueprint",
-                "--id",
-                "local-blueprint",
-                "--output-root",
-                "/tmp/out",
-                "--verbose",
-            ]
-        )
-        self.assertEqual(args.source_checkout, "/tmp/external-blueprint")
-        self.assertEqual(args.project_root, "blueprint")
-        self.assertEqual(args.project_id, "local-blueprint")
-        self.assertEqual(selected_output_root(args), "/tmp/out")
-        self.assertTrue(args.verbose)
-
     def test_reference_generate_rejects_allow_unsafe_root_main_alias(self) -> None:
         parser = reference_harness_mod.build_parser()
         self.assertParseFails(parser, ["generate", "--allow-unsafe-root-main"])
@@ -173,43 +149,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertTrue(args.allow_unsafe_root_release)
         self.assertEqual(args.release, "v4.29.0")
 
-    def test_reference_generate_parses_pdf(self) -> None:
+    def test_reference_commands_parse_package_mode(self) -> None:
         parser = reference_harness_mod.build_parser()
-        self.assertFalse(parser.parse_args(["generate"]).pdf)
-        self.assertTrue(parser.parse_args(["generate", "--pdf"]).pdf)
-
-    def test_reference_generation_commands_parse_verbose(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        self.assertFalse(parser.parse_args(["generate"]).verbose)
-        self.assertTrue(parser.parse_args(["generate", "--verbose"]).verbose)
-        self.assertFalse(parser.parse_args(["validate"]).verbose)
-        self.assertTrue(parser.parse_args(["validate", "--verbose"]).verbose)
-
-    def test_reference_generation_commands_parse_build_metrics(self) -> None:
-        parser = reference_harness_mod.build_parser()
-        self.assertFalse(parser.parse_args(["generate"]).record_build_metrics)
-        self.assertTrue(parser.parse_args(["generate", "--record-build-metrics"]).record_build_metrics)
-        self.assertFalse(parser.parse_args(["validate"]).record_build_metrics)
-        self.assertTrue(parser.parse_args(["validate", "--record-build-metrics"]).record_build_metrics)
-
-    def test_record_build_metrics_enables_verbose_generator(self) -> None:
-        project = self.published_git_project()
-        with patch.object(
-            reference_harness_mod,
-            "ensure_prebuilt_executable",
-            return_value=Path("/tmp/published"),
-        ):
-            command = reference_harness_mod.reference_executable_args(
-                Path("/tmp/package"),
-                project,
-                Path("/tmp/out/published"),
-                pdf=False,
-                verbose=False,
-                record_build_metrics=True,
-            )
-
-        self.assertIn("/tmp/package/scripts/reference_build_metrics.py", command)
-        self.assertEqual(command[-1], "--verbose")
+        self.assertEqual(parser.parse_args(["generate"]).reference_package_mode, "copy")
+        self.assertEqual(parser.parse_args(["generate", "--reference-package-mode", "move"]).reference_package_mode, "move")
+        self.assertEqual(parser.parse_args(["validate", "--reference-package-mode", "move"]).reference_package_mode, "move")
 
     def test_reference_projects_parses_release_filter(self) -> None:
         parser = reference_harness_mod.build_parser()
@@ -259,7 +203,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(args.change, ["Add a public PR message helper"])
         self.assertEqual(args.source_branch, "fix/public-pr-scaffold")
         self.assertEqual(args.exempt, ["v4.28.0=docs-only"])
-        self.assertFalse(args.release_line_bootstrap)
 
     def test_prepare_backport_pr_parses_required_fields(self) -> None:
         parser = build_parser()
@@ -287,43 +230,22 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
     def test_bump_toolchain_parses_optional_flags(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(
-            [
-                "bump-toolchain",
-                "4.29.0",
-                "--verso-ref",
-                "v4.29.0",
-                "--verso-slides-ref",
-                "v4.29.0",
-                "--skip-validation",
-            ]
-        )
+        args = parser.parse_args(["bump-toolchain", "4.29.0", "--verso-ref", "v4.29.0", "--skip-validation"])
         self.assertEqual(args.toolchain, "4.29.0")
         self.assertEqual(args.verso_ref, "v4.29.0")
-        self.assertEqual(args.verso_slides_ref, "v4.29.0")
         self.assertTrue(args.skip_validation)
 
     def test_start_release_line_parses_optional_flags(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(
-            [
-                "start-release-line",
-                "4.30-rc2",
-                "--verso-slides-ref",
-                "v4.30.0-rc2",
-                "--deploy-pages",
-                "--skip-validation",
-            ]
-        )
+        args = parser.parse_args(["start-release-line", "4.30-rc2", "--deploy-pages", "--skip-validation"])
         self.assertEqual(args.toolchain, "4.30-rc2")
-        self.assertEqual(args.verso_slides_ref, "v4.30.0-rc2")
         self.assertTrue(args.deploy_pages)
         self.assertTrue(args.skip_validation)
 
-    def test_set_default_dev_branch_parses_lean_ref(self) -> None:
+    def test_set_default_dev_branch_parses_branch(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["set-default-dev-branch", "v4.30.0"])
-        self.assertEqual(args.lean_ref, "v4.30.0")
+        self.assertEqual(args.branch, "v4.30.0")
 
     def test_create_worktree_parses_lock_flag(self) -> None:
         parser = build_parser()
@@ -701,86 +623,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "without type scopes"):
                 harness_mod.command_prepare_pr(args)
 
-    def test_prepare_pr_rejects_source_change_exemptions(self) -> None:
-        args = argparse.Namespace(
-            title="fix: report malformed graph cache entries",
-            summary=None,
-            change=None,
-            source_branch="fix/traversal-decode-errors",
-            exempt=["v4.28.0=no reported release-line regression"],
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.29.0",
-                required_backport_branches=("v4.28.0",),
-            ),
-            require_checkout_role=lambda *_args, **_kwargs: None,
-            source_changed_files=lambda _repo_root, _source_branch: [
-                "src/VersoBlueprint/GraphApi.lean",
-                "doc/API.md",
-            ],
-        ):
-            with self.assertRaisesRegex(SystemExit, "paired backports are required for: src/VersoBlueprint/GraphApi.lean"):
-                harness_mod.command_prepare_pr(args)
-
-    def test_prepare_pr_accepts_documentation_only_exemptions(self) -> None:
-        args = argparse.Namespace(
-            title="doc: clarify backport policy",
-            summary=None,
-            change=None,
-            source_branch="doc/backport-policy",
-            exempt=["v4.28.0=documentation-only change"],
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
-        out = io.StringIO()
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.29.0",
-                required_backport_branches=("v4.28.0",),
-            ),
-            require_checkout_role=lambda *_args, **_kwargs: None,
-            source_changed_files=lambda _repo_root, _source_branch: ["doc/MAINTAINER_GUIDE.md"],
-        ):
-            with redirect_stdout(out):
-                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
-
-        self.assertIn("Backport v4.28.0: exempt: documentation-only change", out.getvalue())
-
-    def test_prepare_pr_emits_machine_checked_release_line_bootstrap_status(self) -> None:
-        args = argparse.Namespace(
-            title="chore: start Lean 4.30 release line",
-            summary=None,
-            change=None,
-            source_branch="chore/start-lean-4-30-release-line",
-            exempt=None,
-            release_line_bootstrap=True,
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
-        out = io.StringIO()
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.30.0",
-                required_backport_branches=("v4.29.0", "v4.28.0"),
-            ),
-            require_checkout_role=lambda *_args, **_kwargs: None,
-            source_changed_files=lambda _repo_root, _source_branch: ["branch-policy.json", "lean-toolchain"],
-        ):
-            with redirect_stdout(out):
-                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
-
-        output = out.getvalue()
-        self.assertIn("Backport v4.29.0: release-line bootstrap", output)
-        self.assertIn("Backport v4.28.0: release-line bootstrap", output)
-        self.assertIn("recommended_merge_method=squash", output)
-        self.assertIn("CI verifies this is a real release-line bootstrap", output)
-
     def test_prepare_pr_allows_squash_when_all_backports_are_exempt(self) -> None:
         out = io.StringIO()
         with redirect_stdout(out):
@@ -877,50 +719,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertIn("## PR Title\n[backport v4.28.0] feat: branch-level render API cleanup", output)
         self.assertNotIn("fix: support release-line highlight patches", output)
 
-    def test_prepare_backport_pr_defaults_source_to_main_pr(self) -> None:
-        args = argparse.Namespace(
-            release="v4.28.0",
-            all_required=False,
-            main_pr=11,
-            main_title="fix: report malformed graph cache entries",
-            source_branch=None,
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
-        out = io.StringIO()
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            load_branch_policy=lambda _checkout_root: SimpleNamespace(
-                default_dev_branch="v4.29.0",
-                required_backport_branches=("v4.28.0",),
-            ),
-            default_dev_branch=lambda _checkout_root: "v4.29.0",
-            require_checkout_role=lambda *_args, **_kwargs: None,
-            github_pr_backport_source=lambda _repo_root, _main_pr: (
-                "fix/traversal-decode-errors",
-                ["abc123"],
-            ),
-        ):
-            with redirect_stdout(out):
-                self.assertEqual(harness_mod.command_prepare_backport_pr(args), 0)
-
-        output = out.getvalue()
-        self.assertIn("source_branch=fix/traversal-decode-errors", output)
-        self.assertIn("source_commits=abc123", output)
-        self.assertIn("paired_branch=fix/backport-v428-traversal-decode-errors", output)
-
-    def test_github_pr_backport_source_reads_head_and_commits(self) -> None:
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "headRefName": "fix/traversal-decode-errors",
-                "commits": [{"oid": "abc123"}, {"oid": "def456"}],
-            },
-        ):
-            source = harness_mod.github_pr_backport_source(Path("/tmp/worktree"), 11)
-
-        self.assertEqual(source, ("fix/traversal-decode-errors", ["abc123", "def456"]))
-
     def test_github_pr_title_reads_public_title(self) -> None:
         with patch(
             "scripts.blueprint_harness.subprocess.run",
@@ -943,136 +741,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             return_value=SimpleNamespace(returncode=1, stdout=""),
         ):
             self.assertIsNone(harness_mod.github_pr_title(Path("/tmp/worktree"), 11))
-
-    def test_worktree_merged_pr_validation_accepts_matching_metadata(self) -> None:
-        worktree = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "state": "MERGED",
-                "baseRefName": "v4.31.0",
-                "headRefName": "feat/demo",
-                "headRefOid": "abc123",
-            },
-        ):
-            self.assertIsNone(
-                harness_mod.worktree_merged_pr_validation_error(
-                    Path("/tmp/repo"),
-                    152,
-                    worktree,
-                    "origin/v4.31.0",
-                )
-            )
-
-    def test_worktree_merged_pr_validation_rejects_mismatched_head(self) -> None:
-        worktree = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "state": "MERGED",
-                "baseRefName": "v4.31.0",
-                "headRefName": "feat/demo",
-                "headRefOid": "def456",
-            },
-        ):
-            error = harness_mod.worktree_merged_pr_validation_error(
-                Path("/tmp/repo"),
-                152,
-                worktree,
-                "origin/v4.31.0",
-            )
-
-        self.assertIn("does not match worktree head", error)
-
-    def test_worktree_merged_pr_validation_rejects_unmerged_pr(self) -> None:
-        worktree = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "state": "OPEN",
-                "baseRefName": "v4.31.0",
-                "headRefName": "feat/demo",
-                "headRefOid": "abc123",
-            },
-        ):
-            error = harness_mod.worktree_merged_pr_validation_error(
-                Path("/tmp/repo"),
-                152,
-                worktree,
-                "origin/v4.31.0",
-            )
-
-        self.assertIn("is not merged", error)
-
-    def test_worktree_merged_pr_validation_rejects_mismatched_base(self) -> None:
-        worktree = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "state": "MERGED",
-                "baseRefName": "v4.30.0",
-                "headRefName": "feat/demo",
-                "headRefOid": "abc123",
-            },
-        ):
-            error = harness_mod.worktree_merged_pr_validation_error(
-                Path("/tmp/repo"),
-                152,
-                worktree,
-                "origin/v4.31.0",
-            )
-
-        self.assertIn("base `v4.30.0` does not match `origin/v4.31.0`", error)
-
-    def test_worktree_merged_pr_validation_rejects_mismatched_branch(self) -> None:
-        worktree = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            github_pr_view_json=lambda _repo_root, _pr_number, _fields: {
-                "state": "MERGED",
-                "baseRefName": "v4.31.0",
-                "headRefName": "feat/other",
-                "headRefOid": "abc123",
-            },
-        ):
-            error = harness_mod.worktree_merged_pr_validation_error(
-                Path("/tmp/repo"),
-                152,
-                worktree,
-                "origin/v4.31.0",
-            )
-
-        self.assertIn("head branch `feat/other` does not match `feat/demo`", error)
 
     def test_prepare_backport_pr_requires_title_when_github_lookup_fails(self) -> None:
         args = argparse.Namespace(
@@ -1252,7 +920,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             project=None,
             release=None,
             skip_build=False,
-            pdf=False,
             allow_unsafe_root_release=False,
             serial=False,
             allow_local_build=False,
@@ -1285,7 +952,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             project=None,
             release="v4.28.0",
             skip_build=False,
-            pdf=False,
             allow_unsafe_root_release=False,
             serial=False,
             allow_local_build=False,
@@ -1305,7 +971,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 reference_harness_mod.command_generate(args)
 
     def test_bump_toolchain_uses_helper(self) -> None:
-        args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, verso_slides_ref=None, skip_validation=False)
+        args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, skip_validation=False)
         layout = SimpleNamespace(package_root=Path("/tmp/package"))
         seen: dict[str, object] = {}
         with patched_attrs(
@@ -1318,13 +984,11 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     "operation": operation,
                 }
             ),
-            active_release_branch=lambda _package_root: "v4.29.0",
-            bump_toolchain_checkout=lambda package_root, toolchain, *, verso_ref, verso_slides_ref, validate: seen.update(
+            bump_toolchain_checkout=lambda package_root, toolchain, *, verso_ref, validate: seen.update(
                 {
                     "package_root": package_root,
                     "toolchain": toolchain,
                     "verso_ref": verso_ref,
-                    "verso_slides_ref": verso_slides_ref,
                     "validate": validate,
                 }
             )
@@ -1333,16 +997,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 toolchain_spec="leanprover/lean4:v4.29.0",
                 verso_ref="v4.29.0",
                 verso_tag_oid="deadbeef",
-                verso_slides_ref="v4.29.0",
-                verso_slides_tag_oid="feedface",
-            ),
-            resolve_manifest_path=lambda _path, _package_root: Path("/tmp/projects.json"),
-            update_release_line_project_manifest=lambda manifest_path, *, release_id, rc: seen.update(
-                {
-                    "manifest_path": manifest_path,
-                    "manifest_release_id": release_id,
-                    "manifest_rc": rc,
-                }
             ),
         ):
             self.assertEqual(harness_mod.command_bump_toolchain(args), 0)
@@ -1353,102 +1007,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["operation"], "bump-toolchain")
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
-        self.assertEqual(seen["verso_slides_ref"], None)
         self.assertTrue(seen["validate"])
-        self.assertEqual(seen["manifest_path"], Path("/tmp/projects.json"))
-        self.assertEqual(seen["manifest_release_id"], "v4.29.0")
-        self.assertIsNone(seen["manifest_rc"])
-
-    def test_bump_toolchain_rejects_a_different_release_line_before_mutation(self) -> None:
-        args = argparse.Namespace(
-            toolchain="4.30-rc2", verso_ref=None, verso_slides_ref=None, skip_validation=True
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/package"))
-        called = False
-
-        def unexpected_bump(*_args, **_kwargs):
-            nonlocal called
-            called = True
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            require_checkout_role=lambda _checkout_root, *, required_role, operation: None,
-            active_release_branch=lambda _package_root: "v4.29.0",
-            bump_toolchain_checkout=unexpected_bump,
-        ):
-            with self.assertRaisesRegex(SystemExit, "expected a toolchain on release line `v4.29.0`"):
-                harness_mod.command_bump_toolchain(args)
-
-        self.assertFalse(called)
-
-    def test_update_release_line_project_manifest_tracks_in_repo_rc_only(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            manifest_path = Path(tmp) / "projects.json"
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "version": 2,
-                        "projects": [
-                            {
-                                "id": "template",
-                                "source": {"kind": "in_repo_project"},
-                                "targets": [{"release": "v4.29.0"}],
-                            },
-                            {
-                                "id": "external",
-                                "source": {"kind": "git_checkout"},
-                                "targets": [
-                                    {
-                                        "release": "v4.30.0",
-                                        "ref": "abc",
-                                        "reference_toolchain": "v4.30.0-rc1",
-                                    }
-                                ],
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            original_text = manifest_path.read_text(encoding="utf-8")
-
-            harness_mod.update_release_line_project_manifest(
-                manifest_path,
-                release_id="v4.29.0",
-                rc=None,
-            )
-            self.assertEqual(manifest_path.read_text(encoding="utf-8"), original_text)
-
-            harness_mod.update_release_line_project_manifest(
-                manifest_path,
-                release_id="v4.30.0",
-                rc="4.30-rc2",
-            )
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                manifest["projects"][0]["targets"],
-                [
-                    {"release": "v4.29.0"},
-                    {"release": "v4.30.0", "rc": "4.30-rc2"},
-                ],
-            )
-            self.assertEqual(
-                manifest["projects"][1]["targets"][0]["reference_toolchain"],
-                "v4.30.0-rc1",
-            )
-
-            harness_mod.update_release_line_project_manifest(
-                manifest_path,
-                release_id="v4.30.0",
-                rc=None,
-            )
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertNotIn("rc", manifest["projects"][0]["targets"][1])
-            self.assertEqual(
-                manifest["projects"][1]["targets"][0]["reference_toolchain"],
-                "v4.30.0-rc1",
-            )
 
     def test_start_release_line_updates_policy_and_in_repo_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1505,35 +1064,25 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            pull_request_template = root / ".github" / "PULL_REQUEST_TEMPLATE.md"
-            pull_request_template.parent.mkdir(parents=True)
-            pull_request_template.write_text(
-                "This PR <summary>.\n\nBackport v4.28.0: pending\n",
-                encoding="utf-8",
-            )
             args = argparse.Namespace(
                 toolchain="4.30-rc2",
                 verso_ref=None,
-                verso_slides_ref=None,
                 deploy_pages=False,
                 skip_validation=True,
             )
             layout = SimpleNamespace(package_root=root)
             seen: dict[str, object] = {}
 
-            def fake_bump(package_root, toolchain, *, verso_ref, verso_slides_ref, validate):
+            def fake_bump(package_root, toolchain, *, verso_ref, validate):
                 seen["package_root"] = package_root
                 seen["toolchain"] = toolchain
                 seen["verso_ref"] = verso_ref
-                seen["verso_slides_ref"] = verso_slides_ref
                 seen["validate"] = validate
                 return SimpleNamespace(
                     lean_ref="v4.30.0-rc2",
                     toolchain_spec="leanprover/lean4:v4.30.0-rc2",
                     verso_ref="v4.30.0-rc2",
                     verso_tag_oid="deadbeef",
-                    verso_slides_ref="v4.30.0-rc2",
-                    verso_slides_tag_oid="feedface",
                 )
 
             out = io.StringIO()
@@ -1582,47 +1131,14 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertNotIn("release_targets", manifest)
             self.assertEqual(
-                manifest["projects"][0]["targets"],
-                [
-                    {"release": "v4.29.0"},
-                    {"release": "v4.30.0", "rc": "4.30-rc2"},
-                ],
+                [target["release"] for target in manifest["projects"][0]["targets"]],
+                ["v4.29.0", "v4.30.0"],
             )
             self.assertEqual(
                 [target["release"] for target in manifest["projects"][1]["targets"]],
                 ["v4.29.0"],
             )
-            self.assertEqual(
-                pull_request_template.read_text(encoding="utf-8"),
-                "This PR <summary>.\n\nBackport v4.29.0: pending\nBackport v4.28.0: pending\n",
-            )
-            self.assertIn("set-default-dev-branch v4.30.0-rc2", out.getvalue())
-
-    def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
-        args = argparse.Namespace(
-            toolchain="4.30-rc2",
-            verso_ref="v4.29.0",
-            verso_slides_ref=None,
-            deploy_pages=False,
-            skip_validation=True,
-        )
-        layout = SimpleNamespace(package_root=Path("/tmp/package"))
-        called = False
-
-        def unexpected_bump(*_args, **_kwargs):
-            nonlocal called
-            called = True
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            current_branch_name=lambda _checkout_root: "v4.30.0",
-            bump_toolchain_checkout=unexpected_bump,
-        ):
-            with self.assertRaisesRegex(SystemExit, "expects a matching `verso` release line"):
-                harness_mod.command_start_release_line(args)
-
-        self.assertFalse(called)
+            self.assertIn("set-default-dev-branch v4.30.0", out.getvalue())
 
     def test_set_default_dev_branch_preserves_required_backports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1632,7 +1148,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 '{\n  "version": 1,\n  "default_dev_branch": "v4.29.0",\n  "required_backport_branches": ["v4.28.0"]\n}\n',
                 encoding="utf-8",
             )
-            args = argparse.Namespace(lean_ref="v4.30.0")
+            args = argparse.Namespace(branch="v4.30.0")
             layout = SimpleNamespace(package_root=root)
             out = io.StringIO()
             with patched_attrs(
@@ -1647,192 +1163,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 '{\n  "version": 1,\n  "default_dev_branch": "v4.30.0",\n  "required_backport_branches": [\n    "v4.28.0"\n  ]\n}\n',
             )
             self.assertIn("checkout_role=backport", out.getvalue())
-
-    def test_set_default_dev_branch_adds_missing_version_two_release_target(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
-            (root / "branch-policy.json").write_text(
-                json.dumps(
-                    {
-                        "version": 2,
-                        "default_dev_branch": "v4.32.0",
-                        "required_backport_branches": [],
-                        "release_targets": [
-                            {
-                                "id": "v4.32.0",
-                                "toolchain": "v4.32.0",
-                                "verso_ref": "v4.32.0",
-                                "branch": "v4.32.0",
-                                "deploy_pages": True,
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            manifest_path = root / "tests" / "harness" / "projects.json"
-            manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "version": 2,
-                        "projects": [
-                            {
-                                "id": "project-template",
-                                "source": {"kind": "in_repo_project"},
-                                "targets": [{"release": "v4.32.0"}],
-                            },
-                            {
-                                "id": "external",
-                                "source": {"kind": "git_checkout"},
-                                "targets": [{"release": "v4.32.0", "ref": "abc"}],
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            args = argparse.Namespace(lean_ref="4.33-rc2")
-            layout = SimpleNamespace(package_root=root)
-            out = io.StringIO()
-            with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):
-                with redirect_stdout(out):
-                    self.assertEqual(harness_mod.command_set_default_dev_branch(args), 0)
-
-            policy = json.loads((root / "branch-policy.json").read_text(encoding="utf-8"))
-            self.assertEqual(policy["default_dev_branch"], "v4.33.0")
-            self.assertEqual(policy["required_backport_branches"], [])
-            self.assertEqual(
-                policy["release_targets"],
-                [
-                    {
-                        "id": "v4.32.0",
-                        "toolchain": "v4.32.0",
-                        "verso_ref": "v4.32.0",
-                        "branch": "v4.32.0",
-                        "deploy_pages": True,
-                    },
-                    {
-                        "id": "v4.33.0",
-                        "toolchain": "v4.33.0",
-                        "verso_ref": "v4.33.0",
-                        "branch": "v4.33.0",
-                        "deploy_pages": False,
-                    },
-                ],
-            )
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                manifest["projects"][0]["targets"],
-                [
-                    {"release": "v4.32.0"},
-                    {"release": "v4.33.0", "rc": "4.33-rc2"},
-                ],
-            )
-            self.assertEqual(
-                manifest["projects"][1]["targets"],
-                [{"release": "v4.32.0", "ref": "abc"}],
-            )
-            self.assertIn("rc=4.33-rc2", out.getvalue())
-            self.assertIn("release_target_added=true", out.getvalue())
-            self.assertIn("checkout_role=backport", out.getvalue())
-
-    def test_set_default_dev_branch_is_idempotent_for_existing_rc_release_target(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "lean-toolchain").write_text("leanprover/lean4:v4.32.0\n", encoding="utf-8")
-            (root / "branch-policy.json").write_text(
-                json.dumps(
-                    {
-                        "version": 2,
-                        "default_dev_branch": "v4.33.0",
-                        "required_backport_branches": ["v4.32.0"],
-                        "release_targets": [
-                            {
-                                "id": "v4.32.0",
-                                "toolchain": "v4.32.0",
-                                "verso_ref": "v4.32.0",
-                                "branch": "v4.32.0",
-                                "deploy_pages": False,
-                            },
-                            {
-                                "id": "v4.33.0",
-                                "toolchain": "v4.33.0",
-                                "verso_ref": "v4.33.0",
-                                "branch": "v4.33.0",
-                                "deploy_pages": True,
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            manifest_path = root / "tests" / "harness" / "projects.json"
-            manifest_path.parent.mkdir(parents=True)
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "version": 2,
-                        "projects": [
-                            {
-                                "id": "project-template",
-                                "source": {"kind": "in_repo_project"},
-                                "targets": [
-                                    {"release": "v4.32.0"},
-                                    {"release": "v4.33.0", "rc": "4.33-rc2"},
-                                ],
-                            },
-                            {
-                                "id": "external",
-                                "source": {"kind": "git_checkout"},
-                                "targets": [{"release": "v4.32.0", "ref": "abc"}],
-                            },
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            args = argparse.Namespace(lean_ref="v4.33.0-rc2")
-            layout = SimpleNamespace(package_root=root)
-            outputs: list[str] = []
-            with patched_attrs(harness_mod, detect_harness_layout=lambda _start=None: layout):
-                for _ in range(2):
-                    out = io.StringIO()
-                    with redirect_stdout(out):
-                        self.assertEqual(harness_mod.command_set_default_dev_branch(args), 0)
-                    outputs.append(out.getvalue())
-
-            policy = json.loads((root / "branch-policy.json").read_text(encoding="utf-8"))
-            self.assertEqual(policy["default_dev_branch"], "v4.33.0")
-            self.assertEqual(policy["required_backport_branches"], ["v4.32.0"])
-            self.assertEqual(
-                [target for target in policy["release_targets"] if target["id"] == "v4.33.0"],
-                [
-                    {
-                        "id": "v4.33.0",
-                        "toolchain": "v4.33.0",
-                        "verso_ref": "v4.33.0",
-                        "branch": "v4.33.0",
-                        "deploy_pages": True,
-                    }
-                ],
-            )
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                manifest["projects"][0]["targets"],
-                [
-                    {"release": "v4.32.0"},
-                    {"release": "v4.33.0", "rc": "4.33-rc2"},
-                ],
-            )
-            self.assertEqual(
-                manifest["projects"][1]["targets"],
-                [{"release": "v4.32.0", "ref": "abc"}],
-            )
-            for output in outputs:
-                self.assertIn("rc=4.33-rc2", output)
-                self.assertIn("release_target_added=false", output)
 
     def test_paths_prints_current_release_project_sites_by_default(self) -> None:
         args = argparse.Namespace(all_projects=False)
@@ -1864,7 +1194,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1880,7 +1210,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/old.git",
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1952,7 +1282,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -1967,7 +1297,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref="target-ref",
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2016,7 +1346,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref="main",
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2113,7 +1443,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 repository=f"https://github.com/example/{project_id}.git",
                 ref=None,
                 build_command=("lake", "build"),
-                generate_command=VBP_BUILD_COMMAND,
+                generate_command=("lake", "exe", "blueprint-gen"),
                 site_subdir="html-multi",
                 panel_regression_script=None,
                 browser_tests_path=None,
@@ -2130,7 +1460,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository=None,
             ref=None,
             build_command=None,
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2224,7 +1554,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"reference-edit": detached},
-            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.29.0",
             ref_merged_into_worktree_base=lambda _repo_root, ref, _path: ref == "abc123",
             worktree_is_clean=lambda _path: True,
@@ -2234,7 +1563,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
             git_worktrees=lambda _repo_root: [],
             reference_prune_plan=lambda *_args, **_kwargs: [],
-            sync_worktree_registry=lambda _repo_root: ([], Path("/tmp/registry.json")),
         ):
             self.assertEqual(harness_mod.command_worktree_retire(args), 0)
 
@@ -2258,7 +1586,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             root_checkout=False,
         )
         commands: list[list[str]] = []
-        sync_calls: list[Path] = []
         with patched_attrs(
             harness_mod,
             detect_harness_layout=lambda _start=None: layout,
@@ -2272,7 +1599,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 Path("/tmp/repo/.worktrees/registry.json"),
             ),
             git_worktree_map=lambda _repo_root: {"backport-demo": backport},
-            worktree_path_exists=lambda _path: True,
             preferred_worktree_base_ref=lambda _path: "origin/v4.28.0",
             ref_merged_into_worktree_base=lambda _repo_root, ref, _path: ref == "fix/backport-demo",
             worktree_is_clean=lambda _path: True,
@@ -2282,7 +1608,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
             git_worktrees=lambda _repo_root: [],
             reference_prune_plan=lambda *_args, **_kwargs: [],
-            sync_worktree_registry=lambda repo_root: sync_calls.append(repo_root) or ([], Path("/tmp/registry.json")),
         ):
             self.assertEqual(harness_mod.command_worktree_retire(args), 0)
 
@@ -2293,286 +1618,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ["git", "branch", "-d", backport.branch],
             ],
         )
-        self.assertEqual(sync_calls, [layout.repo_root])
-
-    def test_worktree_retire_validates_cleanup_inputs_before_removal(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-            reference_source_cache_root=Path("/tmp/cache"),
-            reference_dependency_cache_root=Path("/tmp/deps"),
-            reference_project_root=Path("/tmp/reference-root"),
-        )
-        demo = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="fix/demo",
-            root_checkout=False,
-        )
-        commands: list[list[str]] = []
-
-        def invalid_catalog(_manifest_path):
-            raise ValueError("invalid project catalog")
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            local_release_ref=lambda _repo_root: "v4.32.0",
-            git_worktree_map=lambda _repo_root: {"demo": demo},
-            worktree_path_exists=lambda _path: True,
-            worktree_record_map=lambda _repo_root: (
-                {"demo": SimpleNamespace(name="demo", locked=False)},
-                Path("/tmp/registry.json"),
-            ),
-            preferred_worktree_base_ref=lambda _path: "origin/v4.32.0",
-            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: True,
-            worktree_is_clean=lambda _path: True,
-            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
-            load_project_catalog_manifest=invalid_catalog,
-            run=lambda command, *, cwd: commands.append(command),
-        ):
-            with self.assertRaisesRegex(SystemExit, "invalid project catalog"):
-                harness_mod.command_worktree_retire(args)
-
-        self.assertEqual(commands, [])
-
-    def test_worktree_retire_recovers_when_git_still_records_a_missing_path(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=319)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-            reference_source_cache_root=Path("/tmp/cache"),
-            reference_dependency_cache_root=Path("/tmp/deps"),
-            reference_project_root=Path("/tmp/reference-root"),
-        )
-        stale = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/missing-demo"),
-            head="abc123",
-            branch="fix/demo",
-            root_checkout=False,
-        )
-        commands: list[list[str]] = []
-        sync_calls: list[Path] = []
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            local_release_ref=lambda _repo_root: "v4.32.0",
-            git_worktree_map=lambda _repo_root: {"demo": stale},
-            worktree_path_exists=lambda _path: False,
-            load_record=lambda _path: SimpleNamespace(locked=False),
-            worktree_merged_pr_base_ref=lambda _repo_root, _pr, _worktree: ("origin/v4.32.0", None),
-            ref_merged_into_base=lambda _repo_root, _ref, _base_ref: False,
-            run=lambda command, *, cwd: commands.append(command),
-            sync_worktree_registry=lambda repo_root: sync_calls.append(repo_root) or ([], Path("/tmp/registry.json")),
-            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
-            load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
-            git_worktrees=lambda _repo_root: [],
-            reference_prune_plan=lambda *_args, **_kwargs: [],
-        ):
-            self.assertEqual(harness_mod.command_worktree_retire(args), 0)
-
-        self.assertEqual(
-            commands,
-            [
-                ["git", "worktree", "prune", "--expire", "now"],
-                ["git", "branch", "-D", "fix/demo"],
-            ],
-        )
-        self.assertEqual(sync_calls, [layout.repo_root])
-
-    def test_worktree_retire_requires_merged_pr_to_recover_a_missing_path(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=None)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-        )
-        stale = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/missing-demo"),
-            head="abc123",
-            branch="fix/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            local_release_ref=lambda _repo_root: "v4.32.0",
-            git_worktree_map=lambda _repo_root: {"demo": stale},
-            worktree_path_exists=lambda _path: False,
-            load_record=lambda _path: SimpleNamespace(locked=False),
-        ):
-            with self.assertRaisesRegex(SystemExit, "pass `--merged-pr <number>`"):
-                harness_mod.command_worktree_retire(args)
-
-    def test_worktree_retire_rejects_unverified_missing_path_recovery(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=319)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-        )
-        stale = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/missing-demo"),
-            head="abc123",
-            branch="fix/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            local_release_ref=lambda _repo_root: "v4.32.0",
-            git_worktree_map=lambda _repo_root: {"demo": stale},
-            worktree_path_exists=lambda _path: False,
-            load_record=lambda _path: SimpleNamespace(locked=False),
-            worktree_merged_pr_base_ref=lambda _repo_root, _pr, _worktree: (
-                None,
-                "GitHub PR #319 head does not match worktree head",
-            ),
-        ):
-            with self.assertRaisesRegex(SystemExit, "head does not match worktree head"):
-                harness_mod.command_worktree_retire(args)
-
-    def test_worktree_retire_accepts_verified_squash_merged_pr(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=152)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-            reference_source_cache_root=Path("/tmp/cache"),
-            reference_dependency_cache_root=Path("/tmp/deps"),
-            reference_project_root=Path("/tmp/reference-root"),
-        )
-        demo = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        commands: list[list[str]] = []
-        seen_prs: list[int] = []
-
-        def fake_pr_validation(_repo_root, pr_number, worktree, base_ref):
-            seen_prs.append(pr_number)
-            self.assertEqual(worktree, demo)
-            self.assertEqual(base_ref, "origin/v4.31.0")
-            return None
-
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            worktree_record_map=lambda _repo_root: (
-                {
-                    "demo": SimpleNamespace(
-                        name="demo",
-                        locked=False,
-                    )
-                },
-                Path("/tmp/repo/.worktrees/registry.json"),
-            ),
-            git_worktree_map=lambda _repo_root: {"demo": demo},
-            worktree_path_exists=lambda _path: True,
-            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
-            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
-            worktree_merged_pr_validation_error=fake_pr_validation,
-            worktree_is_clean=lambda _path: True,
-            local_release_ref=lambda _repo_root: "v4.31.0",
-            run=lambda command, *, cwd: commands.append(command),
-            resolve_manifest_path=lambda _path_text, _package_root: Path("/tmp/projects.json"),
-            load_project_catalog_manifest=lambda _manifest_path: SimpleNamespace(projects=()),
-            git_worktrees=lambda _repo_root: [],
-            reference_prune_plan=lambda *_args, **_kwargs: [],
-            sync_worktree_registry=lambda _repo_root: ([], Path("/tmp/registry.json")),
-        ):
-            self.assertEqual(harness_mod.command_worktree_retire(args), 0)
-
-        self.assertEqual(seen_prs, [152])
-        self.assertEqual(
-            commands,
-            [
-                ["git", "worktree", "remove", str(demo.path)],
-                ["git", "branch", "-D", demo.branch],
-            ],
-        )
-
-    def test_worktree_retire_rejects_unverified_squash_merged_pr(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False, merged_pr=152)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-        )
-        demo = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            worktree_record_map=lambda _repo_root: (
-                {
-                    "demo": SimpleNamespace(
-                        name="demo",
-                        locked=False,
-                    )
-                },
-                Path("/tmp/repo/.worktrees/registry.json"),
-            ),
-            git_worktree_map=lambda _repo_root: {"demo": demo},
-            worktree_path_exists=lambda _path: True,
-            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
-            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
-            worktree_merged_pr_validation_error=lambda *_args: "GitHub PR #152 is not merged",
-            local_release_ref=lambda _repo_root: "v4.31.0",
-        ):
-            with self.assertRaisesRegex(SystemExit, "GitHub PR #152 is not merged"):
-                harness_mod.command_worktree_retire(args)
-
-    def test_worktree_retire_hints_for_unverified_squash_merge(self) -> None:
-        args = argparse.Namespace(name="demo", dry_run=False)
-        layout = SimpleNamespace(
-            repo_root=Path("/tmp/repo"),
-            package_root=Path("/tmp/package"),
-            worktree_name=None,
-        )
-        demo = GitWorktree(
-            name="demo",
-            path=Path("/tmp/repo/.worktrees/demo"),
-            head="abc123",
-            branch="feat/demo",
-            root_checkout=False,
-        )
-        with patched_attrs(
-            harness_mod,
-            detect_harness_layout=lambda _start=None: layout,
-            worktree_record_map=lambda _repo_root: (
-                {
-                    "demo": SimpleNamespace(
-                        name="demo",
-                        locked=False,
-                    )
-                },
-                Path("/tmp/repo/.worktrees/registry.json"),
-            ),
-            git_worktree_map=lambda _repo_root: {"demo": demo},
-            worktree_path_exists=lambda _path: True,
-            preferred_worktree_base_ref=lambda _path: "origin/v4.31.0",
-            ref_merged_into_worktree_base=lambda _repo_root, _ref, _path: False,
-            local_release_ref=lambda _repo_root: "v4.31.0",
-        ):
-            with self.assertRaisesRegex(SystemExit, "pass `--merged-pr <number>` after a squash merge"):
-                harness_mod.command_worktree_retire(args)
 
     def test_worktree_retire_rejects_locked_worktree(self) -> None:
         args = argparse.Namespace(name="demo", dry_run=False)
@@ -2603,7 +1648,6 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                     root_checkout=False,
                 )
             },
-            worktree_path_exists=lambda _path: True,
         ):
             with self.assertRaisesRegex(SystemExit, "is locked; unlock it before retiring"):
                 harness_mod.command_worktree_retire(args)
@@ -2629,7 +1673,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         with patched_attrs(
             reference_harness_mod,
             ensure_prebuilt_executable=lambda _package_root, _exe_name: Path("/tmp/demo"),
-            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial, **_kwargs: None,
+            render_in_repo_projects=lambda _package_root, _output_root, _projects, _serial: None,
         ):
             generate_projects(
                 layout,
@@ -2638,25 +1682,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 skip_build=False,
                 serial=False,
                 allow_local_build=False,
+                reference_package_mode="copy",
             )
-
-    def test_generate_projects_preflights_rsync_for_external_projects(self) -> None:
-        layout = SimpleNamespace(package_root=Path("/tmp/package"), in_linked_worktree=True)
-
-        with patch.object(
-            reference_harness_mod,
-            "require_reference_rsync",
-            side_effect=SystemExit("rsync required"),
-        ):
-            with self.assertRaisesRegex(SystemExit, "rsync required"):
-                generate_projects(
-                    layout,
-                    Path("/tmp/out"),
-                    [self.published_git_project()],
-                    skip_build=False,
-                    serial=False,
-                    allow_local_build=False,
-                )
 
     def test_validate_run_lean_tests_does_not_auto_sync_root_lake(self) -> None:
         args = argparse.Namespace(
@@ -2775,7 +1802,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref="abc123",
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2843,7 +1870,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository=None,
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2862,7 +1889,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/noperthedron.git",
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2878,7 +1905,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/sphere.git",
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,
@@ -2953,7 +1980,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
             repository="https://github.com/example/validation-only.git",
             ref=None,
             build_command=("lake", "build"),
-            generate_command=VBP_BUILD_COMMAND,
+            generate_command=("lake", "exe", "blueprint-gen"),
             site_subdir="html-multi",
             panel_regression_script=None,
             browser_tests_path=None,

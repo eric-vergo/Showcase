@@ -1,5 +1,5 @@
 (function () {
-  const { blueprintDataUrl, loadPreviewApi, onDomReady } = createBlueprintPreviewApiLoader(window);
+  const { loadPreviewApi, onDomReady } = createBlueprintPreviewApiLoader(window);
 
   function setText(root, selector, text) {
     const node = root.querySelector(selector);
@@ -113,13 +113,12 @@
     appendFact(facts, "Kind", entry.kind);
     appendFact(facts, "Facet", entry.facet);
     appendFact(facts, "Label", entry.label);
-    appendFact(facts, "Group", entry.parentTitle || "");
+    appendFact(facts, "Group", entry.group ? entry.group.title : "");
     appendFact(facts, "Statement uses", Array.isArray(entry.statementUses) ? entry.statementUses.length : 0);
     appendFact(facts, "Proof uses", Array.isArray(entry.proofUses) ? entry.proofUses.length : 0);
     appendFact(facts, "Used by", Array.isArray(entry.usedBy) ? entry.usedBy.length : 0);
     appendFact(facts, "Code previews", Array.isArray(entry.leanCodePreviewKeys) ? entry.leanCodePreviewKeys.length : 0);
     appendFact(facts, "External markup", Array.isArray(entry.externalMarkup) ? entry.externalMarkup.length : 0);
-    appendFact(facts, "Source refs", Array.isArray(entry.sources) ? entry.sources.length : 0);
   }
 
   function appendMarkdownInline(parent, text) {
@@ -185,20 +184,14 @@
     return item;
   }
 
-  async function renderGraphData(api, root) {
+  async function renderGraphData(root) {
     const card = root.querySelector("[data-bp-custom-client-graph]");
     if (!card) return { ok: true };
     const summary = card.querySelector("[data-bp-custom-client-graph-summary]");
     const nodesTarget = card.querySelector("[data-bp-custom-client-graph-nodes]");
     if (summary) summary.replaceChildren();
     if (nodesTarget) nodesTarget.replaceChildren();
-    const graphModuleUrl =
-      api && typeof api.graphApiModuleUrl === "function"
-        ? api.graphApiModuleUrl()
-        : api && typeof api.dataUrl === "function"
-          ? api.dataUrl("api/graph.mjs")
-        : blueprintDataUrl("api/graph.mjs");
-    const graphModule = await import(graphModuleUrl);
+    const graphModule = await import("../-verso-data/api/graph.mjs");
     const graphs = typeof graphModule.loadGraphs === "function" ? await graphModule.loadGraphs() : [];
     const graph = graphs[0] || null;
     card.dataset.bpGraphOk = graph ? "true" : "false";
@@ -271,7 +264,7 @@
       const results = await Promise.all(examples.map(function (example) {
         return renderExample(api, example);
       }));
-      const graphResult = await renderGraphData(api, root);
+      const graphResult = await renderGraphData(root);
       const ok = results.every(function (result, index) {
         return result && result.ok === expectedOk(examples[index]);
       }) && graphResult.ok;

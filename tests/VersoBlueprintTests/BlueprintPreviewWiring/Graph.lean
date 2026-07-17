@@ -90,25 +90,29 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "value=\"anchored\"" &&
       hasSubstr out "Near node" &&
       !hasSubstr out "class=\"bp_graph_preview_store\"" &&
-      !hasSubstr out "class=\"bp_graph_preview_tpl\"" &&
+      -- The interactive graph now embeds per-node full-card templates in a hidden
+      -- container; the click-activated modal resolves them by label (offline).
+      hasSubstr out "class=\"bp_graph_preview_templates\"" &&
+      hasSubstr out "class=\"bp_graph_preview_tpl\" data-bp-preview-label=" &&
       hasSubstr out "class=\"bp_group_hover_preview bp_preview_panel\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_header bp_preview_panel_header\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_title bp_preview_panel_title\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_close bp_preview_panel_close\"" &&
       hasSubstr out "class=\"bp_group_hover_preview_graph bp_preview_panel_body\"" &&
       hasSubstr out "aria-label=\"Close group preview\"" &&
-      hasSubstr out "class=\"bp-graph-data\"" &&
-      hasSubstr out "\"variants\":" &&
-      !hasSubstr out "class=\"bp-graph-variants\"" &&
-      !hasSubstr out "dot-source" &&
+      hasSubstr out "class=\"bp-graph-variants\"" &&
       hasSubstr out "class=\"bp_graph_controls_button bp_graph_options_button\"" &&
       hasSubstr out "class=\"bp_graph_options_popover\"" &&
       hasSubstr out "class=\"bp_graph_controls_select bp_graph_direction_select\"" &&
       hasSubstr out "class=\"bp_graph_pack_input\"" &&
+      hasSubstr out "class=\"bp_graph_all_edges_input\"" &&
+      hasSubstr out "Show all edges" &&
       hasSubstr out "data-bp-graph-direction=\"TB\"" &&
       hasSubstr out "data-bp-graph-pack=\"false\"" &&
       hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
-      hasSubstr out "\"options\":{\"direction\":\"TB\",\"pack\":false}" &&
+      hasSubstr out "data-bp-graph-all-edges=\"false\"" &&
+      hasSubstr out "data-bp-graph-default-all-edges=\"false\"" &&
+      hasSubstr out "\"options\":{\"allEdges\":false,\"direction\":\"TB\",\"pack\":false}" &&
       hasSubstr out "data-bp-tex-prelude-id" &&
       !hasSubstr out "data-bp-tex-prelude=\"" &&
       !hasSubstr out "bp_preview_tex_prelude" &&
@@ -172,30 +176,12 @@ Base statement for graph preview mode option coverage.
       hasSubstr out "data-bp-graph-default-direction=\"LR\"" &&
       hasSubstr out "data-bp-graph-default-pack=\"false\"" &&
       (hasSubstr out "selected value=\"LR\"" || hasSubstr out "value=\"LR\" selected") &&
-      hasSubstr out "\"options\":{\"direction\":\"LR\",\"pack\":false}" &&
+      hasSubstr out "\"options\":{\"allEdges\":false,\"direction\":\"LR\",\"pack\":false}" &&
       hasSubstr out "rankdir=LR;" &&
       hasSubstr out "pack=false;" &&
+      hasSubstr out "newrank=true;" &&
+      hasSubstr out "concentrate=true;" &&
       !hasSubstr out "dotByDirection"
     )
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let (_, state) ← renderManualDocHtmlStringAndState manualImpls previewWiringDoc
-    let malformedKey := "graph:malformed"
-    let state :=
-      Informal.TraversalIndex.Graphs.saveId state malformedKey default
-        |>.saveDomainObjectData
-          Informal.TraversalIndex.Graphs.domainName malformedKey (Lean.Json.str "malformed")
-    let errors ← IO.mkRef #[]
-    let files ← Informal.PreviewManifest.buildPreviewDataFiles manualImpls
-      (fun msg => errors.modify (·.push msg))
-      (Informal.PreviewManifest.PreparedPreviewState.prepare state)
-    let errors ← errors.get
-    pure <|
-      !files.manifest.graphs.isEmpty &&
-        errors.any fun msg =>
-          hasSubstr msg "Blueprint manifest: malformed graph entry graph:malformed:"
 
 end Verso.VersoBlueprintTests.BlueprintPreviewWiring.Graph

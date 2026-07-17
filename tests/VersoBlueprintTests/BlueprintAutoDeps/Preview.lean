@@ -249,6 +249,10 @@ dependencies: {uses "auto.demo.statement_target"}[],
 #eval
   show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls autoDepsPreviewDoc
+    -- The statement heading's uses panel is gone (clean-card 1D), and the
+    -- proof-cell "USES n" panel is gone too (Stage 2 -- the metadata rail's Uses
+    -- section owns dependency information), so no uses-panel markup renders.
+    -- The nodes themselves still do.
     pure <|
       hasSubstr out "auto.demo.type_source" &&
       hasSubstr out "auto.demo.statement_target" &&
@@ -257,8 +261,8 @@ dependencies: {uses "auto.demo.statement_target"}[],
       hasSubstr out "auto.demo.external_target" &&
       hasSubstr out "auto.demo.inline_target" &&
       hasSubstr out "auto.demo.external_opt_out" &&
-      hasSubstr out "Statement uses 2" &&
-      hasSubstr out "Proof uses 2" &&
-      hasSubstr out "Origin: automatic"
+      !hasSubstr out "Statement uses 2" &&
+      !hasSubstr out "Proof uses 2" &&
+      !hasSubstr out "Origin: automatic"
 
 end Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview

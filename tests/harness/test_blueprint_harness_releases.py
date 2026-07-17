@@ -28,29 +28,20 @@ class BlueprintHarnessReleaseHelperTests(unittest.TestCase):
         self.assertEqual(releases_mod.normalize_lean_release_ref(SAMPLE_NEXT_RC), SAMPLE_NEXT_RC_REF)
         self.assertEqual(releases_mod.release_branch_from_lean_ref(lean_toolchain(SAMPLE_NEXT_RC_REF)), SAMPLE_NEXT_RELEASE)
 
-    def test_release_branch_versions_are_comparable_across_stable_and_rc_refs(self) -> None:
-        self.assertEqual(releases_mod.release_branch_version("v4.33.0"), (4, 33, 0))
-        self.assertEqual(releases_mod.release_branch_version("4.33-rc2"), (4, 33, 0))
-        self.assertGreater(
-            releases_mod.release_branch_version("v4.33.0"),
-            releases_mod.release_branch_version("v4.32.1"),
+    def test_lean_release_order_key_orders_release_candidates_before_final_release(self) -> None:
+        self.assertLess(
+            releases_mod.lean_release_order_key("v4.30.0-rc1"),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
         )
-
-    def test_release_branch_version_rejects_non_numeric_refs(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "expected a numeric Lean release branch"):
-            releases_mod.release_branch_version("main")
-
-    def test_release_family_and_subversion_order_rc_final_and_patch(self) -> None:
-        versions = ["v4.33.0-rc1", "v4.33.0-rc2", "v4.33.0", "v4.33.1-rc1", "v4.33.1"]
-
-        self.assertEqual(
-            {releases_mod.lean_release_family(version) for version in versions},
-            {(4, 33)},
+        self.assertLess(
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RELEASE),
         )
         self.assertEqual(
-            sorted(versions, key=releases_mod.lean_release_subversion),
-            versions,
+            releases_mod.lean_release_order_key("v4.30-rc2"),
+            releases_mod.lean_release_order_key(SAMPLE_NEXT_RC_REF),
         )
+        self.assertIsNone(releases_mod.lean_release_order_key("nightly-testing"))
 
     def test_rewrite_lean_toolchain_preserves_existing_final_newline_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

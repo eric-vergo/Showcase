@@ -12,6 +12,7 @@ from support import (
     assert_no_runtime_errors,
     find_free_port,
     record_runtime_errors,
+    wait_for_blueprint_render_api,
     wait_for_server,
 )
 from scripts.blueprint_harness_project_commands import (
@@ -55,9 +56,8 @@ def generate_project_template_preview_data(output_dir: Path) -> tuple[Path, Path
             lean_low_priority_command(
                 PACKAGE_ROOT,
                 "lake",
+                "env",
                 "lean",
-                "ProjectTemplateMain.lean",
-                "--",
                 "--run",
                 "ProjectTemplateMain.lean",
                 "--output",
@@ -96,9 +96,8 @@ def slides_server(tmp_path_factory):
         [
             "scripts/lean-low-priority",
             "lake",
+            "env",
             "lean",
-            "tests/browser/BlueprintSlidesRuntime.lean",
-            "--",
             "--run",
             "tests/browser/BlueprintSlidesRuntime.lean",
             str(output_dir),
@@ -172,16 +171,12 @@ class TestBlueprintSlidesRuntime:
             "multiplication_spec",
         }
         assert [entry["label"] for entry in collatz_entry["usedBy"]] == ["collatz_conjecture"]
-        collatz_group = next(
-            group for group in manifest["groups"] if group["label"] == "collatz_core"
-        )
-        assert collatz_group["declared"]
-        assert [entry["label"] for entry in collatz_group["entries"]] == [
-            "collatz_step",
-            "collatz_conjecture",
-        ]
-        assert collatz_entry["parent"] == "collatz_core"
-        assert "group" not in collatz_entry
+        assert collatz_entry["group"]["label"] == "collatz_core"
+        assert len(collatz_entry["leanCodePreviewKeys"]) == 2
+        assert collatz_entry["codeData"]
+        assert "blocks" not in collatz_entry
+        assert "html" not in collatz_entry
+        assert "bp_math inline" in html_by_key[collatz_entry["key"]]
         multiplication_entry = next(
             entry
             for entry in manifest["previews"]
@@ -195,7 +190,7 @@ class TestBlueprintSlidesRuntime:
         assert multiplication_entry["title"] == "Theorem 2.2"
         assert multiplication_proof_entry["title"] == "Proof for Theorem 2.2"
         assert multiplication_entry["leanCodePreviewKeys"] == [
-            "Informal.LeanCodePreview.Inline.multiplication_one_right"
+            "Informal.LeanCodePreview.multiplication_one_right"
         ]
         assert (
             multiplication_proof_entry["leanCodePreviewKeys"]
@@ -211,13 +206,13 @@ class TestBlueprintSlidesRuntime:
             for entry in manifest["previews"]
             if entry["key"] in collatz_entry["leanCodePreviewKeys"]
         ]
-        assert len(code_entries) == 1
-        assert code_entries[0]["targetKind"] == "inlineLeanCode"
+        assert len(code_entries) == 2
         assert all("leanCode" not in entry for entry in code_entries)
         assert all("class=\"hl lean block\"" in html_by_key[entry["key"]] for entry in code_entries)
         assert all("data-verso-hover=" in html_by_key[entry["key"]] for entry in code_entries)
 
         page.goto(f"{slides_server}/")
+        wait_for_blueprint_render_api(page)
         page.wait_for_function(
             """() => !!(window.VersoBlueprint && window.VersoBlueprint.slides && window.VersoBlueprint.slides.hydrate)"""
         )
@@ -328,14 +323,12 @@ class TestBlueprintSlidesRuntime:
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
-        node.locator(".bp_extra_slot_group .bp_relation_chip").hover()
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
             COLLATZ_CONJECTURE_HREF,
             COLLATZ_CONJECTURE_REWRITTEN,
         )
-        node.locator(".bp_extra_slot_used_by .bp_relation_chip").hover()
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",

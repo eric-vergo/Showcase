@@ -11,7 +11,6 @@ from tests.preview_runtime_api import (
     PUBLIC_API_JSDOC_SOURCES,
     PUBLIC_API_MODULES,
     PUBLIC_API_PACKAGE_EXPORTS,
-    PUBLIC_API_TYPE_EXPORTS,
     PUBLIC_DATA_API_EXPORTS,
     PUBLIC_GENERATED_API_MODULES,
     PUBLIC_GRAPH_API_EXPORTS,
@@ -20,7 +19,7 @@ from tests.preview_runtime_api import (
     blueprint_js_files,
     blueprint_js_source,
     documented_bundled_helper_methods,
-    documented_public_api_methods,
+    documented_stable_api_methods,
     esm_named_exports,
     js_object_keys,
     js_object_methods,
@@ -29,7 +28,6 @@ from tests.preview_runtime_api import (
 API_DOC = PACKAGE_ROOT / "doc" / "API.md"
 DESIGN_RATIONALE = PACKAGE_ROOT / "doc" / "DESIGN_RATIONALE.md"
 JSDOC_CONFIG = PACKAGE_ROOT / "jsdoc.json"
-JSDOC_TYPE_NAMES = PACKAGE_ROOT / "doc" / "jsdoc-static" / "jsdoc-type-names.js"
 PACKAGE_JSON = PACKAGE_ROOT / "package.json"
 INTERNAL_ONLY_HELPERS = {
     "bindCloseOnce",
@@ -53,7 +51,8 @@ GRAPH_CORE_HELPERS = {
     "dataUrl",
     "graphCanvasFor",
     "readGraphJsonScript",
-    "decodeGraphData",
+    "graphFallbackVariants",
+    "normalizeGraphData",
     "graphsFromManifest",
     "getGraphData",
     "getGraphVariants",
@@ -65,7 +64,8 @@ GRAPH_CORE_IMPLEMENTATION_HELPERS = {
     "dataUrl",
     "graphCanvasFor",
     "readGraphJsonScript",
-    "decodeGraphData",
+    "graphFallbackVariants",
+    "normalizeGraphData",
     "graphsFromManifest",
     "getGraphData",
     "getGraphVariants",
@@ -124,21 +124,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         source_includes = set(jsdoc_config["source"]["include"])
 
         self.assertEqual(source_includes, PUBLIC_API_JSDOC_SOURCES)
-        self.assertEqual(
-            jsdoc_config["docdash"]["scripts"],
-            ["jsdoc-type-names.js", "jsdoc-type-links.js"],
-        )
         self.assertFalse(any("/Commands/" in source for source in source_includes))
         self.assertFalse(any(source.endswith("-core.mjs") for source in source_includes))
         self.assertFalse(any(source.endswith("-common.mjs") for source in source_includes))
-
-    def test_jsdoc_type_linker_matches_public_type_contract(self) -> None:
-        source = JSDOC_TYPE_NAMES.read_text(encoding="utf-8")
-        match = re.search(r"\bglobalScope\.blueprintJSDocTypeNames\s*=\s*\[([\s\S]*?)\];", source)
-
-        self.assertIsNotNone(match)
-        type_names = set(re.findall(r'"([^"]+)"', match.group(1)))
-        self.assertEqual(type_names, PUBLIC_API_TYPE_EXPORTS)
 
     def test_api_doc_module_table_matches_public_generated_modules(self) -> None:
         api_doc = API_DOC.read_text(encoding="utf-8")
@@ -153,28 +141,23 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("Only the files listed in this table are public", api_doc)
         for entry in PUBLIC_API_MODULES.values():
             self.assertIn(entry["jsdoc_page"], js_api_docs)
-        self.assertIn("Start from the kind of client you are writing", js_api_docs)
-        self.assertIn("## Rendering Paths", js_api_docs)
-        self.assertIn("api/preview.mjs", js_api_docs)
-        self.assertIn("api/data.mjs", js_api_docs)
-        self.assertIn("api/graph.mjs", js_api_docs)
 
-    def test_api_public_api_table_matches_runtime_source(self) -> None:
+    def test_api_stable_api_table_matches_runtime_source(self) -> None:
         runtime = blueprint_js_source()
         api_doc = API_DOC.read_text(encoding="utf-8")
 
-        source_methods = js_object_methods(runtime, "publicCustomClientApi")
-        documented_methods = documented_public_api_methods(api_doc)
+        source_methods = js_object_methods(runtime, "stableCustomClientApi")
+        documented_methods = documented_stable_api_methods(api_doc)
 
         self.assertEqual(documented_methods, source_methods)
         self.assertIn("`createPreview()`", api_doc)
-        self.assertNotIn("namespace.onRenderReady = onRenderReady", runtime)
+        self.assertIn("namespace.onRenderReady = onRenderReady", runtime)
 
-    def test_api_public_api_table_excludes_bundled_feature_helpers(self) -> None:
+    def test_api_stable_api_table_excludes_bundled_feature_helpers(self) -> None:
         runtime = blueprint_js_source()
         api_doc = API_DOC.read_text(encoding="utf-8")
 
-        documented_methods = documented_public_api_methods(api_doc)
+        documented_methods = documented_stable_api_methods(api_doc)
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(documented_methods & helper_methods)
@@ -191,21 +174,21 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_runtime_api_tiers_remain_disjoint(self) -> None:
         runtime = blueprint_js_source()
 
-        source_methods = js_object_methods(runtime, "publicCustomClientApi")
+        source_methods = js_object_methods(runtime, "stableCustomClientApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(source_methods & helper_methods)
 
-    def test_preview_esm_exports_public_custom_client_api(self) -> None:
+    def test_preview_esm_exports_stable_custom_client_api(self) -> None:
         runtime = blueprint_js_source()
         source = (BLUEPRINT_SRC / "blueprint-preview-api.mjs").read_text(encoding="utf-8")
 
-        public_methods = js_object_methods(runtime, "publicCustomClientApi")
+        stable_methods = js_object_methods(runtime, "stableCustomClientApi")
         named_exports = esm_named_exports(source)
         default_methods = js_object_keys(source, "previewApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
-        self.assertLessEqual(public_methods, PUBLIC_PREVIEW_API_EXPORTS)
+        self.assertLessEqual(stable_methods, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertEqual(named_exports, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertEqual(default_methods, PUBLIC_PREVIEW_API_EXPORTS)
         self.assertFalse(named_exports & helper_methods)
@@ -233,7 +216,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
     def test_internal_runtime_helpers_are_not_exported(self) -> None:
         runtime = blueprint_js_source()
 
-        source_methods = js_object_methods(runtime, "publicCustomClientApi")
+        source_methods = js_object_methods(runtime, "stableCustomClientApi")
         helper_methods = js_object_methods(runtime, "bundledFeatureRenderHelpers")
 
         self.assertFalse(INTERNAL_ONLY_HELPERS & source_methods)
@@ -276,9 +259,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
-        slide_assets = (BLUEPRINT_SRC / "Slides" / "Assets.lean").read_text(
-            encoding="utf-8"
-        )
+        classic_adapter = (
+            BLUEPRINT_SRC / "Slides" / "ClassicPreviewAdapter.lean"
+        ).read_text(encoding="utf-8")
         base = (BLUEPRINT_SRC / "Commands" / "preview-runtime-base.mjs").read_text(
             encoding="utf-8"
         )
@@ -288,9 +271,6 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         render = (BLUEPRINT_SRC / "Commands" / "preview-runtime-render.mjs").read_text(
             encoding="utf-8"
         )
-        source_metadata = (
-            BLUEPRINT_SRC / "Commands" / "preview-runtime-source-metadata.mjs"
-        ).read_text(encoding="utf-8")
         hydration = (
             BLUEPRINT_SRC / "Commands" / "preview-runtime-hydration.mjs"
         ).read_text(encoding="utf-8")
@@ -307,26 +287,41 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             encoding="utf-8"
         )
 
+        for include_path in (
+            "../Commands/preview-runtime-base.mjs",
+            "../Commands/preview-runtime-data.mjs",
+            "../Commands/preview-runtime-render.mjs",
+            "../Commands/preview-runtime-hydration.mjs",
+            "../Commands/preview-runtime-lifecycle.mjs",
+            "../Commands/preview-runtime-surface.mjs",
+            "../Commands/preview-runtime-template.mjs",
+            "../Commands/preview-runtime-api.mjs",
+            "../blueprint-graph-core.mjs",
+            "../blueprint-preview-core.mjs",
+            "../Commands/preview-ready.mjs",
+            "../Commands/inline-preview.mjs",
+            "../Informal/Block/relation-panel.mjs",
+            "blueprint-slides.mjs",
+        ):
+            self.assertIn(f'include_str "{include_path}"', classic_adapter)
+            self.assertNotIn(f'include_str "{include_path}"', common)
         for old_common_include_path in (
             "preview-runtime-base.mjs",
             "preview-runtime-data.mjs",
             "preview-runtime-render.mjs",
-            "preview-runtime-source-metadata.mjs",
             "preview-runtime-hydration.mjs",
             "preview-runtime-lifecycle.mjs",
             "preview-runtime-surface.mjs",
             "preview-runtime-template.mjs",
             "preview-runtime-api.mjs",
-            "blueprint-graph-core.mjs",
-            "blueprint-preview-core.mjs",
+            "preview-ready.mjs",
             "inline-preview.mjs",
         ):
             self.assertNotIn(f'include_str "{old_common_include_path}"', common)
-        self.assertIn('include_str "blueprint-slide-runtime.mjs"', slide_assets)
-        self.assertIn('include_str "blueprint-slides.mjs"', slide_assets)
-        self.assertNotIn("ClassicPreviewAdapter", slide_assets)
         self.assertNotIn("import VersoBlueprint.BrowserAsset", common)
-        self.assertNotIn("BrowserAsset", slide_assets)
+        self.assertIn("private def previewRuntimeFragments : List String", classic_adapter)
+        self.assertIn('String.intercalate "\\n" previewRuntimeFragments', classic_adapter)
+        self.assertIn("installPreviewRuntimeApi();", classic_adapter)
         self.assertIn("function collectPreviewTemplates(root, selector, keyAttr)", base)
         self.assertIn("function readHtml(entry)", base)
         self.assertIn("function escapeHtml(text)", base)
@@ -337,6 +332,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function previewKey(label, facet)", data)
         self.assertNotIn("function blueprintGraphApi()", data)
         self.assertNotIn("function callBlueprintGraphCore(name, args, fallback)", data)
+        self.assertIn("function callRuntimeGraphCore(name, args, fallback)", classic_adapter)
         self.assertNotIn("function callRuntimeGraphCore(name, args, fallback)", common)
         self.assertIn("export const previewRuntimeData = {", data)
         self.assertIn("function readBlueprintManifestStatusForApi()", data)
@@ -347,13 +343,6 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertIn("function renderHtmlInto(target, html, options)", render)
         self.assertIn("async function resolveCanonicalBlueprintPreview(previewKey, options)", render)
         self.assertIn("export const previewRuntimeRender = {", render)
-        self.assertIn("async function resolveSourceMetadata(source, options)", source_metadata)
-        self.assertNotIn("function renderSourceMetadataInto", source_metadata)
-        self.assertNotIn("function sourceMetadataHtml", source_metadata)
-        self.assertIn("export const previewRuntimeSourceMetadata = {", source_metadata)
-        self.assertNotIn("function sourceMetadataHtml(result, options)", render)
-        self.assertNotIn('from "./preview-runtime-source-metadata.mjs";', api)
-        self.assertIn("return dataApi.resolveSourceMetadata(", api)
         self.assertIn("function hydrateRenderedPreview(root, options)", hydration)
         self.assertIn("function renderBlueprintMath(root)", hydration)
         self.assertIn("function registerPreviewHydrator(name, fn)", hydration)
@@ -378,10 +367,10 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             "setTemplatePreviewDescriptorBinder(bindTemplatePreviewDescriptors)",
             template,
         )
-        self.assertIn("const publicCustomClientApi = {", api)
+        self.assertIn("const stableCustomClientApi = {", api)
         self.assertIn("export function createPreviewRuntimeApi(options)", api)
-        self.assertNotIn("export function installPreviewRuntimeApi(options)", api)
-        self.assertNotIn("function onRenderReady(fn)", api)
+        self.assertIn("export function installPreviewRuntimeApi(options)", api)
+        self.assertIn("function onRenderReady(fn)", api)
         self.assertIn("renderNode: previewRenderApi.renderNode", api)
         for helper in (
             "function loadBlueprintStoreForApi(store, options)",
@@ -410,19 +399,18 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         )
 
         self.assertIn("namespace.slides = slideRuntime", runtime)
-        self.assertIn("runtime.hydrate = function (root)", runtime)
-        self.assertIn("export function installBlueprintSlides(previewUtils", runtime)
-        self.assertNotIn("window.VersoBlueprint.onRenderReady", runtime)
+        self.assertIn("slideRuntime.hydrate = hydrateWhenReady", runtime)
+        self.assertIn("export function installBlueprintSlides()", runtime)
         self.assertNotIn("window.bpSlideNodeRuntime", runtime)
         self.assertNotIn("window.bpSlideNodeRuntimeConfig", runtime)
 
-    def test_graph_runtime_has_no_legacy_variant_path(self) -> None:
+    def test_graph_runtime_uses_structured_variants_only(self) -> None:
         runtime = (BLUEPRINT_SRC / "Commands" / "graph.mjs").read_text(
             encoding="utf-8"
         )
 
-        self.assertNotIn("readPublicGraphVariants", runtime)
-        self.assertNotIn("coreGetGraphVariants", runtime)
+        self.assertIn("readPublicGraphVariants(graphBlock)", runtime)
+        self.assertIn("coreGetGraphVariants(root)", runtime)
         self.assertIn("export function startGraphRuntime(previewUtils, options)", runtime)
         self.assertNotIn("legacyGraphVariants", runtime)
 
@@ -465,6 +453,9 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         common = (BLUEPRINT_SRC / "Commands" / "Common.lean").read_text(
             encoding="utf-8"
         )
+        classic_adapter = (
+            BLUEPRINT_SRC / "Slides" / "ClassicPreviewAdapter.lean"
+        ).read_text(encoding="utf-8")
         runtime = (BLUEPRINT_SRC / "Commands" / "preview-runtime-api.mjs").read_text(
             encoding="utf-8"
         )
@@ -476,11 +467,13 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
             'throw new Error("Blueprint graph rendering requires options.previewUtils from createPreview().");',
             graph_esm,
         )
+        self.assertIn("callRuntimeGraphCore", classic_adapter)
+        self.assertIn("VersoBlueprint.__private", classic_adapter)
         self.assertNotIn("callRuntimeGraphCore", common)
         self.assertNotIn("VersoBlueprint.__private", common)
         self.assertNotIn("VersoBlueprintGraphCore", common)
-        self.assertNotIn("namespace.graphCore = existingCore", core)
-        self.assertNotIn("VersoBlueprint.__private", core)
+        self.assertNotIn("VersoBlueprintGraphCore", classic_adapter)
+        self.assertIn("namespace.graphCore = existingCore", core)
         self.assertNotIn("VersoBlueprintGraphCore", core)
         self.assertNotIn("callBlueprintGraphCore", runtime_data)
         self.assertNotIn("callBlueprintGraphApi", runtime_data)
@@ -547,8 +540,7 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
         self.assertNotIn("const trimmedLabel = typeof label", data_esm)
         self.assertNotIn("const trimmedLabel = typeof label", preview_esm)
         self.assertNotIn("const trimmedLabel = typeof label", runtime_data)
-        self.assertNotIn("namespace.previewCore = existingCore", core)
-        self.assertNotIn("VersoBlueprint.__private", core)
+        self.assertIn("namespace.previewCore = existingCore", core)
         self.assertNotIn("VersoBlueprintPreviewCore", core)
 
     def test_graph_runtime_helpers_live_in_private_graph_chunk(self) -> None:

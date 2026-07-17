@@ -27,24 +27,28 @@ Metadata panel body.
 :::
 :::::::
 
+-- The two-column node card no longer inlines the statement metadata panel (the
+-- T2 "bare card"): owner / tags / effort / priority / PR moved off the card to
+-- the properties rail and the worklist / owner / tag pages. This guard asserts a
+-- definition still renders as a card but carries none of that metadata inline,
+-- and — upholding the no-avatar hard constraint at the card surface — that even
+-- though the author declares an `image_url`, neither the avatar wrapper class nor
+-- the external image URL (nor the owner/PR links) ever leaks onto the card. The
+-- positive owner-name render alongside the same no-avatar guarantee is exercised
+-- on the surviving metadata-panel surface (the slide renderer) in `BlueprintSlides`.
 /-- info: true -/
 #guard_msgs in
 #eval
   show IO Bool from do
     let out ← renderManualDocHtmlString manualImpls metadataPanelDoc
     pure (
-      hasSubstr out "class=\"bp_metadata_panel\"" &&
-      hasSubstr out "Alice Example" &&
-      hasSubstr out "https://example.com/alice" &&
-      hasSubstr out "class=\"bp_metadata_avatar\"" &&
-      hasSubstr out "https://example.com/alice.png" &&
-      hasSubstr out "analysis" &&
-      hasSubstr out "critical" &&
-      hasSubstr out "Effort" &&
-      hasSubstr out "small" &&
-      hasSubstr out "Priority" &&
-      hasSubstr out "high" &&
-      hasSubstr out "https://github.com/example/repo/pull/7"
+      hasSubstr out "bp_card2" &&
+      !hasSubstr out "class=\"bp_metadata_panel\"" &&
+      !hasSubstr out "Alice Example" &&
+      !hasSubstr out "class=\"bp_metadata_avatar\"" &&
+      !hasSubstr out "https://example.com/alice.png" &&
+      !hasSubstr out "https://example.com/alice" &&
+      !hasSubstr out "https://github.com/example/repo/pull/7"
     )
 
 end Verso.VersoBlueprintTests.BlueprintMetadataPanel

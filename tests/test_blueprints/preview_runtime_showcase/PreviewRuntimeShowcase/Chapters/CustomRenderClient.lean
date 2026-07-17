@@ -293,7 +293,11 @@ private def previewModuleExample : Verso.Output.Html :=
 
 private def previewModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
-const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
+// Import the generated preview/render ESM API.
+import {
+  createPreview,
+  previewKey
+} from "../-verso-data/api/preview.mjs";
 
 // Find the showcase card that will display this module-based result.
 const card = document.querySelector("[data-bp-preview-module-example]");
@@ -302,11 +306,11 @@ if (card) {
   const summary = card.querySelector("[data-bp-preview-module-summary]");
   const body = card.querySelector("[data-bp-preview-module-body]");
   try {
-    // Import the generated preview/render ESM API for this output layout.
-    const api = await loadPreviewApi();
+    // Create a call-site renderer from the generated ESM modules.
+    const api = createPreview();
 
     // Build the manifest/cache key for the statement facet.
-    const key = api.previewKey("preview_facets", "statement");
+    const key = previewKey("preview_facets", "statement");
 
     // Load the generated preview manifest through this renderer.
     const manifest = await api.loadManifest();
@@ -340,24 +344,15 @@ if (card) {
 
 private def graphModuleExampleScript : Verso.Output.Html :=
   clientTag "script" #[("type", "module")] <| Verso.Output.Html.text false r##"
-const { loadPreviewApi } = createBlueprintPreviewApiLoader(window);
+// Import the generated graph-data ESM API.
+import { loadGraphs } from "../-verso-data/api/graph.mjs";
 
 // Find the showcase card that already displays graph manifest data.
 const card = document.querySelector("[data-bp-custom-client-graph]");
 if (card) {
   try {
-    // Import the generated preview/render ESM API for this output layout.
-    const api = await loadPreviewApi();
-    const graphApiUrl =
-      typeof api.graphApiModuleUrl === "function"
-        ? api.graphApiModuleUrl()
-        : api.dataUrl("api/graph.mjs");
-
-    // Import the generated graph-data ESM API.
-    const graphModule = await import(graphApiUrl);
-
     // Load every finalized graph record from blueprint-manifest.json.graphs.
-    const graphs = await graphModule.loadGraphs();
+    const graphs = await loadGraphs();
 
     // Use the first graph in this small fixture.
     const graph = graphs[0] || null;
@@ -481,45 +476,7 @@ This page carries a standalone browser client for the Blueprint render API.
 Custom render external metadata group.
 :::
 
-:::Informal.source_document "custom-client-paper"
-%%%
-title := "Representation Theory"
-kind := .pdf
-pdf := "source/paper.pdf"
-pageRoot := "source/pages"
-imageRoot := "source/pages/images"
-%%%
-:::
-
 :::Informal.theorem "custom_client_external_markdown_metadata" (parent := "custom_client_external_metadata_group") (uses := "used_target") (tags := "external, markdown") (effort := "small") (priority := "medium")
-%%%
-source := {
-  document := "custom-client-paper"
-  spans := #[
-    {
-      page := "42"
-      text := some {
-        path := "source/pages/page-42.md"
-        startLine := 10
-        endLine := 12
-      }
-      pdf := some {
-        path := "source/pages/page-42.pdf"
-        image := "source/pages/images/page-42.png"
-        box := some {
-          scale := 2
-          pageWidth := 1600
-          pageHeight := 2200
-          xMin := 120
-          yMin := 240
-          xMax := 980
-          yMax := 520
-        }
-      }
-    }
-  ]
-}
-%%%
 :::
 
 :::Informal.lemma_ "custom_client_external_metadata_consumer" (uses := "custom_client_external_markdown_metadata")
