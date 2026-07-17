@@ -47,7 +47,10 @@ open Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared
 
 #docs (Genre.Manual) slideMetadataPanelDoc "Slide Metadata Panel" :=
 :::::::
-:::definition "def:slide.meta.panel" (tags := "slides, renderer") (effort := "small") (priority := "high")
+:::author "alice" (name := "Alice Example") (url := "https://example.com/alice") (image_url := "https://example.com/alice.png")
+:::
+
+:::definition "def:slide.meta.panel" (owner := "alice") (tags := "slides, renderer") (effort := "small") (priority := "high")
 Manifest-backed slide rendering should use the standard Blueprint block renderer.
 :::
 :::::::
@@ -123,63 +126,38 @@ private def writeSlidesPreviewDataFiles
 /-- info: true -/
 #guard_msgs in
 #eval
-  let cfg := Informal.Slides.withBlueprintSlidesAssets {}
-  let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
-  let matchingHeads :=
-    cfg.extraHead.filter fun html =>
-      hasAllSubstr html.asString [
-        "<script type=\"module\"",
-        Informal.Slides.blueprintSlideRuntimeModulePath
-      ]
-  matchingHeads.size == 1 &&
-    cfgAgain.extraHead.size == cfg.extraHead.size
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  show IO Bool from do
-    let root ← freshSlidesSmokeRoot
-    let outDir := root / "slides"
-    Informal.PreviewManifest.writeBlueprintRuntimeModules (outDir / "-verso-data")
-    Informal.Slides.writeBlueprintSlidesRuntimeModules outDir
-    let runtime ← IO.FS.readFile
-      (outDir / "-verso-data" / Informal.Slides.blueprintSlideRuntimeModuleFilename)
-    let slides ← IO.FS.readFile
-      (outDir / "-verso-data" / Informal.Slides.blueprintSlidesModulePath)
-    pure <|
-      hasAllSubstr runtime [
-        "import { createPreview } from \"./api/preview.mjs\";",
-        "import { startGraphRuntime } from \"./Commands/graph.mjs\";",
-        "import { start as startBlueprintSlides } from \"./Slides/blueprint-slides.mjs\";",
-        "startBlueprintSlides(preview)"
-      ] &&
-      hasAllSubstr slides [
-        "export function start(previewUtils",
-        "preview.registerPreviewHydrator(\"slideBlueprintLinks\"",
-        "preview.hydrate(node)",
-        "data-bp-slide-href",
-        "data-bp-slide-link"
-      ] &&
-      lacksAllSubstr slides [
-        "window.VersoBlueprint.onRenderReady",
-        "window.bpSlideNodeRuntime",
-        "window.bpSlideNodeRuntimeConfig"
-      ] &&
-      (← (outDir / "-verso-data" / "api" / "preview.mjs").pathExists) &&
-      (← (outDir / "-verso-data" / "Commands" / "graph.mjs").pathExists)
+  let js := Informal.Slides.blueprintSlidesJs
+  hasAllSubstr js [
+    "window.VersoBlueprint.onRenderReady(function (previewUtils) {",
+    "namespace.slides = slideRuntime",
+    "slideRuntime.hydrate = hydrateWhenReady",
+    "previewUtils.registerPreviewHydrator(\"slideBlueprintLinks\"",
+    "previewUtils.hydrate(node)",
+    "data-bp-slide-href",
+    "data-bp-slide-link"
+  ] &&
+    lacksAllSubstr js [
+      "function blueprintRender()",
+      "if (utils && typeof utils.hydrate === \"function\")",
+      "if (!utils || typeof utils.registerPreviewHydrator !== \"function\")",
+      "function openBlueprintHref(href)",
+      "function renderDocstrings(root)",
+      "function ensureLeanHover(target)",
+      "function scheduleSlidePreviewCleanup()",
+      "function bindSlideUsedByPanels",
+      "async function renderEntry(entry, node, key)",
+      "function renderGroupChip(entry)",
+      "function renderUsesChip(entries)",
+      "function renderCodeStatusChip(entry, count)",
+      "window.bpSlideNodeRuntime",
+      "window.bpSlideNodeRuntimeConfig"
+    ]
 
 /-- info: true -/
 #guard_msgs in
 #eval
   let node := blueprintNode "def:code.preview" "def:code.preview--statement"
   Informal.Graft.BlueprintNode.fromAttrs? node.toAttrs == some node
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let node := blueprintNode "def:code.preview" "def:code.preview--statement"
-  let attrs := node.toAttrs.filter (fun attr => attr.1 != "data-bp-preview-key")
-  Informal.Graft.BlueprintNode.fromAttrs? attrs == none
 
 /-- info: true -/
 #guard_msgs in
@@ -230,11 +208,8 @@ private def writeSlidesPreviewDataFiles
   let cfg := Informal.Slides.withBlueprintSlidesAssets {}
   let cfgAgain := Informal.Slides.withBlueprintSlidesAssets cfg
   cfg.extraCss.any (·.filename == Informal.Slides.blueprintSlidesCssFilename) &&
-    cfg.extraHead.any (fun html =>
-      hasSubstr html.asString Informal.Slides.blueprintSlideRuntimeModulePath) &&
-    cfg.extraJs.isEmpty &&
+    cfg.extraJs.contains Informal.Slides.blueprintSlidesJsFilename &&
     cfgAgain.extraCss.size == cfg.extraCss.size &&
-    cfgAgain.extraHead.size == cfg.extraHead.size &&
     cfgAgain.extraJs.size == cfg.extraJs.size
 
 /-- info: true -/
@@ -277,10 +252,6 @@ private def writeSlidesPreviewDataFiles
         blockEntry.codeData.isSome &&
         hasSubstr blockHtml "Statement with an associated Lean declaration link" &&
         hasSubstr codeHtml "bp_external_decl_rendered" &&
-        hasSubstr codeHtml "data-verso-hover=" &&
-        !hasSubstr codeHtml "class=\"hover-info\"" &&
-        !cache.hoverDocs.isEmpty &&
-        cache.hoverDocs.all (fun doc => doc.id >= Informal.PreviewManifest.HtmlCache.hoverIdStart) &&
         blockEntry.displayCaption == some "Definition" &&
         blockEntry.displayLabel.any (fun label => !label.trimAscii.isEmpty) &&
         file.previews.any (fun entry =>
@@ -295,8 +266,8 @@ private def writeSlidesPreviewDataFiles
   show IO Bool from do
     let files ← buildPreviewDataFor usedByPreviewDoc
     let cache := files.htmlCache
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
-      (Lean.Name.mkSimple "def:used.target")
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
     let some codeHtml := cache.findHtml? codeKey
       | return false
     pure <|
@@ -314,17 +285,11 @@ private def writeSlidesPreviewDataFiles
     let files ← buildPreviewDataFor usedByPreviewDoc
     let file := files.manifest
     let blockKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:used.target")
-    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey
-      (Lean.Name.mkSimple "def:used.target")
+    let codeKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey
+      `Verso.VersoBlueprintTests.BlueprintPreviewWiring.Shared.usedByPreviewTarget
     let some blockEntry := file.previews.find? (fun entry => entry.key == blockKey)
       | return false
-    pure <|
-      blockEntry.leanCodePreviewKeys.contains codeKey &&
-        file.previews.any (fun entry =>
-          entry.key == codeKey &&
-            match entry.targetKind with
-            | .inlineLeanCode => true
-            | _ => false)
+    pure <| blockEntry.leanCodePreviewKeys.contains codeKey
 
 /-- info: true -/
 #guard_msgs in
@@ -336,10 +301,12 @@ private def writeSlidesPreviewDataFiles
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:code.preview" key)
     let rendered := renderedHtml.asString
+    -- Header extras (the L∃∀N code chip) no longer render on slides either
+    -- (shared populate-site, clean-card 1D); the bare code panel remains.
     pure <|
       hasSubstr rendered "data-bp-rendered=\"static\"" &&
         hasSubstr rendered "bp_slide_node_blueprint" &&
-        hasSubstr rendered "bp_extra_slot_code" &&
+        !hasSubstr rendered "bp_extra_slot_code" &&
         hasSubstr rendered "bp_code_panel_wrapper" &&
         hasSubstr rendered "data-bp-site-base=\"blueprint\"" &&
         hasSubstr rendered "href=\"#--informal-preview" &&
@@ -362,7 +329,15 @@ private def writeSlidesPreviewDataFiles
         hasSubstr rendered "Effort" &&
         hasSubstr rendered "small" &&
         hasSubstr rendered "Priority" &&
-        hasSubstr rendered "high"
+        hasSubstr rendered "high" &&
+        -- The manifest-backed slide renderer is the surviving surface that still
+        -- inlines the statement metadata panel (the two-column node card dropped
+        -- it in T2). It renders the owner's display name, and — upholding the
+        -- no-avatar hard constraint — never the avatar wrapper class nor the
+        -- external owner image URL (an off-origin fetch that would break offline).
+        hasSubstr rendered "Alice Example" &&
+        !hasSubstr rendered "bp_metadata_avatar" &&
+        !hasSubstr rendered "https://example.com/alice.png"
 
 /-- info: true -/
 #guard_msgs in
@@ -374,7 +349,7 @@ private def writeSlidesPreviewDataFiles
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
-      match file.groupForEntry? entry with
+      match entry.group with
       | some group =>
         group.declared &&
           group.entries.size == 2 &&
@@ -390,16 +365,15 @@ private def writeSlidesPreviewDataFiles
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.target" key)
     let rendered := renderedHtml.asString
+    -- Group / used-by manifests are still captured (rail data), but the slide
+    -- header panels are gone with the header extras (clean-card 1D).
     pure <|
       groupManifestOk &&
         usedByManifestOk &&
-        hasSubstr rendered "bp_extra_slot_group" &&
-        hasSubstr rendered "bp_extra_slot_used_by" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
-        hasSubstr rendered "Group: Preview group title. (2)" &&
-        hasSubstr rendered "class=\"bp-relation-entries\"" &&
-        !hasSubstr rendered "bp_relation_item_active" &&
+        !hasSubstr rendered "bp_extra_slot_group" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"used-by\"" &&
+        hasSubstr rendered "class=\"bp_status_dot\"" &&
         !hasSubstr rendered "Loading Blueprint node"
 
 /-- info: true -/
@@ -412,19 +386,21 @@ private def writeSlidesPreviewDataFiles
     let some entry := file.previews.find? (fun entry => entry.key == key)
       | return false
     let groupManifestOk :=
-      match file.groupForEntry? entry with
+      match entry.group with
       | some group => !group.declared && group.entries.size == 1
       | none => false
     let ctx := Informal.Graft.RenderContext.ofPreviewData? (some file) (some files.htmlCache)
     let renderedHtml ← Informal.Slides.renderBlueprintSlideNode ctx
       (blueprintNode "def:group.missing.target" key)
     let rendered := renderedHtml.asString
+    -- The undeclared-group warning chip is gone with the header extras
+    -- (clean-card 1D); the manifest still records the undeclared group.
     pure <|
       groupManifestOk &&
-        hasSubstr rendered "bp_extra_slot_group" &&
-        hasSubstr rendered "bp_relation_chip_warn" &&
-        hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
-        hasSubstr rendered "Undeclared group"
+        !hasSubstr rendered "bp_extra_slot_group" &&
+        !hasSubstr rendered "bp_relation_chip_warn" &&
+        !hasSubstr rendered "data-bp-slide-panel=\"group\"" &&
+        !hasSubstr rendered "Undeclared group"
 
 /-- info: true -/
 #guard_msgs in
@@ -448,20 +424,14 @@ private def writeSlidesPreviewDataFiles
     let copiedManifest := Informal.Slides.blueprintSlidesManifestPath outDir
     let copiedHtmlCache := Informal.Slides.blueprintSlidesHtmlCachePath outDir
     let normalizedKey := Informal.PreviewCache.statementKey (Lean.Name.mkSimple "def:code.preview")
-    let slideRuntimePath := outDir / "-verso-data" / Informal.Slides.blueprintSlideRuntimeModuleFilename
-    let slideRuntimeModulePath := outDir / "-verso-data" / Informal.Slides.blueprintSlidesModulePath
     pure <|
       (← copiedManifest.pathExists) &&
         (← copiedHtmlCache.pathExists) &&
-        (← slideRuntimePath.pathExists) &&
-        (← slideRuntimeModulePath.pathExists) &&
         hasSubstr index "data-bp-rendered=\"static\"" &&
         hasSubstr index "bp_slide_node_blueprint" &&
-        hasSubstr index "bp_extra_slot_code" &&
+        !hasSubstr index "bp_extra_slot_code" &&
         hasSubstr index s!"data-bp-preview-key=\"{normalizedKey}\"" &&
         hasSubstr index "data-bp-site-base=\"blueprint\"" &&
-        hasSubstr index s!"src=\"{Informal.Slides.blueprintSlideRuntimeModulePath}\"" &&
-        !hasSubstr index "blueprint-slides.js" &&
         hasSubstr index "href=\"#--informal-preview" &&
         !hasSubstr index "Loading Blueprint node"
 

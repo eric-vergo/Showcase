@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from scripts.blueprint_harness_project_commands import (
+    OFFICIAL_BLUEPRINT_REQUIRE,
     discard_untracked_project_manifest,
     project_lake_update_command,
     rewrite_local_blueprint_dependency,
@@ -13,11 +14,9 @@ from scripts.blueprint_harness_project_commands import (
     run_project_update_build_generate,
     tracked_project_manifest_path,
 )
-from tests.harness.project_fixtures import TEST_OFFICIAL_BLUEPRINT_REQUIRE
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
-VBP_BUILD_COMMAND = ("lake", "exe", "vbp", "build")
 
 
 class BlueprintHarnessProjectCommandTests(unittest.TestCase):
@@ -33,7 +32,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     [
                         "import Lake",
                         "open Lake DSL",
-                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
+                        OFFICIAL_BLUEPRINT_REQUIRE,
                         "",
                     ]
                 ),
@@ -44,7 +43,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
 
             self.assertEqual(result, lakefile)
             text = lakefile.read_text(encoding="utf-8")
-            self.assertNotIn(TEST_OFFICIAL_BLUEPRINT_REQUIRE, text)
+            self.assertNotIn(OFFICIAL_BLUEPRINT_REQUIRE, text)
             self.assertIn(f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"', text)
 
     def test_rewrite_local_blueprint_dependency_accepts_official_repo_with_non_main_ref(self) -> None:
@@ -62,49 +61,6 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             self.assertIn('require VersoBlueprint from "', text)
             self.assertNotIn('from git "https://github.com/leanprover/verso-blueprint.git"', text)
 
-    def test_rewrite_local_blueprint_dependency_can_emit_a_portable_relative_path(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            package_root = Path(tmp) / "package"
-            project_dir = package_root / "project_template"
-            project_dir.mkdir(parents=True)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(f"{TEST_OFFICIAL_BLUEPRINT_REQUIRE}\n", encoding="utf-8")
-
-            rewrite_local_blueprint_dependency(project_dir, package_root, relative=True)
-
-            self.assertEqual(
-                lakefile.read_text(encoding="utf-8"),
-                'require VersoBlueprint from ".."\n',
-            )
-
-    def test_rewrite_local_blueprint_dependency_accepts_relative_checkout(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'import Lake\n\nrequire VersoBlueprint from "../../verso-blueprint"\n\npackage Demo\n',
-                encoding="utf-8",
-            )
-
-            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
-            self.assertEqual(
-                lakefile.read_text(encoding="utf-8"),
-                f'import Lake\n\nrequire VersoBlueprint from "{PACKAGE_ROOT.resolve()}"\n\npackage Demo\n',
-            )
-
-    def test_rewrite_local_blueprint_dependency_rejects_absolute_checkout(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_dir = Path(tmp)
-            lakefile = project_dir / "lakefile.lean"
-            lakefile.write_text(
-                'require VersoBlueprint from "/tmp/verso-blueprint"\n',
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(SystemExit, "relative `verso-blueprint` checkout"):
-                rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
-
     def test_rewrite_local_blueprint_dependency_disables_mathlib_header_linter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
@@ -114,7 +70,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     [
                         "import Lake",
                         "open Lake DSL",
-                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
+                        OFFICIAL_BLUEPRINT_REQUIRE,
                         "",
                         "package Blueprint where",
                         "  leanOptions := #[",
@@ -140,7 +96,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             lakefile.write_text(
                 "\n".join(
                     [
-                        TEST_OFFICIAL_BLUEPRINT_REQUIRE,
+                        OFFICIAL_BLUEPRINT_REQUIRE,
                         "package Blueprint where",
                         "  leanOptions := #[",
                         "    ⟨`weak.linter.style.header, false⟩,",
@@ -290,12 +246,10 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
-            original_run_with_heartbeat = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
-                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -305,13 +259,12 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     project_dir,
                     update_project=lambda: commands.append(["lake", "update"]),
                     build_command=("lake", "build"),
-                    generate_command=VBP_BUILD_COMMAND,
+                    generate_command=("lake", "exe", "blueprint-gen"),
                     format_command=lambda command: [*command, "--formatted"],
                     skip_build=False,
                 )
             finally:
                 commands_mod.run = original_run
-                commands_mod.run_with_heartbeat = original_run_with_heartbeat
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
@@ -320,7 +273,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                 ["lake", "update"],
                 [str(package_root / "scripts" / "lean-low-priority"), "lake", "build", "--formatted"],
                 ["ensure", str(package_root)],
-                [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND, "--formatted"],
+                [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen", "--formatted"],
             ],
         )
 
@@ -334,12 +287,10 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             package_root.mkdir()
             project_dir.mkdir()
             original_run = commands_mod.run
-            original_run_with_heartbeat = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
                 commands_mod.run = lambda command, *, cwd: commands.append(command)
-                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -349,13 +300,12 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     project_dir,
                     update_project=lambda: commands.append(["lake", "update"]),
                     build_command=("lake", "build"),
-                    generate_command=VBP_BUILD_COMMAND,
+                    generate_command=("lake", "exe", "blueprint-gen"),
                     format_command=list,
                     skip_build=True,
                 )
             finally:
                 commands_mod.run = original_run
-                commands_mod.run_with_heartbeat = original_run_with_heartbeat
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
@@ -363,6 +313,6 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             [
                 ["lake", "update"],
                 ["ensure", str(package_root)],
-                [str(package_root / "scripts" / "lean-low-priority"), *VBP_BUILD_COMMAND],
+                [str(package_root / "scripts" / "lean-low-priority"), "lake", "exe", "blueprint-gen"],
             ],
         )

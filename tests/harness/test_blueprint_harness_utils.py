@@ -1,8 +1,4 @@
-import contextlib
-import io
 import os
-import signal
-import subprocess
 import tempfile
 import time
 import unittest
@@ -16,7 +12,6 @@ from scripts.blueprint_harness_utils import (
     ensure_embedded_asset_owner_outputs,
     rebuild_embedded_asset_owners,
     refresh_embedded_asset_owner_mtimes,
-    run_with_heartbeat,
 )
 
 
@@ -35,12 +30,12 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
 
     def test_common_module_does_not_own_runtime_js_assets(self) -> None:
         for asset in (
+            "src/VersoBlueprint/Commands/preview-ready.mjs",
             "src/VersoBlueprint/blueprint-graph-core.mjs",
             "src/VersoBlueprint/blueprint-preview-core.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
@@ -53,6 +48,34 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                     asset,
                     "src/VersoBlueprint/Commands/Common.lean",
                     "VersoBlueprint.Commands.Common",
+                ),
+                EMBEDDED_ASSET_OWNERS,
+            )
+
+    def test_classic_slide_adapter_assets_are_owned_by_slide_adapter_module(self) -> None:
+        for asset in (
+            "src/VersoBlueprint/blueprint-graph-core.mjs",
+            "src/VersoBlueprint/blueprint-preview-core.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-template.mjs",
+            "src/VersoBlueprint/Commands/preview-runtime-api.mjs",
+            "src/VersoBlueprint/Commands/preview-ready.mjs",
+            "src/VersoBlueprint/Commands/inline-preview.mjs",
+            "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
+            "src/VersoBlueprint/Commands/graph-runtime-core.mjs",
+            "src/VersoBlueprint/Commands/graph.mjs",
+            "src/VersoBlueprint/Slides/blueprint-slides.mjs",
+        ):
+            self.assertIn(
+                EmbeddedAssetOwner(
+                    asset,
+                    "src/VersoBlueprint/Slides/ClassicPreviewAdapter.lean",
+                    "VersoBlueprint.Slides.ClassicPreviewAdapter",
                 ),
                 EMBEDDED_ASSET_OWNERS,
             )
@@ -74,7 +97,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             "src/VersoBlueprint/Commands/preview-runtime-base.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-data.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-render.mjs",
-            "src/VersoBlueprint/Commands/preview-runtime-source-metadata.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-hydration.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-lifecycle.mjs",
             "src/VersoBlueprint/Commands/preview-runtime-surface.mjs",
@@ -103,75 +125,15 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
                 EMBEDDED_ASSET_OWNERS,
             )
 
-    def test_slide_esm_assets_are_owned_by_slide_assets_module(self) -> None:
+    def test_preview_client_js_assets_are_owned_by_classic_adapter(self) -> None:
         for asset, owner, target in (
             (
-                "src/VersoBlueprint/Slides/blueprint-slides.mjs",
-                "src/VersoBlueprint/Slides/Assets.lean",
-                "VersoBlueprint.Slides.Assets",
-            ),
-            (
-                "src/VersoBlueprint/Slides/blueprint-slide-runtime.mjs",
-                "src/VersoBlueprint/Slides/Assets.lean",
-                "VersoBlueprint.Slides.Assets",
+                "src/VersoBlueprint/Informal/Block/relation-panel.mjs",
+                "src/VersoBlueprint/Slides/ClassicPreviewAdapter.lean",
+                "VersoBlueprint.Slides.ClassicPreviewAdapter",
             ),
         ):
             self.assertIn(EmbeddedAssetOwner(asset, owner, target), EMBEDDED_ASSET_OWNERS)
-
-    def test_run_with_heartbeat_reports_long_running_command(self) -> None:
-        class FakeProcess:
-            def __init__(self) -> None:
-                self.wait_calls = 0
-
-            def wait(self, timeout: int | None = None) -> int:
-                self.wait_calls += 1
-                if self.wait_calls == 1:
-                    raise subprocess.TimeoutExpired(["slow"], timeout)
-                return 0
-
-        fake_process = FakeProcess()
-        out = io.StringIO()
-        with (
-            patch("scripts.blueprint_harness_utils.subprocess.Popen", return_value=fake_process) as popen_mock,
-            patch("scripts.blueprint_harness_utils.time.monotonic", side_effect=[0.0, 0.0, 61.0, 62.0]),
-            contextlib.redirect_stdout(out),
-        ):
-            run_with_heartbeat(["slow"], cwd=Path("/tmp"), label="external build")
-
-        popen_mock.assert_called_once_with(["slow"], cwd=Path("/tmp"), start_new_session=os.name == "posix")
-        output = out.getvalue()
-        self.assertIn("[blueprint-harness] $ slow", output)
-        self.assertIn("[blueprint-harness] starting external build", output)
-        self.assertIn("[blueprint-harness] still running external build after 1m01s", output)
-        self.assertIn("[blueprint-harness] finished external build in 1m02s", output)
-
-    @unittest.skipUnless(os.name == "posix", "process-group cleanup is POSIX-specific")
-    def test_run_with_heartbeat_terminates_the_whole_process_group_on_interrupt(self) -> None:
-        class FakeProcess:
-            pid = 4242
-
-            def __init__(self) -> None:
-                self.cleanup_waits: list[int | None] = []
-
-            def wait(self, timeout: int | None = None) -> int:
-                if timeout == 60:
-                    raise KeyboardInterrupt
-                self.cleanup_waits.append(timeout)
-                return -signal.SIGTERM
-
-            def poll(self) -> None:
-                return None
-
-        fake_process = FakeProcess()
-        with (
-            patch("scripts.blueprint_harness_utils.subprocess.Popen", return_value=fake_process),
-            patch("scripts.blueprint_harness_utils.os.killpg") as killpg_mock,
-            self.assertRaises(KeyboardInterrupt),
-        ):
-            run_with_heartbeat(["slow"], cwd=Path("/tmp"), label="external build")
-
-        killpg_mock.assert_called_once_with(fake_process.pid, signal.SIGTERM)
-        self.assertEqual(fake_process.cleanup_waits, [5])
 
     def test_refresh_embedded_asset_owner_mtimes_touches_owner_when_asset_is_newer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -417,7 +379,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             root = Path(tmp)
             css = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.css"
             js = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slides.mjs"
-            runtime = root / "src" / "VersoBlueprint" / "Slides" / "blueprint-slide-runtime.mjs"
             owner = root / "src" / "VersoBlueprint" / "Slides" / "Assets.lean"
             cached_olean = root / ".lake" / "build" / "lib" / "lean" / "VersoBlueprint" / "Slides" / "Assets.olean"
             cached_ir = root / ".lake" / "build" / "ir" / "VersoBlueprint" / "Slides" / "Assets.c"
@@ -426,7 +387,6 @@ class TestBlueprintHarnessUtils(unittest.TestCase):
             cached_ir.parent.mkdir(parents=True, exist_ok=True)
             css.write_text("/* css */", encoding="utf-8")
             js.write_text("// js", encoding="utf-8")
-            runtime.write_text("// runtime", encoding="utf-8")
             owner.write_text("-- lean", encoding="utf-8")
             cached_olean.write_text("stale", encoding="utf-8")
             cached_ir.write_text("stale", encoding="utf-8")

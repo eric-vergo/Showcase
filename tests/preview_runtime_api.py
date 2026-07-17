@@ -46,17 +46,16 @@ PUBLIC_GENERATED_API_MODULES = {
 PUBLIC_DATA_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["data"])
 PUBLIC_PREVIEW_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["preview"])
 PUBLIC_GRAPH_API_EXPORTS = set(PUBLIC_API_CONTRACT["exports"]["graph"])
-PUBLIC_API_TYPE_EXPORTS = set(PUBLIC_API_CONTRACT["typeExports"])
 RUNTIME_BOOTSTRAP_JS = {
     Path("Commands/preview-runtime-base.mjs"),
     Path("Commands/preview-runtime-data.mjs"),
     Path("Commands/preview-runtime-render.mjs"),
-    Path("Commands/preview-runtime-source-metadata.mjs"),
     Path("Commands/preview-runtime-hydration.mjs"),
     Path("Commands/preview-runtime-lifecycle.mjs"),
     Path("Commands/preview-runtime-surface.mjs"),
     Path("Commands/preview-runtime-template.mjs"),
     Path("Commands/preview-runtime-api.mjs"),
+    Path("Commands/preview-ready.mjs"),
     Path("blueprint-api-common.mjs"),
     Path("Commands/graph.mjs"),
     Path("blueprint-graph-api.mjs"),
@@ -137,17 +136,19 @@ def runtime_api_methods(name: str) -> list[str]:
     return sorted(js_object_methods(blueprint_js_source(), name))
 
 
-def markdown_table(source: str, header: str) -> str:
-    start = source.index(header)
-    end = source.find("\n\n", start)
-    return source[start:] if end < 0 else source[start:end]
-
-
-def documented_public_api_methods(source: str) -> set[str]:
-    table = markdown_table(source, "| Entry point | Use |")
-    return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", table))
+def documented_stable_api_methods(source: str) -> set[str]:
+    start_marker = "### Stable Custom-Client API"
+    end_marker = "Blueprint's bundled graph"
+    start = source.index(start_marker) + len(start_marker)
+    end = source.index(end_marker, start)
+    section = source[start:end]
+    return set(re.findall(r"`api\.([A-Za-z][A-Za-z0-9_]*)\(", section))
 
 
 def documented_bundled_helper_methods(source: str) -> set[str]:
-    table = markdown_table(source, "| Helper family | Helpers | Bundled consumers |")
-    return set(re.findall(r"`([A-Za-z][A-Za-z0-9_]*)`", table))
+    start_marker = "| Helper family | Helpers | Bundled consumers |"
+    end_marker = "For new custom interfaces"
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    section = source[start:end]
+    return set(re.findall(r"`([A-Za-z][A-Za-z0-9_]*)`", section))

@@ -168,7 +168,7 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       hasSubstr out "#bp-bib-hover-cite" &&
       hasSubstr out "class=\"bp_bibliography_use_line\"" &&
       hasSubstr out "data-bp-preview-key=\"«lem:hover.link»--statement\"" &&
-      !hasSubstr out "data-bp-preview-fallback-label" &&
+      hasSubstr out "data-bp-preview-fallback-label=\"«lem:hover.link»\"" &&
       hasSubstr out s!"data-bp-preview-key=\"{hoverCitePreviewKey}\""
     )
 
@@ -181,7 +181,8 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       countSubstr out "class=\"bp_inline_preview_ref\"" >= 2 &&
       countSubstr out
           "data-bp-preview-key=\"«lem:hover.base»--statement\"" >= 2 &&
-      !hasSubstr out "data-bp-preview-fallback-label" &&
+      countSubstr out
+          "data-bp-preview-fallback-label=\"«lem:hover.base»\"" >= 2 &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\""
     )
 
@@ -254,7 +255,8 @@ Mention {uses "lem:hover.reject.inline.intent.target" (intent := "aux")}[].
       countSubstr out "class=\"bp_inline_preview_ref\"" >= 1 &&
       countSubstr out
           "data-bp-preview-key=\"«lem:hover.bpref.target»--statement\"" >= 1 &&
-      !hasSubstr out "data-bp-preview-fallback-label" &&
+      countSubstr out
+          "data-bp-preview-fallback-label=\"«lem:hover.bpref.target»\"" >= 1 &&
       !hasSubstr out "class=\"bp_inline_preview_tpl\""
     )
 

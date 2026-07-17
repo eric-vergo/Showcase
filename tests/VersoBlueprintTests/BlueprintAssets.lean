@@ -7,6 +7,7 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
+import VersoBlueprint.BrowserAsset
 import VersoBlueprint.Cite
 import VersoBlueprint.Graft
 import VersoBlueprint.Informal.RustBlock
@@ -14,6 +15,53 @@ import VersoBlueprint.Informal.Uses
 import VersoBlueprint.Slides
 
 namespace Verso.VersoBlueprintTests.BlueprintAssets
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let source :=
+    "import { x } from \"./source.mjs\";\n" ++
+    "export function run() { return x; }\n" ++
+    "export const value = run();\n" ++
+    "export default value;"
+  let fragment :=
+    Informal.BrowserAsset.esmModuleToClassicFragmentWithPrelude source
+      "const x = 2;"
+  fragment.contains "const x = 2;" &&
+    fragment.contains "function run() { return x; }" &&
+    fragment.contains "const value = run();" &&
+    !fragment.contains "import {" &&
+    !fragment.contains "export "
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let source :=
+    "  import { x } from \"./source.mjs\";\n" ++
+    "  export default value;\n" ++
+    "export const value = 2;"
+  let fragment :=
+    Informal.BrowserAsset.esmModuleToClassicFragment source
+  fragment.contains "const value = 2;" &&
+    !fragment.contains "import {" &&
+    !fragment.contains "export default" &&
+    !fragment.contains "export const"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let source :=
+    "import { x } from \"./source.mjs\";\n" ++
+    "export function run() { return x; }"
+  let script :=
+    Informal.BrowserAsset.esmModuleToClassicScript source
+      "globalScope.example = run();"
+  script.contains "(function (globalScope)" &&
+    script.contains "function run() { return x; }" &&
+    script.contains "globalScope.example = run();" &&
+    script.contains "typeof globalThis !== \"undefined\"" &&
+    !script.contains "import {" &&
+    !script.contains "export "
 
 /-- info: true -/
 #guard_msgs in
@@ -76,9 +124,9 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 #eval
   Informal.Block.Assets.blockAssetBundle.css ==
       [Informal.Commands.blueprintTokensCss, Informal.Commands.previewPanelCss,
-        Informal.Block.Assets.css, Informal.StyleSwitcher.css, Verso.Genre.Manual.docstringStyle,
+        Informal.Block.Assets.css, Informal.NodeCard.css, Verso.Genre.Manual.docstringStyle,
         Informal.Commands.previewHeaderCss, Informal.Commands.inlinePreviewCss] &&
-    Informal.Block.Assets.blockAssetBundle.js == [Informal.StyleSwitcher.jsInteractive]
+    Informal.Block.Assets.blockAssetBundle.js == [Informal.ProofReveal.jsInteractive]
 
 /-- info: true -/
 #guard_msgs in
@@ -115,6 +163,7 @@ namespace Verso.VersoBlueprintTests.BlueprintAssets
 #eval
   Informal.Slides.blueprintSlidesCss ==
       String.intercalate "\n\n" Informal.Slides.blueprintSlidesAssetBundle.css &&
-    Informal.Slides.blueprintSlidesAssetBundle.js == []
+    Informal.Slides.blueprintSlidesJs ==
+      String.intercalate "\n\n" Informal.Slides.blueprintSlidesAssetBundle.js
 
 end Verso.VersoBlueprintTests.BlueprintAssets
