@@ -7,15 +7,17 @@ Author: Emilio J. Gallego Arias
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.TraversalIndex
 
 /-!
 Public graph-data helpers.
 
-`Informal.Graph` owns semantic `GraphModel`, immutable finished `GraphData`, and
-the environment builder. This module adds the traversal-state bridge: graph
-blocks cache only `GraphModel` plus render options, then page and manifest
-consumers call the same `finishData` operation after traversal completes.
+`Informal.Graph` owns the stable graph data structures and the semantic
+environment builder. This module adds the traversal-state bridge: graph blocks
+store semantic `GraphData` during traversal, and renderers/manifests finalize
+that cached object against the completed traversal state to add hrefs and
+display titles.
 -/
 
 namespace Informal.GraphApi
@@ -27,6 +29,11 @@ open Verso.Genre Manual
 /-- Stable traversal-cache key for a rendered graph block. -/
 def cacheKey (id : Verso.Multi.InternalId) : String :=
   s!"graph:{id}"
+
+/-- Attach the rendered block key to graph data. -/
+def keyedData (id : Verso.Multi.InternalId) (data : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
+  { data with key := cacheKey id }
 
 private def nodeTitle? (state : TraverseState) (label : Name) : Option String :=
   (Informal.TraversalIndex.Nodes.data? state label).map fun data =>
@@ -40,97 +47,144 @@ private def groupTitle? (state : TraverseState) (label : Name) : Option String :
     let title := groupData.header.trimAscii.toString
     if title.isEmpty then none else some title
 
+/-- Human-readable chapter name from the chapter slug embedded in an in-chapter
+href (`Nonlinearity-of-the-Prime-Race/#…` → `Nonlinearity of the Prime Race`).
+The 2-liner precedent is `ExtraPages.candidateChapter`. -/
+private def chapterTitleFromHref (href : String) : String :=
+  ((href.splitOn "/").headD "").replace "-" " "
+
+/-- Compact cluster title for a group: the chapter name of a representative member,
+resolved from the member's raw in-chapter href in the traversal node index. Uses
+`TraversalIndex.Nodes.href?` deliberately — NOT the enriched `NodeData.href`, which
+may point at a `nodes/…` page and would yield the bogus chapter "nodes". `none` when
+no member has a resolvable chapter href. -/
+private def groupShortTitle? (state : TraverseState) (group : Informal.Graph.GroupData) :
+    Option String :=
+  group.children.findSome? fun child =>
+    match Informal.TraversalIndex.Nodes.href? state child with
+    | some href =>
+      let title := chapterTitleFromHref href
+      if title.isEmpty then none else some title
+    | none => none
+
 private def enrichNode (state : TraverseState) (node : Informal.Graph.NodeData) :
     Informal.Graph.NodeData :=
   let title := (nodeTitle? state node.label).getD node.title
-  let href := nodeHref? state node.label <|> node.href
-  let previewKey := Informal.PreviewSource.traversalPreviewCandidateKey? state node.label
+  -- Re-point nodes that have a dedicated per-node page to that page (the node
+  -- page is now canonical and links back to the chapter). Nodes without a node
+  -- page (e.g. external/Mathlib dependencies) keep their existing chapter anchor
+  -- so we never emit a dangling node-page link. The href is root-relative with
+  -- no leading slash, so it resolves via the per-page `<base href>` exactly like
+  -- the chapter anchors it replaces (DOT/JSON payloads are not relativized).
+  let href :=
+    if Informal.NodeRoute.hasNodePage state node.label then
+      some (Informal.NodeRoute.nodePageHref node.label)
+    else
+      nodeHref? state node.label <|> node.href
+  let previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state node.label
   { node with title, href, previewKey }
 
-private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupMetadata) :
-    Informal.Graph.GroupMetadata :=
-  match groupTitle? state group.label with
-  | some title => { group with title, declared := true }
+private def enrichGroup (state : TraverseState) (group : Informal.Graph.GroupData) :
+    Informal.Graph.GroupData :=
+  let group :=
+    match groupTitle? state group.label with
+    | some title => { group with title, declared := true }
+    | none => group
+  match groupShortTitle? state group with
+  | some short => { group with shortTitle := short }
   | none => group
 
-private def hasTraversalNode (state : TraverseState) (label : Name) : Bool :=
-  (Informal.TraversalIndex.Nodes.data? state label).isSome
+/--
+Finalize graph data against a completed traversal state.
 
-private def hasPreviewCandidate (node : Informal.Graph.NodeData) : Bool :=
-  node.previewKey.isSome
-
-private def keepFinalNode (state : TraverseState) (node : Informal.Graph.NodeData) : Bool :=
-  hasTraversalNode state node.label ||
-    node.warnings.unknownRef ||
-    node.href.isSome ||
-    hasPreviewCandidate node
-
-private def finalModel
-    (state : TraverseState) (model : Informal.Graph.GraphModel) :
-    Informal.Graph.GraphModel :=
+This is the single projection from semantic graph data to public graph data:
+rendered page JSON and manifest/cache output both use it so href, title, and
+group metadata stay consistent.
+-/
+def finalData (state : TraverseState) (data : Informal.Graph.GraphData) :
+    Informal.Graph.GraphData :=
   {
-    nodes := model.nodes.map (enrichNode state) |>.filter (keepFinalNode state)
-    groupMetadata := model.groupMetadata.map (enrichGroup state)
+    data with
+      nodes := data.nodes.map (enrichNode state)
+      groups := data.groups.map (enrichGroup state)
   }
 
 /--
-Finish one graph after traversal.
+Finalize a graph block's semantic graph data for public page JSON.
 
-This is the single traversal-aware semantic-to-public transition. It enriches
-and selects nodes from completed traversal state, then delegates to
-`GraphModel.finish` to materialize edges, group membership, and render variants
-together. Page JSON and manifest output both call this function.
+Use this when rendering one graph block from its block payload and rendered
+block id.
 -/
-def finishData
-    (state : TraverseState)
-    (key : String)
-    (model : Informal.Graph.GraphModel)
-    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
-  (finalModel state model).finish key options
-
-/-- Finish one rendered graph block using its stable traversal key. -/
-def finishDataForBlock
+def finalDataForBlock
     (state : TraverseState)
     (id : Verso.Multi.InternalId)
-    (model : Informal.Graph.GraphModel)
-    (options : Informal.Graph.GraphOptions) : Informal.Graph.GraphData :=
-  finishData state (cacheKey id) model options
+    (data : Informal.Graph.GraphData) : Informal.Graph.GraphData :=
+  finalData state (keyedData id data)
 
 /--
 Store graph block data during traversal.
 
-The traversal entry stores only semantic data and render options under the
-stable block key; call `cachedEntries` after traversal finishes to read the
-public, finalized form.
+The cached payload deliberately remains semantic data plus the stable block key;
+call `cachedData` after traversal finishes to read the public, finalized form.
 -/
 def saveData
     (state : TraverseState)
     (id : Verso.Multi.InternalId)
-    (model : Informal.Graph.GraphModel)
-    (options : Informal.Graph.GraphOptions) : TraverseState :=
+    (data : Informal.Graph.GraphData) : TraverseState :=
   let key := cacheKey id
-  let cached : Informal.Graph.CachedGraphData := { model := model.canonicalize, options }
+  let data := keyedData id data
   state
     |> (fun state => Informal.TraversalIndex.Graphs.saveId state key id)
-    |> (fun state => Informal.TraversalIndex.Graphs.saveData state key cached)
+    |> (fun state => Informal.TraversalIndex.Graphs.saveData state key data)
 
 /--
-Decode every traversal-cached graph and finalize valid entries for public
-manifest/API use while preserving malformed-entry diagnostics.
+Read every traversal-cached graph and finalize it for public manifest/API use.
 
 Call this only with the completed traversal state for the document/site being
-emitted. The consumer owns error reporting because it defines the generation
-boundary and its diagnostic context.
+emitted.
 -/
-def cachedEntries (state : TraverseState) :
-    Array (Except Informal.TraversalIndex.DecodeError
-      (Informal.TraversalIndex.StoredEntry Informal.Graph.GraphData)) :=
-  Informal.TraversalIndex.Graphs.entries state |>.map fun
-    | .error err => .error err
-    | .ok stored =>
-        .ok {
-          canonicalName := stored.canonicalName
-          data := finishData state stored.canonicalName stored.data.model stored.data.options
-        }
+def cachedData (state : TraverseState) : Array Informal.Graph.GraphData :=
+  Informal.TraversalIndex.Graphs.allData state |>.map (finalData state)
+
+/--
+Union of every traversal-cached graph block into a single master `GraphData`.
+
+This is the whole-document dependency universe consumed by the ancestors /
+descendants traversals and (later) graph metrics. It folds over `cachedData`
+(already finalized: hrefs, titles, statuses):
+
+* nodes are deduplicated by `label`, keeping the first finalized occurrence;
+* edges are unioned and deduplicated by `(source, target)` (first occurrence
+  wins — the master graph block already carries each edge with its full axes);
+* groups are unioned by `label`, merging their `children`, `declared` flag, and
+  first non-empty `title`.
+
+Fallback choice: when there are no cached graph blocks this returns an empty
+`GraphData`. We deliberately do not synthesize adjacency from manifest entries.
+`masterGraph` is pure (`TraverseState → GraphData`) so it cannot log a note, an
+empty graph is the honest result when nothing was rendered, and every generated
+Blueprint renders at least one graph block in practice — so this fallback is
+effectively unreachable.
+-/
+def masterGraph (state : TraverseState) : Informal.Graph.GraphData :=
+  (cachedData state).foldl (init := ({} : Informal.Graph.GraphData)) fun acc data =>
+    let acc := data.nodes.foldl (init := acc) fun acc node =>
+      if acc.nodes.any (·.label == node.label) then acc
+      else { acc with nodes := acc.nodes.push node }
+    let acc := data.edges.foldl (init := acc) fun acc edge =>
+      if acc.edges.any (fun e => e.source == edge.source && e.target == edge.target) then acc
+      else { acc with edges := acc.edges.push edge }
+    data.groups.foldl (init := acc) fun acc group =>
+      match acc.groups.findIdx? (fun g => g.label == group.label) with
+      | some i =>
+        { acc with
+          groups := acc.groups.modify i fun existing =>
+            { existing with
+              children := group.children.foldl (init := existing.children) fun ch c =>
+                if ch.contains c then ch else ch.push c
+              declared := existing.declared || group.declared
+              title := if existing.title.isEmpty then group.title else existing.title
+              shortTitle := if existing.shortTitle.isEmpty then group.shortTitle else existing.shortTitle } }
+      | none => { acc with groups := acc.groups.push group }
 
 end Informal.GraphApi

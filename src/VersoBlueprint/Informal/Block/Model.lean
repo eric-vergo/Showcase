@@ -6,7 +6,6 @@ Author: Emilio J. Gallego Arias
 
 import Lean
 import VersoBlueprint.Data
-import VersoBlueprint.Source.Data
 
 namespace Informal
 
@@ -85,32 +84,22 @@ structure CodeDeclData where
   commandIndex : Nat := 0
   weight : Nat := 1
   provedStatus : Data.ProvedStatus := .proved
-  sourceLocation : Data.SourceLocationResult :=
-    Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable"
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
-def CodeDeclData.ofLiterateDef (d : Data.LiterateDef)
-    (sourceLocation : Data.SourceLocationResult :=
-      Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable") :
-    CodeDeclData :=
+def CodeDeclData.ofLiterateDef (d : Data.LiterateDef) : CodeDeclData :=
   {
     name := d.name
     commandIndex := d.commandIndex
     weight := max d.commandLines 1
     provedStatus := d.provedStatus
-    sourceLocation
   }
 
-def CodeDeclData.ofLiterateThm (d : Data.LiterateThm)
-    (sourceLocation : Data.SourceLocationResult :=
-      Data.SourceLocationResult.unavailable "inline Lean declaration source location unavailable") :
-    CodeDeclData :=
+def CodeDeclData.ofLiterateThm (d : Data.LiterateThm) : CodeDeclData :=
   {
     name := d.name
     commandIndex := d.commandIndex
     weight := max d.commandLines 1
     provedStatus := d.provedStatus
-    sourceLocation
   }
 
 structure InlineCodeData where
@@ -122,9 +111,6 @@ structure InlineCodeData where
   foldCodeBlock : Bool := false
   foldProofs : Bool := true
 deriving Repr, Inhabited, FromJson, ToJson, Quote
-
-def InlineCodeData.declarations (code : InlineCodeData) : Array CodeDeclData :=
-  code.definedDefs ++ code.definedTheorems
 
 /--
 Resolved block-level code semantics used by informal block rendering.
@@ -166,12 +152,7 @@ structure BlockData where
   kind : Data.InProgressKind := .proof
   /-- Optional code hint used for statement blocks (`.proof` always ignores this). -/
   codeData : Option BlockCodeData := none
-  /-- Optional original-source provenance attached with directive-local metadata. -/
-  sourceRef : Option Source.Ref := none
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
-  sourceLocation : Data.SourceLocationResult :=
-    Data.SourceLocationResult.unavailable "label source location unavailable"
   foldProofBlock : Bool := false
   foldCodeBlock : Bool := false
   parent : Option Data.Parent := none
@@ -204,6 +185,10 @@ structure BlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  /-- Canonical name of this node's primary `(lean := …)` declaration (the first
+  present ref, else the first). Drives decl-name display titles; `none` for
+  proofs and nodes with no associated Lean. -/
+  primaryDeclName : Option String := none
 deriving FromJson, ToJson, Quote
 
 /--
@@ -216,9 +201,6 @@ main semantic node index.
 structure StoredBlockData where
   kind : Data.InProgressKind := .proof
   label : Data.Label
-  /-- Source location result for the user-written label token. -/
-  sourceLocation : Data.SourceLocationResult :=
-    Data.SourceLocationResult.unavailable "label source location unavailable"
   parent : Option Data.Parent := none
   count : Nat
   numberingMode : NumberingMode := .sub
@@ -238,12 +220,26 @@ structure StoredBlockData where
   effort : Option String := none
   priority : Option String := none
   prUrl : Option String := none
+  /-- Canonical name of this node's primary `(lean := …)` declaration; persisted
+  so decl-name display titles resolve from stored data (see `displayIdentifier`). -/
+  primaryDeclName : Option String := none
 deriving FromJson, ToJson, Quote
+
+/-- Canonical name of the node's primary `(lean := …)` declaration: the first
+present external ref, else the first (mirrors the card selection rule in
+`Informal/Block.lean`). `none` for proofs and no-Lean nodes. -/
+def BlockData.primaryDeclName? (data : BlockData) : Option String :=
+  let externalDecls : Array Data.ExternalRef :=
+    (data.codeData.map BlockCodeData.externalDecls).getD #[]
+  let primary? : Option Data.ExternalRef :=
+    externalDecls.find? (fun ref : Data.ExternalRef => ref.present) <|> externalDecls[0]?
+  match primary? with
+  | some ref => some ref.canonical.toString
+  | none => none
 
 def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   kind := data.kind
   label := data.label
-  sourceLocation := data.sourceLocation
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
@@ -261,6 +257,7 @@ def BlockData.toStoredData (data : BlockData) : StoredBlockData := {
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  primaryDeclName := data.primaryDeclName <|> data.primaryDeclName?
 }
 
 def StoredBlockData.toBlockData (data : StoredBlockData)
@@ -268,7 +265,6 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   kind := data.kind
   codeData
   label := data.label
-  sourceLocation := data.sourceLocation
   parent := data.parent
   count := data.count
   numberingMode := data.numberingMode
@@ -286,6 +282,7 @@ def StoredBlockData.toBlockData (data : StoredBlockData)
   effort := data.effort
   priority := data.priority
   prUrl := data.prUrl
+  primaryDeclName := data.primaryDeclName
 }
 
 def BlockData.statementDeps (data : BlockData) : Array Data.Label :=

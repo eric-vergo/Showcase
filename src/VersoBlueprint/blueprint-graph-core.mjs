@@ -6,6 +6,20 @@ function defaultGlobalScope() {
   return typeof globalThis !== "undefined" ? globalThis : {};
 }
 
+function blueprintPrivateNamespace(globalScope = defaultGlobalScope()) {
+  const namespace =
+    globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
+      ? globalScope.VersoBlueprint
+      : {};
+  const privateNamespace =
+    namespace.__private && typeof namespace.__private === "object"
+      ? namespace.__private
+      : {};
+  namespace.__private = privateNamespace;
+  globalScope.VersoBlueprint = namespace;
+  return privateNamespace;
+}
+
 function currentHref(globalScope = defaultGlobalScope()) {
   const windowObj = globalScope && globalScope.window;
   return windowObj && windowObj.location ? windowObj.location.href : "";
@@ -145,130 +159,51 @@ export function readGraphJsonScript(root, selector) {
   }
 }
 
-const graphDataSchemaVersion = 3;
-
 /**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isRecord(value) {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isNonemptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isTrimmedNonemptyString(value) {
-  return typeof value === "string" && value.length > 0 && value === value.trim();
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isGraphNodeIdPair(value) {
-  return Array.isArray(value) && value.length === 2 && value.every(isTrimmedNonemptyString);
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function areGraphNodeIdPairsValid(value) {
-  if (!Array.isArray(value) || !value.every(isGraphNodeIdPair)) return false;
-  const nodeIds = value.map(function (pair) { return pair[0]; });
-  return new Set(nodeIds).size === nodeIds.length;
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isGraphLayoutOptions(value) {
-  if (!isRecord(value)) return false;
-  const options = /** @type {Record<string, unknown>} */ (value);
-  return typeof options.direction === "string" &&
-    ["TB", "LR", "RL", "BT"].includes(options.direction) &&
-    typeof options.pack === "boolean";
-}
-
-/**
- * @param {unknown} value
- * @returns {boolean}
- */
-function isGraphVariant(value) {
-  if (!isRecord(value)) return false;
-  const variant = /** @type {Record<string, unknown>} */ (value);
-  return isTrimmedNonemptyString(variant.key) &&
-    isTrimmedNonemptyString(variant.label) &&
-    isNonemptyString(variant.dot) &&
-    isGraphLayoutOptions(variant.options) &&
-    areGraphNodeIdPairsValid(variant.selectOnNodeId) &&
-    areGraphNodeIdPairsValid(variant.hoverOnNodeId) &&
-    areGraphNodeIdPairsValid(variant.previewKeyByNodeId);
-}
-
-/**
- * @param {unknown[]} variants
- * @returns {boolean}
- */
-function areGraphVariantsValid(variants) {
-  if (variants.length === 0 || !variants.every(isGraphVariant)) return false;
-  const records = variants.map(function (variant) {
-    return /** @type {Record<string, unknown>} */ (variant);
-  });
-  const keys = records.map(function (variant) { return variant.key; });
-  const keySet = new Set(keys);
-  if (records[0].key !== "full" || keySet.size !== keys.length) return false;
-  return records.every(function (variant) {
-    return [variant.selectOnNodeId, variant.hoverOnNodeId].every(function (pairs) {
-      return /** @type {unknown[][]} */ (pairs).every(function (pair) {
-        return keySet.has(pair[1]);
-      });
-    });
-  });
-}
-
-/**
- * Recognize the current finalized graph payload shape.
+ * Read DOT fallback graph variants embedded in a graph page.
  *
- * Topology is finalized by Lean before serialization. Browser clients consume
- * that snapshot and do not carry a second implementation of graph finalization.
- * This boundary validates the schema, top-level collections, and render-variant
- * contract; it trusts Lean's producer boundary for semantic topology agreement.
+ * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
+ * @returns {BlueprintGraphVariant[]}
+ */
+export function graphFallbackVariants(root) {
+  const graphRoot = graphCanvasFor(root);
+  if (!graphRoot) return [];
+  const dotSource = graphRoot.querySelector("script.dot-source");
+  const dotTxt = dotSource ? (dotSource.textContent || "").trim() : "";
+  if (!dotTxt) return [];
+  return [{
+    key: "full",
+    label: "Full Graph",
+    dot: dotTxt,
+    options: {
+      direction: graphRoot.getAttribute("data-bp-graph-direction"),
+      pack: graphRoot.getAttribute("data-bp-graph-pack")
+    },
+    selectOnNodeId: [],
+    hoverOnNodeId: []
+  }];
+}
+
+/**
+ * Normalize raw graph JSON into the stable graph payload shape.
  *
  * @param {unknown} rawData Parsed graph JSON.
  * @returns {BlueprintGraphData | null}
  */
-export function decodeGraphData(rawData) {
-  if (!isRecord(rawData)) return null;
+export function normalizeGraphData(rawData) {
+  if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return null;
   const data = /** @type {Record<string, unknown>} */ (rawData);
-  if (data.schemaVersion !== graphDataSchemaVersion || !isTrimmedNonemptyString(data.key)) return null;
-  if (!Array.isArray(data.nodes) || !Array.isArray(data.edges) ||
-      !Array.isArray(data.groups) || !Array.isArray(data.variants)) return null;
-  if (!areGraphVariantsValid(data.variants)) return null;
   return {
-    schemaVersion: graphDataSchemaVersion,
-    key: /** @type {string} */ (data.key),
-    nodes: data.nodes,
-    edges: data.edges,
-    groups: data.groups,
-    variants: data.variants
+    schemaVersion: Number.isFinite(data.schemaVersion) ? Number(data.schemaVersion) : 1,
+    key: typeof data.key === "string" ? data.key : "graph",
+    nodes: Array.isArray(data.nodes) ? data.nodes : [],
+    edges: Array.isArray(data.edges) ? data.edges : [],
+    groups: Array.isArray(data.groups) ? data.groups : []
   };
 }
 
 /**
- * Extract graph records that pass the current schema, top-level collection,
- * and render-variant checks. Other records are omitted.
+ * Extract graph variants from a parsed Blueprint manifest.
  *
  * @param {unknown} manifest Parsed manifest JSON.
  * @returns {BlueprintGraphData[]}
@@ -282,32 +217,32 @@ export function graphsFromManifest(manifest) {
     return [];
   }
   return data.graphs
-    .map(decodeGraphData)
+    .map(normalizeGraphData)
     .filter(function (graphData) { return !!graphData; });
 }
 
 /**
- * Read embedded graph data from a generated graph page, returning `null` when
- * the payload is missing or fails the current schema, top-level collection, or
- * render-variant checks.
+ * Read embedded graph data from a generated graph page.
  *
  * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
  * @returns {BlueprintGraphData | null}
  */
 export function getGraphData(root) {
-  return decodeGraphData(readGraphJsonScript(root || currentDocument(), "script.bp-graph-data"));
+  return normalizeGraphData(readGraphJsonScript(root || currentDocument(), "script.bp-graph-data"));
 }
 
 /**
- * Read the variants carried by graph data embedded in a generated graph page.
- * This is a convenience projection of {@link getGraphData}.
+ * Read graph variants embedded in a generated graph page.
  *
  * @param {ParentNode | Element | Document | DocumentFragment | null} [root] Search root. Defaults to `document`.
  * @returns {BlueprintGraphVariant[]}
  */
 export function getGraphVariants(root) {
-  const data = getGraphData(root || currentDocument());
-  return data ? data.variants : [];
+  const parsed = readGraphJsonScript(root || currentDocument(), "script.bp-graph-variants");
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    return /** @type {BlueprintGraphVariant[]} */ (parsed);
+  }
+  return graphFallbackVariants(root || currentDocument());
 }
 
 /**
@@ -343,8 +278,7 @@ export function loadJson(url, options, errorPrefix) {
 }
 
 /**
- * Load graph records that pass the current schema, top-level collection, and
- * render-variant checks from a manifest URL. Other records are omitted.
+ * Load graph variants from a manifest URL.
  *
  * @param {string} [url] Manifest URL. Defaults to `blueprint-manifest.json`.
  * @param {BlueprintDataApiOptions} [options] Optional loader options.
@@ -361,8 +295,7 @@ export function loadManifestGraphs(url, options) {
 }
 
 /**
- * Load graph records that pass the current schema, top-level collection, and
- * render-variant checks from the default manifest. Other records are omitted.
+ * Load graph variants from the default generated manifest URL.
  *
  * @param {BlueprintDataApiOptions} [options] Optional loader options.
  * @returns {Promise<BlueprintGraphData[]>}
@@ -377,7 +310,8 @@ export const graphCore = {
   graphApiModuleUrl,
   graphCanvasFor,
   readGraphJsonScript,
-  decodeGraphData,
+  graphFallbackVariants,
+  normalizeGraphData,
   graphsFromManifest,
   getGraphData,
   getGraphVariants,
@@ -385,6 +319,18 @@ export const graphCore = {
   loadManifestGraphs,
   loadGraphs
 };
+
+export function installGraphCoreGlobal(globalScope = defaultGlobalScope()) {
+  const namespace = blueprintPrivateNamespace(globalScope);
+  const existingCore =
+    namespace.graphCore && typeof namespace.graphCore === "object"
+      ? namespace.graphCore
+      : {};
+  Object.assign(existingCore, graphCore);
+  namespace.graphCore = existingCore;
+
+  return existingCore;
+}
 
 export { version };
 

@@ -15,7 +15,6 @@ import VersoBlueprint.Graft.Render
 import VersoBlueprint.PreviewManifest.BlockRender
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Slides.Node
-import VersoBlueprint.TeX
 
 set_option doc.verso true
 
@@ -90,7 +89,7 @@ private def renderLeanCodePreviewBody?
       pure none
   | some (.ok stored) =>
       match stored.data.source with
-      | .inlineBlocks blocks _sourceLocation => some <$> renderManualBlocks goB blocks
+      | .inlineBlocks blocks => some <$> renderManualBlocks goB blocks
       | .externalDecl decl => pure <| some <| Informal.ExternalCode.renderPreviewHtml #[decl]
 
 private def renderLeanCodeBodies
@@ -125,12 +124,12 @@ private def renderManualGraftNode
         renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
           node.selectionDescription
   | some (preview, entry) =>
-      if !preview.hasRenderedBody then
+      if preview.blocks.isEmpty then
         pure <| Html.tag "div" (manualNodeAttrs node) <|
           renderNotice "bp_graft_node_notice" "error"
             "Blueprint node has no cached content" node.key
       else
-        let body ← renderManualBlocks goB preview.renderedBody.blocks
+        let body ← renderManualBlocks goB preview.blocks
         let codeBodies ←
           if node.compact then
             pure #[]
@@ -140,22 +139,52 @@ private def renderManualGraftNode
           body
           codeBodies
         }
-        pure <| Informal.Graft.renderNodeWithContent
-          manualManifestRenderConfig
-          node
-          entry
-          content
-          (Informal.PreviewManifest.groupRelationForEntry? state entry)
+        -- The two-column node card is the default for non-compact statement
+        -- facets: fold in the proof facet (if any) and render both columns. The
+        -- compact and standalone-proof paths keep the single-column renderer so
+        -- `+compact` and `(facet := "proof")` behave exactly as before.
+        if node.facet == "statement" && !node.compact then
+          let label := Informal.LabelNameParsing.parse node.label
+          let proof? ←
+            match Informal.PreviewManifest.findTraversalBlockEntry? state
+                (Informal.PreviewCache.proofKey label) with
+            | none => pure none
+            | some (proofPreview, proofEntry) =>
+              if proofPreview.blocks.isEmpty then
+                pure none
+              else
+                let proofBody ← renderManualBlocks goB proofPreview.blocks
+                let proofCodeBodies ← renderLeanCodeBodies goB state proofEntry
+                pure <| some (proofEntry,
+                  ({ body := proofBody, codeBodies := proofCodeBodies } :
+                    Informal.PreviewManifest.BlockRender.RenderedContent))
+          let card :=
+            Informal.PreviewManifest.BlockRender.renderTwoColumnCard
+              manualBlockRenderConfig
+              entry
+              content
+              proof?
+              {
+                displayLabelOverride? := node.displayLabel?
+                compact := node.compact
+                showHeader := node.showHeader
+                declNamePrefix :=
+                  (Informal.TraversalIndex.DeclRegistry.namePrefix? state).getD ""
+              }
+              { showHeader := node.showHeader }
+          pure <| Html.tag "div" (manualNodeAttrs node) card
+        else
+          pure <| Informal.Graft.renderNodeWithContent
+            manualManifestRenderConfig
+            node
+            entry
+            content
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConfig) where
   data := toJson cfg
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse _ _ _ := pure none
-  toTeX :=
-    open Verso.Output.TeX in
-    some <| fun _goI _goB _id _data _blocks =>
-      pure <| .text "This Blueprint graft node is available in the HTML output."
+  toTeX := none
   extraCss := manualGraftAssetBundle.css
   extraJs := manualGraftAssetBundle.js
   toHtml :=
@@ -173,9 +202,8 @@ block_extension Block.blueprintGraftNode (cfg : Informal.Graft.BlueprintNodeConf
 open Verso Doc Elab Genre Manual in
 block_extension Block.blueprintGraftSideBySide (cfg : Informal.Graft.SideBySideConfig) where
   data := toJson cfg
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse _ _ _ := pure none
-  toTeX := some <| fun _goI goB _id _data blocks => blocks.mapM goB
+  toTeX := none
   extraCss := manualGraftAssetBundle.css
   extraJs := manualGraftAssetBundle.js
   toHtml :=

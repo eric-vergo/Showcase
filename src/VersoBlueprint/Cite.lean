@@ -13,7 +13,6 @@ import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Resolve
-import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 open Lean Elab Command
@@ -520,7 +519,6 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
     pure none
   extraCss := citeAssetBundle.css
   extraJs := citeAssetBundle.js
-  usePackages := Informal.TeX.standardMathUsePackages
   toTeX :=
     open Verso.Output.TeX in
     some <| fun go _id data content => do
@@ -589,6 +587,7 @@ inline_extension Inline.bpCite (citations : List CiteItem) (style : CitationStyl
           let previewKey := citationPreviewKey item cfg.style cfg.kind cfg.index
           let previewTarget := Informal.HoverRender.InlinePreviewTarget.manifestBacked
             previewKey (citationPreviewTitle item)
+            (fallbackDetail? := locatorText cfg.kind cfg.index)
           pure <| Informal.HoverRender.inlinePreviewTargetNode linkNode previewTarget
       let links ← cfg.citations.mapM mkLink
       let body := joinHtml {{<span>"; "</span>}} links

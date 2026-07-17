@@ -12,7 +12,6 @@ import VersoBlueprint.Commands.Common
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
-import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.Commands
@@ -37,7 +36,6 @@ def bibliographyAssetBundle : BlueprintAssetBundle :=
 open Verso Doc Elab Genre Manual in
 block_extension Block.bibliography (biblio : BibliographyData) where
   data := toJson biblio
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some biblio ← Informal.ExtensionDecode.decode? (α := BibliographyData) data
         (fun _ => "Malformed data in Block.bibliography.traverse")
@@ -48,17 +46,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
       modify fun st =>
         Informal.TraversalIndex.Bibliography.saveId st entry.label id
     return none
-  toTeX :=
-    open Verso.Output.TeX in
-    some <| fun goI _goB _id data _blocks => do
-      let .ok data := fromJson? (α := BibliographyData) data
-        | Verso.reportError s!"Malformed data in Block.bibliography.toTeX: {data}"
-          pure .empty
-      let entries := data.entries.toArray.qsort (fun a b => a.citation.sortKey < b.citation.sortKey)
-      let items ← entries.mapM fun entry => do
-        let rendered ← entry.citation.bibTeX goI
-        pure \TeX{\item[\Lean{entry.label}] \Lean{rendered} s!"\n"}
-      pure \TeX{\begin{description}\Lean{items}\end{description}}
+  toTeX := none
   toHtml :=
     open Verso.Doc.Html in
     open Verso.Output.Html in
@@ -116,6 +104,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
                     s!"bp-bib-use-{Informal.HoverRender.previewKey use.href}"
                   let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
                     previewId summaryText previewKey
+                    (fallbackLabel? := some s!"{theoremCtx.label}")
                   Informal.HoverRender.inlinePreviewTargetNode lineNode previewTarget
                 | Option.none => lineNode
               {{<li class="bp_bibliography_use_item">
@@ -137,6 +126,7 @@ block_extension Block.bibliography (biblio : BibliographyData) where
         <div class="bp_bibliography">
           <details class="bp_bibliography_section" open>
             <summary>s!"Bibliography ({entries.size})"</summary>
+            <p class="bp_bibliography_lead">"References cited in this blueprint."</p>
             <ul class="bp_bibliography_list">
               {{if rows.isEmpty then {{<li class="bp_bibliography_empty">"No bibliography entries registered."</li>}} else rows}}
             </ul>

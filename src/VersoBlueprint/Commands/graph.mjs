@@ -1,8 +1,10 @@
 import * as graphRuntimeCoreModule from "./graph-runtime-core.mjs";
 import {
-  getGraphData,
-  decodeGraphData
+  getGraphData as coreGetGraphData,
+  getGraphVariants as coreGetGraphVariants
 } from "../blueprint-graph-core.mjs";
+import { startProofToggle } from "./proof-toggle.mjs";
+import { installSelectionBus } from "./selection-bus.mjs";
 
 const {
   debounce,
@@ -21,6 +23,261 @@ const {
   resetGraphvizForVariant,
   makeGroupPanelPositioner
 } = graphRuntimeCoreModule;
+
+function collectPreviewTemplates(previewUtils, rootNode) {
+  return previewUtils.collectPreviewTemplates(
+    rootNode || document,
+    "template.bp_graph_preview_tpl[data-bp-preview-label]"
+  );
+}
+
+// Per-label card metadata (node-page href + display title) read from the inline
+// card templates, keyed the same way as `collectPreviewTemplates` (by
+// `data-bp-preview-label`). Powers the modal's "Open node page" link and title.
+function collectCardMeta(rootNode) {
+  const meta = new Map();
+  const scope = rootNode || document;
+  scope
+    .querySelectorAll("template.bp_graph_preview_tpl[data-bp-preview-label]")
+    .forEach(function (tpl) {
+      const label = (tpl.getAttribute("data-bp-preview-label") || "").trim();
+      if (!label) return;
+      meta.set(label, {
+        href: (tpl.getAttribute("data-bp-node-href") || "").trim(),
+        title: (tpl.getAttribute("data-bp-node-title") || label).trim()
+      });
+    });
+  return meta;
+}
+
+// Map a graph node to its declaration, for the metadata rail selection bus.
+// Blueprint nodes carry a blueprint label (`«thm:…»`); the inline card templates
+// map that label to the card's `data-bp-decl` (and its slim inline record for
+// offline first paint). Supporting nodes have no template — their node label *is*
+// the declaration name (see `mkSupportingNodeData`), used verbatim.
+function collectGraphDeclMeta(rootNode) {
+  const labelToDecl = new Map(); // blueprint node label -> declaration name
+  const metaByDecl = new Map(); // declaration name -> slim inline record
+  const scope = rootNode || document;
+  scope
+    .querySelectorAll("template.bp_graph_preview_tpl[data-bp-preview-label]")
+    .forEach(function (tpl) {
+      const label = (tpl.getAttribute("data-bp-preview-label") || "").trim();
+      const content = tpl.content;
+      if (!content) return;
+      const card = content.querySelector(".bp_card2[data-bp-decl]");
+      if (!card) return;
+      const decl = (card.getAttribute("data-bp-decl") || "").trim();
+      if (!decl) return;
+      if (label) labelToDecl.set(label, decl);
+      const metaNode = content.querySelector(".bp-decl-meta[data-bp-decl]");
+      if (metaNode) {
+        try {
+          const rec = JSON.parse(metaNode.textContent || "null");
+          if (rec && typeof rec === "object") metaByDecl.set(decl, rec);
+        } catch (_e) {
+          /* ignore malformed payloads */
+        }
+      }
+    });
+  return { labelToDecl: labelToDecl, metaByDecl: metaByDecl };
+}
+
+// Make every graph node (blueprint AND supporting) select its declaration on the
+// shared selection bus, so a click populates the metadata rail. Blueprint nodes
+// additionally open the Wave-2 modal (bound per node in `attachPreviewHandlers`);
+// supporting nodes now get rail metadata instead of the empty peek. Delegation is
+// capture-phase on the stable block so it fires before the modal handler's
+// `stopPropagation`, and reads a `data-bp-decl` stamped here before the preview
+// pass strips node `<title>`s.
+function attachSelectionHandlers(graphBlock, graphContainer, labelToDecl, metaByDecl) {
+  const svg = graphContainer.select("svg").node();
+  if (!svg || !(svg instanceof SVGElement)) return;
+  svg.querySelectorAll("g.node").forEach(function (node) {
+    const label = graphNodeLabel(node);
+    if (!label) return;
+    const decl = labelToDecl.get(label) || label;
+    node.setAttribute("data-bp-decl", decl);
+    if (!node.style.cursor) node.style.cursor = "pointer";
+    if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "0");
+    if (!node.hasAttribute("role")) node.setAttribute("role", "button");
+  });
+  // Latest inline records for offline first paint (templates are static, but keep
+  // the reference fresh across re-renders).
+  graphBlock.__bpMetaByDecl = metaByDecl;
+  if (graphBlock.__bpSelectionBound === true) return;
+  graphBlock.__bpSelectionBound = true;
+  const selectFromNode = function (node) {
+    if (!(node instanceof Element)) return;
+    const decl = (node.getAttribute("data-bp-decl") || "").trim();
+    if (!decl) return;
+    const bus = window.VersoBlueprint && window.VersoBlueprint.selection;
+    if (!bus || typeof bus.set !== "function") return;
+    const records = graphBlock.__bpMetaByDecl;
+    bus.set({
+      declName: decl,
+      source: "graph",
+      meta: records && records.get ? records.get(decl) || null : null
+    });
+  };
+  graphBlock.addEventListener("click", function (ev) {
+    const node = ev.target && ev.target.closest ? ev.target.closest("g.node") : null;
+    if (node) selectFromNode(node);
+  }, true);
+  graphBlock.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const node = ev.target && ev.target.closest ? ev.target.closest("g.node") : null;
+    if (node) selectFromNode(node);
+  }, true);
+}
+
+// Centered modal dialog showing a graph node's full two-column card on click.
+// Content comes from the inline `<template class="bp_graph_preview_tpl">` cards
+// embedded at build time (offline-correct: no fetch). KaTeX and the per-card
+// proof toggle are (re)hydrated on the injected fragment. One overlay per page
+// (graph pages carry a single graph block; reused if already present).
+function ensureGraphModal(previewUtils) {
+  const existing = document.querySelector(".bp_graph_modal_overlay");
+  if (existing && existing.__bpGraphModal) return existing.__bpGraphModal;
+
+  const overlay = document.createElement("div");
+  overlay.className = "bp_graph_modal_overlay";
+  overlay.hidden = true;
+
+  const dialog = document.createElement("div");
+  dialog.className = "bp_graph_modal_dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", "Node preview");
+  dialog.setAttribute("tabindex", "-1");
+  dialog.innerHTML =
+    '<div class="bp_graph_modal_header">' +
+      '<div class="bp_graph_modal_title"></div>' +
+      '<button type="button" class="bp_graph_modal_close" aria-label="Close preview">Close</button>' +
+    "</div>" +
+    '<div class="bp_graph_modal_body"></div>' +
+    '<div class="bp_graph_modal_footer">' +
+      '<a class="bp_graph_modal_open" href="#">Open node page</a>' +
+    "</div>";
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const titleEl = dialog.querySelector(".bp_graph_modal_title");
+  const bodyEl = dialog.querySelector(".bp_graph_modal_body");
+  const closeBtn = dialog.querySelector(".bp_graph_modal_close");
+  const openLink = dialog.querySelector(".bp_graph_modal_open");
+  let lastFocused = null;
+
+  const close = function () {
+    if (overlay.hidden) return;
+    overlay.hidden = true;
+    bodyEl.replaceChildren();
+    document.removeEventListener("keydown", onKeydown, true);
+    if (lastFocused && typeof lastFocused.focus === "function") {
+      try { lastFocused.focus(); } catch (_e) { /* ignore */ }
+    }
+    lastFocused = null;
+  };
+
+  const onKeydown = function (ev) {
+    if (overlay.hidden) return;
+    if (ev.key === "Escape") { ev.preventDefault(); close(); return; }
+    if (ev.key !== "Tab") return;
+    // Basic focus trap: keep Tab within the dialog.
+    const focusables = dialog.querySelectorAll(
+      'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])'
+    );
+    if (focusables.length === 0) { ev.preventDefault(); dialog.focus(); return; }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (ev.shiftKey && (active === first || active === dialog)) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && active === last) {
+      ev.preventDefault();
+      first.focus();
+    }
+  };
+
+  const open = function (payload) {
+    lastFocused = document.activeElement;
+    titleEl.textContent = (payload && payload.title) || "";
+    bodyEl.innerHTML = (payload && payload.html) || "";
+    // Typeset KaTeX + run registered hydrators on the injected card fragment.
+    try {
+      if (previewUtils && typeof previewUtils.hydrate === "function") {
+        previewUtils.hydrate(bodyEl);
+      }
+    } catch (_e) { /* ignore */ }
+    // Rebind the per-card proof toggle (proof-toggle.mjs binds on load only).
+    try { startProofToggle(bodyEl); } catch (_e) { /* ignore */ }
+    if (payload && payload.href) {
+      openLink.setAttribute("href", payload.href);
+      openLink.hidden = false;
+    } else {
+      openLink.removeAttribute("href");
+      openLink.hidden = true;
+    }
+    // Always start at the top of the card (the body is a reused, scrollable
+    // element, so a prior open's scroll position would otherwise persist).
+    bodyEl.scrollTop = 0;
+    overlay.hidden = false;
+    document.addEventListener("keydown", onKeydown, true);
+    (closeBtn || dialog).focus();
+  };
+
+  overlay.addEventListener("mousedown", function (ev) {
+    if (ev.target === overlay) close();
+  });
+  closeBtn.addEventListener("click", function (ev) {
+    ev.preventDefault();
+    close();
+  });
+
+  const modal = {
+    overlay: overlay,
+    open: open,
+    close: close,
+    isOpen: function () { return !overlay.hidden; }
+  };
+  overlay.__bpGraphModal = modal;
+  return modal;
+}
+
+function readPublicGraphData(root) {
+  return coreGetGraphData(root);
+}
+
+function readPublicGraphVariants(root) {
+  const variants = coreGetGraphVariants(root);
+  if (Array.isArray(variants) && variants.length > 0) {
+    return variants;
+  }
+  return [];
+}
+
+// STY-GRAPH-11: condense a per-subgraph variant label (often a full sentence)
+// into a scannable fragment for the View <optgroup>. Mirrors the Lean-side
+// `shortenVariantLabel`; only used by the client-side fallback that rebuilds the
+// selector when SSR markup is absent. Cosmetic — option values are unchanged.
+function shortenVariantLabel(label, maxLen) {
+  const limit = typeof maxLen === "number" ? maxLen : 42;
+  const firstSeg = function (sep, s) {
+    const idx = s.indexOf(sep);
+    return (idx >= 0 ? s.slice(0, idx) : s).trim();
+  };
+  let clause = String(label == null ? "" : label).trim();
+  clause = firstSeg(".", clause);
+  clause = firstSeg(";", clause);
+  clause = firstSeg(":", clause);
+  clause = firstSeg(" — ", clause);
+  if (!clause) clause = String(label == null ? "" : label).trim();
+  if (clause.length <= limit) return clause;
+  const words = clause.slice(0, limit).split(" ");
+  if (words.length > 1) words.pop();
+  return words.join(" ").trim() + "…";
+}
 
 function dotWithGraphAttribute(dot, name, value) {
   const source = String(dot || "");
@@ -45,338 +302,72 @@ function dotWithGraphOptions(dot, options) {
 
 function dotForVariantOptions(variant, options) {
   if (!variant || typeof variant !== "object") return "";
-  return dotWithGraphOptions(variant.dot, options);
+  const normalized = normalizeGraphOptions(options);
+  // "Show all edges" selects the unreduced DOT when this variant has one; otherwise
+  // (nothing was reduced) `dotFull` is absent and the reduced `dot` is already full.
+  const source = normalized.allEdges && variant.dotFull ? variant.dotFull : variant.dot;
+  return dotWithGraphOptions(source, options);
 }
 
-// Runtime graph-data rendering consumes Lean-computed variants from public GraphData,
-// then feeds the generated block into the same initializer used by page graphs.
-let runtimeGraphIdCounter = 0;
-
-function htmlIdKey(value) {
-  let out = "";
-  for (const char of String(value || "")) {
-    if (/^[A-Za-z0-9]$/.test(char)) {
-      out += char;
-    } else if (char === "-") {
-      out += "--";
-    } else {
-      out += "-" + char.codePointAt(0).toString(16).toUpperCase().padStart(4, "0");
-    }
-  }
-  return out;
-}
-
-function prefixedHtmlId(prefix, value) {
-  const body = htmlIdKey(value);
-  return body ? prefix + "-" + body : prefix;
-}
-
-function graphOptionsFromRenderOptions(options, variants) {
-  const opts = options && typeof options === "object" ? options : {};
-  const rawOptions =
-    opts.graphOptions && typeof opts.graphOptions === "object"
-      ? opts.graphOptions
-      : variants[0] && variants[0].options;
-  return normalizeGraphOptions(rawOptions);
-}
-
-function createEl(doc, tagName, attrs, text) {
-  const el = doc.createElement(tagName);
-  Object.entries(attrs || {}).forEach(function (entry) {
-    const name = entry[0];
-    const value = entry[1];
-    if (value === null || typeof value === "undefined" || value === false) return;
-    if (value === true) {
-      el.setAttribute(name, name);
-    } else {
-      el.setAttribute(name, String(value));
-    }
-  });
-  if (typeof text === "string") el.textContent = text;
-  return el;
-}
-
-function appendSelectOption(doc, select, value, label, selected) {
-  const option = createEl(doc, "option", { value: value }, label);
-  if (selected) option.selected = true;
-  select.appendChild(option);
-  return option;
-}
-
-function appendJsonScript(doc, parent, className, value) {
-  const script = createEl(doc, "script", {
-    type: "application/json",
-    class: className
-  });
-  script.textContent = JSON.stringify(value || null);
-  parent.appendChild(script);
-  return script;
-}
-
-function createPreviewPanel(doc, classes, headerClass, titleClass, closeClass, bodyClass, closeLabel, mode, placement) {
-  const panel = createEl(doc, "aside", {
-    class: classes,
-    "data-bp-preview-mode": mode,
-    "data-bp-preview-placement": placement,
-    hidden: true
-  });
-  const header = createEl(doc, "div", { class: headerClass });
-  header.appendChild(createEl(doc, "div", { class: titleClass }));
-  header.appendChild(createEl(doc, "button", {
-    type: "button",
-    class: closeClass,
-    "aria-label": closeLabel
-  }, "Close"));
-  panel.appendChild(header);
-  panel.appendChild(createEl(doc, "div", { class: bodyClass }));
-  return panel;
-}
-
-function graphControlId(data, suffix) {
-  runtimeGraphIdCounter += 1;
-  return prefixedHtmlId("bp-runtime-graph", (data && data.key ? data.key : "graph") + "-" + runtimeGraphIdCounter) + suffix;
-}
-
-export function createGraphBlock(graphData, options) {
-  const opts = options && typeof options === "object" ? options : {};
-  const data = decodeGraphData(graphData);
-  if (!data) return null;
-  const doc = opts.document && typeof opts.document.createElement === "function" ? opts.document : document;
-  const variants = data.variants;
-  const graphOptions = graphOptionsFromRenderOptions(opts, variants);
-  const block = createEl(doc, "div", { class: "bp_graph_fullwidth", "data-bp-graph-source": "runtime" });
-  if (opts.layout) block.setAttribute("data-bp-graph-layout", graphLayoutMode(block, opts));
-  const graphViewSelectId = graphControlId(data, "--view");
-  const graphDirectionSelectId = graphControlId(data, "--direction");
-  const graphPackInputId = graphControlId(data, "--pack");
-  const graphPreviewModeSelectId = graphControlId(data, "--preview-mode");
-  const graphPreviewPlacementSelectId = graphControlId(data, "--preview-placement");
-  const graphLegendPanelId = graphControlId(data, "--legend");
-  const graphOptionsPanelId = graphControlId(data, "--options");
-  const previewMode = String(opts.previewMode || "pinned");
-  const previewPlacement = String(opts.previewPlacement || "docked");
-
-  const controls = createEl(doc, "div", { class: "bp_graph_controls" });
-  const primary = createEl(doc, "div", { class: "bp_graph_controls_primary" });
-  primary.appendChild(createEl(doc, "button", {
-    type: "button",
-    class: "bp_graph_controls_button bp_graph_legend_button",
-    "aria-haspopup": "dialog",
-    "aria-expanded": "false",
-    "aria-controls": graphLegendPanelId
-  }, "Legend"));
-  primary.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphViewSelectId }, "View"));
-  const viewSelect = createEl(doc, "select", { id: graphViewSelectId, class: "bp_graph_controls_select bp_graph_view_select" });
-  variants.forEach(function (variant, index) {
-    appendSelectOption(doc, viewSelect, variant.key, variant.label || variant.key, index === 0);
-  });
-  primary.appendChild(viewSelect);
-  controls.appendChild(primary);
-  const actions = createEl(doc, "div", { class: "bp_graph_controls_actions" });
-  actions.appendChild(createEl(doc, "button", {
-    type: "button",
-    class: "bp_graph_controls_button bp_graph_options_button",
-    "aria-haspopup": "dialog",
-    "aria-expanded": "false",
-    "aria-controls": graphOptionsPanelId
-  }, "Graph options"));
-  controls.appendChild(actions);
-  block.appendChild(controls);
-
-  const legendPopover = createEl(doc, "div", { id: graphLegendPanelId, class: "bp_graph_legend_popover", hidden: true });
-  const legendHeader = createEl(doc, "div", { class: "bp_graph_legend_popover_header" });
-  legendHeader.appendChild(createEl(doc, "span", { class: "bp_graph_legend_popover_title" }, "Legend"));
-  legendHeader.appendChild(createEl(doc, "button", { type: "button", class: "bp_graph_legend_popover_close", "aria-label": "Close legend" }, "Close"));
-  legendPopover.appendChild(legendHeader);
-  const legendBody = createEl(doc, "div", { class: "bp_graph_legend_popover_body" });
-  legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "full" }));
-  if (variants.some(function (variant) { return variant.key === "group"; })) {
-    legendBody.appendChild(createEl(doc, "div", { class: "bp_graph_legend", "data-bp-legend-kind": "group", hidden: true }));
-  }
-  legendPopover.appendChild(legendBody);
-  block.appendChild(legendPopover);
-
-  const optionsPopover = createEl(doc, "div", { id: graphOptionsPanelId, class: "bp_graph_options_popover", hidden: true });
-  const optionsHeader = createEl(doc, "div", { class: "bp_graph_options_popover_header" });
-  optionsHeader.appendChild(createEl(doc, "span", { class: "bp_graph_options_popover_title" }, "Graph options"));
-  optionsHeader.appendChild(createEl(doc, "button", { type: "button", class: "bp_graph_options_popover_close", "aria-label": "Close graph options" }, "Close"));
-  optionsPopover.appendChild(optionsHeader);
-  const optionsBody = createEl(doc, "div", { class: "bp_graph_options_popover_body" });
-  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphDirectionSelectId }, "Direction"));
-  const directionSelect = createEl(doc, "select", {
-    id: graphDirectionSelectId,
-    class: "bp_graph_controls_select bp_graph_direction_select",
-    "data-bp-graph-default-direction": graphOptions.direction
-  });
-  ["TB", "LR", "RL", "BT"].forEach(function (direction) {
-    appendSelectOption(doc, directionSelect, direction, direction, direction === graphOptions.direction);
-  });
-  optionsBody.appendChild(directionSelect);
-  const packLabel = createEl(doc, "label", { class: "bp_graph_option_toggle", for: graphPackInputId });
-  const packInput = createEl(doc, "input", {
-    id: graphPackInputId,
-    type: "checkbox",
-    class: "bp_graph_pack_input",
-    "data-bp-graph-default-pack": graphPackAttr(graphOptions.pack),
-    checked: graphOptions.pack
-  });
-  packInput.checked = !!graphOptions.pack;
-  packLabel.appendChild(packInput);
-  packLabel.appendChild(createEl(doc, "span", {}, "Pack disconnected components"));
-  optionsBody.appendChild(packLabel);
-  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphPreviewModeSelectId }, "Preview"));
-  const previewModeSelect = createEl(doc, "select", {
-    id: graphPreviewModeSelectId,
-    class: "bp_graph_controls_select bp_graph_preview_mode_select",
-    "data-bp-graph-default-preview-mode": previewMode
-  });
-  appendSelectOption(doc, previewModeSelect, "pinned", "Click to pin", previewMode !== "hover");
-  appendSelectOption(doc, previewModeSelect, "hover", "Hover", previewMode === "hover");
-  optionsBody.appendChild(previewModeSelect);
-  optionsBody.appendChild(createEl(doc, "label", { class: "bp_graph_controls_label", for: graphPreviewPlacementSelectId }, "Position"));
-  const previewPlacementSelect = createEl(doc, "select", {
-    id: graphPreviewPlacementSelectId,
-    class: "bp_graph_controls_select bp_graph_preview_placement_select",
-    "data-bp-graph-default-preview-placement": previewPlacement
-  });
-  appendSelectOption(doc, previewPlacementSelect, "docked", "Docked", previewPlacement !== "anchored");
-  appendSelectOption(doc, previewPlacementSelect, "anchored", "Near node", previewPlacement === "anchored");
-  optionsBody.appendChild(previewPlacementSelect);
-  optionsPopover.appendChild(optionsBody);
-  block.appendChild(optionsPopover);
-
-  const canvas = createEl(doc, "div", {
-    class: "bp_graph_canvas",
-    "data-bp-graph-direction": graphOptions.direction,
-    "data-bp-graph-pack": graphPackAttr(graphOptions.pack)
-  });
-  appendJsonScript(doc, canvas, "bp-graph-data", Object.assign({}, data, { variants: variants }));
-  block.appendChild(canvas);
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_graph_preview bp_preview_panel",
-    "bp_graph_preview_header bp_preview_panel_header",
-    "bp_graph_preview_title bp_preview_panel_title",
-    "bp_graph_preview_close bp_preview_panel_close",
-    "bp_graph_preview_body bp_preview_panel_body",
-    "Close informal preview",
-    previewMode,
-    previewPlacement
-  ));
-  block.appendChild(createPreviewPanel(
-    doc,
-    "bp_group_hover_preview bp_preview_panel",
-    "bp_group_hover_preview_header bp_preview_panel_header",
-    "bp_group_hover_preview_title bp_preview_panel_title",
-    "bp_group_hover_preview_close bp_preview_panel_close",
-    "bp_group_hover_preview_graph bp_preview_panel_body",
-    "Close group preview",
-    previewMode,
-    previewPlacement
-  ));
-  return block;
-}
-
-function readGraphNodeSvgHref(node) {
-  if (!(node instanceof Element)) return "";
-  const links = [];
-  if (String(node.localName || "").toLowerCase() === "a") links.push(node);
-  node.querySelectorAll("a").forEach(function (link) {
-    links.push(link);
-  });
-  for (const link of links) {
-    const href = (
-      link.getAttribute("href") ||
-      link.getAttribute("xlink:href") ||
-      (link.getAttributeNS
-        ? link.getAttributeNS("http://www.w3.org/1999/xlink", "href")
-        : "") ||
-      ""
-    ).trim();
-    if (href.length > 0) return href;
-  }
-  return "";
-}
-
-function graphDataNodeForPreview(graphData, label, previewKey) {
-  if (!graphData || typeof graphData !== "object" || !Array.isArray(graphData.nodes)) return null;
-  const normalizedLabel = String(label || "").trim();
-  const normalizedPreviewKey = String(previewKey || "").trim();
-  return graphData.nodes.find(function (node) {
-    if (!node || typeof node !== "object") return false;
-    const nodePreviewKey = typeof node.previewKey === "string" ? node.previewKey.trim() : "";
-    const nodeLabel = typeof node.label === "string" ? node.label.trim() : "";
-    const nodeDisplayLabel = typeof node.displayLabel === "string" ? node.displayLabel.trim() : "";
-    return (
-      (normalizedPreviewKey.length > 0 && nodePreviewKey === normalizedPreviewKey) ||
-      (normalizedLabel.length > 0 && (nodeLabel === normalizedLabel || nodeDisplayLabel === normalizedLabel))
-    );
-  }) || null;
-}
-
-function graphPreviewHref(graphData, node, label, previewKey) {
-  const svgHref = readGraphNodeSvgHref(node);
-  if (svgHref.length > 0) return svgHref;
-  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
-  return graphNode && typeof graphNode.href === "string" ? graphNode.href.trim() : "";
-}
-
-function graphPreviewLinkTitle(graphData, label, previewKey) {
-  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
-  const graphTitle = graphNode && typeof graphNode.title === "string" ? graphNode.title.trim() : "";
-  const normalizedLabel = String(label || "").trim();
-  return graphTitle && normalizedLabel && graphTitle !== normalizedLabel ? normalizedLabel : "";
-}
-
-function graphPreviewHeading(graphData, label, previewKey) {
-  const graphNode = graphDataNodeForPreview(graphData, label, previewKey);
-  const graphTitle = graphNode && typeof graphNode.title === "string" ? graphNode.title.trim() : "";
-  return graphTitle || String(label || "").trim();
-}
-
-function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewController, previewKeyByNodeId) {
+function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, previewMap, previewController, previewKeyByNodeId, graphModal, cardMeta) {
   if (!previewController) return;
   const graphState = ensureGraphBlockState(graphBlock);
   const previewKeys =
     previewKeyByNodeId instanceof Map ? previewKeyByNodeId : new Map();
+  const meta = cardMeta instanceof Map ? cardMeta : new Map();
   const svg = graphContainer.select("svg").node();
   if (!svg || !(svg instanceof SVGElement)) {
     previewController.hide();
     return;
   }
-  if (!previewController.title || !previewController.body || previewKeys.size === 0) {
+  if (!previewController.title || !previewController.body || (previewMap.size === 0 && previewKeys.size === 0)) {
     previewController.hide();
     return;
   }
+  // Click / keyboard on a node opens the centered modal with the node's full
+  // card (from the inline templates in `previewMap`). Returns true when it
+  // opened, so the caller can suppress the docked-panel click activation.
+  const openModalForNode = function (node) {
+    if (!graphModal || !(node instanceof Element)) return false;
+    const label = (node.getAttribute("data-bp-node-label") || graphNodeLabel(node) || "").trim();
+    if (!label) return false;
+    const html = previewMap.get(label) || "";
+    if (!html) return false;
+    const nodeMeta = meta.get(label) || {};
+    graphModal.open({ html: html, href: nodeMeta.href || "", title: nodeMeta.title || label });
+    return true;
+  };
   const show = async function (label, anchorNode) {
     const requestToken = ++graphState.previewRequestToken;
     const nodeId = anchorNode instanceof Element ? graphNodeId(anchorNode) : "";
     const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-    if (!previewKey) return;
-    const resolved = await previewUtils.resolvePreviewHtml(previewKey);
-    if (resolved && resolved.reason === "semantic-preview-body-missing") return;
-    const html = resolved.html || "";
+    let html = previewMap.get(label) || "";
+    if (!html && previewKey) {
+      const resolved = await previewUtils.resolvePreviewHtml(previewKey);
+      html = resolved.html || "";
+    }
     if (requestToken !== graphState.previewRequestToken) return;
     if (!html) return;
     graphState.previewActiveNode = anchorNode instanceof Element ? anchorNode : null;
-    previewController.showContent({
-      heading: graphPreviewHeading(graphState.graphData, label, previewKey),
-      headingHref: graphPreviewHref(graphState.graphData, graphState.previewActiveNode, label, previewKey),
-      headingTitle: graphPreviewLinkTitle(graphState.graphData, label, previewKey),
-      html: html,
-      anchor: graphState.previewActiveNode
-    });
+    previewController.show(label, html, graphState.previewActiveNode);
   };
   const canPreviewNode = function (node) {
     if (!(node instanceof Element)) return false;
+    const label = graphNodeLabel(node);
     const nodeId = graphNodeId(node);
     const previewKey = nodeId ? (previewKeys.get(nodeId) || "") : "";
-    return !!previewKey;
+    return !!label && (previewMap.has(label) || !!previewKey);
   };
   svg.querySelectorAll("g.node").forEach(function (node) {
     if (!canPreviewNode(node)) return;
     node.style.cursor = "pointer";
     node.setAttribute("tabindex", "0");
+    // Stash the stable node label (the SVG <title> == the DOT node name == the
+    // template's `data-bp-preview-label`) BEFORE removing the title below, so
+    // later lookups do not fall back to the visible <text> (which is the display
+    // label and would not match).
+    const stableLabel = graphNodeLabel(node);
+    if (stableLabel) node.setAttribute("data-bp-node-label", stableLabel);
     const titleNode = node.querySelector("title");
     if (titleNode) titleNode.remove();
     [node].concat(Array.from(node.querySelectorAll("*"))).forEach(function (el) {
@@ -387,6 +378,24 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
         el.removeAttributeNS("http://www.w3.org/1999/xlink", "title");
       }
     });
+    // Click / Enter / Space -> centered modal with the full card. Bound per node
+    // (nodes are recreated on each render); guarded against double-binding.
+    if (graphModal && node.__bpModalBound !== true) {
+      node.__bpModalBound = true;
+      node.addEventListener("click", function (ev) {
+        if (openModalForNode(node)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      });
+      node.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        if (openModalForNode(node)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      });
+    }
   });
   const showFromNode = function (node) {
     if (!(node instanceof Element) || !canPreviewNode(node)) return false;
@@ -395,8 +404,8 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
       return true;
     }
     const label = graphNodeLabel(node);
-    show(label, node);
-    return true;
+    if (label) show(label, node);
+    return !!label;
   };
   previewController.bindTriggers({
     eventRoot: svg,
@@ -406,8 +415,12 @@ function attachPreviewHandlers(previewUtils, graphBlock, graphContainer, preview
     show: showFromNode,
     hide: function () { previewController.hide(); },
     getActiveTrigger: function () { return graphState.previewActiveNode; },
-    activateOnClick: true,
-    activateOnKeydown: true,
+    // When a modal exists, click/keyboard open the centered full-card modal
+    // (bound per node above); the docked panel is then hover-only. Without a
+    // modal (e.g. a consumer graph with no inline card templates), keep the
+    // legacy click-to-pin docked-panel behavior.
+    activateOnClick: !graphModal,
+    activateOnKeydown: !graphModal,
     enterRequiresHover: true,
     bindEscape: false,
     bindWindow: false
@@ -528,24 +541,7 @@ function bindGraphPopover(previewUtils, graphBlock, buttonSelector, panelSelecto
     panel: popoverPanel,
     close: popoverClose,
     boundAttr: boundAttr,
-    offset: 8,
-    position: function (_controller, rootNode, triggerNode, panelNode) {
-      if (!(rootNode instanceof Element)) return;
-      if (!(triggerNode instanceof Element)) return;
-      if (!(panelNode instanceof HTMLElement)) return;
-      const rootRect = rootNode.getBoundingClientRect();
-      const triggerRect = triggerNode.getBoundingClientRect();
-      const top = Math.max(0, Math.round(triggerRect.bottom - rootRect.top + 8));
-      panelNode.style.top = top + "px";
-      if (rootRect.width <= 720) {
-        panelNode.style.left = "0px";
-        panelNode.style.right = "0px";
-        return;
-      }
-      const right = Math.max(0, Math.round(rootRect.right - triggerRect.right));
-      panelNode.style.left = "";
-      panelNode.style.right = right + "px";
-    }
+    offset: 8
   });
 }
 
@@ -576,6 +572,15 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       if (!(graphBlock instanceof Element)) return;
       const graphRoot = graphBlock.querySelector(".bp_graph_canvas");
       if (!graphRoot) return;
+      // Static graphs (e.g. node-page localized graphs) opt out of variant
+      // switching and the node-card modal; still rendered client-side by d3.
+      const isStatic = graphRoot.getAttribute("data-bp-graph-static") === "true";
+      // Zoom + pan are enabled on interactive graphs and on any static embed that
+      // opts in via `data-bp-graph-zoom="true"` (the local node/decl graphs, which
+      // ship a compact −/+/Fit cluster). Variant selectors + the modal stay gated
+      // on `!isStatic`.
+      const zoomEnabled =
+        graphRoot.getAttribute("data-bp-graph-zoom") === "true" || !isStatic;
       if (opts.layout) {
         const layoutMode = graphLayoutMode(graphRoot, opts);
         graphBlock.setAttribute("data-bp-graph-layout", layoutMode);
@@ -594,16 +599,27 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
               : null
           );
       if (existingController) return existingController;
-      const graphApiData = getGraphData(graphBlock);
+      const graphApiData = readPublicGraphData(graphBlock);
       if (graphApiData) {
         graphState.graphData = graphApiData;
         graphBlock.__bpGraphData = graphApiData;
       }
       const selector = graphBlock.querySelector(".bp_graph_view_select");
+      const statusSelector = graphBlock.querySelector(".bp_graph_status_select");
       const directionSelector = graphBlock.querySelector(".bp_graph_direction_select");
       const packInput = graphBlock.querySelector(".bp_graph_pack_input");
+      const allEdgesInput = graphBlock.querySelector(".bp_graph_all_edges_input");
       const previewModeSelector = graphBlock.querySelector(".bp_graph_preview_mode_select");
       const previewPlacementSelector = graphBlock.querySelector(".bp_graph_preview_placement_select");
+      const previewMap = collectPreviewTemplates(previewUtils, graphBlock);
+      // Per-node card metadata + the shared click-activated modal. Interactive
+      // canvases with inline card templates only; static node-page graphs and
+      // template-less consumer graphs keep the legacy docked preview behavior.
+      const cardMeta = collectCardMeta(graphBlock);
+      // Node -> declaration mapping + slim inline records for the selection bus.
+      const graphDeclMeta = collectGraphDeclMeta(graphBlock);
+      const graphModal =
+        (!isStatic && previewMap.size > 0) ? ensureGraphModal(previewUtils) : null;
       const previewPanelNode = graphBlock.querySelector(".bp_graph_preview");
       const previewPanelBehavior = readPreviewBehaviorDefaults(previewPanelNode, "pinned", "docked");
       let previewController = null;
@@ -663,29 +679,69 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         { keepOpen: true }
       );
 
-      const rawVariants = graphApiData.variants;
-      const variants = rawVariants.map(function (variant) {
-        return {
-          key: variant.key,
-          label: variant.label,
-          dot: variant.dot,
-          options: normalizeGraphOptions(variant.options),
-          selectOnNodeId: variant.selectOnNodeId,
-          hoverOnNodeId: variant.hoverOnNodeId,
-          previewKeyByNodeId: new Map(variant.previewKeyByNodeId)
-        };
+      const rawVariants = readPublicGraphVariants(graphBlock);
+      if (!Array.isArray(rawVariants) || rawVariants.length === 0) return;
+      const variantsByKey = new Map();
+      rawVariants.forEach(function (variant) {
+        if (!variant || typeof variant !== "object") return;
+        const key = String(variant.key || "").trim();
+        const label = String(variant.label || key).trim();
+        const dot = String(variant.dot || "").trim();
+        // Unreduced DOT for the "Show all edges" toggle; absent when reduction
+        // dropped nothing (then the reduced `dot` already shows every edge).
+        const dotFull =
+          typeof variant.dotFull === "string" && variant.dotFull.trim()
+            ? variant.dotFull.trim()
+            : "";
+        const options = normalizeGraphOptions(
+          variant.options && typeof variant.options === "object"
+            ? variant.options
+            : { direction: variant.direction, pack: variant.pack }
+        );
+        const selectOnNodeId = Array.isArray(variant.selectOnNodeId) ? variant.selectOnNodeId : [];
+        const hoverOnNodeId = Array.isArray(variant.hoverOnNodeId) ? variant.hoverOnNodeId : [];
+        const previewKeyByNodeId = Array.isArray(variant.previewKeyByNodeId) ? variant.previewKeyByNodeId : [];
+        if (!key || !dot) return;
+        variantsByKey.set(key, {
+          key: key,
+          label: label || key,
+          dot: dot,
+          dotFull: dotFull,
+          options: options,
+          selectOnNodeId: selectOnNodeId,
+          hoverOnNodeId: hoverOnNodeId,
+          previewKeyByNodeId: new Map(previewKeyByNodeId)
+        });
       });
-      const variantsByKey = new Map(variants.map(function (variant) {
-        return [variant.key, variant];
-      }));
+      const variants = Array.from(variantsByKey.values());
+      if (variants.length === 0) return;
       graphBlock.__bpGraphVariants = variants;
 
+      // STY-GRAPH-11: the SSR markup already renders primary views as top-level
+      // options and per-subgraph (`parent:*`) variants inside an
+      // <optgroup label="Subgraphs">. Only re-append client-side when that markup
+      // is missing entirely (.options counts options nested in optgroups too, so
+      // a populated selector — grouped or not — short-circuits here). When we do
+      // rebuild, mirror the optgroup grouping and condensed subgraph labels.
       if (selector && selector.options.length === 0) {
-        variants.forEach(function (variant) {
+        const makeOption = function (value, text) {
           const option = document.createElement("option");
-          option.value = variant.key;
-          option.textContent = variant.label;
-          selector.appendChild(option);
+          option.value = value;
+          option.textContent = text;
+          return option;
+        };
+        let subgroup = null;
+        variants.forEach(function (variant) {
+          if (String(variant.key).indexOf("parent:") === 0) {
+            if (!subgroup) {
+              subgroup = document.createElement("optgroup");
+              subgroup.label = "Subgraphs";
+              selector.appendChild(subgroup);
+            }
+            subgroup.appendChild(makeOption(variant.key, shortenVariantLabel(variant.label)));
+          } else {
+            selector.appendChild(makeOption(variant.key, variant.label));
+          }
         });
       }
 
@@ -700,10 +756,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           : graphContainer.attr("data-bp-graph-direction"),
         pack: packInput
           ? packInput.getAttribute("data-bp-graph-default-pack")
-          : graphContainer.attr("data-bp-graph-pack")
+          : graphContainer.attr("data-bp-graph-pack"),
+        allEdges: allEdgesInput
+          ? allEdgesInput.getAttribute("data-bp-graph-default-all-edges")
+          : graphContainer.attr("data-bp-graph-all-edges")
       });
       if (directionSelector) directionSelector.value = activeOptions.direction;
       if (packInput) packInput.checked = activeOptions.pack;
+      if (allEdgesInput) allEdgesInput.checked = activeOptions.allEdges;
       syncLegend(graphBlock, activeKey);
       const legendPopover = bindLegendPopover(previewUtils, graphBlock);
       const optionsPopover = bindOptionsPopover(previewUtils, graphBlock);
@@ -735,7 +795,7 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           const height = Math.max(220, body.clientHeight || 0);
           const container = d3.select(body);
           if (!groupHoverGraphviz) {
-            groupHoverGraphviz = container.graphviz().fit(true);
+            groupHoverGraphviz = container.graphviz({ useWorker: false }).fit(true);
           }
           groupHoverGraphviz
             .width(width)
@@ -875,12 +935,16 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
             : activeOptions.direction,
           pack: Object.prototype.hasOwnProperty.call(rawNextOptions, "pack")
             ? rawNextOptions.pack
-            : activeOptions.pack
+            : activeOptions.pack,
+          allEdges: Object.prototype.hasOwnProperty.call(rawNextOptions, "allEdges")
+            ? rawNextOptions.allEdges
+            : activeOptions.allEdges
         });
         if (graphOptionsKey(normalized) === graphOptionsKey(activeOptions)) return;
         activeOptions = normalized;
         if (directionSelector) directionSelector.value = normalized.direction;
         if (packInput) packInput.checked = normalized.pack;
+        if (allEdgesInput) allEdgesInput.checked = normalized.allEdges;
         renderGraph();
       };
 
@@ -890,6 +954,10 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
 
       const switchPack = function (nextPack) {
         switchGraphOptions({ pack: nextPack });
+      };
+
+      const switchAllEdges = function (nextAllEdges) {
+        switchGraphOptions({ allEdges: nextAllEdges });
       };
 
       const scheduleRender = debounce(function () {
@@ -915,23 +983,36 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           if (graphState.renderToken !== renderToken) return;
           if (graphState.renderFinalizedToken === renderToken) return;
           graphState.renderFinalizedToken = renderToken;
+          // Stamp decl selection on every node BEFORE the preview pass strips
+          // `<title>`s, so both blueprint and supporting nodes feed the rail.
+          attachSelectionHandlers(
+            graphBlock,
+            graphContainer,
+            graphDeclMeta.labelToDecl,
+            graphDeclMeta.metaByDecl
+          );
           attachPreviewHandlers(
             previewUtils,
             graphBlock,
             graphContainer,
+            previewMap,
             previewController,
-            activeVariant.previewKeyByNodeId
+            activeVariant.previewKeyByNodeId,
+            graphModal,
+            cardMeta
           );
-          attachVariantSelectors(
-            graphContainer,
-            variantsByKey,
-            activeVariant,
-            switchVariant,
-            showGroupHoverPreview,
-            groupHoverBehavior.isHover && groupHoverController
-              ? function () { groupHoverLifetime.scheduleHide(); }
-              : null
-          );
+          if (!isStatic) {
+            attachVariantSelectors(
+              graphContainer,
+              variantsByKey,
+              activeVariant,
+              switchVariant,
+              showGroupHoverPreview,
+              groupHoverBehavior.isHover && groupHoverController
+                ? function () { groupHoverLifetime.scheduleHide(); }
+                : null
+            );
+          }
         };
 
         if (
@@ -942,14 +1023,14 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         ) {
           resetGraphvizForVariant(graphRoot, graphState);
         }
-        const gv = graphState.graphviz || graphContainer.graphviz();
+        const gv = graphState.graphviz || graphContainer.graphviz({ useWorker: false });
         graphState.graphviz = gv;
         graphState.renderedVariantKey = activeVariant.key;
         graphState.renderedOptionsKey = optionsKey;
         graphRoot.setAttribute("data-bp-active-direction", options.direction);
         graphRoot.setAttribute("data-bp-active-pack", graphPackAttr(options.pack));
         gv
-          .zoom(true)
+          .zoom(zoomEnabled)
           .width(width)
           .height(height)
           .fit(true)
@@ -967,6 +1048,22 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           switchVariant(selector.value);
         });
       }
+      if (statusSelector) {
+        // Status highlight/filter: toggle a data attribute on the canvas; CSS
+        // dims nodes that do not match the selected status. Pure class toggling,
+        // composes with all variants, no traversal or network.
+        const applyStatusFilter = function (value) {
+          if (!value || value === "all") {
+            graphRoot.removeAttribute("data-bp-status-filter");
+          } else {
+            graphRoot.setAttribute("data-bp-status-filter", value);
+          }
+        };
+        applyStatusFilter(statusSelector.value);
+        statusSelector.addEventListener("change", function () {
+          applyStatusFilter(statusSelector.value);
+        });
+      }
       if (directionSelector) {
         directionSelector.addEventListener("change", function () {
           switchDirection(directionSelector.value);
@@ -978,6 +1075,11 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
           switchPack(packInput.checked);
         });
       }
+      if (allEdgesInput) {
+        allEdgesInput.addEventListener("change", function () {
+          switchAllEdges(allEdgesInput.checked);
+        });
+      }
       if (previewModeSelector) {
         previewModeSelector.addEventListener("change", function () {
           setPreviewBehavior(previewModeSelector.value, readPreviewPlacement());
@@ -987,6 +1089,70 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
         previewPlacementSelector.addEventListener("change", function () {
           setPreviewBehavior(readPreviewMode(), previewPlacementSelector.value);
         });
+      }
+
+      // STY-GRAPH-12: visible zoom +/- and fit/reset affordances (scroll-zoom +
+      // drag are otherwise undiscoverable). Wired whenever zoom is enabled — the
+      // interactive canvas and any opted-in static embed (local node/decl graphs).
+      // Static graphs without the cluster omit the buttons, so these queries no-op.
+      if (zoomEnabled) {
+        const zoomInBtn = graphBlock.querySelector(".bp_graph_zoom_in");
+        const zoomOutBtn = graphBlock.querySelector(".bp_graph_zoom_out");
+        const zoomFitBtn = graphBlock.querySelector(".bp_graph_zoom_fit");
+        // Scale the rendered graph about its center by `factor`, driving the same
+        // d3-zoom behavior d3-graphviz wired up for scroll/drag so button zoom and
+        // gesture zoom stay in sync. Falls back to a manual transform if the
+        // graphviz zoom accessors are unavailable in the vendored build.
+        const applyZoomScale = function (factor) {
+          const gv = graphState.graphviz;
+          if (!gv) return;
+          let zoomBehavior = null;
+          let zoomSelection = null;
+          try {
+            if (typeof gv.zoomBehavior === "function") zoomBehavior = gv.zoomBehavior();
+          } catch (_e) { zoomBehavior = null; }
+          try {
+            if (typeof gv.zoomSelection === "function") zoomSelection = gv.zoomSelection();
+          } catch (_e) { zoomSelection = null; }
+          if (zoomBehavior && zoomSelection && typeof zoomBehavior.scaleBy === "function") {
+            zoomBehavior.scaleBy(zoomSelection.transition().duration(160), factor);
+            return;
+          }
+          // Fallback: scale the <g> transform group directly via d3-zoom.
+          const svg = graphContainer.select("svg");
+          if (svg.empty() || typeof d3.zoom !== "function") return;
+          const g = svg.select("g");
+          if (g.empty()) return;
+          const current = (typeof d3.zoomTransform === "function")
+            ? d3.zoomTransform(svg.node())
+            : { k: 1, x: 0, y: 0 };
+          const nextK = (current.k || 1) * factor;
+          if (typeof d3.zoomIdentity !== "undefined") {
+            const t = d3.zoomIdentity.translate(current.x || 0, current.y || 0).scale(nextK);
+            g.transition().duration(160).attr("transform", t.toString());
+          }
+        };
+        const fitGraph = function () {
+          const gv = graphState.graphviz;
+          if (gv && typeof gv.resetZoom === "function") {
+            try {
+              gv.resetZoom(d3.transition ? d3.transition().duration(160) : undefined);
+              return;
+            } catch (_e) { /* fall through to a full re-render below */ }
+          }
+          // No resetZoom available: re-render the active variant, which is built
+          // with `.fit(true)` and recenters the graph in the canvas.
+          renderGraph();
+        };
+        if (zoomInBtn) {
+          zoomInBtn.addEventListener("click", function () { applyZoomScale(1.2); });
+        }
+        if (zoomOutBtn) {
+          zoomOutBtn.addEventListener("click", function () { applyZoomScale(0.8); });
+        }
+        if (zoomFitBtn) {
+          zoomFitBtn.addEventListener("click", function () { fitGraph(); });
+        }
       }
 
       const controller = {
@@ -1041,7 +1207,11 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       renderGraph();
       if (!graphState.blockResizeBound) {
         graphState.blockResizeBound = true;
-        window.addEventListener("resize", scheduleRender);
+        // No window "resize" -> re-render coupling: the canvas height is fixed
+        // (graph-runtime-core `layoutGraphCanvas`), so only *width* changes need a
+        // reflow. Those are caught by the ResizeObserver on graphBlock / graphRoot
+        // below (e.g. dragging the ToC or the properties rail), which keeps the
+        // graph responsive without tying its height to the viewport.
         if (typeof ResizeObserver === "function") {
           const observer = new ResizeObserver(function (entries) {
             let shouldRender = false;
@@ -1084,9 +1254,13 @@ export function initGraphBlock(previewUtils, graphBlock, options) {
       return controller;
     }
 
+// Vendored locally (see PreviewManifest.lean writeVendorLibraries -> -verso-data/lib/) so the
+// dependency graph works offline / under a strict-CSP viewer with no CDN access. These are
+// document-relative; every page's <base href> resolves to the site root, so this resolves to
+// /-verso-data/lib/*.min.js (matching how katex is referenced at -verso-data/katex/...).
 const defaultGraphRuntimeLibraryUrls = {
-  d3: "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
-  graphviz: "https://cdn.jsdelivr.net/npm/d3-graphviz@5.6.0/build/d3-graphviz.min.js"
+  d3: "-verso-data/lib/d3.min.js",
+  graphviz: "-verso-data/lib/d3-graphviz.min.js"
 };
 
 let graphRuntimeLibrariesPromise = null;
@@ -1138,13 +1312,36 @@ export function ensureGraphRuntimeLibraries(options) {
   return graphRuntimeLibrariesPromise;
 }
 
+function currentRenderApi() {
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : null;
+  const renderApi =
+    namespace && namespace.render && typeof namespace.render === "object"
+      ? namespace.render
+      : null;
+  return renderApi;
+}
+
 export function getGraphRenderApi(options) {
   const opts = options && typeof options === "object" ? options : {};
   if (opts.previewUtils && typeof opts.previewUtils === "object") {
     return Promise.resolve(opts.previewUtils);
   }
+  const readyApi = currentRenderApi();
+  if (readyApi) return Promise.resolve(readyApi);
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : null;
+  if (namespace && typeof namespace.onRenderReady === "function") {
+    return new Promise(function (resolve) {
+      namespace.onRenderReady(resolve);
+    });
+  }
   return Promise.reject(
-    new Error("Blueprint graph rendering requires options.previewUtils from createPreview().")
+    new Error("Blueprint graph rendering requires the Blueprint render API or options.previewUtils")
   );
 }
 
@@ -1213,29 +1410,10 @@ export async function renderGraphs(root, options) {
     .filter(function (controller) { return !!controller; });
 }
 
-export async function renderGraphData(host, graphData, options) {
-  const opts = options && typeof options === "object" ? options : {};
-  if (!(host instanceof Element)) return null;
-  const block = createGraphBlock(graphData, Object.assign({}, opts, { document: host.ownerDocument || document }));
-  if (!block) return null;
-  if (opts.replace === false) {
-    host.appendChild(block);
-  } else {
-    host.replaceChildren(block);
-  }
-  return renderGraphBlock(block, opts);
-}
-
 export function installGraphRenderApi(previewUtils, options) {
   if (!previewUtils || typeof previewUtils !== "object") return {};
   const installed = {
     ensureGraphRuntimeLibraries: ensureGraphRuntimeLibraries,
-    createGraphBlock: function (graphData, nextOptions) {
-      return createGraphBlock(
-        graphData,
-        Object.assign({}, options || {}, nextOptions || {})
-      );
-    },
     initGraphBlock: function (graphBlock, nextOptions) {
       return initGraphBlock(
         previewUtils,
@@ -1257,13 +1435,6 @@ export function installGraphRenderApi(previewUtils, options) {
       }
       return renderGraphs(
         root,
-        Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
-      );
-    },
-    renderGraphData: function (host, graphData, nextOptions) {
-      return renderGraphData(
-        host,
-        graphData,
         Object.assign({}, options || {}, nextOptions || {}, { previewUtils: previewUtils })
       );
     }
@@ -1289,6 +1460,9 @@ export function bindGraphs(previewUtils, options) {
 
 export function startGraphRuntime(previewUtils, options) {
   installGraphRenderApi(previewUtils, options);
+  // Ensure the selection bus exists (idempotent with the metadata rail) so graph
+  // node clicks can populate the rail regardless of boot order.
+  installSelectionBus();
   if (document.readyState === "loading") {
     return new Promise(function (resolve, reject) {
       document.addEventListener("DOMContentLoaded", function () {
@@ -1303,11 +1477,9 @@ export function startGraphRuntime(previewUtils, options) {
 export const graphRuntime = {
   ensureGraphRuntimeLibraries,
   getGraphRenderApi,
-  createGraphBlock,
   initGraphBlock,
   renderGraphBlock,
   renderGraphs,
-  renderGraphData,
   installGraphRenderApi,
   bindGraphs,
   startGraphRuntime

@@ -9,9 +9,9 @@ import Verso
 import VersoManual
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Common
-import VersoBlueprint.Informal.LeanCodePreviewKey
 import VersoBlueprint.Informal.LeanCodeLink
 import VersoBlueprint.Lib.HoverRender
+import VersoBlueprint.NodeCard
 
 namespace Informal
 namespace CodeSummary
@@ -23,7 +23,8 @@ open Lean Elab
 `CodeSummary` computes the heading-level Lean status/summary fragments for informal blocks.
 
 This module intentionally owns the high-level overview for one informal node:
-status marks, declaration-summary tooltips, and code-panel indicators.
+status marks, the header status dot, declaration-summary tooltips, and the
+code-panel summary text.
 
 It does not own HTML-cache-backed code-preview hovers for explicit links to code;
 that narrower responsibility lives in `Informal.LeanCodeLink` /
@@ -33,6 +34,10 @@ Public API:
 - `ComputedData`: normalized code inputs for one block heading.
 - `RenderParts`: rendered heading fragments consumed by callers.
 - `renderParts`: main entry point that derives status badge + Lean link node.
+- `statusMarkFromCodeSource` / `statusDotHtml`: the aggregate status + the
+  header status dot rendered from it.
+- `panelSummaryTitle`: accessible summary text for the (visually hidden) code
+  panel `<summary>`.
 -/
 
 /--
@@ -61,12 +66,6 @@ structure RenderParts where
   /-- Optional Lean badge/link node (`L∃∀N`) with tooltip wrapper. -/
   codeEntry : Output.Html := .empty
 
-structure PanelIndicatorParts where
-  /-- Summary text exposed on the enclosing code-panel `<summary>` title. -/
-  summaryTitle : String := ""
-  /-- Top-right indicator node for the code panel summary row. -/
-  indicator : Output.Html := .empty
-
 inductive DeclSummaryKind where
   | definition
   | theoremLike
@@ -81,19 +80,26 @@ structure DeclSummaryItem where
   /-- Name shown in the code-summary panel. -/
   displayName : Name
   /--
-  Canonical declaration name used for the default Lean-code preview lookup.
+  Canonical declaration name used to look up the shared Lean-code preview.
 
   External references may be written with an opened or namespace-local name, but
   traversal stores rendered Lean-code previews under the resolved canonical name.
   -/
   previewName : Name
-  /-- Explicit HTML-cache preview lookup key, when it differs from `previewName`. -/
-  previewLookupKey? : Option String := none
   href : Option String := none
   kind : DeclSummaryKind := .definition
   status : Data.ProvedStatus := .proved
   present : Bool := true
 deriving Inhabited, Repr
+
+/-- Prefix-stripped display form of a declaration name for the code-summary
+lists (delegates to `NodeCard.shortDeclName`, the single source of truth). The
+`Name` is only reconstructed when the prefix actually shortens, so an empty /
+non-matching prefix is a byte-identical no-op. -/
+private def shortDisplayName (pfx : String) (n : Name) : Name :=
+  let s := n.toString
+  let short := Informal.NodeCard.shortDeclName pfx s
+  if short == s then n else short.toName
 
 private structure SummaryTooltipSection where
   title : String := ""
@@ -116,7 +122,6 @@ private def renderDeclSummaryItems (items : Array DeclSummaryItem) : Array Outpu
         Informal.LeanCodeLink.renderResolved
           item.previewName txt "" (some href)
           (previewTitle := s!"{item.displayName}")
-          (previewLookupKey? := item.previewLookupKey?)
       | none => txt
     {{
       <li class="bp_code_decl_item">
@@ -167,22 +172,19 @@ private def renderExternalRenderFailureItems (failures : Array ExternalRenderFai
     }}
 
 private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDeclData)
-    (hrefOf : Name → Option String) (previewLookupKey? : Option String := none) :
-    Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   let defs := definedDefs.map fun decl =>
     {
-      displayName := decl.name
+      displayName := shortDisplayName namePrefix decl.name
       previewName := decl.name
-      previewLookupKey?
       href := hrefOf decl.name
       kind := .definition
       status := decl.provedStatus
     }
   let theoremLikes := definedTheorems.map fun decl =>
     {
-      displayName := decl.name
+      displayName := shortDisplayName namePrefix decl.name
       previewName := decl.name
-      previewLookupKey?
       href := hrefOf decl.name
       kind := .theoremLike
       status := decl.provedStatus
@@ -191,17 +193,6 @@ private def inlineDeclSummaryItems (definedDefs definedTheorems : Array CodeDecl
 
 private def incompleteSummaryItems (items : Array DeclSummaryItem) : Array DeclSummaryItem :=
   items.filter fun item => !item.present || item.status.isIncomplete
-
-def externalDeclKindText? (decl : Data.ExternalRef) : Option String :=
-  if !decl.present then
-    none
-  else
-    match decl.kind with
-    | .definition => some "definition"
-    | .proposition => some "proposition"
-    | .lemma => some "lemma"
-    | .theorem => some "theorem"
-    | .corollary => some "corollary"
 
 private def externalSummaryKind (decl : Data.ExternalRef) : DeclSummaryKind :=
   match decl.kind with
@@ -217,10 +208,10 @@ private def externalDeclHref (decl : Data.ExternalRef) (hrefOf : Name → Option
     hrefOf decl.written
 
 private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   decls.map fun decl =>
     {
-      displayName := decl.written
+      displayName := shortDisplayName namePrefix decl.written
       previewName := decl.canonical
       href := externalDeclHref decl hrefOf
       kind := externalSummaryKind decl
@@ -228,23 +219,22 @@ private def externalDeclSummaryItems (decls : Array Data.ExternalRef)
       present := decl.present
     }
 
-private def summaryPreviewItems (label : Data.Label) (cdata : ComputedData)
-    (hrefOf : Name → Option String) : Array DeclSummaryItem :=
+private def summaryPreviewItems (cdata : ComputedData)
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Array DeclSummaryItem :=
   match cdata.source with
   | some (.inline codeData) =>
-    inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf
-      (some <| Informal.LeanCodePreviewKey.inlineLookupKey label)
+    inlineDeclSummaryItems codeData.definedDefs codeData.definedTheorems hrefOf namePrefix
   | some (.external decls) =>
-    externalDeclSummaryItems decls hrefOf
+    externalDeclSummaryItems decls hrefOf namePrefix
   | none =>
     #[]
 
 private def summaryPreviewEmptyText (_cdata : ComputedData) : String :=
   "No associated Lean code or declarations."
 
-private def renderSummaryPreview (label : Data.Label) (cdata : ComputedData)
-    (hrefOf : Name → Option String) : Output.Html :=
-  let items := summaryPreviewItems label cdata hrefOf
+private def renderSummaryPreview (_label : Data.Label) (cdata : ComputedData)
+    (hrefOf : Name → Option String) (namePrefix : String := "") : Output.Html :=
+  let items := summaryPreviewItems cdata hrefOf namePrefix
   let sectionTitle :=
     if items.isEmpty then "Lean status" else "Associated Lean declarations"
   let sections := #[{
@@ -427,41 +417,92 @@ private def statusMarkFromResolvedCodeSource : BlockCodeData → BlockStatusMark
   | .inline codeData =>
     inlineStatusMark codeData
 
-private def statusMarkFromCodeSource
+/--
+Aggregate status mark for a block's (optional) resolved code source. `none`
+(no associated Lean) defaults to a completed statement/proof mark; callers that
+need to distinguish "no Lean at all" should branch on `source?` themselves (see
+`statusDotHtml`).
+-/
+def statusMarkFromCodeSource
     (source? : Option BlockCodeData) : BlockStatusMark :=
   source?.map statusMarkFromResolvedCodeSource |>.getD (completionStatusMark 0 0)
 
-private def sortDeclsByCommand (decls : Array CodeDeclData) : Array CodeDeclData :=
-  decls.qsort (fun a b =>
-    a.commandIndex < b.commandIndex ||
-    (a.commandIndex == b.commandIndex && a.name.toString < b.name.toString))
+/--
+Registry-aligned `data-status` tag for the header status dot: `proved` /
+`containsSorry` / `axiomLike` / `missing` from the aggregate status mark, or
+`informal` when the block has no associated Lean source at all.
+-/
+def statusDotTag (source? : Option BlockCodeData) : String :=
+  match source? with
+  | none => "informal"
+  | some _ =>
+    match (statusMarkFromCodeSource source?).status with
+    | .proved => "proved"
+    | .containsSorry _ => "containsSorry"
+    | .axiomLike => "axiomLike"
+    | .missing => "missing"
 
-private def progressSegmentClass (missing hasSorry : Bool) : String :=
-  if missing then
-    "bp_code_progress_segment bp_code_progress_segment_missing"
-  else if hasSorry then
-    "bp_code_progress_segment bp_code_progress_segment_sorry"
-  else
-    "bp_code_progress_segment bp_code_progress_segment_ok"
+/--
+Shared markup for the block-header status dot, from a registry-aligned
+`data-status` tag (see `statusDotTag`) plus a human-readable `title`. Used by
+`statusDotHtml` (block code sources) and the decl-page emitter (whose input is
+the registry's status tag, with no `BlockCodeData` available at generation
+time), so every surface emits identical dot markup.
+-/
+def statusDotHtmlOfTag (tag title : String) (kind? : Option Data.NodeKind := none) : Output.Html :=
+  open Verso.Output.Html in
+  -- Complete definitions read "formalized" (they have no proof to prove); complete
+  -- theorem-likes read "proved". The `data-status` tag stays "proved" either way,
+  -- so no CSS/JS selector churns — only the accessible wording is kind-aware.
+  let formalized := match kind?, tag with
+    | some .definition, "proved" => true
+    | _, _ => false
+  let ariaLabel :=
+    match tag with
+    | "proved" => if formalized then "Lean status: formalized" else "Lean status: proved"
+    | "containsSorry" => "Lean status: contains sorry"
+    | "axiomLike" => "Lean status: axiom-like"
+    | "missing" => "Lean status: missing declaration"
+    | _ => "Lean status: no associated Lean declarations"
+  {{ <span class="bp_status_dot" "data-status"={{tag}} role="img"
+      "aria-label"={{ariaLabel}} title={{title}}></span> }}
+
+/--
+The block-header status dot ("Theorem 4.2.9 ●"): a small disc colored purely by
+CSS off `data-status` (`.bp_status_dot` in `Informal/Block/Assets.lean`, existing
+`--bp-color-accent-*` tokens in both themes). `role="img"` plus `aria-label` and
+`title` carry the status text for assistive tech and hover.
+-/
+def statusDotHtml (source? : Option BlockCodeData) (kind? : Option Data.NodeKind := none) : Output.Html :=
+  let tag := statusDotTag source?
+  let title :=
+    match kind?, tag with
+    | some .definition, "proved" => "Formalized"
+    | _, _ =>
+      match source? with
+      | some _ => (statusMarkFromCodeSource source?).title
+      | none => "No associated Lean declarations"
+  statusDotHtmlOfTag tag title kind?
 
 private def codeSummaryText (label : Data.Label)
-    (definedDefs definedTheorems : Array CodeDeclData) : String :=
+    (definedDefs definedTheorems : Array CodeDeclData) (namePrefix : String := "") : String :=
   if definedDefs.isEmpty && definedTheorems.isEmpty then
     s!"{label}"
   else
+    let shortOf := fun (n : Name) => Informal.NodeCard.shortDeclName namePrefix n.toString
     let definedDefNames := definedDefs.map (·.name)
     let definedTheoremNames := definedTheorems.map (·.name)
     let defs :=
       if definedDefNames.isEmpty then
         "none"
       else
-        String.intercalate ", " (definedDefNames.toList.map toString)
+        String.intercalate ", " (definedDefNames.toList.map shortOf)
     let thms :=
       if definedTheoremNames.isEmpty then
         "none"
       else
-        String.intercalate ", " (definedTheoremNames.toList.map toString)
-    let summaryItems := inlineDeclSummaryItems definedDefs definedTheorems (fun _ => none)
+        String.intercalate ", " (definedTheoremNames.toList.map shortOf)
+    let summaryItems := inlineDeclSummaryItems definedDefs definedTheorems (fun _ => none) namePrefix
     let sorries := incompleteSummaryItems summaryItems
     let sorriesTxt :=
       if sorries.isEmpty then
@@ -470,170 +511,24 @@ private def codeSummaryText (label : Data.Label)
         String.intercalate ", " (sorries.toList.map fun item => s!"{item.displayName} [{declSummaryStatusText item}]")
     s!"{label}\nLean definitions: {defs}\nLean theorems/lemmas: {thms}\nSorries: {sorriesTxt}"
 
-private def wrapPanelIndicator (label : Data.Label) (summaryTitle : String)
-    (node previewBody : Output.Html) : Output.Html :=
-  open Verso.Output.Html in
-  {{
-    <span class="bp_code_summary_indicator">
-      {{renderCodeSummaryPreview
-        s!"{label}"
-        node
-        previewBody
-        (focusable := true)
-        (ariaLabel? := some summaryTitle)}}
-    </span>
-  }}
-
-private def renderInlinePanelIndicator (label : Data.Label) (codeData : InlineCodeData)
-    (hrefOf : Name → Option String) : PanelIndicatorParts :=
-  open Verso.Output.Html in
-  let orderedDecls := sortDeclsByCommand (codeData.definedDefs ++ codeData.definedTheorems)
-  let previewBody := renderSummaryPreview label { source := some (.inline codeData) } hrefOf
-  let summaryTitle := s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems}"
-  let indicator : Output.Html :=
-    if orderedDecls.isEmpty then
-      .empty
-    else
-      let segments := orderedDecls.map fun decl =>
-        let hasSorry := decl.provedStatus.isIncomplete
-        let statusView := decl.provedStatus.presentation
-        let cls := progressSegmentClass false hasSorry
-        let weight := max decl.weight 1
-        let title :=
-          if hasSorry then
-            if decl.provedStatus.containsExplicitSorry then
-              s!"{decl.name}: {statusView.externalPanelText}"
-            else
-              s!"{decl.name}: {statusView.summaryText}"
-          else
-            s!"{decl.name}: complete"
-        {{
-          <span class={{cls}} title={{title}} style={{s!"flex: {weight} 1 0%"}}></span>
-        }}
-      let bar := {{<span class="bp_code_progress" aria-label="Lean declaration progress">{{segments}}</span>}}
-      wrapPanelIndicator label summaryTitle bar previewBody
-  {
-    summaryTitle
-    indicator
-  }
-
-private def pluralizeKindText (kind : String) : String :=
-  match kind with
-  | "lemma" => "lemmas"
-  | "theorem" => "theorems"
-  | "definition" => "definitions"
-  | "corollary" => "corollaries"
-  | _ => kind ++ "s"
-
-private def externalIndicatorKindText?
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) : Option String :=
-  if health.missingDecls > 0 || decls.isEmpty then
-    none
-  else
-    let kinds := decls.filterMap externalDeclKindText?
-    if kinds.size != decls.size || kinds.isEmpty then
-      none
-    else
-      let first := kinds[0]!
-      if kinds.all (· == first) then
-        some first
-      else
-        none
-
-private def externalIndicatorText
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) : String :=
-  let declText :=
-    match externalIndicatorKindText? decls health with
-    | some kind =>
-      if health.totalDecls == 1 then
-        s!"1 {kind}"
-      else
-        s!"{health.totalDecls} {pluralizeKindText kind}"
-    | none =>
-      if health.totalDecls == 1 then
-        "1 declaration"
-      else
-        s!"{health.totalDecls} declarations"
-  if health.missingDecls > 0 then
-    s!"{declText}, {health.missingDecls} missing"
-  else if health.anyGapCount > 0 then
-    if health.totalDecls == 1 then
-      s!"{declText}, incomplete"
-    else
-      s!"{declText}, {health.anyGapCount} incomplete"
-  else
-    declText
-
-private structure ExternalIndicatorPresentation where
-  className : String
-  iconText : String := "●"
-  title : String
-  badgeText : String
-deriving Inhabited
-
-private def externalIndicatorPresentation
-    (decls : Array Data.ExternalRef) (health : Informal.Graph.CodeHealth) :
-    ExternalIndicatorPresentation :=
-  let badgeText := externalIndicatorText decls health
-  if health.missingDecls > 0 then
-    {
-      className := "bp_external_status_missing"
-      title := s!"Lean declarations: {health.presentDecls}/{health.totalDecls} present ({health.missingDecls} missing)"
-      badgeText
-    }
-  else if health.anyGapCount > 0 then
-    {
-      className := "bp_external_status_sorry"
-      title := s!"Lean declarations: all present, {health.anyGapCount} incomplete"
-      badgeText
-    }
-  else
-    {
-      className := "bp_external_status_ok"
-      title := s!"Lean declarations: all {health.totalDecls} present"
-      badgeText
-    }
-
-private def renderExternalPanelIndicator (decls : Array Data.ExternalRef)
-    (label : Data.Label) (hrefOf : Name → Option String) : PanelIndicatorParts :=
-  open Verso.Output.Html in
-  let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
-  let renderHealth := externalRenderHealth decls
-  let previewBody := renderSummaryPreview label { source := some (.external decls) } hrefOf
-  let presentation := externalIndicatorPresentation decls health
-  let summaryTitle :=
+/--
+Accessible summary text for a block's Lean code panel (the visually-hidden
+`<summary>`'s `title`), from canonical code-source data. Inline blocks list
+their declarations and sorries; external references summarize presence /
+completeness plus any render-failure diagnostics.
+-/
+def panelSummaryTitle (label : Data.Label) (cdata : ComputedData)
+    (namePrefix : String := "") : String :=
+  match cdata.source with
+  | some (.inline codeData) =>
+    s!"Lean code for {label}: {codeSummaryText label codeData.definedDefs codeData.definedTheorems namePrefix}"
+  | some (.external decls) =>
+    let health := Informal.Graph.codeHealthOfBlockSource .definition {} (some (.external decls))
+    let renderHealth := externalRenderHealth decls
     s!"Lean code for {label}: " ++ appendRenderHealthSummary
       (externalCodeEntryTitle health.presentDecls health.totalDecls health.missingDecls health.anyGapCount)
       renderHealth
-  let badgeTitle :=
-    appendRenderHealthSummary presentation.title renderHealth
-  let badge : Output.Html := {{
-    <span class={{s!"bp_external_status_badge bp_external_status_badge_summary {presentation.className}"}} title={{badgeTitle}}>
-      <span class={{s!"bp_external_status_icon {presentation.className}"}}>{{.text true presentation.iconText}}</span>
-      <span class="bp_external_status_badge_text">{{.text true presentation.badgeText}}</span>
-    </span>
-  }}
-  {
-    summaryTitle
-    indicator := wrapPanelIndicator label summaryTitle badge previewBody
-  }
-
-/--
-Render the top-right code-panel indicator from canonical code-source data.
-
-Inline blocks use the weighted progress bar; external references keep the pill-style
-indicator for now, but both paths share the same normalized declaration summary model
-for hover content.
--/
-def renderPanelIndicator (label : Data.Label) (cdata : ComputedData)
-    (hrefOf : Name → Option String) : PanelIndicatorParts :=
-  match cdata.source with
-  | some (.inline codeData) =>
-    renderInlinePanelIndicator label codeData hrefOf
-  | some (.external decls) =>
-    renderExternalPanelIndicator decls label hrefOf
-  | none =>
-    { summaryTitle := s!"Lean code for {label}: no associated Lean declarations" }
+  | none => s!"Lean code for {label}: no associated Lean declarations"
 
 /--
 Render Lean summary UI for an informal block heading.
@@ -647,13 +542,14 @@ Output policy:
 - statement headings with external refs always render a status mark and an external-summary tooltip.
 - inline/no-hint headings hide the status mark when `codeHref` is absent.
 -/
-def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String) : RenderParts :=
+def renderParts (data : BlockData) (cdata : ComputedData) (hrefOf : Name → Option String)
+    (namePrefix : String := "") : RenderParts :=
   open Verso.Output.Html in
   match data.kind with
   | .proof => {}
   | .statement statementKind =>
     let externalDecls := cdata.source.map BlockCodeData.externalDecls |>.getD #[]
-    let codeEntryPreviewBody := renderSummaryPreview data.label cdata hrefOf
+    let codeEntryPreviewBody := renderSummaryPreview data.label cdata hrefOf namePrefix
     let previewTitle := s!"{data.label}"
     if !externalDecls.isEmpty then
       let health := Informal.Graph.codeHealthOfBlockSource statementKind {} cdata.source

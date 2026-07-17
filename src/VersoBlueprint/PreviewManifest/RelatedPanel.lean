@@ -11,27 +11,24 @@ import VersoBlueprint.PreviewManifest
 namespace Informal.PreviewManifest
 
 open Lean
+open Verso.Output
+open Verso.Output.Html
 
 def RelatedEntry.displayLabel (entry : RelatedEntry) : String :=
-  let label := labelString entry.label |>.trimAscii.toString
-  if !label.isEmpty then
-    label
-  else
-    entry.previewKey.map (toString ·) |>.getD "unlabeled relation"
+  let label := entry.label.toString
+  if label.isEmpty then entry.previewKey else label
 
 def RelatedEntry.displayTitle (entry : RelatedEntry) : String :=
   let title := entry.title.trimAscii.toString
   if title.isEmpty then entry.displayLabel else title
 
-/-- Compact browser-runtime code for one manifest relation axis. -/
-def RelationAxis.badgeCode (axis : RelationAxis) : String :=
+def RelationAxis.badgeHtml (axis : RelationAxis) : Html :=
   match axis with
-  | .statement => Informal.RelatedPanel.statementAxisBadgeCode
-  | .proof => Informal.RelatedPanel.proofAxisBadgeCode
+  | .statement => Informal.RelatedPanel.statementAxisBadge
+  | .proof => Informal.RelatedPanel.proofAxisBadge
 
-/-- Compact browser-runtime badge codes for one manifest relation entry. -/
-def RelatedEntry.badgeCodes (entry : RelatedEntry) : Array String :=
-  entry.axes.map RelationAxis.badgeCode
+def RelatedEntry.badgesHtml (entry : RelatedEntry) : Html :=
+  .seq <| entry.axes.map RelationAxis.badgeHtml
 
 def RelatedEntry.panelEntry
     (entry : RelatedEntry)
@@ -43,7 +40,8 @@ def RelatedEntry.panelEntry
     previewTitle := entry.displayTitle
     label := entry.label
     href := entry.href
-    badgeCodes := entry.badgeCodes
+    badgesHtml := entry.badgesHtml
+    previewFallbackLabel? := some entry.displayLabel
     active := entry.label == currentLabel
   }
 

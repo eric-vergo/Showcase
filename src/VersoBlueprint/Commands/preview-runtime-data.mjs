@@ -1,6 +1,5 @@
-import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, graphApiModuleUrl as coreGraphApiModuleUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
+import { dataApiModuleUrl as coreDataApiModuleUrl, dataUrl as coreDataUrl, htmlCacheUrl as coreHtmlCacheUrl, manifestUrl as coreManifestUrl, previewApiModuleUrl as corePreviewApiModuleUrl, previewKey as corePreviewKey, statementPreviewKey as coreStatementPreviewKey } from "../blueprint-preview-core.mjs";
 import { escapeHtml, previewDebug } from "./preview-runtime-base.mjs";
-import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
 
   // Generated-data URL helpers.
 
@@ -22,142 +21,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     return Object.assign({
       status: null,
       map: null,
-      decodedFile: null,
       promise: null
     }, fields || {});
-  }
-
-  function declarationPreviewKey(declName) {
-    const trimmedDecl = typeof declName === "string" ? declName.trim() : "";
-    if (!trimmedDecl) return "";
-    if (trimmedDecl.startsWith("Informal.LeanCodePreview.")) return trimmedDecl;
-    return "Informal.LeanCodePreview." + trimmedDecl;
-  }
-
-  const previewLookupReasons = Object.freeze({
-    missingLabel: "missing-label",
-    labelEntryMissing: "label-entry-missing",
-    missingDeclaration: "missing-declaration",
-    declarationEntryMissing: "declaration-entry-missing"
-  });
-
-  const sourceLocationMessages = Object.freeze({
-    unavailable: "source location unavailable",
-    labelMissing: "label missing",
-    labelEntryMissing: "label entry missing",
-    declarationMissing: "declaration missing",
-    declarationEntryMissing: "declaration entry missing"
-  });
-
-  function sourceLocationUnavailable(message) {
-    return {
-      ok: false,
-      location: null,
-      error: typeof message === "string" && message ? message : sourceLocationMessages.unavailable
-    };
-  }
-
-  function manifestEntryHref(entry) {
-    return entry && typeof entry.href === "string" ? entry.href : "";
-  }
-
-  function validateManifestEntrySourceLocation(entry, index) {
-    const sourceLocation = entry.sourceLocation;
-    if (!sourceLocation || typeof sourceLocation !== "object" || Array.isArray(sourceLocation)) {
-      throw new Error("Blueprint manifest entry " + index + " is missing sourceLocation");
-    }
-    if (typeof sourceLocation.ok !== "boolean") {
-      throw new Error("Blueprint manifest entry " + index + " sourceLocation.ok must be boolean");
-    }
-  }
-
-  function missingPreviewLookupResult(fields, message) {
-    return Object.assign({
-      ok: false,
-      manifestEntry: null,
-      href: "",
-      sourceLocation: sourceLocationUnavailable(message)
-    }, fields || {});
-  }
-
-  function successfulPreviewLookupResult(fields, manifestEntry) {
-    return Object.assign({
-      ok: true,
-      reason: "",
-      manifestEntry: manifestEntry,
-      href: manifestEntryHref(manifestEntry),
-      sourceLocation: manifestEntry.sourceLocation
-    }, fields || {});
-  }
-
-  function labelLookupOptions(options) {
-    let rawFacet = null;
-    if (typeof options === "string") {
-      rawFacet = options;
-    } else if (options && typeof options === "object" && !Array.isArray(options)) {
-      rawFacet = options.facet;
-    }
-    const explicitFacet = typeof rawFacet === "string" && rawFacet.trim().length > 0;
-    return {
-      facet: explicitFacet ? rawFacet.trim() : "statement",
-      explicitFacet: explicitFacet
-    };
-  }
-
-  function isBlockEntryForLabel(entry, label) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      !Array.isArray(entry) &&
-      entry.targetKind === "block" &&
-      entry.label === label
-    );
-  }
-
-  function findBlockManifestEntryByLabel(manifestMap, label, options) {
-    if (!(manifestMap instanceof Map)) return null;
-    const lookup = labelLookupOptions(options);
-    const key = previewKey(label, lookup.facet);
-    const exact = manifestMap.get(key);
-    if (isBlockEntryForLabel(exact, label)) {
-      return exact;
-    }
-    let first = null;
-    let statement = null;
-    for (const entry of manifestMap.values()) {
-      if (!isBlockEntryForLabel(entry, label)) continue;
-      if (!first) first = entry;
-      if (entry.facet === lookup.facet) return entry;
-      if (entry.facet === "statement" && !statement) statement = entry;
-    }
-    if (lookup.explicitFacet) return null;
-    return statement || first;
-  }
-
-  function isLeanDeclEntry(entry) {
-    return !!(
-      entry &&
-      typeof entry === "object" &&
-      !Array.isArray(entry) &&
-      entry.targetKind === "leanDecl"
-    );
-  }
-
-  function findLeanDeclManifestEntry(manifestMap, declName) {
-    if (!(manifestMap instanceof Map)) return null;
-    const trimmedDecl = typeof declName === "string" ? declName.trim() : "";
-    const key = declarationPreviewKey(trimmedDecl);
-    const exact = manifestMap.get(key);
-    if (isLeanDeclEntry(exact)) {
-      return exact;
-    }
-    for (const entry of manifestMap.values()) {
-      if (!isLeanDeclEntry(entry)) continue;
-      if (entry.label === trimmedDecl || entry.key === key) {
-        return entry;
-      }
-    }
-    return null;
   }
 
   export function createBlueprintDataApi(options) {
@@ -237,10 +102,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       return corePreviewApiModuleUrl(readBlueprintDataBaseUrl());
     }
 
-    function graphApiModuleUrlForApi() {
-      return coreGraphApiModuleUrl(readBlueprintDataBaseUrl());
-    }
-
     function blueprintHtmlCacheUrlForApi() {
       return coreHtmlCacheUrl(readBlueprintDataBaseUrl());
     }
@@ -250,7 +111,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     const blueprintManifestStoreForApi = createBlueprintStore({
       url: blueprintManifestUrlForApi,
       decode: decodeBlueprintManifest,
-      decodeFile: decodeBlueprintManifestFile,
       debugLabel: "manifest.loadFailed",
       consoleLabel: "Blueprint manifest",
       unavailableTitle: "Preview manifest unavailable.",
@@ -273,7 +133,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     function resetBlueprintStoreForApi(store) {
       store.status = null;
       store.map = null;
-      store.decodedFile = null;
       store.promise = null;
     }
 
@@ -391,10 +250,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
         .then(function (result) {
           const map = store.decode(result.data);
           store.map = map;
-          store.decodedFile =
-            typeof store.decodeFile === "function"
-              ? store.decodeFile(result.data, map)
-              : null;
           setBlueprintStoreStatusForApi(store, {
             state: "ready",
             attempts: attempts,
@@ -410,7 +265,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
               ? err.message
               : String(err);
           store.map = null;
-          store.decodedFile = null;
           setBlueprintStoreStatusForApi(store, {
             state: "error",
             attempts: attempts,
@@ -445,41 +299,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       return loadBlueprintStoreForApi(blueprintManifestStoreForApi, options);
     }
 
-    async function loadBlueprintManifestFileForApi(options) {
-      await loadBlueprintManifestForApi(options);
-      return blueprintManifestStoreForApi.decodedFile || {
-        previews: new Map(),
-        groups: [],
-        groupsByLabel: new Map(),
-        sourceDocuments: [],
-        sourceDocumentsById: new Map()
-      };
-    }
-
-    async function loadBlueprintGroupsForApi(options) {
-      const file = await loadBlueprintManifestFileForApi(options);
-      return file.groups;
-    }
-
-    async function loadBlueprintGroupForApi(label, options) {
-      const groupLabel = typeof label === "string" ? label.trim() : "";
-      if (!groupLabel) return null;
-      const file = await loadBlueprintManifestFileForApi(options);
-      return file.groupsByLabel.get(groupLabel) || null;
-    }
-
-    async function loadBlueprintSourceDocumentsForApi(options) {
-      const file = await loadBlueprintManifestFileForApi(options);
-      return file.sourceDocuments;
-    }
-
-    async function loadBlueprintSourceDocumentForApi(id, options) {
-      const trimmedId = typeof id === "string" ? id.trim() : "";
-      if (!trimmedId) return null;
-      const file = await loadBlueprintManifestFileForApi(options);
-      return file.sourceDocumentsById.get(trimmedId) || null;
-    }
-
     function loadBlueprintHtmlCacheForApi(options) {
       return loadBlueprintStoreForApi(blueprintHtmlCacheStoreForApi, options);
     }
@@ -510,71 +329,7 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       return loadBlueprintStoreEntryForApi(blueprintHtmlCacheStoreForApi, previewKey, options);
     }
 
-    async function resolveBlueprintLabelForApi(label, options) {
-      const normalizedLabel = typeof label === "string" ? label.trim() : "";
-      const lookup = labelLookupOptions(options);
-      const key = previewKey(normalizedLabel, lookup.facet);
-      if (!normalizedLabel) {
-        return missingPreviewLookupResult({
-          label: "",
-          facet: lookup.facet,
-          key: "",
-          reason: previewLookupReasons.missingLabel
-        }, sourceLocationMessages.labelMissing);
-      }
-      const manifestMap = await loadBlueprintManifestForApi(options);
-      const manifestEntry = findBlockManifestEntryByLabel(manifestMap, normalizedLabel, options);
-      if (!manifestEntry) {
-        return missingPreviewLookupResult({
-          label: normalizedLabel,
-          facet: lookup.facet,
-          key: key,
-          reason: previewLookupReasons.labelEntryMissing
-        }, sourceLocationMessages.labelEntryMissing);
-      }
-      const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
-      const resolvedFacet =
-        typeof manifestEntry.facet === "string" ? manifestEntry.facet : lookup.facet;
-      return successfulPreviewLookupResult({
-        label: normalizedLabel,
-        facet: resolvedFacet,
-        key: resolvedKey
-      }, manifestEntry);
-    }
-
-    async function resolveBlueprintDeclarationForApi(declName, options) {
-      const normalizedDecl = typeof declName === "string" ? declName.trim() : "";
-      const key = declarationPreviewKey(normalizedDecl);
-      if (!normalizedDecl) {
-        return missingPreviewLookupResult({
-          declaration: "",
-          key: "",
-          reason: previewLookupReasons.missingDeclaration
-        }, sourceLocationMessages.declarationMissing);
-      }
-      const manifestMap = await loadBlueprintManifestForApi(options);
-      const manifestEntry = findLeanDeclManifestEntry(manifestMap, normalizedDecl);
-      if (!manifestEntry) {
-        return missingPreviewLookupResult({
-          declaration: normalizedDecl,
-          key: key,
-          reason: previewLookupReasons.declarationEntryMissing
-        }, sourceLocationMessages.declarationEntryMissing);
-      }
-      const resolvedKey = typeof manifestEntry.key === "string" ? manifestEntry.key : key;
-      const declaration = typeof manifestEntry.label === "string" ? manifestEntry.label : normalizedDecl;
-      return successfulPreviewLookupResult({
-        declaration: declaration,
-        key: resolvedKey
-      }, manifestEntry);
-    }
-
-    function resolveBlueprintSourceMetadataForApi(source, options) {
-      const opts = Object.assign({}, normalizeBlueprintDataOptions(options), { dataApi });
-      return resolveSourceMetadata(source, opts);
-    }
-
-    const dataApi = {
+    return {
       dataUrl: blueprintDataUrlForApi,
       fetchJson: fetchBlueprintJsonForApi,
       decodeKeyedEntries: decodeBlueprintKeyedEntries,
@@ -583,7 +338,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       manifestUrl: blueprintManifestUrlForApi,
       dataApiModuleUrl: dataApiModuleUrlForApi,
       previewApiModuleUrl: previewApiModuleUrlForApi,
-      graphApiModuleUrl: graphApiModuleUrlForApi,
       missingPreviewKeyDiagnosticHtml: missingPreviewKeyDiagnosticHtml,
       htmlCacheUrl: blueprintHtmlCacheUrlForApi,
       manifestStore: blueprintManifestStoreForApi,
@@ -600,26 +354,18 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       fetchStoreData: fetchBlueprintStoreDataForApi,
       loadStore: loadBlueprintStoreForApi,
       loadManifest: loadBlueprintManifestForApi,
-      loadGroups: loadBlueprintGroupsForApi,
-      loadGroup: loadBlueprintGroupForApi,
-      loadSourceDocuments: loadBlueprintSourceDocumentsForApi,
-      loadSourceDocument: loadBlueprintSourceDocumentForApi,
       loadHtmlCache: loadBlueprintHtmlCacheForApi,
       readStoreEntry: readBlueprintStoreEntryForApi,
       previewKey: previewKey,
       statementPreviewKey: statementPreviewKey,
-      resolveLabel: resolveBlueprintLabelForApi,
-      resolveDeclaration: resolveBlueprintDeclarationForApi,
       loadStoreEntry: loadBlueprintStoreEntryForApi,
       loadManifestEntry: loadBlueprintManifestEntryForApi,
       loadHtmlCacheEntry: loadBlueprintHtmlCacheEntryForApi,
-      resolveSourceMetadata: resolveBlueprintSourceMetadataForApi,
       setDataBaseUrl: setBlueprintDataBaseUrlForApi,
       setFetchJson: setBlueprintFetchJsonForApi,
       resetStore: resetBlueprintStoreForApi,
       resetStores: resetBlueprintDataStoresForApi
     };
-    return dataApi;
   }
 
   export function decodeBlueprintKeyedEntries(data, spec) {
@@ -656,185 +402,8 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
       objectMessage: "Blueprint manifest must be an object with a previews array",
       missingArrayMessage: "Blueprint manifest is missing previews array",
       entryName: "Blueprint manifest entry",
-      duplicateMessage: "Blueprint manifest contains duplicate key ",
-      validateEntry(entry, index) {
-        validateManifestEntrySourceLocation(entry, index);
-      }
+      duplicateMessage: "Blueprint manifest contains duplicate key "
     });
-  }
-
-  export function decodeBlueprintGroups(data) {
-    if (!data || typeof data !== "object" || Array.isArray(data)) {
-      throw new Error("Blueprint manifest must be an object with a groups array");
-    }
-    const groups = data.groups;
-    if (!Array.isArray(groups)) {
-      throw new Error("Blueprint manifest is missing groups array");
-    }
-    const groupsByLabel = new Map();
-    const memberGroupsByLabel = new Map();
-    groups.forEach(function (group, index) {
-      if (!group || typeof group !== "object" || Array.isArray(group)) {
-        throw new Error("Blueprint manifest group " + index + " must be an object");
-      }
-      const label = typeof group.label === "string" ? group.label.trim() : "";
-      if (!label) {
-        throw new Error("Blueprint manifest group " + index + " is missing label");
-      }
-      if (!Array.isArray(group.entries)) {
-        throw new Error("Blueprint manifest group " + label + " is missing entries array");
-      }
-      if (groupsByLabel.has(label)) {
-        throw new Error("Blueprint manifest contains duplicate group " + label);
-      }
-      const title = typeof group.title === "string" ? group.title.trim() : "";
-      if (!title) {
-        throw new Error("Blueprint manifest group " + label + " is missing title");
-      }
-      const memberLabels = new Set();
-      group.entries.forEach(function (member, memberIndex) {
-        if (!member || typeof member !== "object" || Array.isArray(member)) {
-          throw new Error(
-            "Blueprint manifest group " + label + " member " + memberIndex + " must be an object"
-          );
-        }
-        const memberLabel = typeof member.label === "string" ? member.label.trim() : "";
-        if (!memberLabel) {
-          throw new Error(
-            "Blueprint manifest group " + label + " member " + memberIndex + " is missing label"
-          );
-        }
-        if (memberLabels.has(memberLabel)) {
-          throw new Error(
-            "Blueprint manifest contains duplicate member " + memberLabel + " in group " + label
-          );
-        }
-        memberLabels.add(memberLabel);
-        if (memberGroupsByLabel.has(memberLabel)) {
-          throw new Error(
-            "Blueprint manifest member " + memberLabel + " belongs to multiple groups: " +
-              memberGroupsByLabel.get(memberLabel) + " and " + label
-          );
-        }
-        memberGroupsByLabel.set(memberLabel, label);
-      });
-      groupsByLabel.set(label, group);
-    });
-    return {
-      groups: groups,
-      groupsByLabel: groupsByLabel,
-      memberGroupsByLabel: memberGroupsByLabel
-    };
-  }
-
-  function validateBlueprintGroupJoins(previews, groupData) {
-    const matchedMembers = new Set();
-    previews.forEach(function (entry) {
-      if (!entry || (entry.targetKind !== "block" && entry.targetKind !== "externalMarkup")) {
-        return;
-      }
-      const label = typeof entry.label === "string" ? entry.label.trim() : "";
-      if (!label) {
-        throw new Error("Blueprint manifest entry " + entry.key + " is missing label");
-      }
-      const hasParent = entry.parent !== null && typeof entry.parent !== "undefined";
-      const parent = typeof entry.parent === "string" ? entry.parent.trim() : "";
-      if (hasParent && !parent) {
-        throw new Error("Blueprint manifest entry " + entry.key + " has invalid parent");
-      }
-      if (!hasParent) {
-        if (entry.parentTitle !== null && typeof entry.parentTitle !== "undefined") {
-          throw new Error(
-            "Blueprint manifest entry " + entry.key + " has parentTitle without parent"
-          );
-        }
-        if (groupData.memberGroupsByLabel.has(label)) {
-          throw new Error(
-            "Blueprint manifest entry " + entry.key +
-              " has no parent but is listed in group " + groupData.memberGroupsByLabel.get(label)
-          );
-        }
-        return;
-      }
-      const group = groupData.groupsByLabel.get(parent);
-      if (!group) {
-        throw new Error(
-          "Blueprint manifest entry " + entry.key + " references missing group " + parent
-        );
-      }
-      if (entry.parentTitle !== group.title) {
-        throw new Error(
-          "Blueprint manifest entry " + entry.key +
-            " has inconsistent parentTitle for group " + parent
-        );
-      }
-      const memberGroup = groupData.memberGroupsByLabel.get(label);
-      if (!memberGroup) {
-        throw new Error(
-          "Blueprint manifest entry " + entry.key + " is missing from group " + parent
-        );
-      }
-      if (memberGroup !== parent) {
-        throw new Error(
-          "Blueprint manifest entry " + entry.key + " belongs to group " + memberGroup +
-            " but references " + parent
-        );
-      }
-      matchedMembers.add(label);
-    });
-    groupData.memberGroupsByLabel.forEach(function (group, member) {
-      if (!matchedMembers.has(member)) {
-        throw new Error(
-          "Blueprint manifest group " + group + " member " + member +
-            " has no matching manifest entry"
-        );
-      }
-    });
-  }
-
-  export function decodeBlueprintSourceDocuments(data) {
-    if (!data || typeof data !== "object" || Array.isArray(data)) {
-      throw new Error("Blueprint manifest must be an object with a sourceDocuments array");
-    }
-    const documents = data.sourceDocuments;
-    if (typeof documents === "undefined" || documents === null) {
-      return { sourceDocuments: [], sourceDocumentsById: new Map() };
-    }
-    if (!Array.isArray(documents)) {
-      throw new Error("Blueprint manifest sourceDocuments must be an array");
-    }
-    const sourceDocumentsById = new Map();
-    documents.forEach(function (document, index) {
-      if (!document || typeof document !== "object" || Array.isArray(document)) {
-        throw new Error("Blueprint source document " + index + " must be an object");
-      }
-      const id = typeof document.id === "string" ? document.id.trim() : "";
-      if (!id) {
-        throw new Error("Blueprint source document " + index + " is missing id");
-      }
-      if (sourceDocumentsById.has(id)) {
-        throw new Error("Blueprint manifest contains duplicate source document " + id);
-      }
-      sourceDocumentsById.set(id, document);
-    });
-    return {
-      sourceDocuments: documents,
-      sourceDocumentsById: sourceDocumentsById
-    };
-  }
-
-  export function decodeBlueprintManifestFile(data, previews) {
-    const previewMap = previews instanceof Map ? previews : decodeBlueprintManifest(data);
-    const groupData = decodeBlueprintGroups(data);
-    validateBlueprintGroupJoins(previewMap, groupData);
-    const sourceData = decodeBlueprintSourceDocuments(data);
-    return {
-      previews: previewMap,
-      groups: groupData.groups,
-      groupsByLabel: groupData.groupsByLabel,
-      sourceDocuments: sourceData.sourceDocuments,
-      sourceDocumentsById: sourceData.sourceDocumentsById
-    };
   }
 
   export function decodeBlueprintHtmlCache(data) {
@@ -877,9 +446,6 @@ import { resolveSourceMetadata } from "./preview-runtime-source-metadata.mjs";
     createBlueprintDataApi,
     decodeBlueprintKeyedEntries,
     decodeBlueprintManifest,
-    decodeBlueprintGroups,
-    decodeBlueprintSourceDocuments,
-    decodeBlueprintManifestFile,
     decodeBlueprintHtmlCache,
     missingPreviewKeyDiagnosticHtml,
     previewKey,

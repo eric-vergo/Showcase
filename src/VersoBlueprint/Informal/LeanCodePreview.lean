@@ -8,7 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Data
-import VersoBlueprint.Informal.LeanCodePreviewKey
+import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.ExternalCode
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.TraversalIndex
@@ -20,47 +20,42 @@ open Lean
 abbrev ManualBlock := Verso.Doc.Block Verso.Genre.Manual
 
 /--
-Dedicated traversal domain for Lean code previews emitted as preview data.
+Dedicated traversal domain for Lean declaration previews emitted as preview data.
 
-Unlike `PreviewCache`, this domain is only for Lean-code preview bodies.
-External entries target Lean declarations; inline entries target the owning
-Blueprint code label.
+Unlike `PreviewCache`, this domain is only for previews attached to links that
+target Lean declarations/definitions.
 -/
-def domainName : Name := Informal.LeanCodePreviewKey.domainName
+def domainName : Name := Informal.LeanDeclPreviewKey.domainName
 /--
-Canonical internal preview target for one external Lean declaration.
+Canonical internal preview target for one Lean declaration.
 
-The external preview namespace mirrors regular Lean names so declaration
-previews can be shared across references.
+The preview namespace mirrors regular Lean names so the preview-data keys stay
+declaration-centric rather than blueprint-label-centric.
 -/
 def targetName (decl : Name) : Name :=
-  Informal.LeanCodePreviewKey.targetName decl
+  Informal.LeanDeclPreviewKey.targetName decl
 
 def lookupKey (decl : Name) : String :=
-  Informal.LeanCodePreviewKey.lookupKey decl
+  Informal.LeanDeclPreviewKey.lookupKey decl
 
 inductive Source where
-  | inlineBlocks (blocks : Array ManualBlock) (sourceLocation : Informal.Data.SourceLocationResult)
+  | inlineBlocks (blocks : Array ManualBlock)
   | externalDecl (decl : Informal.Data.ExternalRef)
 deriving Inhabited, Repr, ToJson, FromJson
 
 /--
-Canonical Lean-code preview payload.
+Canonical declaration-preview payload.
 
-External declaration previews use the declaration name as the target. Inline
-code previews use the inline Blueprint code label as the target, so multiple
-declarations from the same inline block share one preview entry.
+Multiple Lean declaration names may legitimately point to the same inline code
+block preview body, but each declaration keeps its own manifest key.
 -/
 structure Entry where
   target : Name
   source : Source
 deriving Inhabited, Repr, ToJson, FromJson
 
-def Entry.ofInlineBlocks
-    (target : Name)
-    (blocks : Array ManualBlock)
-    (sourceLocation : Informal.Data.SourceLocationResult) : Entry :=
-  { target := target.eraseMacroScopes, source := .inlineBlocks blocks sourceLocation }
+def Entry.ofInlineBlocks (target : Name) (blocks : Array ManualBlock) : Entry :=
+  { target := target.eraseMacroScopes, source := .inlineBlocks blocks }
 
 def Entry.ofExternalDecl (target : Name) (decl : Informal.Data.ExternalRef) : Entry :=
   { target := target.eraseMacroScopes, source := .externalDecl decl }
@@ -76,12 +71,11 @@ def renderWithState
     (hoverState : Verso.Code.Hover.State Verso.Output.Html := {}) :
     IO Informal.RenderedManualHtml := do
   match entry.source with
-  | .inlineBlocks blocks _sourceLocation =>
+  | .inlineBlocks blocks =>
     Informal.renderManualBlocksHtmlWithStateAndHovers blocks impls state
       (logError := logError) (hoverState := hoverState)
   | .externalDecl decl =>
-    let (html, hoverState) := Informal.ExternalCode.renderPreviewHtmlWithCacheHovers #[decl] hoverState
-    pure { html, hoverState }
+    pure { html := Informal.ExternalCode.renderPreviewHtml #[decl], hoverState }
 
 def renderHtmlWithState
     (entry : Entry)

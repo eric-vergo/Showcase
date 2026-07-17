@@ -8,7 +8,7 @@ import Lean
 import Verso
 import VersoManual
 import VersoBlueprint.Data
-import VersoBlueprint.Informal.LeanCodePreviewKey
+import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Lib.HoverRender
 
 namespace Informal.LeanCodeLink
@@ -24,16 +24,17 @@ It intentionally does not compute blueprint/code-status summaries; that remains
 the responsibility of `Informal.CodeSummary`.
 -/
 private def previewLookupKey (decl : Name) : String :=
-  Informal.LeanCodePreviewKey.lookupKey decl
+  Informal.LeanDeclPreviewKey.lookupKey decl
 
 private def previewTarget
-    (decl : Name) (previewTitle : String) (lookupKey? : Option String := none) :
+    (decl : Name) (previewTitle : String) (previewDetail? : Option String) :
     Informal.HoverRender.InlinePreviewTarget :=
-  let lookupKey := lookupKey?.getD (previewLookupKey decl)
+  let lookupKey := previewLookupKey decl
   {
     triggerId := s!"bp-lean-code-{Informal.HoverRender.previewKey lookupKey}"
     title := previewTitle
     lookupKey? := some lookupKey
+    fallbackDetail? := previewDetail?
   }
 
 private def renderLinkNode
@@ -59,10 +60,17 @@ def renderResolved
     (href? : Option String := none)
     (linkTitle? : Option String := none)
     (previewTitle : String := s!"Lean declaration {decl}")
-    (previewLookupKey? : Option String := none) : Verso.Output.Html :=
+    (previewDetail? : Option String := none)
+    (withPreview : Bool := true) : Verso.Output.Html :=
   let linkNode := renderLinkNode node href? className linkTitle?
-  Informal.HoverRender.inlinePreviewTargetNode
+  -- Surfaces that ship no inline-preview runtime (e.g. the audit page) pass
+  -- `withPreview := false` so the decl span carries no inert `data-bp-preview-*`
+  -- hook (and no preview pointer affordance) for an interaction that can't fire.
+  if withPreview then
+    Informal.HoverRender.inlinePreviewTargetNode
+      linkNode
+      (previewTarget decl previewTitle previewDetail?)
+  else
     linkNode
-    (previewTarget decl previewTitle previewLookupKey?)
 
 end Informal.LeanCodeLink

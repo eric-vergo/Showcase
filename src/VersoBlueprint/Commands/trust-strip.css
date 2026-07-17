@@ -1,0 +1,231 @@
+/* Dashboard trust strip (fed by a comparator-status artifact) + the standalone claim-first
+   comparator page (verdict header, prose sections, three-tier reproduce list). The strip only
+   ever renders alongside the dashboard block, whose asset bundle ships summary.css, so the
+   shared .bp_summary_badge* classes are always available. Token-driven; no raw colors, so both
+   light and dark are covered from Common.lean's dual token definitions. */
+
+.bp_trust_strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--bp-space-2) var(--bp-space-3);
+  width: fit-content;
+  max-width: 100%;
+  margin: var(--bp-space-5) auto var(--bp-space-4);
+  padding: var(--bp-space-2) var(--bp-space-3);
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-md);
+  background: var(--bp-color-surface-subtle);
+}
+
+.bp_trust_strip_label {
+  font-size: var(--bp-fs-badge);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_strip .bp_summary_badge_row {
+  margin-top: 0;
+}
+
+/* Trust badges that link to a page render as <a>. Keep them visually identical at
+   rest, add a quiet hover/focus affordance (token-driven, both themes). */
+a.bp_summary_badge {
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--bp-duration-fast) var(--bp-ease),
+    color var(--bp-duration-fast) var(--bp-ease),
+    background-color var(--bp-duration-fast) var(--bp-ease);
+}
+
+a.bp_summary_badge:hover {
+  border-color: var(--bp-color-border-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+a.bp_summary_badge:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 2px;
+}
+
+/* Comparator page. Reuse the shared PM-page chrome; just space the titled sections. */
+.bp_trust_section {
+  margin-top: var(--bp-space-5);
+}
+
+.bp_trust_section_title {
+  margin: 0 0 var(--bp-space-2);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+/* Verdict header: status pill + date + CI link on one row, then a compact meta grid of
+   certified theorems / permitted axioms. */
+.bp_trust_verdict {
+  margin-top: var(--bp-space-4);
+}
+
+.bp_trust_verdict_row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--bp-space-2) var(--bp-space-3);
+}
+
+.bp_trust_verdict_date {
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_verdict_meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--bp-space-1) var(--bp-space-3);
+  margin: var(--bp-space-3) 0 0;
+}
+
+/* Each row is a <div> wrapping <dt>/<dd>; `display: contents` lets them land in the grid. */
+.bp_trust_verdict_meta > div {
+  display: contents;
+}
+
+.bp_trust_verdict_meta dt {
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_verdict_meta dd {
+  margin: 0;
+}
+
+.bp_trust_verdict_meta code {
+  overflow-wrap: anywhere;
+}
+
+/* Static prose sections + their outbound-link footer row. */
+.bp_trust_prose {
+  margin: 0;
+  max-width: 44rem;
+  line-height: 1.6;
+  color: var(--bp-color-text);
+}
+
+.bp_trust_prose_links {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+}
+
+/* Reproduce-it-yourself list: one tier per <li>. */
+.bp_trust_repro {
+  margin: var(--bp-space-3) 0 0;
+  padding-left: var(--bp-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-3);
+  line-height: 1.6;
+  color: var(--bp-color-text);
+}
+
+.bp_trust_repro > li {
+  padding-left: var(--bp-space-1);
+}
+
+/* Quiet caveats under the shell block (sandbox note + missing-field fallbacks). */
+.bp_trust_note {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_note code {
+  overflow-wrap: anywhere;
+}
+
+/* Shell command block: same code chrome as .bp_trust_code, but wrap long lines instead of
+   scrolling so the copy-pasteable commands stay fully visible. The compound selector keeps
+   it winning over .bp_trust_code's `white-space: pre` regardless of source order. */
+.bp_trust_code.bp_trust_code_shell {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Collapse the verdict meta grid to a single stacked column on narrow viewports. */
+@media (max-width: 40rem) {
+  .bp_trust_verdict_meta {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .bp_trust_verdict_meta > div {
+    display: block;
+    margin-top: var(--bp-space-2);
+  }
+}
+
+/* Embedded config JSON / Challenge & Solution Lean source. Token-driven, so it reads as
+   an intentional code block in both light and dark; wide lines scroll inside it. */
+.bp_trust_disclosure {
+  margin: var(--bp-space-2) 0 0;
+}
+
+.bp_trust_disclosure > summary {
+  cursor: pointer;
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-link);
+}
+
+.bp_trust_disclosure > summary:hover {
+  text-decoration: underline;
+}
+
+.bp_trust_code {
+  margin: var(--bp-space-2) 0 0;
+  padding: var(--bp-space-3);
+  background: var(--bp-color-surface-subtle);
+  border: 1px solid var(--bp-color-border-soft);
+  border-radius: var(--bp-radius-md);
+  overflow-x: auto;
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: var(--bp-fs-small, 0.8rem);
+  line-height: 1.5;
+  color: var(--bp-color-text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* When highlighting succeeded, the block wraps its token spans in
+   `<code class="hl lean">`; the token colors come from the shared `--verso-code-*`
+   variables (both themes). Reset any generic inline-code chrome so it reads as one
+   plain code block. */
+.bp_trust_code > code.hl.lean {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: inherit;
+}
+
+/* Outbound source/playground links near the Challenge/Solution source and config. */
+.bp_trust_links {
+  margin: var(--bp-space-2) 0 0;
+  font-size: var(--bp-fs-caption);
+}
+
+.bp_trust_out_link {
+  color: var(--bp-color-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bp_trust_out_link:hover,
+.bp_trust_out_link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}

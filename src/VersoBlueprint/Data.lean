@@ -52,59 +52,6 @@ abbrev Parent := Label
 
 abbrev AuthorId := Label
 
-/-- Source location attached to a semantic manifest entry. -/
-structure SourceLocation where
-  /-- Source path for this entry. -/
-  path : String
-  /-- Source range, using LSP zero-based UTF-16 coordinates. -/
-  range : Lean.Lsp.Range
-  /-- Optional browser-openable source URL, such as a repository link. -/
-  href : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-namespace SourceLocation
-
-def ofSyntax? {m}
-    [Monad m] [MonadFileMap m] [MonadLog m]
-    (stx : Syntax) : m (Option SourceLocation) := do
-  let some range := stx.getRange?
-    | return none
-  let fileName ← getFileName
-  if fileName.isEmpty || fileName.startsWith "<" then
-    return none
-  let fileMap ← getFileMap
-  return some {
-    path := fileName
-    range := fileMap.utf8RangeToLspRange range
-  }
-
-end SourceLocation
-
-/--
-Explicit source-location lookup result.
-
-Manifest entries always carry a result so missing source information is visible
-to clients instead of being silently absent.
--/
-structure SourceLocationResult where
-  /-- Whether source location lookup succeeded. -/
-  ok : Bool
-  /-- Concrete source location when {lit}`ok` is true. -/
-  location : Option SourceLocation := none
-  /-- Human-readable reason when {lit}`ok` is false. -/
-  error : Option String := none
-deriving Repr, Inhabited, DecidableEq, ToJson, FromJson, Quote
-
-namespace SourceLocationResult
-
-def found (location : SourceLocation) : SourceLocationResult :=
-  { ok := true, location := some location, error := none }
-
-def unavailable (message : String) : SourceLocationResult :=
-  { ok := false, location := none, error := some message }
-
-end SourceLocationResult
-
 /-- Where a declared dependency edge came from. -/
 inductive UseOrigin where
   /-- The edge was written explicitly by a Blueprint author. -/
@@ -481,6 +428,22 @@ structure ExternalRef where
   Snapshot of the direct external rendering outcome.
   -/
   render : ExternalDeclRender := .error (.moduleUnavailable canonical)
+  /--
+  Snapshot of the declaration's proof/value source text — everything after the
+  top-level `:=` in the source declaration (the tactic block for `:= by …`, or the
+  term for `:= term`). Captured at registration time from the declaration's source
+  file + range so the node card can render the proof body server-side. `none` when
+  the source or range is unavailable, or the declaration has no `:=` body.
+  -/
+  proofSource? : Option String := none
+  /--
+  Syntactically-highlighted HTML for `proofSource?` (self-contained token spans,
+  themed by the shared `--verso-code-*` code-token CSS), captured at registration
+  time via SubVerso's highlighter run with no info trees. `none` when there is no
+  proof source or highlighting failed; the node card then falls back to escaping
+  `proofSource?` as plain text. See `Informal.highlightProofSourceHtml?`.
+  -/
+  proofHtml? : Option String := none
 deriving Repr, Inhabited, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=

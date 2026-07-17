@@ -359,7 +359,7 @@ def elabCommands (config : LeanBlockConfig) (str : StrLit) : DocElabM ElabComman
         let nonSilentMsgs := cmdState.messages.toArray.filter (!·.isSilent)
         let mut lastPos : String.Pos.Raw := cmds[0]? >>= (·.getRange?.map (·.start)) |>.getD 0
         for cmd in cmds do
-          hls := hls ++ (← highlightIncludingUnparsed cmd nonSilentMsgs cmdState.infoState.trees (startPos? := lastPos))
+          hls := hls ++ (← highlightIncludingUnparsed cmd nonSilentMsgs cmdState.infoState.trees (startPos? := lastPos) (collectFormat := true))
           lastPos := (cmd.getTrailingTailPos?).getD lastPos
         pure hls
       else

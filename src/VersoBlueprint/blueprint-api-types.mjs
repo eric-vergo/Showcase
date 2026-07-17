@@ -27,20 +27,6 @@
  */
 
 /**
- * Options accepted by label-resolution helpers.
- *
- * This duplicates the small generated-data loader option surface because the
- * JSDoc/TypeScript toolchain used for the public API does not accept typedef
- * intersections consistently.
- *
- * @typedef {Object} BlueprintLabelResolveOptions
- * @property {string} [facet] Preview facet to resolve. Defaults to `statement`.
- * @property {string} [dataBaseUrl] Base URL used to resolve files under `-verso-data/`.
- * @property {BlueprintFetchJson} [fetchJson] Per-API JSON loader override.
- * @property {RequestInit} [fetchOptions] Options forwarded to `fetch` when no custom loader is supplied.
- */
-
-/**
  * Context passed to preview hydrators.
  *
  * @typedef {Object} BlueprintHydratorContext
@@ -50,8 +36,6 @@
 
 /**
  * Custom post-render hook for nested preview bindings, math, or client widgets.
- * Hydrators can run repeatedly and on lazily inserted descendants, so bindings
- * should remain scoped to `root` and idempotent.
  *
  * @callback BlueprintHydrator
  * @param {Element | Document} root Rendered root to hydrate.
@@ -140,25 +124,6 @@
  */
 
 /**
- * Source file/range for a Blueprint manifest entry.
- *
- * Lines and characters use LSP zero-based UTF-16 coordinates.
- *
- * @typedef {Object} BlueprintSourceLocation
- * @property {string} path Source file path.
- * @property {{ start: { line: number, character: number }, end: { line: number, character: number } }} range Source range.
- */
-
-/**
- * Result of looking up a source location for a manifest entry.
- *
- * @typedef {Object} BlueprintSourceLocationResult
- * @property {boolean} ok Whether a concrete source location is available.
- * @property {BlueprintSourceLocation | null} location Source location on success.
- * @property {string} error Diagnostic message when unavailable.
- */
-
-/**
  * External source markup attached to a Blueprint label.
  *
  * @typedef {Object} BlueprintExternalMarkup
@@ -169,237 +134,47 @@
  */
 
 /**
- * Original source document declared by a Blueprint site.
- *
- * @typedef {Object} BlueprintSourceDocument
- * @property {string} id Canonical source-document id.
- * @property {string} title Human-readable source title.
- * @property {"pdf" | "text" | string} kind Broad source-document kind.
- * @property {string} [pdf] Source PDF path, when the document is PDF-backed.
- * @property {string} [pageRoot] Optional root for extracted source pages.
- * @property {string} [imageRoot] Optional root for extracted page images.
- */
-
-/**
- * Text source span for an original source reference.
- *
- * @typedef {Object} BlueprintSourceTextRange
- * @property {string} path Source text path.
- * @property {number} startLine One-based inclusive start line.
- * @property {number} endLine One-based inclusive end line.
- * @property {number} [startCharacter] Optional start character.
- * @property {number} [endCharacter] Optional end character.
- */
-
-/**
- * Source PDF crop box in top-left page coordinates.
- *
- * @typedef {Object} BlueprintSourcePdfBox
- * @property {number} scale Coordinate scale used for the extracted page.
- * @property {number} pageWidth Scaled page width.
- * @property {number} pageHeight Scaled page height.
- * @property {number} xMin Left edge.
- * @property {number} yMin Top edge.
- * @property {number} xMax Right edge.
- * @property {number} yMax Bottom edge.
- */
-
-/**
- * PDF/page-image source data for an original source span.
- *
- * @typedef {Object} BlueprintSourcePdfSpan
- * @property {string} path Source PDF page path.
- * @property {string} [image] Optional rendered page image path.
- * @property {BlueprintSourcePdfBox} [box] Optional crop box.
- */
-
-/**
- * One original source span attached to a Blueprint node.
- *
- * @typedef {Object} BlueprintSourceSpan
- * @property {string} page Source-local page identifier.
- * @property {BlueprintSourceTextRange} [text] Text location for this span.
- * @property {BlueprintSourcePdfSpan} [pdf] PDF/page-image location for this span.
- */
-
-/**
- * Original source provenance attached to a manifest entry.
- *
- * @typedef {Object} BlueprintSourceRef
- * @property {string} document Source-document id.
- * @property {BlueprintSourceSpan[]} spans Source spans within the document.
- */
-
-/**
- * Structured dependency reference between Blueprint nodes.
- *
- * @typedef {Object} BlueprintUseRef
- * @property {string} label Target Blueprint node label.
- * @property {string} origin Dependency origin, such as `manual` or `automatic`.
- * @property {string} intent Dependency intent, such as `regular`, `auxiliary`, or `technical`.
- */
-
-/**
- * Related Blueprint node reference attached to a manifest entry.
- *
- * `previewKey` is `null` when the related node has no manifest/cache-backed
- * preview. Non-empty strings are exact preview keys.
- *
- * @typedef {Object} BlueprintRelatedEntry
- * @property {string} label Canonical Blueprint node label.
- * @property {string} title Resolved display title for the related node.
- * @property {string | null} href Link to the canonical generated node, when available.
- * @property {string | null} previewKey Manifest/cache-backed preview key for this related node, when available.
- * @property {string[]} axes Statement/proof dependency axes connecting the related node.
- */
-
-/**
- * Shared group relation metadata from the manifest's top-level group catalog.
- * Group labels are unique, and each member label belongs to at most one group.
- *
- * @typedef {Object} BlueprintGroupRelation
- * @property {string} label Canonical group label.
- * @property {string} title Resolved display title for the group.
- * @property {boolean} declared Whether the group was explicitly declared.
- * @property {BlueprintRelatedEntry[]} entries Traversal-ordered statement members that join to matching block or external-markup manifest entries.
- */
-
-/**
- * Semantic manifest entry emitted for a rendered Blueprint preview or a
- * source-backed external-markup node.
+ * Semantic manifest entry emitted for a rendered Blueprint preview or an
+ * external-markup-only node.
  *
  * @typedef {Object} BlueprintManifestEntry
- * @property {string} key Canonical manifest key.
- * @property {"block" | "leanDecl" | "inlineLeanCode" | "citation" | "externalMarkup"} targetKind Target family for interpreting `key` and `label`.
- * @property {string} [label] Canonical Blueprint node label when available.
- * @property {string} authoredLabel Authored/display label without Lean pretty-name quoting.
+ * @property {string} key Stable manifest key.
+ * @property {string} [label] Blueprint node label when available.
  * @property {string} [facet] Rendered facet such as `statement` or `proof`.
  * @property {string} [href] Link to the canonical generated node.
- * @property {string | null} parent Parent group label, used by block and external-markup entries to join against the shared group catalog.
- * @property {string | null} parentTitle Resolved display title for the parent group; when `parent` is present, this agrees with the catalog title.
- * @property {BlueprintSourceLocationResult} sourceLocation Original source location lookup result for this entry.
  * @property {BlueprintExternalMarkup[]} [externalMarkup] Attached external source snippets.
- * @property {BlueprintSourceRef[]} [sources] Original source refs for this entry.
- * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
- * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
- * @property {BlueprintRelatedEntry[]} uses Related nodes used by this entry.
- * @property {BlueprintRelatedEntry[]} usedBy Related nodes that use this entry.
  */
 
 /**
  * Rendered-fragment cache entry.
  *
  * @typedef {Object} BlueprintHtmlCacheEntry
- * @property {string} key Canonical cache key.
+ * @property {string} key Stable cache key.
  * @property {string} html Rendered HTML fragment.
- */
-
-/**
- * Graph warning flags attached to a finalized node.
- *
- * @typedef {Object} BlueprintGraphWarningFlags
- * @property {boolean} unknownRef The node refers to a label missing from traversal.
- * @property {boolean} leanOnlyNoStatement The node has Lean data but no statement entry.
- * @property {boolean} missingExternalDecl The node refers to a missing external declaration.
- */
-
-/**
- * Visual metadata for renderers that reuse Blueprint's graph styling.
- *
- * @typedef {Object} BlueprintGraphNodeVisual
- * @property {string} shape Graphviz node shape.
- * @property {string} style Graphviz node style.
- * @property {string} fillcolor Fill color.
- * @property {string} color Border color.
- * @property {string} penwidth Border width.
- * @property {string} fontcolor Font color.
- * @property {number} peripheries Number of node outlines.
- * @property {string | null} gradientangle Graphviz gradient angle, when present.
- * @property {string | null} tooltip Tooltip text, when present.
- */
-
-/**
- * Public graph dependency edge payload.
- *
- * This is a derived projection of the target node's `statementUses` and
- * `proofUses`. Duplicate dependencies are combined by source/target and
- * dangling dependencies are omitted.
- *
- * @typedef {Object} BlueprintGraphEdge
- * @property {string} source Dependency source label.
- * @property {string} target Dependent target label.
- * @property {string[]} axes Statement/proof axes carried by this edge.
- */
-
-/**
- * Public graph group payload.
- *
- * @typedef {Object} BlueprintGraphGroup
- * @property {string} label Canonical group label.
- * @property {string} title Resolved group title.
- * @property {boolean} declared Whether the group was explicitly declared.
- * @property {string[]} children Child node labels derived from node `parent` fields.
- */
-
-/**
- * Graph-renderer mapping emitted as exactly two elements:
- * `[svgNodeId, value]`. The runtime decoder enforces the tuple length.
- *
- * @typedef {Array.<string>} BlueprintGraphNodeIdPair
- */
-
-/**
- * Public graph node payload.
- *
- * In manifest-loaded graph records, `previewKey` is the finalized
- * manifest/cache-backed preview key for this label. Embedded page records are
- * emitted earlier and may carry a traversal candidate that the runtime still
- * resolves through the manifest/cache pair. It is `null` when no key is
- * advertised by that record.
- *
- * @typedef {Object} BlueprintGraphNode
- * @property {string} label Canonical Blueprint node label.
- * @property {string} title Resolved display title.
- * @property {string} displayLabel Short display label.
- * @property {string | null} kind Node kind, when available.
- * @property {string | null} parent Parent/group label, when available.
- * @property {string | null} href Link to the canonical generated node, when available.
- * @property {string | null} previewKey Preview key advertised by this graph record, when available.
- * @property {BlueprintUseRef[]} statementUses Structured statement dependency refs.
- * @property {BlueprintUseRef[]} proofUses Structured proof dependency refs.
- * @property {string} statementStatus Statement-track status.
- * @property {string} proofStatus Proof-track status.
- * @property {BlueprintGraphWarningFlags} warnings Graph warning flags.
- * @property {BlueprintGraphNodeVisual} visual Current Blueprint graph styling metadata.
  */
 
 /**
  * Graph data exported by the Blueprint manifest or embedded in a graph page.
  *
- * Node `statementUses`, `proofUses`, and `parent` fields are authoritative.
- * Lean materializes `edges`, group `children`, and render `variants` together
- * from that topology at the graph finalization boundary.
- *
  * @typedef {Object} BlueprintGraphData
- * @property {3} schemaVersion Current finalized graph payload schema version.
- * @property {string} key Stable graph/block key.
- * @property {BlueprintGraphNode[]} nodes Graph node payloads.
- * @property {BlueprintGraphEdge[]} edges Derived, deduplicated graph edge payloads with dangling sources omitted.
- * @property {BlueprintGraphGroup[]} groups Group metadata with membership derived from node parents.
- * @property {BlueprintGraphVariant[]} variants Precomputed DOT variants for the bundled graph renderer. The first variant is `full`; keys are unique, and select/hover mappings target keys in this array.
+ * @property {number} schemaVersion Graph payload schema version.
+ * @property {string} key Variant key.
+ * @property {unknown[]} nodes Graph node payloads.
+ * @property {unknown[]} edges Graph edge payloads.
+ * @property {unknown[]} groups Optional graph grouping payloads.
  */
 
 /**
- * Graph render variant emitted by Lean for the bundled graph renderer.
+ * DOT fallback graph variant embedded by graph pages.
  *
  * @typedef {Object} BlueprintGraphVariant
  * @property {string} key Variant key.
  * @property {string} label Human-readable variant label.
- * @property {string} dot DOT source.
- * @property {BlueprintGraphLayoutOptions} options Rendering options emitted with the variant.
- * @property {BlueprintGraphNodeIdPair[]} selectOnNodeId Two-item `[svgNodeId, variantKey]` pairs selected when the variant is active.
- * @property {BlueprintGraphNodeIdPair[]} hoverOnNodeId Two-item `[svgNodeId, variantKey]` pairs highlighted on hover.
- * @property {BlueprintGraphNodeIdPair[]} previewKeyByNodeId Two-item `[svgNodeId, previewKey]` pairs; manifest records omit nodes without artifact-backed previews.
+ * @property {string} dot DOT source (transitively reduced).
+ * @property {string} [dotFull] Unreduced DOT source for the "Show all edges" toggle; present only when reduction dropped edges.
+ * @property {Record<string, unknown>} [options] Rendering options emitted with the fallback.
+ * @property {unknown[]} [selectOnNodeId] Node IDs to select when the variant is active.
+ * @property {unknown[]} [hoverOnNodeId] Node IDs to highlight on hover.
  */
 
 /**
@@ -414,12 +189,8 @@
  * Options accepted by graph rendering helpers in `api/graph.mjs`.
  *
  * @typedef {Object} BlueprintGraphRenderOptions
- * @property {Record<string, unknown>} [previewUtils] Render-capable Blueprint preview API required by rendering operations; `createGraphBlock` does not use it.
+ * @property {Record<string, unknown>} previewUtils Render-capable Blueprint preview API required by public `api/graph.mjs` render helpers.
  * @property {"page" | "block" | "fill" | string} [layout] Graph sizing mode.
- * @property {BlueprintGraphLayoutOptions} [graphOptions] Initial graph-control values for graph data rendered from manifest records.
- * @property {"pinned" | "hover" | string} [previewMode] Initial graph node preview behavior for graph data rendered from manifest records.
- * @property {"docked" | "anchored" | string} [previewPlacement] Initial graph node preview placement for graph data rendered from manifest records.
- * @property {boolean} [replace] In `renderGraphData`, replace host children by default; set to `false` to append.
  * @property {boolean} [refresh] Re-render immediately after initialization.
  * @property {BlueprintGraphRuntimeLibraries} [libraries] Runtime dependency URL overrides.
  */
@@ -472,34 +243,6 @@
  * @property {string} diagnosticHtml Diagnostic HTML when unavailable.
  * @property {string} [canonicalHtml] Full canonical generated-node HTML.
  * @property {string} [canonicalSourceHref] Source document URL for the canonical node.
- */
-
-/**
- * Result of resolving a Blueprint block label.
- *
- * @typedef {Object} BlueprintResolveLabelResult
- * @property {boolean} ok Whether the label resolved to a manifest entry.
- * @property {string} label Requested Blueprint label.
- * @property {string} facet Requested or resolved facet.
- * @property {string} key Resolved preview key, or the requested key when missing.
- * @property {string} reason Empty on success; diagnostic reason otherwise.
- * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
- * @property {string} href Generated-page href on success.
- * @property {BlueprintSourceLocationResult} sourceLocation Source location result for the label entry.
- */
-
-/**
- * Result of resolving a Lean declaration name to a declaration-keyed preview
- * entry.
- *
- * @typedef {Object} BlueprintResolveDeclarationResult
- * @property {boolean} ok Whether the declaration resolved to a manifest entry.
- * @property {string} declaration Requested or resolved Lean declaration name.
- * @property {string} key Resolved preview key, or the requested key when missing.
- * @property {string} reason Empty on success; diagnostic reason otherwise.
- * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
- * @property {string} href Generated-page href on success.
- * @property {BlueprintSourceLocationResult} sourceLocation Source location result for the declaration.
  */
 
 /**
@@ -575,33 +318,6 @@
  */
 
 /**
- * One source reference after resolving its source-document metadata.
- *
- * @typedef {Object} BlueprintResolvedSourceRef
- * @property {BlueprintSourceRef} sourceRef Original manifest source ref.
- * @property {string} documentId Source-document id from `sourceRef.document`.
- * @property {BlueprintSourceDocument | null} document Resolved source-document metadata, or `null` when missing.
- * @property {BlueprintSourceSpan[]} spans Source spans from the original source ref.
- */
-
-/**
- * Input accepted by source-metadata helpers.
- *
- * @typedef {string | BlueprintManifestEntry | BlueprintPreviewResult | BlueprintCanonicalPreviewResult | BlueprintRenderNodeResult} BlueprintSourceMetadataInput
- */
-
-/**
- * Result returned by source-metadata helpers.
- *
- * @typedef {Object} BlueprintSourceMetadataResult
- * @property {boolean} ok Whether source provenance was available.
- * @property {string} key Requested or resolved preview key.
- * @property {string} reason Empty on success; diagnostic reason otherwise.
- * @property {BlueprintManifestEntry | null} manifestEntry Matching manifest entry.
- * @property {BlueprintResolvedSourceRef[]} sources Resolved source references.
- */
-
-/**
  * Data API returned by `createPreviewData`.
  *
  * @typedef {Object} BlueprintDataApi
@@ -610,7 +326,6 @@
  * @property {function(): string} htmlCacheUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
- * @property {function(): string} graphApiModuleUrl
  * @property {function(string, string=): string} previewKey
  * @property {function(string): string} statementPreviewKey
  * @property {function(): BlueprintStoreStatus} readManifestStatus
@@ -618,13 +333,6 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGroupRelation[]>} loadGroups
- * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintGroupRelation | null)>} loadGroup
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
- * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
- * @property {function(string, BlueprintLabelResolveOptions=): Promise<BlueprintResolveLabelResult>} resolveLabel
- * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintResolveDeclarationResult>} resolveDeclaration
- * @property {function(BlueprintSourceMetadataInput, BlueprintDataApiOptions=): Promise<BlueprintSourceMetadataResult>} resolveSourceMetadata
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
  */
 
@@ -637,7 +345,6 @@
  * @property {function(): string} htmlCacheUrl
  * @property {function(): string} dataApiModuleUrl
  * @property {function(): string} previewApiModuleUrl
- * @property {function(): string} graphApiModuleUrl
  * @property {function(string, string=): string} previewKey
  * @property {function(string): string} statementPreviewKey
  * @property {function(): BlueprintStoreStatus} readManifestStatus
@@ -645,22 +352,13 @@
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintManifestEntry>>} loadManifest
  * @property {function(BlueprintDataApiOptions=): Promise<Map.<string, BlueprintHtmlCacheEntry>>} loadHtmlCache
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintManifestEntry | null)>} loadManifestEntry
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintGroupRelation[]>} loadGroups
- * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintGroupRelation | null)>} loadGroup
- * @property {function(BlueprintDataApiOptions=): Promise<BlueprintSourceDocument[]>} loadSourceDocuments
- * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintSourceDocument | null)>} loadSourceDocument
  * @property {function(string, BlueprintDataApiOptions=): Promise<(BlueprintHtmlCacheEntry | null)>} loadHtmlCacheEntry
- * @property {function(string, BlueprintLabelResolveOptions=): Promise<BlueprintResolveLabelResult>} resolveLabel
- * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintResolveDeclarationResult>} resolveDeclaration
  * @property {function(string, BlueprintDataApiOptions=): Promise<BlueprintPreviewResult>} resolvePreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintPreviewResult>} renderPreviewInto
  * @property {function(string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} resolveCanonicalPreview
  * @property {function(Element, string, BlueprintPreviewOptions=): Promise<BlueprintCanonicalPreviewResult>} renderCanonicalPreviewInto
  * @property {function(Element, (string | BlueprintRenderNodeRequest), BlueprintPreviewOptions=): Promise<BlueprintRenderNodeResult>} renderNode
- * @property {function(BlueprintSourceMetadataInput, BlueprintPreviewOptions=): Promise<BlueprintSourceMetadataResult>} resolveSourceMetadata
  * @property {function(Element, BlueprintPreviewOptions=): boolean} hydrate
- * @property {function(BlueprintGraphData, BlueprintGraphRenderOptions=): Element | null} [createGraphBlock] Installed by the graph runtime when graph rendering is started.
- * @property {function(Element, BlueprintGraphData, BlueprintGraphRenderOptions=): Promise<BlueprintGraphController | null>} [renderGraphData] Installed by the graph runtime when graph rendering is started.
  */
 
 export {};

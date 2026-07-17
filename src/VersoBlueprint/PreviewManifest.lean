@@ -11,23 +11,27 @@ import Std.Data.HashSet
 import VersoManual
 import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
+import VersoBlueprint.ColorScheme
+import VersoBlueprint.TextSize
+import VersoBlueprint.CopyButton
+import VersoBlueprint.Commands.CommandPalette
+import VersoBlueprint.Commands.BannerNav
+import VersoBlueprint.Commands.MetadataRail
+import VersoBlueprint.Commands.DocsChrome
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
-import VersoBlueprint.PreviewManifest.Cli
-import VersoBlueprint.PreviewManifest.ExternalMarkupRender
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Git
 import VersoBlueprint.Html
+import VersoBlueprint.NodeRoute
 import VersoBlueprint.Process
 import VersoBlueprint.Resolve
-import VersoBlueprint.Source.Data
-import VersoBlueprint.TeX.Cleanup
-import VersoBlueprint.TeX.Pdf
 import VersoBlueprint.TraversalIndex
 
 namespace Informal.PreviewManifest
@@ -36,22 +40,15 @@ open Lean Elab Command Term Meta
 open Verso Doc
 open Verso.Genre Manual
 
-private def readJsonFile (path : System.FilePath) (description : String) : IO Json := do
+private def readJsonFileAs [FromJson α] (path : System.FilePath) (description : String) :
+    IO α := do
   let json ←
     match Json.parse (← IO.FS.readFile path) with
     | .ok json => pure json
     | .error err => throw <| IO.userError s!"could not parse {description} {path}: {err}"
-  pure json
-
-private def decodeJsonAs [FromJson α] (path : System.FilePath) (description : String)
-    (json : Json) : IO α := do
   match fromJson? (α := α) json with
   | .ok value => pure value
   | .error err => throw <| IO.userError s!"could not decode {description} {path}: {err}"
-
-private def readJsonFileAs [FromJson α] (path : System.FilePath) (description : String) :
-    IO α := do
-  decodeJsonAs path description (← readJsonFile path description)
 
 private def buildMetadataCss : String := r##"
 .bp_build_metadata {
@@ -120,20 +117,187 @@ private def buildMetadataCss : String := r##"
 def buildMetadataHtmlAssets : HtmlAssets :=
   { extraCss := [buildMetadataCss] }
 
-def blueprintBlockHtmlAssets : HtmlAssets :=
-  { extraCss := Informal.Block.Assets.blockCssAssets }
+/--
+Global color-scheme (dark mode) assets, applied to *every* page.
+
+* `extraCss` carries the blueprint design tokens (so the `--bp-color-*` palette and
+  its dark overrides reach pages without a blueprint content block — index, ToC,
+  bibliography).
+* `extraJs` carries the pre-paint applier, which Verso emits as an inline
+  non-module `<script>` in `<head>`, so the saved scheme is applied before first
+  paint (no flash) and the `window.VersoBlueprint.colorScheme` API is available
+  to the metadata-rail footer's theme control. The core dark CSS itself rides
+  along on the always-linked `verso-vars.css` / `book.css`, so OS-auto dark works
+  with zero JS.
+-/
+def colorSchemeHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.Commands.blueprintTokensCss] : List String)
+  -- Both pre-paint appliers ride the same inline-`<head>` extraJs channel (no
+  -- flash of the wrong theme / text size); see the warnings in ColorScheme.lean /
+  -- TextSize.lean.
+  extraJs := ([Informal.ColorScheme.applierJs, Informal.TextSize.applierJs] : List String)
+
+/--
+Global copy-to-clipboard assets for Lean code blocks, applied to *every* page.
+
+The CSS rides `extraCss` and the dependency-free installer rides `extraJs` (the same
+inline-`<head>` channel as the dark-mode applier), so the button targets every
+`code.hl.lean.block` site-wide while skipping `.lean-output` blocks. No CDN/network
+dependency; the styling uses `--bp-color-*` tokens so it themes in dark mode.
+-/
+def copyButtonHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.CopyButton.css] : List String)
+  extraJs := ([Informal.CopyButton.js] : List String)
+
+/--
+Global command-palette assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the palette behavior is
+an ESM module (`Commands/command-palette.mjs`) registered in `pageRuntimeModules`
+and started from `blueprint-page-runtime.mjs`. It lazily same-origin-fetches
+`xref.json`, `-verso-data/node-search.json`, and (when the declaration registry
+is on) `-verso-data/decl-search.json`, so decl pages and short Lean names are
+searchable too. The styling uses `--bp-color-*` tokens so the overlay themes in
+dark mode, with no CDN/network dependency.
+-/
+def commandPaletteHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.CommandPalette.css] : List String)
+
+/--
+Global banner Back / Home control assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the controls' DOM is
+injected by an ESM module (`Commands/banner-nav.mjs`) registered in
+`pageRuntimeModules` and started from `blueprint-page-runtime.mjs`. The styling
+reuses the `--bp-color-*` design tokens so the controls follow the dark-mode
+color scheme, with no CDN / network dependency.
+-/
+def bannerNavHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.BannerNav.css] : List String)
+
+/--
+Global metadata-rail assets, applied to *every* page.
+
+Only the stylesheet rides this global `extraCss` channel; the rail's DOM is
+injected by ESM modules (`Commands/metadata-rail.mjs` + `Commands/selection-bus.mjs`)
+registered in `pageRuntimeModules` and started from `blueprint-page-runtime.mjs`.
+The styling reuses the `--bp-*` design tokens exclusively so the rail follows the
+dark-mode color scheme with AA contrast in both, and introduces no CDN / network
+dependency.
+-/
+def metadataRailHtmlAssets : HtmlAssets where
+  extraCss := ([Informal.MetadataRail.css] : List String)
+
+/--
+Global docs-navigation chrome assets (Wave 5), applied to *every* page: the top-nav
+category strip and the per-page declaration outline.
+
+Only the stylesheets ride this global `extraCss` channel; the two DOMs are injected
+by ESM modules (`Commands/top-nav.mjs`, `Commands/page-outline.mjs`) registered in
+`pageRuntimeModules` and started from `blueprint-page-runtime.mjs`. All styling
+reuses the `--bp-*` / `--verso-*` design tokens, so light + dark and AA contrast
+come for free with no CDN / network dependency.
+-/
+def docsChromeHtmlAssets : HtmlAssets where
+  extraCss :=
+    ([Informal.DocsChrome.topNavCss, Informal.DocsChrome.pageOutlineCss] : List String)
+
+/--
+Print / PDF stylesheet, applied to *every* page via the global `extraCss` channel.
+
+Everything is scoped inside `@media print`, so it never affects on-screen
+rendering. It (1) forces the light design tokens (so a page saved in dark mode
+still prints on white paper), (2) hides interactive chrome that is meaningless on
+paper — the ToC sidebar, prev/next nav, theme switcher, graph controls/legend,
+copy buttons, command palette, and dashboard CTAs — and (3) expands collapsed
+`<details>` so their content is included in the printout. No network dependency.
+-/
+def printCss : String := r##"
+@media print {
+  :root {
+    --bp-color-surface: #ffffff;
+    --bp-color-surface-muted: #f1f4f7;
+    --bp-color-surface-subtle: #f7f9fb;
+    --bp-color-surface-warn: #fbf2e9;
+    --bp-color-surface-warn-soft: #f5e4d2;
+    --bp-color-surface-note: #fbf6ea;
+    --bp-color-border: #dbe2ea;
+    --bp-color-border-soft: #e6ebf1;
+    --bp-color-border-muted: #dbe2ea;
+    --bp-color-border-panel: #dbe2ea;
+    --bp-color-border-strong: #b4c0cc;
+    --bp-color-card-divider: #e6ebf1;
+    --bp-color-text-strong: #15212b;
+    --bp-color-text: #15212b;
+    --bp-color-text-muted: #4d5e6d;
+    --bp-color-text-subtle: #5a6b7a;
+    --bp-color-text-faint: #5f6f7e;
+    --bp-color-accent: #1c5fb8;
+    --bp-color-on-accent: #ffffff;
+    --bp-color-link: #1c5fb8;
+    color-scheme: light;
+  }
+
+  nav#toc,
+  .split-tocs,
+  .toc-backdrop,
+  .toc-resize-handle,
+  .toggle-split-toc,
+  #toggle-toc-click,
+  label[for="toggle-toc"],
+  .prev-next-buttons,
+  .bp-copy-button,
+  .bp_graph_controls,
+  .bp_graph_legend,
+  .bp_command_palette {
+    display: none !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #15212b !important;
+  }
+
+  .with-toc {
+    margin-left: 0 !important;
+  }
+
+  /* Expand collapsed disclosure widgets so their content prints. */
+  details > summary { list-style: none; }
+  details:not([open]) > *:not(summary) { display: block !important; }
+
+  /* Force every node card's proof row open so proofs print (the relocated
+     tactic tail lives inside this collapsible region; the per-card toggle and
+     the screen-only collapse animation are bypassed on paper). */
+  .bp_card2_proof_anim { grid-template-rows: 1fr !important; }
+  .bp_card2_proof_anim > * { overflow: visible !important; }
+  .bp_card2_proof_toggle { display: none !important; }
+}
+"##
+
+/-- Print / PDF stylesheet assets, applied to every page. -/
+def printHtmlAssets : HtmlAssets where
+  extraCss := ([printCss] : List String)
 
 def blueprintHtmlAssets : HtmlAssets :=
-  Verso.Genre.Manual.highlightAssets
-    |>.combine blueprintBlockHtmlAssets
-    |>.combine buildMetadataHtmlAssets
-    |>.combine Informal.ExternalMarkupRender.htmlAssets
+  (((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets).combine
+    bannerNavHtmlAssets).combine metadataRailHtmlAssets).combine docsChromeHtmlAssets).combine
+    printHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
 private def blueprintPageRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{"-verso-data/" ++ pageRuntimeModuleFilename}}></script>}}
+
+private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
+    Array Verso.Output.Html :=
+  let valueString := Verso.Output.Html.asString value
+  if values.any (fun item => Verso.Output.Html.asString item == valueString) then
+    values
+  else
+    values.push value
 
 def withBuildMetadataAssets (config : RenderConfig := {}) : RenderConfig :=
   let htmlConfig := config.toHtmlConfig
@@ -149,9 +313,13 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := {
       htmlConfig with
       toHtmlAssets := htmlAssets
-      extraHead := VersoBlueprint.Html.pushIfRenderedMissing htmlConfig.extraHead
-        blueprintPageRuntimeHead
+      extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
     }
+    -- Add Lean const → blueprint-node cross-links to the ordinary
+    -- local/remote targets. A const that is both a Lean decl and a blueprint node
+    -- now renders the existing multi-link `data-verso-links` menu (no JS change).
+    linkTargets := fun st remotes =>
+      st.localTargets ++ remotes.remoteTargets ++ Informal.NodeRoute.blueprintNodeTargets st
   }
 
 structure GitCommitMetadata where
@@ -191,122 +359,6 @@ private def outputDirNameForMode : Mode → String
 
 private def outDirForMode (cfg : Verso.Genre.Manual.Config) (mode : Mode) : System.FilePath :=
   cfg.destination / outputDirNameForMode mode
-
-private def htmlModeDescription : Mode → String
-  | .single => "single-page"
-  | .multi => "multi-page"
-
-private def elapsedMsText (ms : Nat) : String :=
-  s!"{ms}ms"
-
-private def writeBuildProgress (message : String) : IO Unit := do
-  IO.println s!"Blueprint: {message}"
-  (← IO.getStdout).flush
-
-private def logBuildProgress (verbose : Bool) (message : String) : IO Unit := do
-  if verbose then
-    writeBuildProgress message
-
-private def storedEntryCountText (count : Nat) : String :=
-  if count == 1 then
-    "1 stored entry"
-  else
-    s!"{count} stored entries"
-
-private def logBuildProgressItemCount (verbose : Bool) (label : String) (count : Nat) : IO Unit :=
-  logBuildProgress verbose s!"{label}: {storedEntryCountText count}"
-
-private def withTimedBuildProgress
-    {m : Type → Type} [Monad m] [MonadLiftT BaseIO m] [MonadLiftT IO m] {α : Type}
-    (verbose : Bool) (label : String) (action : m α) : m α := do
-  if !verbose then
-    action
-  else
-    liftM (m := m) <| writeBuildProgress s!"starting {label}"
-    let start ← liftM (m := m) IO.monoMsNow
-    let result ← action
-    let finish ← liftM (m := m) IO.monoMsNow
-    liftM (m := m) <|
-      writeBuildProgress s!"finished {label} in {elapsedMsText (finish - start)}"
-    pure result
-
-private structure LeanCodePreviewTiming where
-  key : String
-  kind : String
-  totalMs : Nat
-  renderMs : Nat
-  stringifyMs : Nat
-  blankCheckMs : Nat
-  bytesMs : Nat
-  metadataMs : Nat
-  storeMs : Nat
-  htmlBytes : Nat
-
-private structure LeanCodePreviewTimingTotals where
-  count : Nat := 0
-  totalMs : Nat := 0
-  renderMs : Nat := 0
-  stringifyMs : Nat := 0
-  blankCheckMs : Nat := 0
-  bytesMs : Nat := 0
-  metadataMs : Nat := 0
-  storeMs : Nat := 0
-  htmlBytes : Nat := 0
-
-private def LeanCodePreviewTimingTotals.push
-    (totals : LeanCodePreviewTimingTotals) (timing : LeanCodePreviewTiming) :
-    LeanCodePreviewTimingTotals :=
-  { count := totals.count + 1
-    totalMs := totals.totalMs + timing.totalMs
-    renderMs := totals.renderMs + timing.renderMs
-    stringifyMs := totals.stringifyMs + timing.stringifyMs
-    blankCheckMs := totals.blankCheckMs + timing.blankCheckMs
-    bytesMs := totals.bytesMs + timing.bytesMs
-    metadataMs := totals.metadataMs + timing.metadataMs
-    storeMs := totals.storeMs + timing.storeMs
-    htmlBytes := totals.htmlBytes + timing.htmlBytes }
-
-private def leanCodePreviewTimingKind (entry : Informal.LeanCodePreview.Entry) : String :=
-  match entry.source with
-  | .inlineBlocks .. => "inline"
-  | .externalDecl .. => "external"
-
-private def describeLeanCodePreviewTiming
-    (label : String) (totals : LeanCodePreviewTimingTotals) : String :=
-  s!"{label}: {totals.count} entries, total {elapsedMsText totals.totalMs} " ++
-    s!"(render {elapsedMsText totals.renderMs}, stringify {elapsedMsText totals.stringifyMs}, " ++
-    s!"blank {elapsedMsText totals.blankCheckMs}, bytes {elapsedMsText totals.bytesMs}, " ++
-    s!"metadata {elapsedMsText totals.metadataMs}, store {elapsedMsText totals.storeMs}), " ++
-    s!"{totals.htmlBytes} HTML bytes"
-
-private def logLeanCodePreviewTimings
-    (verbose : Bool) (timings : Array LeanCodePreviewTiming) : IO Unit := do
-  if !verbose then
-    return
-  let (inlineTotals, externalTotals) :=
-    timings.foldl
-      (init := (({} : LeanCodePreviewTimingTotals), ({} : LeanCodePreviewTimingTotals)))
-      fun (inlineTotals, externalTotals) timing =>
-        if timing.kind == "inline" then
-          (inlineTotals.push timing, externalTotals)
-        else
-          (inlineTotals, externalTotals.push timing)
-  logBuildProgress true <|
-    "Lean code preview breakdown: " ++
-      describeLeanCodePreviewTiming "inline" inlineTotals ++ "; " ++
-      describeLeanCodePreviewTiming "external" externalTotals
-  let slowest := timings.qsort (fun a b => a.totalMs > b.totalMs)
-  for timing in slowest.extract 0 (Nat.min 5 slowest.size) do
-    logBuildProgress true <|
-      s!"slow Lean code preview: {timing.totalMs}ms " ++
-      s!"(render {timing.renderMs}ms, stringify {timing.stringifyMs}ms, " ++
-      s!"blank {timing.blankCheckMs}ms, bytes {timing.bytesMs}ms, " ++
-      s!"metadata {timing.metadataMs}ms, store {timing.storeMs}ms), " ++
-      s!"{timing.htmlBytes} HTML bytes, " ++
-      s!"{timing.kind}, {timing.key}"
-
-private def htmlStringIsBlank (html : String) : Bool :=
-  html.all Char.isWhitespace
 
 private def callbackLogger (logError : String → IO Unit) : Verso.Logger IO where
   log severity text loc := do
@@ -596,34 +648,48 @@ private def writeBuildMetadataHtml
   | some html => IO.FS.writeFile path html
   | none => Verso.reportError s!"Blueprint build metadata: could not find title page heading in {path}"
 
+def emitBuildMetadata (metadata : BuildMetadata) : ExtraStep := fun mode cfg _state _text => do
+  writeBuildMetadataHtml metadata (outDirForMode cfg mode / "index.html")
+
 private def highlightedDocstringInnerTextRead : String :=
   "const str = d.innerText;"
 
 private def highlightedDocstringTextContentRead : String :=
   "const str = d.textContent || \"\";"
 
-private def highlightedTacticShowToggleRead : String :=
-  "const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
+private def highlightedTacticShowGuardBefore : String :=
+  "if (inst.reference.className == 'tactic') {
+            const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
 
-private def highlightedTacticShowGuardedToggleRead : String :=
-  "if (!inst.reference.querySelector(\":scope > .tactic-state\")) {
-            return false;
-          }
-          const toggle = inst.reference.querySelector(\":scope > input.tactic-toggle\");"
+private def highlightedTacticShowGuardBeforeNoScope : String :=
+  "if (inst.reference.className == 'tactic') {
+            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
 
-private def highlightedTacticContentCloneRead : String :=
-  "const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
+private def highlightedTacticShowGuardAfter : String :=
+  "if (inst.reference.className == 'tactic') {
+            if (!inst.reference.querySelector(\".tactic-state\")) {
+              return false;
+            }
+            const toggle = inst.reference.querySelector(\"input.tactic-toggle\");"
 
-private def highlightedTacticContentGuardedCloneRead : String :=
-  "const stateSource = tgt.querySelector(\":scope > .tactic-state\");
-          if (!stateSource) {
-            return content;
-          }
-          const state = stateSource.cloneNode(true);"
+private def highlightedTacticContentBefore : String :=
+  "if (tgt.className == 'tactic') {
+            const state = tgt.querySelector(\":scope > .tactic-state\").cloneNode(true);"
+
+private def highlightedTacticContentBeforeNoScope : String :=
+  "if (tgt.className == 'tactic') {
+            const state = tgt.querySelector(\".tactic-state\").cloneNode(true);"
+
+private def highlightedTacticContentAfter : String :=
+  "if (tgt.className == 'tactic') {
+            const stateSource = tgt.querySelector(\".tactic-state\");
+            if (!stateSource) {
+              return content;
+            }
+            const state = stateSource.cloneNode(true);"
 
 private def isHighlightedStartupJs (source : String) : Bool :=
-  source.contains "/* Render docstrings */" &&
-    source.contains "const str = d.innerText;" &&
+  source.contains "let docsJson = \"-verso-docs.json\";" &&
     source.contains "const defaultTippyProps = {"
 
 private def replaceFirstHighlightedJs?
@@ -644,12 +710,6 @@ private def replaceRequiredHighlightedJs
   | none =>
     panic! s!"Blueprint highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
 
-private def replaceOptionalHighlightedJs
-    (beforeOptions : List String) (after source : String) : String :=
-  match replaceFirstHighlightedJs? beforeOptions after source with
-  | some source => source
-  | none => source
-
 private def patchHighlightedStartupJs (js : JS) : JS :=
   if !isHighlightedStartupJs js.js then
     js
@@ -660,12 +720,14 @@ private def patchHighlightedStartupJs (js : JS) : JS :=
           "docstring textContent read"
           [highlightedDocstringInnerTextRead]
           highlightedDocstringTextContentRead
-      |> replaceOptionalHighlightedJs
-          [highlightedTacticShowToggleRead]
-          highlightedTacticShowGuardedToggleRead
-      |> replaceOptionalHighlightedJs
-          [highlightedTacticContentCloneRead]
-          highlightedTacticContentGuardedCloneRead
+      |> replaceRequiredHighlightedJs
+          "tactic show guard"
+          [highlightedTacticShowGuardBefore, highlightedTacticShowGuardBeforeNoScope]
+          highlightedTacticShowGuardAfter
+      |> replaceRequiredHighlightedJs
+          "tactic content guard"
+          [highlightedTacticContentBefore, highlightedTacticContentBeforeNoScope]
+          highlightedTacticContentAfter
   { js with js := patched }
 
 private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
@@ -675,23 +737,12 @@ private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
         assets.extraJs.toArray.map patchHighlightedStartupJs
   }
 
+private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
+  state.modifyHtmlAssets patchBlueprintHtmlAssets
+
 def manifestFilename : String := "blueprint-manifest.json"
 
 def htmlCacheFilename : String := "blueprint-html-cache.json"
-
-/--
-Internal schema marker for generated Blueprint manifests.
-
-This is a VBP stale-artifact diagnostic marker, not a public interchange
-version. It may change whenever the generated-data reader needs a clean
-validation boundary.
--/
-def manifestInternalSchemaVersion : Nat := 3
-
-def manifestInternalSchemaVersionField : String := "vbpInternalSchemaVersion"
-
-def manifestRegenerationHint : String :=
-  "run `lake exe vbp build` to regenerate generated data with this VBP version"
 
 def graphApiModuleFilename : String := "blueprint-graph-api.mjs"
 
@@ -744,15 +795,44 @@ private def graphRuntimeCoreModuleMjs : String := include_str "Commands/graph-ru
 
 private def graphRuntimeModuleMjs : String := include_str "Commands/graph.mjs"
 
+-- Vendored graph runtime libraries (d3 + d3-graphviz), embedded so the dependency graph
+-- renders offline / under a strict-CSP viewer instead of fetching them from a CDN. Written to
+-- -verso-data/lib/ and referenced by Commands/graph.mjs.
+private def d3MinJs : String := include_str "vendor/d3.min.js"
+
+private def d3GraphvizMinJs : String := include_str "vendor/d3-graphviz.min.js"
+
 private def relationPanelModuleMjs : String := include_str "Informal/Block/relation-panel.mjs"
+
+private def commandPaletteModuleMjs : String := include_str "Commands/command-palette.mjs"
+
+private def dashboardModuleMjs : String := include_str "Commands/dashboard.mjs"
+
+private def proofToggleModuleMjs : String := include_str "Commands/proof-toggle.mjs"
+
+private def bannerNavModuleMjs : String := include_str "Commands/banner-nav.mjs"
+
+private def selectionBusModuleMjs : String := include_str "Commands/selection-bus.mjs"
+
+-- Note: editing the `include_str`ed .mjs alone does not retrigger this module's
+-- recompile, so touch this line when any bundled asset changes to force the fresh
+-- bytes to re-embed. Touched for: dashboard.mjs per-chapter bar titles + tooltips
+-- and metadata-rail.mjs "Open page" self-link suppression (UI review round); and
+-- graph.mjs + graph-runtime-core.mjs "Show all edges" toggle (graph declutter round).
+private def metadataRailModuleMjs : String := include_str "Commands/metadata-rail.mjs"
+
+private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"
+
+private def pageOutlineModuleMjs : String := include_str "Commands/page-outline.mjs"
+
+-- (const-token.mjs: first-child-text-node shortening + MutationObserver re-pass.)
+private def constTokenModuleMjs : String := include_str "Commands/const-token.mjs"
 
 private def previewRuntimeBaseModuleFilename : String := "preview-runtime-base.mjs"
 
 private def previewRuntimeDataModuleFilename : String := "preview-runtime-data.mjs"
 
 private def previewRuntimeRenderModuleFilename : String := "preview-runtime-render.mjs"
-
-private def previewRuntimeSourceMetadataModuleFilename : String := "preview-runtime-source-metadata.mjs"
 
 private def previewRuntimeHydrationModuleFilename : String := "preview-runtime-hydration.mjs"
 
@@ -770,8 +850,6 @@ private def previewRuntimeDataModuleMjs : String := include_str "Commands/previe
 
 private def previewRuntimeRenderModuleMjs : String := include_str "Commands/preview-runtime-render.mjs"
 
-private def previewRuntimeSourceMetadataModuleMjs : String := include_str "Commands/preview-runtime-source-metadata.mjs"
-
 private def previewRuntimeHydrationModuleMjs : String := include_str "Commands/preview-runtime-hydration.mjs"
 
 private def previewRuntimeLifecycleModuleMjs : String := include_str "Commands/preview-runtime-lifecycle.mjs"
@@ -786,7 +864,6 @@ private def previewRuntimeModules : Array (String × String) := #[
   (previewRuntimeBaseModuleFilename, previewRuntimeBaseModuleMjs),
   (previewRuntimeDataModuleFilename, previewRuntimeDataModuleMjs),
   (previewRuntimeRenderModuleFilename, previewRuntimeRenderModuleMjs),
-  (previewRuntimeSourceMetadataModuleFilename, previewRuntimeSourceMetadataModuleMjs),
   (previewRuntimeHydrationModuleFilename, previewRuntimeHydrationModuleMjs),
   (previewRuntimeLifecycleModuleFilename, previewRuntimeLifecycleModuleMjs),
   (previewRuntimeSurfaceModuleFilename, previewRuntimeSurfaceModuleMjs),
@@ -800,7 +877,18 @@ private def pageRuntimeModules : Array (String × String) := #[
   ("Commands/inline-preview.mjs", inlinePreviewModuleMjs),
   ("Commands/graph-runtime-core.mjs", graphRuntimeCoreModuleMjs),
   ("Commands/graph.mjs", graphRuntimeModuleMjs),
-  ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs)
+  ("lib/d3.min.js", d3MinJs),
+  ("lib/d3-graphviz.min.js", d3GraphvizMinJs),
+  ("Informal/Block/relation-panel.mjs", relationPanelModuleMjs),
+  ("Commands/command-palette.mjs", commandPaletteModuleMjs),
+  ("Commands/dashboard.mjs", dashboardModuleMjs),
+  ("Commands/proof-toggle.mjs", proofToggleModuleMjs),
+  ("Commands/banner-nav.mjs", bannerNavModuleMjs),
+  ("Commands/selection-bus.mjs", selectionBusModuleMjs),
+  ("Commands/metadata-rail.mjs", metadataRailModuleMjs),
+  ("Commands/top-nav.mjs", topNavModuleMjs),
+  ("Commands/page-outline.mjs", pageOutlineModuleMjs),
+  ("Commands/const-token.mjs", constTokenModuleMjs)
 ]
 
 private def writeDataFile (dataDir : System.FilePath) (relativePath contents : String) : IO Unit := do
@@ -830,27 +918,9 @@ private def previewApiModuleAliasMjs : String :=
   "export * from \"../" ++ previewApiModuleFilename ++ "\";\n" ++
   "export { default } from \"../" ++ previewApiModuleFilename ++ "\";\n"
 
-/-- Write the generated ESM runtime and public browser API modules under `-verso-data/`. -/
-public def writeBlueprintRuntimeModules (dataDir : System.FilePath) : IO Unit := do
-  let apiDir := dataDir / apiModuleDirname
-  IO.FS.createDirAll dataDir
-  IO.FS.createDirAll apiDir
-  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
-  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
-  IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs
-  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
-  IO.FS.writeFile (dataDir / dataApiModuleFilename) dataApiModuleMjs
-  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
-  writePageRuntimeModules dataDir
-  writePreviewRuntimeModules dataDir
-  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
-  IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
-  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
-
 inductive EntryKind where
   | block
   | leanDecl
-  | inlineLeanCode
   | citation
   | externalMarkup
 deriving Inhabited, Repr, BEq, ToJson, FromJson
@@ -865,18 +935,6 @@ def RelationAxis.display : RelationAxis → String
   | .statement => "statement"
   | .proof => "proof"
 
-/--
-Stable human-facing string form for Blueprint labels.
-
-String-authored labels are stored as simple Lean names so that semantic APIs can
-still use `Name`, but Lean's pretty printer quotes punctuation-heavy components.
-This projection keeps those authored labels usable by generated clients without
-requiring them to parse Lean pretty-name syntax.
--/
-def labelString : Name → String
-  | .str .anonymous s => s
-  | name => name.toString
-
 /-- Manifest-owned related informal node metadata for slide and tooling consumers. -/
 structure RelatedEntry where
   /-- Informal label for the related node. -/
@@ -885,28 +943,13 @@ structure RelatedEntry where
   title : String
   /-- Canonical link target for the related informal node, if available. -/
   href : Option String := none
-  /-- Manifest/cache-backed preview key for this related node, if available. -/
-  previewKey : Option Informal.PreviewKey := none
+  /-- Rendered-fragment cache key for this related node's statement preview. -/
+  previewKey : String
   /-- Statement/proof dependency axes through which this related node is connected. -/
   axes : Array RelationAxis := #[]
-deriving Inhabited, Repr, ToJson
+deriving Inhabited, Repr, ToJson, FromJson
 
-private def jsonObjValAsD [FromJson α] (json : Json) (field : String) (fallback : α) :
-    Except String α :=
-  match json.getObjVal? field with
-  | .ok value => fromJson? value
-  | .error _ => pure fallback
-
-instance : FromJson RelatedEntry where
-  fromJson? json := do
-    let label ← json.getObjValAs? Name "label"
-    let title ← json.getObjValAs? String "title"
-    let href ← jsonObjValAsD json "href" (none : Option String)
-    let previewKey ← jsonObjValAsD json "previewKey" (none : Option Informal.PreviewKey)
-    let axes ← jsonObjValAsD json "axes" (#[] : Array RelationAxis)
-    pure { label, title, href, previewKey, axes }
-
-/-- Manifest-owned group metadata shared by all informal nodes in the group. -/
+/-- Manifest-owned group metadata for an informal node. -/
 structure GroupRelation where
   /-- Parent/group label. -/
   label : Name
@@ -914,7 +957,7 @@ structure GroupRelation where
   title : String
   /-- Whether a matching `:::group` declaration was present. -/
   declared : Bool := false
-  /-- Traversal-ordered statement members in this group. -/
+  /-- Traversal-ordered statement siblings in this group, excluding the current node. -/
   entries : Array RelatedEntry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
@@ -933,8 +976,6 @@ structure Entry where
   targetKind : EntryKind
   /-- Canonical target label: informal label, Lean declaration name, citation label, or external-markup witness label. -/
   label : Name
-  /-- Authored/display label text, preserving string-authored punctuation without pretty-name quoting. -/
-  authoredLabel : String := labelString label
   /-- Which preview variant this entry contains; non-block entries use `statement`. -/
   facet : PreviewCache.Facet
   /-- Kind (definition, proposition, lemma, theorem, corollary). -/
@@ -947,9 +988,6 @@ structure Entry where
   displayLabel : Option String := none
   /-- Canonical link target for the rendered informal node. -/
   href : Option String := none
-  /-- Source location lookup result for this manifest entry. -/
-  sourceLocation : Informal.Data.SourceLocationResult :=
-    Informal.Data.SourceLocationResult.unavailable "source location unavailable for this manifest entry"
   /-- Parent/group label for this informal node, if any. -/
   parent : Option Name := none
   /-- Resolved display title for the parent/group, if any. -/
@@ -958,18 +996,18 @@ structure Entry where
   statementUses : Array Informal.Data.UseRef := #[]
   /-- Structured proof use metadata, preserving origin and intent tags. -/
   proofUses : Array Informal.Data.UseRef := #[]
-  /-- Manifest/cache-backed preview keys for Lean code previews associated with this entry. -/
+  /-- Rendered-fragment cache keys for Lean declaration previews associated with this entry. -/
   leanCodePreviewKeys : Array String := #[]
   /-- Canonical Lean code data associated with this informal node, if any. -/
   codeData : Option Informal.BlockCodeData := none
   /-- Raw external markup attachments keyed by language and slot. -/
   externalMarkup : Array Informal.Data.ExternalMarkup := #[]
-  /-- Original-source provenance attached to this entry. Lean entries may aggregate several nodes. -/
-  sources : Array Informal.Source.Ref := #[]
   /-- Informal nodes used by this entry, with statement/proof axes and preview keys. -/
   uses : Array RelatedEntry := #[]
   /-- Informal statement nodes that depend on this entry, with dependency axes and preview keys. -/
   usedBy : Array RelatedEntry := #[]
+  /-- Group declaration status and traversal-ordered sibling statement entries. -/
+  group : Option GroupRelation := none
   /-- Resolved display name of the assigned owner, if available. -/
   ownerDisplayName : Option String := none
   /-- Normalized tags attached to this informal node. -/
@@ -994,17 +1032,11 @@ def Entry.blockKind (entry : Entry) : Informal.Data.InProgressKind :=
   | .proof => .proof
   | .statement => .statement (entry.kind.getD .theorem)
 
-/-- Primary source ref for internal block-rendering paths that still accept one source attachment. -/
-def Entry.primarySource? (entry : Entry) : Option Informal.Source.Ref :=
-  entry.sources[0]?
-
 /-- Convert manifest entry metadata to the shared informal block model. -/
 def Entry.blockData (entry : Entry) : Informal.BlockData := {
   kind := entry.blockKind
   codeData := entry.codeData
-  sourceRef := entry.primarySource?
   label := entry.label
-  sourceLocation := entry.sourceLocation
   parent := entry.parent
   count := 0
   statementUses := entry.statementUses
@@ -1034,20 +1066,10 @@ def Entry.heading (entry : Entry) (displayLabelOverride? : Option String := none
 
 structure File where
   /--
-  Internal generated-data schema marker for VBP tooling; not part of the public
-  interface.
-  -/
-  vbpInternalSchemaVersion : Nat := manifestInternalSchemaVersion
-  /--
   Semantic manifest entries keyed by `PreviewCache`, `externalMarkupEntryKey`,
   Lean preview key, or citation key.
   -/
   previews : Array Entry := #[]
-  /--
-  Group metadata keyed by `GroupRelation.label`. Entries refer to this catalog
-  through `Entry.parent`; each group stores its statement members once.
-  -/
-  groups : Array GroupRelation := #[]
   /--
   Public graph data captured from rendered `{blueprint_graph}` blocks.
 
@@ -1055,8 +1077,6 @@ structure File where
   the browser runtime.
   -/
   graphs : Array Informal.Graph.GraphData := #[]
-  /-- Original source documents referenced by source provenance entries. -/
-  sourceDocuments : Array Informal.Source.Document := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-
@@ -1186,97 +1206,17 @@ def readFile (path : System.FilePath) : IO File := do
 
 end HtmlCache
 
-/--
-Traversal state whose relation indexes have been prepared for preview-data
-construction.
-
-The standard HTML pipeline installs these indexes before rendering. Direct
-callers cross this boundary explicitly through `prepare` so manifest assembly
-never falls back to repeatedly scanning the full stored-block collection.
--/
-structure PreparedPreviewState where private mk ::
-  state : TraverseState
-
-/-- Install the relation indexes required by preview-data construction. -/
-def PreparedPreviewState.prepare (state : TraverseState) : PreparedPreviewState :=
-  PreparedPreviewState.mk (Informal.RelatedPanel.patchRelationCaches state)
-
-/--
-Traversal state prepared for Blueprint HTML rendering and post-render steps.
-
-Renderer preparation installs the Blueprint HTML asset patches and crosses the
-preview-data preparation boundary exactly once. Post-render steps receive this
-type so they cannot assume that a raw traversal state was prepared elsewhere.
--/
-structure PreparedRendererState where private mk ::
-  /-- Preview-data view of the same prepared traversal state. -/
-  previewState : PreparedPreviewState
-
-/-- Apply every Blueprint renderer-state patch after Manual traversal. -/
-def PreparedRendererState.prepare (state : TraverseState) : PreparedRendererState :=
-  PreparedRendererState.mk <| PreparedPreviewState.prepare <|
-    state.modifyHtmlAssets patchBlueprintHtmlAssets
-
-/-- The underlying traversal state used by Verso's HTML emitters. -/
-def PreparedRendererState.state (preparedState : PreparedRendererState) : TraverseState :=
-  preparedState.previewState.state
-
-/--
-Blueprint-specific post-render step whose traversal state has crossed the
-renderer-preparation boundary.
--/
-abbrev BlueprintExtraStep :=
-  Verso.Genre.Manual.Mode → Verso.Genre.Manual.Config → PreparedRendererState →
-    Part Manual → BuildLogT IO Unit
-
-def emitBuildMetadata (metadata : BuildMetadata) : BlueprintExtraStep := fun mode cfg _state _text => do
-  writeBuildMetadataHtml metadata (outDirForMode cfg mode / "index.html")
-
-/--
-Assembled preview-data candidates before rendered-preview references are
-resolved against the paired manifest and HTML cache.
--/
-structure PreviewDataModel where
-  manifest : File := {}
-  htmlCache : HtmlCache.File := {}
-deriving Inhabited, Repr
-
-/-- Paired, emission-ready preview-data outputs for a generated Blueprint site. -/
-structure Files where private mk ::
-  /--
-  Semantic preview data. This is the public source of truth for labels, hrefs,
-  relationship topology, Lean-code associations, external-markup metadata, and
-  other facts that generated consumers need.
-  -/
-  manifest : File := {}
-  /--
-  Opaque rendered fragments and their hover payload side table. Consumers join
-  this cache with `manifest` by preview key when they need presentation data.
-  -/
-  htmlCache : HtmlCache.File := {}
-deriving Repr
-
-/--
-Manifest/cache files decoded from persisted or externally supplied output.
-
-Parsing establishes each file's local schema but does not establish the
-cross-artifact invariants enforced during production construction. Consumers
-such as `vbp check` audit this value rather than treating it as emission-ready
-`Files`.
--/
-structure PersistedFiles where
+structure Files where
   manifest : File := {}
   htmlCache : HtmlCache.File := {}
 deriving Inhabited, Repr
 
 structure Index where
   entriesByKey : Std.HashMap String Entry := {}
-  groupsByLabel : Std.HashMap Name GroupRelation := {}
 deriving Inhabited
 
 def Index.ofFile (file : File) : Index := {
   entriesByKey := file.previews.foldl (fun entries entry => entries.insert entry.key entry) {}
-  groupsByLabel := file.groups.foldl (fun groups group => groups.insert group.label group) {}
 }
 
 def File.index (file : File) : Index :=
@@ -1288,124 +1228,10 @@ def Index.findEntry? (index : Index) (key : String) : Option Entry :=
 def File.findEntry? (file : File) (key : String) : Option Entry :=
   file.index.findEntry? key
 
-def Index.findGroup? (index : Index) (label : Name) : Option GroupRelation :=
-  index.groupsByLabel.get? label
-
-private def GroupRelation.withoutMember (group : GroupRelation) (label : Name) : GroupRelation :=
-  { group with entries := group.entries.filter (fun member => member.label != label) }
-
-/-- Group metadata for an entry, with the current node removed from the member list. -/
-def Index.groupForEntry? (index : Index) (entry : Entry) : Option GroupRelation := do
-  let parent ← entry.parent
-  let group ← index.findGroup? parent
-  pure (group.withoutMember entry.label)
-
-/-- Group metadata for an entry, with the current node removed from the member list. -/
-def File.groupForEntry? (file : File) (entry : Entry) : Option GroupRelation := do
-  let parent ← entry.parent
-  let group ← file.groups.find? (fun group => group.label == parent)
-  pure (group.withoutMember entry.label)
-
-/--
-Indexes over the generated manifest/cache pair used to decide whether a
-serialized preview reference can render.
--/
-structure PreviewArtifactIndex where
-  manifestKeys : Std.HashSet String := {}
-  htmlCacheKeys : Std.HashSet String := {}
-
-private def PreviewArtifactIndex.ofArtifacts
-    (manifest : File) (htmlCache : HtmlCache.File) : PreviewArtifactIndex := {
-  manifestKeys :=
-    manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
-  htmlCacheKeys :=
-    htmlCache.entries.foldl (fun keys entry => keys.insert entry.key) {}
-}
-
-def PreviewArtifactIndex.ofModel (model : PreviewDataModel) : PreviewArtifactIndex :=
-  PreviewArtifactIndex.ofArtifacts model.manifest model.htmlCache
-
-def PreviewArtifactIndex.ofPersistedFiles (files : PersistedFiles) : PreviewArtifactIndex :=
-  PreviewArtifactIndex.ofArtifacts files.manifest files.htmlCache
-
-def PreviewArtifactIndex.hasManifestKey
-    (index : PreviewArtifactIndex) (key : String) : Bool :=
-  index.manifestKeys.contains key
-
-def PreviewArtifactIndex.hasCacheKey
-    (index : PreviewArtifactIndex) (key : String) : Bool :=
-  index.htmlCacheKeys.contains key
-
-def PreviewArtifactIndex.resolves (index : PreviewArtifactIndex) (key : String) :
-    Bool :=
-  index.hasManifestKey key && index.hasCacheKey key
-
-private def PreviewArtifactIndex.previewKey?
-    (index : PreviewArtifactIndex) (key? : Option Informal.PreviewKey) :
-    Option Informal.PreviewKey :=
-  key?.filter fun key => index.resolves key.value
-
-private def RelatedEntry.finalizePreviewReferences
-    (index : PreviewArtifactIndex) (entry : RelatedEntry) : RelatedEntry :=
-  { entry with previewKey := index.previewKey? entry.previewKey }
-
-private def GroupRelation.finalizePreviewReferences
-    (index : PreviewArtifactIndex) (group : GroupRelation) : GroupRelation :=
-  { group with entries := group.entries.map (RelatedEntry.finalizePreviewReferences index) }
-
-private def Entry.finalizePreviewReferences
-    (index : PreviewArtifactIndex) (entry : Entry) : Entry :=
-  {
-    entry with
-      leanCodePreviewKeys := entry.leanCodePreviewKeys.filter index.resolves
-      uses := entry.uses.map (RelatedEntry.finalizePreviewReferences index)
-      usedBy := entry.usedBy.map (RelatedEntry.finalizePreviewReferences index)
-  }
-
-private def graphFinalizePreviewReferences
-    (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData) :
-    Informal.Graph.GraphData :=
-  graph.filterPreviewReferences fun key => index.resolves key.value
-
-private def File.finalizePreviewReferences
-    (file : File) (index : PreviewArtifactIndex) : File :=
-  {
-    file with
-      previews := file.previews.map (Entry.finalizePreviewReferences index)
-      groups := file.groups.map (GroupRelation.finalizePreviewReferences index)
-      graphs := file.graphs.map (graphFinalizePreviewReferences index)
-  }
-
-/--
-Finalize traversal-derived preview references against a paired manifest/cache value.
-
-Generated relation, group, Lean-code, and graph preview references are only
-advertised when the target key has both a semantic manifest entry and a rendered
-fragment cache body. Relations and graph nodes that fail that join remain
-present but lose their `previewKey`; Lean-code keys and graph-variant mappings
-are removed so generated JSON does not point at an unavailable preview body.
-
-The phase-changing result type makes the manifest/cache pair explicit at the
-construction boundary: unresolved candidates cannot be emitted as `Files`, and
-emission-ready files cannot be finalized a second time.
--/
-def PreviewDataModel.finish (model : PreviewDataModel) : Files :=
-  let index := PreviewArtifactIndex.ofModel model
-  Files.mk (model.manifest.finalizePreviewReferences index) model.htmlCache
-
-/-- Manifest metadata that was present during traversal but is absent from export. -/
-structure PreviewMetadataLoss where
-  /-- Traversal-preview cache key whose metadata was not fully represented. -/
-  traversalPreviewKey : Informal.PreviewKey
-  /-- Blueprint label recorded by traversal. -/
-  label : Name
-  /-- Preview facet recorded by traversal. -/
-  facet : PreviewCache.Facet
-  /-- Matching manifest entry key, if the manifest contains one. -/
-  manifestEntryKey? : Option String := none
-  /-- Lean code preview keys present during traversal but missing from the manifest entry. -/
-  missingLeanCodePreviewKeys : Array String := #[]
-deriving Repr, ToJson, FromJson
+/-- Stable string form used by manifest query APIs for Blueprint labels. -/
+def labelString : Name → String
+  | .str .anonymous s => s
+  | name => name.toString
 
 /-- Whether this manifest entry represents an informal Blueprint block. -/
 def Entry.isBlock (entry : Entry) : Bool :=
@@ -1413,147 +1239,20 @@ def Entry.isBlock (entry : Entry) : Bool :=
   | .block => true
   | _ => false
 
-/-- Whether this manifest entry represents a source-backed external-markup node. -/
-def Entry.isExternalMarkup (entry : Entry) : Bool :=
-  match entry.targetKind with
-  | .externalMarkup => true
-  | _ => false
-
-/-- Whether this manifest entry represents an informal Blueprint node target. -/
-def Entry.isBlueprintNodeTarget (entry : Entry) : Bool :=
-  entry.isBlock || entry.isExternalMarkup
-
 /-- Whether this manifest entry represents the statement facet. -/
 def Entry.isStatement (entry : Entry) : Bool :=
   match entry.facet with
   | .statement => true
   | _ => false
 
-/-- Whether this manifest entry is a statement-facet Blueprint node query row. -/
-def Entry.isQueryableStatement (entry : Entry) : Bool :=
-  entry.isStatement && entry.isBlueprintNodeTarget
-
-/-- Whether this manifest entry's authored public label matches `label`. -/
-def Entry.matchesAuthoredLabel (entry : Entry) (label : String) : Bool :=
-  entry.authoredLabel == label
-
-/--
-Whether generated-data consistency checks require a rendered-fragment cache body
-for this manifest entry.
-
-External-markup entries can be intentionally semantic-only when source-backed
-nodes are generated without cache fragments.
--/
-def Entry.requiresRenderedBody (entry : Entry) : Bool :=
-  !entry.isExternalMarkup
-
-/--
-Find the manifest entry that should carry metadata for a traversal preview.
-
-Bodyless source-backed nodes may export as `targetKind: "externalMarkup"` rather
-than as ordinary block entries, but the label/facet provenance is still the same.
--/
-def File.findPreviewMetadataEntry? (file : File) (metadata : PreviewCache.Metadata) :
-    Option Entry :=
-  file.previews.find? fun entry =>
-    entry.isBlueprintNodeTarget &&
-      entry.label == metadata.label && entry.facet == metadata.facet
-
-private def missingPreviewLeanCodeKeys (entry? : Option Entry)
-    (metadata : PreviewCache.Metadata) : Array String :=
-  metadata.leanCodePreviewKeys.filter fun key =>
-    match entry? with
-    | some entry => !entry.leanCodePreviewKeys.contains key
-    | none => true
-
-/--
-Return traversal-preview metadata that was lost while constructing the manifest.
-
-This is intentionally a queryable invariant rather than an unconditional build
-error so tests and downstream tooling can opt into stricter checks without
-changing existing generation behavior.
--/
-def previewMetadataLosses (state : TraverseState) (file : File) : Array PreviewMetadataLoss :=
-  Id.run do
-    let mut losses := #[]
-    for decoded in Informal.TraversalIndex.TraversalPreviews.entries state do
-      match decoded with
-      | .error _ => pure ()
-      | .ok stored =>
-          let metadata := stored.data.metadata
-          if !metadata.leanCodePreviewKeys.isEmpty then
-            if let some traversalPreviewKey := Informal.PreviewKey.ofString? stored.canonicalName then
-              let manifestEntry? := file.findPreviewMetadataEntry? metadata
-              let missing := missingPreviewLeanCodeKeys manifestEntry? metadata
-              if !missing.isEmpty then
-                losses := losses.push {
-                  traversalPreviewKey
-                  label := metadata.label
-                  facet := metadata.facet
-                  manifestEntryKey? := manifestEntry?.map (·.key)
-                  missingLeanCodePreviewKeys := missing
-                }
-    losses
-
-/-- Human-facing warning text for one manifest metadata-loss audit result. -/
-def PreviewMetadataLoss.warningMessage (loss : PreviewMetadataLoss) : String :=
-  let manifestEntry :=
-    match loss.manifestEntryKey? with
-    | some key => s!"manifest entry {key}"
-    | none => "no matching manifest entry"
-  let missing := String.intercalate ", " loss.missingLeanCodePreviewKeys.toList
-  s!"Blueprint manifest: traversal preview {loss.traversalPreviewKey} for {loss.label} ({loss.facet.suffix}) lost Lean preview keys [{missing}] while exporting {manifestEntry}"
-
-/-- Report non-fatal generator warnings for traversal metadata lost during manifest export. -/
-def reportPreviewMetadataLossWarnings
-    (logger : Verso.Logger IO) (state : TraverseState) (file : File) : IO Unit := do
-  for loss in previewMetadataLosses state file do
-    logger.reportWarning loss.warningMessage
-
-/-- Declared source document with the given id, if present. -/
-def File.sourceDocument? (file : File) (id : String) : Option Informal.Source.Document :=
-  file.sourceDocuments.find? fun document => document.id == id
-
-/-- Whether this manifest entry carries original-source provenance for the document id. -/
-def Entry.hasSourceDocument (entry : Entry) (id : String) : Bool :=
-  entry.sources.any fun sourceRef => sourceRef.document == id
-
-/-- Manifest entries carrying original-source provenance. -/
-def File.entriesWithSource (file : File) : Array Entry :=
-  file.previews.filter fun entry => !entry.sources.isEmpty
-
-/-- Manifest entries whose original-source provenance points at the given document id. -/
-def File.entriesForSourceDocument (file : File) (id : String) : Array Entry :=
-  file.previews.filter fun entry => entry.hasSourceDocument id
-
 /-- Statement-facet block entries, the primary row set for client label queries. -/
 def File.blockStatementEntries (file : File) : Array Entry :=
   file.previews.filter (fun entry => entry.isBlock && entry.isStatement)
 
-/--
-Statement-facet entries that should be visible as Blueprint nodes to query
-clients. Bodyless source-backed nodes are exported as external-markup entries,
-but they still carry the same semantic label, dependency, ownership, and source
-metadata as block entries.
--/
-def File.queryableStatementEntries (file : File) : Array Entry :=
-  file.previews.filter (·.isQueryableStatement)
-
-/-- All block entries matching the authored public label string, including non-statement facets. -/
+/-- All block entries matching the public label string, including non-statement facets. -/
 def File.findBlockEntriesByLabel (file : File) (label : String) : Array Entry :=
   file.previews.filter fun entry =>
-    entry.isBlock && entry.matchesAuthoredLabel label
-
-/--
-All queryable Blueprint entries matching the authored public label string,
-including non-statement facets for normal blocks.
--/
-def File.findQueryableEntriesByLabel (file : File) (label : String) : Array Entry :=
-  file.previews.filter fun entry =>
-    if entry.isBlock then
-      entry.matchesAuthoredLabel label
-    else
-      entry.isExternalMarkup && entry.isStatement && entry.matchesAuthoredLabel label
+    entry.isBlock && labelString entry.label == label
 
 /--
 Best public block entry for a label.
@@ -1565,73 +1264,28 @@ def File.findPrimaryBlockEntry? (file : File) (label : String) : Option Entry :=
   let entries := file.findBlockEntriesByLabel label
   entries.find? (·.isStatement) <|> entries[0]?
 
-/--
-Best public query entry for a label.
-
-Statement entries are primary because most clients ask for node metadata rather
-than a proof-only rendered facet. Bodyless source-backed nodes are represented
-by statement-facet external-markup entries and participate in the same lookup.
--/
-def File.findPrimaryQueryableEntry? (file : File) (label : String) : Option Entry :=
-  let entries := file.findQueryableEntriesByLabel label
-  entries.find? (·.isStatement) <|> entries[0]?
-
 private def pushUniqueString (values : Array String) (value : String) : Array String :=
   if values.contains value then values else values.push value
 
-/-- Sorted owner names present on queryable statement entries. -/
+/-- Sorted owner names present on statement-facet block entries. -/
 def File.ownerValues (file : File) : Array String :=
-  let owners := file.queryableStatementEntries.foldl (init := #[]) fun owners entry =>
+  let owners := file.blockStatementEntries.foldl (init := #[]) fun owners entry =>
       match entry.ownerDisplayName with
       | none => owners
       | some owner => pushUniqueString owners owner
   owners.qsort (· < ·)
 
-/-- Sorted tag values present on queryable statement entries. -/
+/-- Sorted tag values present on statement-facet block entries. -/
 def File.tagValues (file : File) : Array String :=
-  let tags := file.queryableStatementEntries.foldl (init := #[]) fun tags entry =>
+  let tags := file.blockStatementEntries.foldl (init := #[]) fun tags entry =>
       entry.tags.foldl pushUniqueString tags
   tags.qsort (· < ·)
 
-/-- Queryable statement entries carrying owner, tag, priority, or effort metadata. -/
-def File.metadataEntries (file : File) : Array Entry :=
-  file.queryableStatementEntries.filter fun entry =>
+/-- Statement-facet block entries carrying work-queue metadata. -/
+def File.workQueueEntries (file : File) : Array Entry :=
+  file.blockStatementEntries.filter fun entry =>
     entry.ownerDisplayName.isSome || entry.priority.isSome ||
       entry.effort.isSome || !entry.tags.isEmpty
-
-private def File.actionableGraphNodeWithStep? (file : File) (label : Name) :
-    Option (Informal.Graph.NodeData × String) :=
-  file.graphs.findSome? fun graph =>
-    graph.nodes.findSome? fun node =>
-      if node.label == label then
-        node.actionableStage?.map fun nextStep => (node, nextStep)
-      else
-        none
-
-/-- First finalized graph node showing an actionable next step for `label`. -/
-def File.actionableGraphNode? (file : File) (label : Name) : Option Informal.Graph.NodeData :=
-  (file.actionableGraphNodeWithStep? label).map (·.1)
-
-/-- A queryable statement entry paired with its actionable finalized graph status. -/
-structure WorkQueueItem where
-  /-- Queryable statement-level manifest entry. -/
-  entry : Entry
-  /-- Matching finalized graph node whose status makes the entry actionable. -/
-  graphNode : Informal.Graph.NodeData
-  /-- Actionable formalization track, either `"statement"` or `"proof"`. -/
-  nextStep : String
-
-/--
-Queryable statement entries paired with their actionable finalized graph status.
-
-Finalized graph nodes are the generated planning source of truth. This query
-does not infer readiness from entry metadata; a manifest without matching graph
-nodes therefore has an empty work queue.
--/
-def File.workQueueItems (file : File) : Array WorkQueueItem :=
-  file.queryableStatementEntries.filterMap fun entry => do
-    let (graphNode, nextStep) ← file.actionableGraphNodeWithStep? entry.label
-    pure { entry, graphNode, nextStep }
 
 private def containsSearchText (text value : String) : Bool :=
   value.toLower.contains text
@@ -1639,77 +1293,33 @@ private def containsSearchText (text value : String) : Bool :=
 /-- Case-insensitive text search over user-facing block manifest fields. -/
 def Entry.matchesText (entry : Entry) (query : String) : Bool :=
   let text := query.toLower
-  containsSearchText text entry.authoredLabel ||
+  containsSearchText text (labelString entry.label) ||
     containsSearchText text entry.title ||
     entry.parentTitle.any (containsSearchText text) ||
     entry.tags.any (containsSearchText text) ||
     entry.ownerDisplayName.any (containsSearchText text)
 
-/-- Search whether the entry references Lean code whose key or declaration text contains `decl`. -/
+/-- Search whether the entry references a Lean-code preview key containing `decl`. -/
 def Entry.matchesCode (entry : Entry) (decl : String) : Bool :=
-  entry.leanCodePreviewKeys.any (fun key => key.contains decl) ||
-    match entry.codeData with
-    | some (.inline codeData) =>
-        codeData.declarations.any (fun candidate => candidate.name.toString.contains decl)
-    | some (.external decls) =>
-        decls.any fun externalRef =>
-          externalRef.canonical.toString.contains decl || externalRef.written.toString.contains decl
-    | none => false
+  entry.leanCodePreviewKeys.any (fun key => key.contains decl)
 
 def externalMarkupEntryKey (label : Name) : String :=
-  Informal.PreviewSource.externalMarkupKey label
+  s!"externalMarkup:{label}"
 
 /-- Count available Lean-code preview entries before display-level deduplication. -/
 def Index.codeEntryCount (index : Index) (entry : Entry) : Nat :=
   (entry.leanCodePreviewKeys.filterMap index.findEntry?).size
 
-/-- Return associated Lean-code preview entries in key order. -/
+/--
+Lean-code preview keys are declaration-granular. Return the semantic entries in
+key order while keeping display-level rendered-HTML deduplication in
+`HtmlCache.Index.codeHtmlBodies`.
+-/
 def Index.codeEntries (index : Index) (entry : Entry) : Array Entry :=
   entry.leanCodePreviewKeys.filterMap index.findEntry?
 
-private def unsupportedManifestSchemaMessage (detail : String) : String :=
-  s!"unsupported internal Blueprint manifest schema: {detail}; {manifestRegenerationHint}"
-
-private def checkManifestInternalSchema (json : Json) : Except String Unit := do
-  let versionJson ←
-    match json.getObjVal? manifestInternalSchemaVersionField with
-    | .ok value => pure value
-    | .error _ =>
-        .error <| unsupportedManifestSchemaMessage
-          s!"missing `{manifestInternalSchemaVersionField}`"
-  let version ←
-    match fromJson? (α := Nat) versionJson with
-    | .ok version => pure version
-    | .error _ =>
-        .error <| unsupportedManifestSchemaMessage
-          s!"invalid `{manifestInternalSchemaVersionField}`; expected natural-number marker {manifestInternalSchemaVersion}"
-  if version == manifestInternalSchemaVersion then
-    pure ()
-  else
-    .error <| unsupportedManifestSchemaMessage
-      s!"found `{manifestInternalSchemaVersionField}` {version}, expected {manifestInternalSchemaVersion}"
-
 def readFile (path : System.FilePath) : IO File := do
-  let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () => decodeJsonAs path "Blueprint manifest" json
-  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
-
-/--
-Read the semantic projection consumed by graph-free `vbp query` selectors
-without materializing graph render projections they do not read.
-
-The manifest schema and every non-graph field are decoded normally. Use
-`readFile` for artifact audits: its strict `GraphData` decoder reconstructs and
-checks derived edges, groups, preview mappings, and DOT variants.
--/
-def readFileWithoutGraphs (path : System.FilePath) : IO File := do
-  let json ← readJsonFile path "Blueprint manifest"
-  match checkManifestInternalSchema json with
-  | .ok () =>
-      decodeJsonAs path "Blueprint manifest" <|
-        json.setObjVal! "graphs" (Json.arr #[])
-  | .error err => throw <| IO.userError s!"could not decode Blueprint manifest {path}: {err}"
+  readJsonFileAs path "Blueprint manifest"
 
 private structure SchemaState where
   seen : Std.HashSet Name := {}
@@ -1751,8 +1361,6 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
       pure <| Json.mkObj [("type", Json.str "string")]
   | .const ``Name _ =>
       pure <| Json.mkObj [("type", Json.str "string")]
-  | .const ``Informal.PreviewKey _ =>
-      pure <| Json.mkObj [("type", Json.str "string"), ("minLength", Json.num 1)]
   | .const ``Bool _ =>
       pure <| Json.mkObj [("type", Json.str "boolean")]
   | .const ``Nat _ =>
@@ -1774,15 +1382,6 @@ private partial def schemaForType (ty : Expr) : StateT SchemaState MetaM Json :=
           itemSchema,
           Json.mkObj [("type", Json.str "null")]
         ])
-      ]
-  | .const ``Prod _ =>
-      let fstSchema ← schemaForType args[0]!
-      let sndSchema ← schemaForType args[1]!
-      pure <| Json.mkObj [
-        ("type", Json.str "array"),
-        ("prefixItems", Json.arr #[fstSchema, sndSchema]),
-        ("minItems", Json.num 2),
-        ("maxItems", Json.num 2)
       ]
   | .const name _ =>
       let st ← get
@@ -1882,6 +1481,37 @@ private def publicXrefDomains (domains : Verso.NameMap Verso.Multi.Domain) :
 def buildPublicXrefJson (state : TraverseState) : Json :=
   Verso.Multi.xrefJson (publicXrefDomains state.domains) state.externalTags
 
+/--
+Re-point the public-xref permalinks for the informal-node domain to the
+dedicated per-node pages.
+
+For every object in the `«Informal.Block.informal»` domain we replace its
+reference list with a single entry whose `address` is the absolute node-page URL
+(`/node/<slug>/`, with leading slash — `find.js` strips it before resolving
+against `<base>`) and whose `id` is cleared. The rich `data` block (origin,
+intent, etc.) is preserved verbatim so the command palette and other tooling can
+still consume it. All other domains are left untouched.
+-/
+private def rewriteInformalXref (state : TraverseState) (json : Json) : Json :=
+  let domainName := Resolve.informalDomainName
+  match state.domains.get? domainName with
+  | none => json
+  | some dom =>
+    let key := domainName.toString
+    match json.getObjVal? key with
+    | .error _ => json
+    | .ok domainJson =>
+      let newContents : Json :=
+        dom.objects.toArray.foldl (init := Json.mkObj []) fun acc (canonicalName, obj) =>
+          let slug := Informal.NodeRoute.nodePageSlugOfString canonicalName
+          let entry := Json.mkObj [
+            ("address", Json.str s!"/node/{slug}/"),
+            ("id", Json.str ""),
+            ("data", obj.data)]
+          acc.setObjVal! canonicalName (Json.arr #[entry])
+      let domainJson := domainJson.setObjVal! "contents" newContents
+      json.setObjVal! key domainJson
+
 private def replaceFindPageXref (html xrefJson : String) : Option String :=
   let marker := "window.xref = "
   match html.splitOn marker with
@@ -1899,7 +1529,7 @@ private def replaceFindPageXref (html xrefJson : String) : Option String :=
 def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Genre.Manual.Config)
     (state : TraverseState) : IO Unit := do
   let outDir := outDirForMode cfg mode
-  let json := (buildPublicXrefJson state).compress
+  let json := (rewriteInformalXref state (buildPublicXrefJson state)).compress
   IO.FS.writeFile (outDir / "xref.json") json
   let findIndex := outDir / "find" / "index.html"
   if ← findIndex.pathExists then
@@ -1930,7 +1560,10 @@ private def blockHeadingParts? (state : TraverseState) (label : Name)
     (facet : PreviewCache.Facet := .statement) (blockData? : Option Informal.BlockData := none) :
     Option BlockHeadingParts := do
   let blockData ← blockData? <|> blockInfo? state label
-  let numberText := blockData.displayNumber state
+  -- The heading label is the node's display identifier: the short decl name when
+  -- the node pairs with a `(lean := …)` declaration, else the numbered form. This
+  -- flows onto `Entry.displayLabel` → the manifest card/graph/node-page headings.
+  let numberText := blockData.displayIdentifier state
   match facet with
   | .statement =>
       let kind ← blockData.statementKind? state
@@ -1959,26 +1592,6 @@ private def externalMarkupArray (state : TraverseState) (label : Name) :
     Array Informal.Data.ExternalMarkup :=
   (Informal.TraversalIndex.ExternalMarkup.data? state label).map (·.markup.toArray) |>.getD #[]
 
-private def sourceRef? (state : TraverseState) (label : Name) : Option Informal.Source.Ref :=
-  Informal.TraversalIndex.SourceRefs.data? state label
-
-private def sourceRefsForBlockLabel (state : TraverseState) (label : Name) :
-    Array Informal.Source.Ref :=
-  match sourceRef? state label with
-  | some sourceRef => #[sourceRef]
-  | none => #[]
-
-private def sourceRefsByCanonicalLabel (state : TraverseState) :
-    Std.HashMap String Informal.Source.Ref := Id.run do
-  let mut refs : Std.HashMap String Informal.Source.Ref := {}
-  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
-    match decoded with
-    | .ok stored =>
-        refs := refs.insert stored.canonicalName stored.data
-    | .error _ =>
-        pure ()
-  refs
-
 private def groupTitle? (state : TraverseState) (parent : Name) : Option String :=
   match Informal.TraversalIndex.Groups.data? state parent with
   | some groupData =>
@@ -1998,10 +1611,8 @@ private def inlineCodePreviewKeys (state : TraverseState) (label : Name) : Array
   match Informal.TraversalIndex.InlineCode.data? state label with
   | none => #[]
   | some codeData =>
-    if codeData.declarations.isEmpty then
-      #[]
-    else
-      #[Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label]
+    let decls := (codeData.definedDefs.map (·.name)) ++ (codeData.definedTheorems.map (·.name))
+    decls.map Informal.TraversalIndex.LeanCodePreviews.lookupKey
 
 private def blockLeanCodePreviewKeys
     (state : TraverseState)
@@ -2033,21 +1644,6 @@ private def blockCodeData?
       some (Informal.BlockCodeData.external externalDecls)
   Informal.BlockCodeData.ofHintAndInline external? inline?
 
-private def leanCodePreviewSourceRefs (state : TraverseState) :
-    Std.HashMap String (Array Informal.Source.Ref) := Id.run do
-  let mut sources : Std.HashMap String (Array Informal.Source.Ref) := {}
-  let sourceRefsByLabel := sourceRefsByCanonicalLabel state
-  for decoded in Informal.PreviewSource.traversalStoredEntries state do
-    match decoded with
-    | .ok stored =>
-        if let some sourceRef := sourceRefsByLabel.get? stored.entry.label.toString then
-          for key in stored.entry.leanCodePreviewKeys do
-            let current := (sources.get? key).getD #[]
-            sources := sources.insert key (pushUnique current sourceRef)
-    | .error _ =>
-        pure ()
-  sources
-
 private def relatedAxes (source : Informal.BlockData) (target : Name) : Array RelationAxis :=
   let axes : Array RelationAxis :=
     if source.statementDeps.contains target then #[.statement] else #[]
@@ -2062,7 +1658,7 @@ private def relatedEntryForLabel
     label
     title := blockTitle state label .statement blockData?
     href := blockHref state label
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state label
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state label
     axes
   }
 
@@ -2074,7 +1670,7 @@ private def relatedEntryForBlock
     label := blockData.label
     title := blockTitle state blockData.label .statement (some blockData)
     href := blockHref state blockData.label
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? state blockData.label
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement state blockData.label
     axes
   }
 
@@ -2087,93 +1683,59 @@ private def buildUsesRelations
   labels.map fun label =>
     relatedEntryForLabel state label (relatedAxes blockData label)
 
-/-- Read the reverse-dependency index installed during preview-state preparation. -/
 private def buildUsedByRelations
     (state : TraverseState)
+    (storedBlocks : Array Informal.BlockData)
     (blockData : Informal.BlockData) : Array RelatedEntry :=
-  let cachedEntries :=
-    Informal.TraversalIndex.RelatedPanelUsedByCache.data? state blockData.label |>.getD #[]
-  cachedEntries.filterMap fun cached => do
-    let source ← blockInfo? state cached.sourceLabel
-    let axes : Array RelationAxis :=
-      if cached.inStatement then #[.statement] else #[]
-    let axes := if cached.inProof then axes.push .proof else axes
-    some <| relatedEntryForBlock state source axes
-
-private def groupRelationHeader
-    (state : TraverseState)
-    (parent : Name) : String × Bool :=
-  match Informal.TraversalIndex.Groups.data? state parent with
-  | some groupData =>
-      let header := groupData.header.trimAscii.toString
-      (if header.isEmpty then parent.toString else header, true)
-  | none => (parent.toString, false)
-
-private def statementGroupParent? (blockData : Informal.BlockData) : Option Name := do
-  let parent ← blockData.parent
-  let .statement _ := blockData.kind
-    | none
-  pure parent
-
-/-- Build each group relation once, preserving traversal order for its statement members. -/
-private def buildGroupRelations (state : TraverseState) : Array GroupRelation := Id.run do
-  let mut groups : Array GroupRelation := #[]
-  let mut groupIndexes : Std.HashMap Name Nat := {}
-  for blockData in Informal.collectStoredBlocks state do
-    let some parent := statementGroupParent? blockData
-      | continue
-    let member := relatedEntryForBlock state blockData
-    match groupIndexes.get? parent with
-    | some index =>
-        let group := groups[index]!
-        groups := groups.set! index { group with entries := group.entries.push member }
-    | none =>
-        let (title, declared) := groupRelationHeader state parent
-        groupIndexes := groupIndexes.insert parent groups.size
-        groups := groups.push { label := parent, title, declared, entries := #[member] }
-  return groups
-
-/--
-Resolve traversal-backed group metadata from the member index installed by the
-standard Blueprint traversal pipeline.
--/
-def groupRelationForEntry? (state : TraverseState) (entry : Entry) : Option GroupRelation := do
-  let parent ← entry.parent
-  let labels ← Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? state parent
-  let entries := labels.filterMap fun label =>
-    if label == entry.label then
+  storedBlocks.filterMap fun source =>
+    if source.label == blockData.label then
       none
     else
-      (blockInfo? state label).map (relatedEntryForBlock state)
-  let (title, declared) := groupRelationHeader state parent
-  pure { label := parent, title, declared, entries }
+      let axes := relatedAxes source blockData.label
+      if axes.isEmpty then
+        none
+      else
+        some <| relatedEntryForBlock state source axes
 
-/--
-Construct the metadata shell used by source-backed external-markup entries when
-the label has no rendered block preview body.
--/
-private def emptyTraversalPreview (label : Name) (facet : PreviewCache.Facet) :
-    PreviewCache.Entry :=
-  PreviewCache.Entry.ofBlocks label facet #[]
-
-private def traversalPreviewOrEmpty
-    (state : TraverseState) (label : Name) (facet : PreviewCache.Facet) :
-    PreviewCache.Entry :=
-  (Informal.TraversalIndex.TraversalPreviews.entry? state (PreviewCache.key label facet)).getD
-    (emptyTraversalPreview label facet)
-
-private def blockSemanticManifestEntry
+private def buildGroupRelation?
     (state : TraverseState)
-    (preview : PreviewCache.Entry)
-    (key : String := PreviewCache.key preview.label preview.facet)
-    (targetKind : EntryKind := .block)
-    (externalMarkup? : Option (Array Informal.Data.ExternalMarkup) := none) : Entry :=
+    (storedBlocks : Array Informal.BlockData)
+    (blockData : Informal.BlockData) : Option GroupRelation := do
+  let parent ← blockData.parent
+  let groupData? := Informal.TraversalIndex.Groups.data? state parent
+  let title :=
+    match groupData? with
+    | some groupData =>
+      let header := groupData.header.trimAscii.toString
+      if header.isEmpty then parent.toString else header
+    | none => parent.toString
+  let entries := storedBlocks.filterMap fun source =>
+    if source.label == blockData.label then
+      none
+    else if source.parent == some parent then
+      match source.kind with
+      | .statement _ => some <| relatedEntryForBlock state source
+      | .proof => none
+    else
+      none
+  some {
+    label := parent
+    title
+    declared := groupData?.isSome
+    entries
+  }
+
+def blockEntryOfTraversalPreview
+    (state : TraverseState)
+    (preview : PreviewCache.Entry) : Entry :=
   let blockData? := blockInfo? state preview.label
+  let key := PreviewCache.key preview.label preview.facet
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
   let codeData := blockCodeData? state preview.label preview blockData?
+  let storedBlocks := Informal.collectStoredBlocks state
   {
     key
-    targetKind
+    targetKind := .block
     label := preview.label
     facet := preview.facet
     kind := blockKind? blockData?
@@ -2181,27 +1743,21 @@ private def blockSemanticManifestEntry
     displayCaption := headingParts?.map (·.caption)
     displayLabel := headingParts?.map (·.label)
     href := blockHref state preview.label preview.facet
-    sourceLocation := preview.sourceLocation
     parent := blockData?.bind (·.parent)
     parentTitle := blockParentTitle? state blockData?
     statementUses := blockData?.map (·.statementUses) |>.getD #[]
     proofUses := blockData?.map (·.proofUses) |>.getD #[]
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
-    externalMarkup := externalMarkup?.getD (externalMarkupArray state preview.label)
-    sources := sourceRefsForBlockLabel state preview.label
+    externalMarkup := externalMarkupArray state preview.label
     uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-    usedBy := blockData?.map (buildUsedByRelations state ·) |>.getD #[]
+    usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+    group := blockData?.bind (buildGroupRelation? state storedBlocks)
     ownerDisplayName := blockData?.bind (·.ownerDisplayName)
     tags := blockData?.map (·.tags) |>.getD #[]
     priority := blockData?.bind (·.priority)
     effort := blockData?.bind (·.effort)
   }
-
-def blockEntryOfTraversalPreview
-    (state : TraverseState)
-    (preview : PreviewCache.Entry) : Entry :=
-  blockSemanticManifestEntry state preview
 
 def findTraversalBlockEntry? (state : TraverseState) (key : String) :
     Option (PreviewCache.Entry × Entry) := do
@@ -2212,27 +1768,24 @@ private def buildTraversalEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (hoverState : Verso.Code.Hover.State Output.Html)
-    (verbose : Bool := false) :
+    (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  let decodedEntries := Informal.PreviewSource.traversalStoredEntries state
-  logBuildProgressItemCount verbose "traversal preview entries" decodedEntries.size
-  for decoded in decodedEntries do
+  for decoded in Informal.PreviewSource.traversalStoredEntries state do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
-      if !entry.hasRenderedBody then
+      if entry.blocks.isEmpty then
         continue
-      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.renderedBody.blocks impls state
+      let rendered ← Informal.renderManualBlocksHtmlWithStateAndHovers entry.blocks impls state
         (logError := logError) (hoverState := hoverState)
       hoverState := rendered.hoverState
       let html := rendered.html.asString
-      if htmlStringIsBlank html then
+      if html.trimAscii.isEmpty then
         continue
       let manifestEntry := blockEntryOfTraversalPreview state entry
       entries := entries.push manifestEntry
@@ -2246,15 +1799,10 @@ private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : 
 private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
-    (previewBackedEntries : Array Entry)
-    (renderConfig : Informal.ExternalMarkupRender.Config := {})
-    (verbose : Bool := false) :
-    IO (Array Entry × Array HtmlCache.Entry) := do
+    (previewBackedEntries : Array Entry) : IO (Array Entry) := do
   let mut entries := #[]
-  let mut htmlEntries := #[]
-  let decodedEntries := Informal.TraversalIndex.ExternalMarkup.entries state
-  logBuildProgressItemCount verbose "external markup manifest entries" decodedEntries.size
-  for decoded in decodedEntries do
+  let storedBlocks := Informal.collectStoredBlocks state
+  for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
@@ -2264,172 +1812,63 @@ private def buildExternalMarkupEntries
         continue
       if hasPreviewBackedBlockEntry previewBackedEntries data.label then
         continue
-      let statementPreview := traversalPreviewOrEmpty state data.label .statement
-      let manifestEntry := blockSemanticManifestEntry state statementPreview
-        (key := externalMarkupEntryKey data.label)
-        (targetKind := .externalMarkup)
-        (externalMarkup? := some data.markup.toArray)
-      entries := entries.push manifestEntry
-      if let some markup := Informal.ExternalMarkupRender.selected? renderConfig manifestEntry.externalMarkup then
-        let heading := manifestEntry.heading
-        if let some html := renderExternalMarkupEntryHtml renderConfig manifestEntry.blockData
-            heading.caption heading.label markup manifestEntry.externalMarkup manifestEntry.sources then
-          htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
-  pure (entries, htmlEntries)
-
-private def declarationRangeToLspRange (range : Lean.DeclarationRange) : Lean.Lsp.Range := {
-  start := {
-    line := range.pos.line - 1
-    character := range.charUtf16
-  }
-  «end» := {
-    line := range.endPos.line - 1
-    character := range.endCharUtf16
-  }
-}
-
-private def externalDeclSourceLocation (decl : Informal.Data.ExternalRef) :
-    Informal.Data.SourceLocationResult :=
-  match decl.provenance.sourcePath?, decl.range? with
-  | some path, some range =>
-      Informal.Data.SourceLocationResult.found {
-        path
-        range := declarationRangeToLspRange range
-        href := decl.sourceHref?
+      let blockData? := blockInfo? state data.label
+      let headingParts? := blockHeadingParts? state data.label .statement blockData?
+      entries := entries.push {
+        key := externalMarkupEntryKey data.label
+        targetKind := .externalMarkup
+        label := data.label
+        facet := .statement
+        kind := blockKind? blockData?
+        title := blockTitle state data.label .statement blockData?
+        displayCaption := headingParts?.map (·.caption)
+        displayLabel := headingParts?.map (·.label)
+        href := blockHref state data.label
+        parent := blockData?.bind (·.parent)
+        parentTitle := blockParentTitle? state blockData?
+        statementUses := blockData?.map (·.statementUses) |>.getD #[]
+        proofUses := blockData?.map (·.proofUses) |>.getD #[]
+        externalMarkup := data.markup.toArray
+        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
+        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
+        group := blockData?.bind (buildGroupRelation? state storedBlocks)
+        ownerDisplayName := blockData?.bind (·.ownerDisplayName)
+        tags := blockData?.map (·.tags) |>.getD #[]
+        priority := blockData?.bind (·.priority)
+        effort := blockData?.bind (·.effort)
       }
-  | none, none =>
-      Informal.Data.SourceLocationResult.unavailable
-        s!"Lean declaration source path and range unavailable for {decl.canonical}"
-  | none, some _ =>
-      Informal.Data.SourceLocationResult.unavailable
-        s!"Lean declaration source path unavailable for {decl.canonical}"
-  | some _, none =>
-      Informal.Data.SourceLocationResult.unavailable
-        s!"Lean declaration source range unavailable for {decl.canonical}"
-
-private def leanCodePreviewSourceLocation (entry : Informal.LeanCodePreview.Entry) :
-    Informal.Data.SourceLocationResult :=
-  match entry.source with
-  | .externalDecl decl => externalDeclSourceLocation decl
-  | .inlineBlocks _ sourceLocation => sourceLocation
-
-private def leanCodePreviewManifestEntry
-    (state : TraverseState)
-    (sourceRefs : Std.HashMap String (Array Informal.Source.Ref))
-    (key : String)
-    (entry : Informal.LeanCodePreview.Entry) : Entry := {
-  key
-  targetKind :=
-    match entry.source with
-    | .inlineBlocks .. => .inlineLeanCode
-    | .externalDecl _ => .leanDecl
-  label := entry.target
-  facet := .statement
-  title :=
-    match entry.source with
-    | .inlineBlocks .. => s!"Lean code for {entry.target}"
-    | .externalDecl _ => Informal.LeanCodePreview.title entry.target
-  sources := (sourceRefs.get? key).getD #[]
-  href := Informal.TraversalIndex.LeanCodePreviews.href? state key
-  sourceLocation := leanCodePreviewSourceLocation entry
-}
+  pure entries
 
 private def buildLeanCodeEntries
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
     (state : TraverseState)
-    (hoverState : Verso.Code.Hover.State Output.Html)
-    (verbose : Bool := false) :
+    (hoverState : Verso.Code.Hover.State Output.Html) :
     IO (Array Entry × Array HtmlCache.Entry × Verso.Code.Hover.State Output.Html) := do
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
-  let mut timings := #[]
-  let sourceRefs ←
-    if verbose then
-      let sourceRefsStart ← IO.monoMsNow
-      let sourceRefs := leanCodePreviewSourceRefs state
-      let sourceRefsFinish ← IO.monoMsNow
-      logBuildProgress true
-        s!"Lean code preview source refs built in {elapsedMsText (sourceRefsFinish - sourceRefsStart)}"
-      pure sourceRefs
-    else
-      pure <| leanCodePreviewSourceRefs state
-  let decodedEntries ←
-    if verbose then
-      let decodeStart ← IO.monoMsNow
-      let decodedEntries := Informal.TraversalIndex.LeanCodePreviews.entries state
-      let decodeFinish ← IO.monoMsNow
-      logBuildProgress true <|
-        s!"Lean code preview entries: {storedEntryCountText decodedEntries.size}; " ++
-        s!"decoded in {elapsedMsText (decodeFinish - decodeStart)}"
-      pure decodedEntries
-    else
-      pure <| Informal.TraversalIndex.LeanCodePreviews.entries state
-  for decoded in decodedEntries do
+  for decoded in Informal.TraversalIndex.LeanCodePreviews.entries state do
     match decoded with
     | .error err =>
       logError s!"Blueprint manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.data
-      let key := stored.canonicalName
-      if verbose then
-        let start ← IO.monoMsNow
-        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
-          (logError := logError) (hoverState := hoverState)
-        let renderFinish ← IO.monoMsNow
-        hoverState := rendered.hoverState
-        let html := rendered.html.asString
-        let stringifyFinish ← IO.monoMsNow
-        let htmlIsEmpty := htmlStringIsBlank html
-        let blankCheckFinish ← IO.monoMsNow
-        let htmlBytes := html.utf8ByteSize
-        let bytesFinish ← IO.monoMsNow
-        if htmlIsEmpty then
-          timings := timings.push {
-            key
-            kind := leanCodePreviewTimingKind entry
-            totalMs := bytesFinish - start
-            renderMs := renderFinish - start
-            stringifyMs := stringifyFinish - renderFinish
-            blankCheckMs := blankCheckFinish - stringifyFinish
-            bytesMs := bytesFinish - blankCheckFinish
-            metadataMs := 0
-            storeMs := 0
-            htmlBytes
-          }
-          continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
-        let metadataFinish ← IO.monoMsNow
-        entries := entries.push manifestEntry
-        htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
-        let storeFinish ← IO.monoMsNow
-        timings := timings.push {
-          key
-          kind := leanCodePreviewTimingKind entry
-          totalMs := storeFinish - start
-          renderMs := renderFinish - start
-          stringifyMs := stringifyFinish - renderFinish
-          blankCheckMs := blankCheckFinish - stringifyFinish
-          bytesMs := bytesFinish - blankCheckFinish
-          metadataMs := metadataFinish - bytesFinish
-          storeMs := storeFinish - metadataFinish
-          htmlBytes
-        }
-      else
-        let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
-          (logError := logError) (hoverState := hoverState)
-        hoverState := rendered.hoverState
-        let html := rendered.html.asString
-        if htmlStringIsBlank html then
-          continue
-        let manifestEntry := leanCodePreviewManifestEntry state sourceRefs key entry
-        entries := entries.push manifestEntry
-        htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
-  if verbose then
-    logBuildProgress true <|
-      s!"Lean code preview emitted {entries.size} manifest entries"
-  logLeanCodePreviewTimings verbose timings
+      let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
+        (logError := logError) (hoverState := hoverState)
+      hoverState := rendered.hoverState
+      let html := rendered.html.asString
+      if html.trimAscii.isEmpty then
+        continue
+      let manifestEntry : Entry := {
+        key := Informal.TraversalIndex.LeanCodePreviews.lookupKey entry.target
+        targetKind := .leanDecl
+        label := entry.target
+        facet := .statement
+        title := Informal.LeanCodePreview.title entry.target
+      }
+      entries := entries.push manifestEntry
+      htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries, hoverState)
 
 private def renderCitationEntryHtml
@@ -2462,7 +1901,7 @@ private def buildCitationEntries
       let citation := stored.data
       let (html, hoverState') ← renderCitationEntryHtml impls logError state citation hoverState
       hoverState := hoverState'
-      if htmlStringIsBlank html then
+      if html.trimAscii.isEmpty then
         continue
       let manifestEntry : Entry := {
         key := citation.key
@@ -2476,140 +1915,107 @@ private def buildCitationEntries
       htmlEntries := htmlEntries.push { key := manifestEntry.key, html }
   pure (entries, htmlEntries, hoverState)
 
-private def buildSourceDocuments
-    (logError : String → IO Unit)
-    (state : TraverseState) : IO (Array Informal.Source.Document) := do
-  let mut documents := #[]
-  for decoded in Informal.TraversalIndex.SourceDocuments.entries state do
-    match decoded with
-    | .error err =>
-      logError s!"Blueprint manifest: malformed source-document entry {err.canonicalName}: {err.message}"
-    | .ok stored =>
-      documents := documents.push stored.data
-  pure <| documents.qsort (fun a b => a.id < b.id)
-
-private def validateSourceRefs
-    (logError : String → IO Unit)
-    (documents : Array Informal.Source.Document)
-    (state : TraverseState) : IO Unit := do
-  for decoded in Informal.TraversalIndex.SourceRefs.entries state do
-    match decoded with
-    | .error err =>
-      logError s!"Blueprint manifest: malformed source-ref entry {err.canonicalName}: {err.message}"
-    | .ok stored =>
-      unless documents.any (fun doc => doc.id == stored.data.document) do
-        logError s!"Blueprint manifest: source ref for label {stored.canonicalName} references unknown source document '{stored.data.document}'"
-
 /--
 Build the semantic Blueprint manifest and rendered-fragment cache from a
 completed Manual traversal state.
-
-This is the traversal-to-public-data boundary: traversal domains may contain
-semantic payloads that are not visible as rendered page bodies, such as bodyless
-external-markup directives carrying Lean preview keys. Preserve those facts in
-the manifest, and keep rendered fragments in the HTML cache.
 -/
 def buildPreviewDataFiles
     (impls : ExtensionImpls)
     (logError : String → IO Unit)
-    (preparedState : PreparedPreviewState)
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {})
-    (verbose : Bool := false) : IO Files := do
-  let state := preparedState.state
+    (state : TraverseState) : IO Files := do
   let hoverState := HtmlCache.initialHoverState
-  let (traversalPreviews, traversalHtml, hoverState) ←
-    withTimedBuildProgress verbose "building traversal preview entries" <|
-      buildTraversalEntries impls logError state hoverState (verbose := verbose)
-  let (externalMarkupPreviews, externalMarkupHtml) ←
-    withTimedBuildProgress verbose "building external markup manifest entries" <|
-      buildExternalMarkupEntries logError state traversalPreviews externalMarkupConfig (verbose := verbose)
-  let (leanCodePreviews, leanCodeHtml, hoverState) ←
-    withTimedBuildProgress verbose "building Lean code preview entries" <|
-      buildLeanCodeEntries impls logError state hoverState (verbose := verbose)
-  let (citationPreviews, citationHtml, hoverState) ←
-    withTimedBuildProgress verbose "building citation preview entries" <|
-      buildCitationEntries impls logError state hoverState
-  let sourceDocuments ←
-    withTimedBuildProgress verbose "building source document catalog" <|
-      buildSourceDocuments logError state
-  withTimedBuildProgress verbose "validating source references" <|
-    validateSourceRefs logError sourceDocuments state
-  let (previews, groups, htmlEntries, graphs) ←
-    withTimedBuildProgress verbose "assembling Blueprint manifest/cache indexes" <| do
-      let previews :=
-        (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort
-          (fun a b => a.key < b.key)
-      let groups := buildGroupRelations state
-      let htmlEntries :=
-        (traversalHtml ++ externalMarkupHtml ++ leanCodeHtml ++ citationHtml).qsort
-          (fun a b => a.key < b.key)
-      let mut graphEntries := #[]
-      for decoded in Informal.GraphApi.cachedEntries state do
-        match decoded with
-        | .error err =>
-            logError s!"Blueprint manifest: malformed graph entry {err.canonicalName}: {err.message}"
-        | .ok stored =>
-            graphEntries := graphEntries.push stored.data
-      let graphs := graphEntries.qsort (fun a b => a.key < b.key)
-      pure (previews, groups, htmlEntries, graphs)
-  let htmlCache : HtmlCache.File := {
-    entries := htmlEntries
-    hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
+  let (traversalPreviews, traversalHtml, hoverState) ← buildTraversalEntries impls logError state hoverState
+  let externalMarkupPreviews ← buildExternalMarkupEntries logError state traversalPreviews
+  let (leanCodePreviews, leanCodeHtml, hoverState) ← buildLeanCodeEntries impls logError state hoverState
+  let (citationPreviews, citationHtml, hoverState) ← buildCitationEntries impls logError state hoverState
+  let previews := (traversalPreviews ++ externalMarkupPreviews ++ leanCodePreviews ++ citationPreviews).qsort (fun a b => a.key < b.key)
+  let htmlEntries := (traversalHtml ++ leanCodeHtml ++ citationHtml).qsort (fun a b => a.key < b.key)
+  let graphs := Informal.GraphApi.cachedData state
+  pure {
+    manifest := { previews, graphs }
+    htmlCache := {
+      entries := htmlEntries
+      hoverDocs := HtmlCache.HoverDoc.ofDedup hoverState.dedup
+    }
   }
-  let model : PreviewDataModel := {
-    manifest := { previews, groups, graphs, sourceDocuments }
-    htmlCache
-  }
-  pure model.finish
 
-private def dumpPreviewDataJson
-    (select : Files → Json)
-    (text : Part Manual)
-    (options : List String)
-    (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {})
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 := do
-  let options ←
-    match parsePdfOptions options with
-    | .ok (_, options) => pure options
-    | .error err =>
-        IO.eprintln err
-        return 2
-  let errorCount : IO.Ref Nat ← IO.mkRef 0
-  let logError msg := do
-    errorCount.modify (· + 1)
-    IO.eprintln msg
-  let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
-  let traverseCfg := { cfg with verbose := false }
-  let (_text, traverseState) ←
-    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti traverseCfg text) extensionImpls
-      |>.run (callbackLogger logError)
-  let preparedState := PreparedPreviewState.prepare traverseState
-  let traverseState := preparedState.state
-  let files ← buildPreviewDataFiles extensionImpls logError preparedState externalMarkupConfig
-    (verbose := cfg.verbose)
-  let logger := callbackLogger logError
-  reportPreviewMetadataLossWarnings logger traverseState files.manifest
-  IO.println <| jsonPretty <| select files
-  if (← errorCount.get) == 0 then pure 0 else pure 1
+private def parseRenderConfigOptions (config : RenderConfig := {}) :
+    List String → ReaderT ExtensionImpls IO RenderConfig
+  | ("--output"::dir::more) => parseRenderConfigOptions { config with destination := dir } more
+  | ("--depth"::n::more) => parseRenderConfigOptions { config with htmlDepth := n.toNat! } more
+
+  | ("--with-tex"::more) => parseRenderConfigOptions { config with emitTeX := true } more
+  | ("--without-tex"::more) => parseRenderConfigOptions { config with emitTeX := false } more
+
+  | ("--with-html-single"::more) => parseRenderConfigOptions { config with emitHtmlSingle := .immediately } more
+  | ("--delay-html-single"::more) =>
+    match Verso.CLI.requireFilename "--delay-html-single" more with
+    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlSingle := .delay f } more'
+    | .error e => throw (↑ e)
+  | ("--resume-html-single"::more) =>
+    match Verso.CLI.requireFilename "--resume-html-single" more with
+    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlSingle := .resumeFrom f } more'
+    | .error e => throw (↑ e)
+  | ("--without-html-single"::more) => parseRenderConfigOptions { config with emitHtmlSingle := .no } more
+
+  | ("--with-html-multi"::more) => parseRenderConfigOptions { config with emitHtmlMulti := .immediately } more
+  | ("--delay-html-multi"::more) =>
+    match Verso.CLI.requireFilename "--delay-html-multi" more with
+    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlMulti := .delay f } more'
+    | .error e => throw (↑ e)
+  | ("--resume-html-multi"::more) =>
+    match Verso.CLI.requireFilename "--resume-html-multi" more with
+    | .ok f more' _ => parseRenderConfigOptions { config with emitHtmlMulti := .resumeFrom f } more'
+    | .error e => throw (↑ e)
+  | ("--without-html-multi"::more) => parseRenderConfigOptions { config with emitHtmlMulti := .no } more
+
+  | ("--with-word-count"::more) =>
+    match Verso.CLI.requireFilename "--with-word-count" more with
+    | .ok file more' _ => parseRenderConfigOptions { config with wordCount := some file } more'
+    | .error e => throw (↑ e)
+  | ("--without-word-count"::more) => parseRenderConfigOptions { config with wordCount := none } more
+  | ("--draft"::more) => parseRenderConfigOptions { config with draft := true } more
+  | ("--verbose"::more) => parseRenderConfigOptions { config with verbose := true } more
+  | ("--remote-config"::more) =>
+    match Verso.CLI.requireFilename "--remote-config" more with
+    | .ok file more' _ => parseRenderConfigOptions { config with remoteConfigFile := some file } more'
+    | .error e => throw (↑ e)
+  | (other :: _) => throw (↑ s!"Unknown option {other}")
+  | [] => pure config
 
 private def dumpManifest
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {})
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 :=
-  dumpPreviewDataJson (fun files => toJson files.manifest)
-    text options extensionImpls config externalMarkupConfig
+    (config : RenderConfig := {}) : IO UInt32 := do
+  let errorCount : IO.Ref Nat ← IO.mkRef 0
+  let logError msg := do
+    errorCount.modify (· + 1)
+    IO.eprintln msg
+  let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
+  let (_text, traverseState) ←
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+      |>.run (callbackLogger logError)
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  IO.println <| jsonPretty <| toJson files.manifest
+  if (← errorCount.get) == 0 then pure 0 else pure 1
 
 private def dumpHtmlCache
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {})
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) : IO UInt32 :=
-  dumpPreviewDataJson (fun files => toJson files.htmlCache)
-    text options extensionImpls config externalMarkupConfig
+    (config : RenderConfig := {}) : IO UInt32 := do
+  let errorCount : IO.Ref Nat ← IO.mkRef 0
+  let logError msg := do
+    errorCount.modify (· + 1)
+    IO.eprintln msg
+  let cfg ← ReaderT.run (parseRenderConfigOptions config options) extensionImpls
+  let (_text, traverseState) ←
+    ReaderT.run (Verso.Genre.Manual.traverseHtmlMulti cfg text) extensionImpls
+      |>.run (callbackLogger logError)
+  let files ← buildPreviewDataFiles extensionImpls logError traverseState
+  IO.println <| jsonPretty <| toJson files.htmlCache
+  if (← errorCount.get) == 0 then pure 0 else pure 1
 
 private def readJsonFileOrEmptyObject (path : System.FilePath) : IO Json := do
   if !(← path.pathExists) then
@@ -2632,40 +2038,69 @@ Emit the canonical Blueprint manifest and rendered-fragment cache files.
 The manifest contains semantic data keyed by `PreviewCache`, Lean preview key,
 or citation key. The rendered-fragment cache contains the corresponding opaque
 rendered fragments for browser hover previews and file-mode consumers such as
-slides. Emission also writes the generated ESM APIs under `-verso-data/`, merges
-hover payloads into the Verso docs side table, and reports non-fatal warnings
-when traversal-preview metadata was lost before export.
+slides.
 -/
-def emitBlueprintPreviewData
-    (extensionImpls : ExtensionImpls)
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
-    BlueprintExtraStep := fun mode cfg preparedState _text => do
+def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fun mode cfg state _text => do
   let logger : Verso.Logger IO ← read
   let logError := fun msg => logger.reportError msg
-  let modeDescription := htmlModeDescription mode
-  let state := preparedState.state
-  let files ← buildPreviewDataFiles extensionImpls logError
-    preparedState.previewState externalMarkupConfig
-    (verbose := cfg.verbose)
-  reportPreviewMetadataLossWarnings logger state files.manifest
-  let countSummary :=
-    s!"{files.manifest.previews.size} previews, " ++
-    s!"{files.htmlCache.entries.size} HTML cache entries, " ++
-    s!"{files.manifest.sourceDocuments.size} source documents, " ++
-    s!"{files.manifest.graphs.size} graphs"
-  logBuildProgress cfg.verbose s!"{modeDescription} preview data contains {countSummary}"
+  let files ← buildPreviewDataFiles extensionImpls logError state
   let outDir := outDirForMode cfg mode
   let dataDir := outDir / "-verso-data"
-  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} Blueprint manifest/cache files" <| do
-    IO.FS.createDirAll dataDir
-    IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
-    IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
-  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} Blueprint runtime modules" <|
-    writeBlueprintRuntimeModules dataDir
-  withTimedBuildProgress cfg.verbose s!"merging {modeDescription} hover docs" <|
-    mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
-  withTimedBuildProgress cfg.verbose s!"writing {modeDescription} public xref" <|
-    emitPublicXref mode logError cfg state
+  let apiDir := dataDir / apiModuleDirname
+  IO.FS.createDirAll dataDir
+  IO.FS.createDirAll apiDir
+  IO.FS.writeFile (dataDir / manifestFilename) (toJson files.manifest).compress
+  IO.FS.writeFile (dataDir / htmlCacheFilename) (toJson files.htmlCache).compress
+  -- Graph metrics contract artifact for the Wave 3 dashboard
+  -- (`{schemaVersion, criticalPath, nodes : [{label, fanIn, fanOut, depth, height, onCriticalPath}]}`).
+  IO.FS.writeFile (dataDir / "graph-metrics.json")
+    (toJson (Informal.GraphMetrics.computeGraphMetrics (Informal.GraphApi.masterGraph state))).compress
+  -- All-declarations registry (every project decl, wired or not), when a
+  -- `blueprint_graph` block built one under `includeAllDecls`. Absent otherwise —
+  -- no file written, no behavior change for consumers without the flag.
+  match Informal.TraversalIndex.DeclRegistry.raw? state with
+  | some registryJson => IO.FS.writeFile (dataDir / "decl-registry.json") registryJson
+  | none => pure ()
+  IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
+  IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs
+  IO.FS.writeFile (dataDir / apiCommonModuleFilename) apiCommonModuleMjs
+  IO.FS.writeFile (dataDir / graphApiModuleFilename) graphApiModuleMjs
+  IO.FS.writeFile (dataDir / dataApiModuleFilename) dataApiModuleMjs
+  IO.FS.writeFile (dataDir / previewApiModuleFilename) previewApiModuleMjs
+  writePageRuntimeModules dataDir
+  writePreviewRuntimeModules dataDir
+  IO.FS.writeFile (apiDir / graphApiModuleAliasFilename) graphApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / dataApiModuleAliasFilename) dataApiModuleAliasMjs
+  IO.FS.writeFile (apiDir / previewApiModuleAliasFilename) previewApiModuleAliasMjs
+  mergeHtmlCacheHoverDocsIntoVersoDocs (outDir / "-verso-docs.json") files.htmlCache
+  emitPublicXref mode logError cfg state
+
+def dumpSchemaFlag : String := "--dump-schema"
+def dumpManifestFlag : String := "--dump-manifest"
+def dumpHtmlCacheFlag : String := "--dump-html-cache"
+def helpFlag : String := "--help"
+
+def helpText : String := String.intercalate "\n" [
+  "Blueprint manifest/cache options:",
+  s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
+  s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
+  s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
+  s!"  {helpFlag}              Show this help text and exit.",
+  "",
+  "Standard manual rendering options:",
+  "  --output <dir>",
+  "  --depth <n>",
+  "  --with-tex | --without-tex",
+  "  --with-html-single | --delay-html-single <file> | --resume-html-single <file> | --without-html-single",
+  "  --with-html-multi | --delay-html-multi <file> | --resume-html-multi <file> | --without-html-multi",
+  "  --with-word-count <file> | --without-word-count",
+  "  --draft",
+  "  --verbose",
+  "  --remote-config <file>"
+]
+
+private def stripFlag (flag : String) (args : List String) : List String :=
+  args.filter (· != flag)
 
 def handleDumpSchemaFlag (args : List String) : IO (Option UInt32 × List String) := do
   if args.contains dumpSchemaFlag then
@@ -2678,28 +2113,20 @@ def handleCliFlags
     (text : Part Manual)
     (options : List String)
     (extensionImpls : ExtensionImpls)
-    (config : RenderConfig := {})
-    (externalMarkupConfig : Informal.ExternalMarkupRender.Config := {}) :
-    IO (Option UInt32 × List String × Informal.ExternalMarkupRender.Config) := do
+    (config : RenderConfig := {}) : IO (Option UInt32 × List String) := do
   if options.contains helpFlag then
     IO.println helpText
-    pure (some 0, stripFlag helpFlag options, externalMarkupConfig)
-  else if options.contains dumpSchemaFlag then
-    let (dumped?, options) ← handleDumpSchemaFlag options
-    pure (dumped?, options, externalMarkupConfig)
+    pure (some 0, stripFlag helpFlag options)
+  else if options.contains dumpManifestFlag then
+    let options := stripFlag dumpManifestFlag options
+    let code ← dumpManifest text options extensionImpls config
+    pure (some code, options)
+  else if options.contains dumpHtmlCacheFlag then
+    let options := stripFlag dumpHtmlCacheFlag options
+    let code ← dumpHtmlCache text options extensionImpls config
+    pure (some code, options)
   else
-    let (externalMarkupConfig, options) ←
-      parseExternalMarkupRenderOptionsIO externalMarkupConfig options
-    if options.contains dumpManifestFlag then
-      let options := stripFlag dumpManifestFlag options
-      let code ← dumpManifest text options extensionImpls config externalMarkupConfig
-      pure (some code, options, externalMarkupConfig)
-    else if options.contains dumpHtmlCacheFlag then
-      let options := stripFlag dumpHtmlCacheFlag options
-      let code ← dumpHtmlCache text options extensionImpls config externalMarkupConfig
-      pure (some code, options, externalMarkupConfig)
-    else
-      pure (none, options, externalMarkupConfig)
+    handleDumpSchemaFlag options
 
 private abbrev HtmlTraverse :=
   RenderConfig → Part Manual → EmitM (Part Manual × TraverseState)
@@ -2708,7 +2135,7 @@ private abbrev HtmlEmitter :=
   RenderConfig → Part Manual → TraverseState → EmitM Unit
 
 private def emitBlueprintHtml
-    (extraSteps : List BlueprintExtraStep)
+    (extraSteps : List ExtraStep)
     (how : EmitHtml)
     (mode : Mode)
     (cfg : RenderConfig)
@@ -2716,63 +2143,51 @@ private def emitBlueprintHtml
     (traverse : HtmlTraverse)
     (emit : HtmlEmitter) :
     EmitM Unit := do
-  let modeDescription := htmlModeDescription mode
   let outDir := outputDirNameForMode mode
   match how with
   | .no => pure ()
   | .immediately =>
-      let (text', traverseState) ←
-        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
-          traverse cfg text
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
-        emitXrefsJson (cfg.destination / outDir) traverseState
-      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
-        emit cfg text' traverseState
+      if cfg.verbose then
+        IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
+      let (text', traverseState) ← traverse cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      emit cfg text' traverseState
       for step in extraSteps do
-        step mode cfg.toConfig preparedState text'
+        step mode cfg.toConfig traverseState text'
   | .delay f =>
-      let (text', traverseState) ←
-        withTimedBuildProgress cfg.verbose s!"{modeDescription} HTML traversal" <|
-          traverse cfg text
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"writing {modeDescription} xrefs" <|
-        emitXrefsJson (cfg.destination / outDir) traverseState
-      withTimedBuildProgress cfg.verbose s!"saving {modeDescription} traversal state to {f}" <|
-        SavedState.mk text' traverseState |>.save f
+      let (text', traverseState) ← traverse cfg text
+      let traverseState := patchBlueprintTraverseState traverseState
+      emitXrefsJson (cfg.destination / outDir) traverseState
+      SavedState.mk text' traverseState |>.save f
   | .resumeFrom f =>
-      let { text, traverseState } ←
-        withTimedBuildProgress cfg.verbose s!"loading {modeDescription} traversal state from {f}" <|
-          SavedState.load f
-      let preparedState := PreparedRendererState.prepare traverseState
-      let traverseState := preparedState.state
-      withTimedBuildProgress cfg.verbose s!"emitting {modeDescription} HTML" <|
-        emit cfg text traverseState
+      let { text, traverseState } ← SavedState.load f
+      let traverseState := patchBlueprintTraverseState traverseState
+      emit cfg text traverseState
       for step in extraSteps do
-        step mode cfg.toConfig preparedState text
+        step mode cfg.toConfig traverseState text
 
 def blueprintMain (text : Part Manual)
     (extensionImpls : ExtensionImpls := by exact extension_impls%)
     (options : List String)
     (config : RenderConfig := {})
-    (extraSteps : List BlueprintExtraStep := [])
-    (pdfOptions : PdfOptions := {}) : IO UInt32 :=
+    (extraSteps : List ExtraStep := []) : IO UInt32 :=
   ReaderT.run go extensionImpls
 where
   go : ReaderT ExtensionImpls IO UInt32 := do
     let extensionImpls ← read
+    -- `withBuildMetadataAssets` keeps `.bp_build_metadata` CSS in the global head; the
+    -- build-metadata block itself is no longer spliced into `index.html` — it renders
+    -- as a section on the PM page instead (`ExtraPages.emitBlueprintPmPage`, which reads
+    -- `readBuildMetadata` directly). `emitBuildMetadata` / `insertBuildMetadataHtml?`
+    -- stay defined (still unit-tested; reusable splicer).
     let cfg ← parseRenderConfigOptions (withBuildMetadataAssets config) options
-    let cfg := if pdfOptions.enabled then { cfg with emitTeX := true } else cfg
-    let buildMetadata ← readBuildMetadata
-    let extraSteps := emitBuildMetadata buildMetadata :: extraSteps
 
     let action : ReaderT ExtensionImpls (BuildLogT IO) Unit := do
       if cfg.emitTeX then
-        withTimedBuildProgress cfg.verbose "TeX emission" <| do
-          emitTeX cfg.toConfig text
-          Informal.TeX.Cleanup.patchFile cfg.toConfig text
+        if cfg.verbose then
+          IO.println "Saving TeX"
+        emitTeX cfg.toConfig text
 
       emitBlueprintHtml extraSteps cfg.emitHtmlSingle .single cfg text
         traverseHtmlSingle emitHtmlSingle
@@ -2780,10 +2195,9 @@ where
         traverseHtmlMulti emitHtmlMulti
 
       if let some wcFile := cfg.wordCount then
-        withTimedBuildProgress cfg.verbose s!"word count emission to {wcFile}" <|
-          wordCount wcFile cfg.toConfig text
-      if pdfOptions.enabled then
-        Informal.TeX.Pdf.compile pdfOptions cfg.toConfig
+        if cfg.verbose then
+          IO.println s!"Saving word counts to {wcFile}"
+        wordCount wcFile cfg.toConfig text
     Verso.runWithLogger (action.run extensionImpls)
 
 def blueprintMainWithPreviewData
@@ -2791,19 +2205,12 @@ def blueprintMainWithPreviewData
     (options : List String)
     (extensionImpls : ExtensionImpls)
     (config : RenderConfig := {})
-    (extraSteps : List BlueprintExtraStep := []) : IO UInt32 := do
+    (extraSteps : List ExtraStep := []) : IO UInt32 := do
   let config := withBlueprintAssets config
-  let (dumped?, options, externalMarkupConfig) ← handleCliFlags text options extensionImpls config
+  let (dumped?, options) ← handleCliFlags text options extensionImpls config
   if let some code := dumped? then
     return code
-  let (pdfOptions, options) ←
-    match parsePdfOptions options with
-    | .ok parsed => pure parsed
-    | .error err =>
-        IO.eprintln err
-        return 2
   blueprintMain text (extensionImpls := extensionImpls) (options := options) (config := config)
-    (extraSteps := emitBlueprintPreviewData extensionImpls externalMarkupConfig :: extraSteps)
-    (pdfOptions := pdfOptions)
+    (extraSteps := emitBlueprintPreviewData extensionImpls :: extraSteps)
 
 end Informal.PreviewManifest

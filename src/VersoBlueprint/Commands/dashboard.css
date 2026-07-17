@@ -1,0 +1,356 @@
+/* The dashboard is one cohesive surface: a single content column whose every
+   top-level card (hero, charts, owners/tags) fills the same left/right edges,
+   separated by one uniform vertical gap. The landing surface reads a touch wider
+   than the prose measure; scope the widening strictly to the section that hosts
+   it so content/reading pages keep the standard measure. The dashboard carries
+   no margin notes, so centre the column (rather than left-aligning it like the
+   note-bearing prose) so it doesn't sit left-heavy on mid/wide viewports. */
+main section:has(.bp_dashboard) {
+  max-width: var(--bp-dashboard-column);
+  margin-inline: auto;
+}
+
+.bp_dashboard {
+  margin-top: 1rem;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Featured node cards on the landing dashboard. They are two-column node cards
+   (`.bp_card2`) rendered as tiles inside the centred data column — NOT full-bleed
+   node-page cards — so neutralise the node-card full-width breakout (defined in
+   NodeCard.lean) exactly as graft tiles do, and keep them stacked in the
+   dashboard's flex column. `.content-wrapper` + two `:has()` (specificity 0,3,1)
+   beats the breakout rule (0,2,1); `.bp_dashboard .bp_card2` (0,2,0) beats its
+   `.bp_card2` width rule (0,1,0). Token-driven, so both themes come for free. */
+main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) {
+  container-type: normal;
+  max-width: var(--bp-dashboard-column);
+}
+
+main > .content-wrapper:has(.bp_dashboard):has(.bp_card2) > section {
+  max-width: var(--bp-dashboard-column);
+}
+
+.bp_dashboard_featured {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-5);
+}
+
+.bp_dashboard .bp_card2 {
+  width: auto;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+/* De-chromed dashboard (E): the hero, chart cards and reading map are plain
+   typographic sections separated by whitespace (the `.bp_dashboard` flex-column
+   gap), not boxed cards. */
+.bp_dashboard_hero {
+  padding: 0;
+}
+
+.bp_dashboard_hero_head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.bp_dashboard_title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_dashboard_hero_pct {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--bp-color-accent-success);
+  line-height: 1;
+}
+
+/* Owners + tags share a clean two-equal-column row; the status and per-chapter
+   cards span the full column. On narrow screens everything collapses to one. */
+.bp_dashboard_charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.bp_dashboard_chart {
+  padding: 0;
+}
+
+.bp_dashboard_chart_wide {
+  grid-column: 1 / -1;
+}
+
+.bp_dashboard_chart_title {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--bp-fs-caption, 0.78rem);
+  font-weight: 700;
+  color: var(--bp-color-text-subtle);
+}
+
+/* JS enhancement: when a chart draws successfully it adds this class and the
+   server-rendered fallback is hidden. With JS off (or on any draw error) the
+   class is never added, so the fallback stays visible. */
+.bp_dashboard_chart_enhanced .bp_dashboard_chart_fallback {
+  display: none;
+}
+
+.bp_dashboard_chart_canvas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.bp_dashboard_svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  flex: 1 1 14rem;
+}
+
+.bp_dashboard_legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: var(--font-mono-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--bp-fs-caption, 0.78rem);
+  color: var(--bp-color-text-muted);
+  flex: 1 1 10rem;
+}
+
+.bp_dashboard_legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bp_dashboard_swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 0.2rem;
+  border: 1px solid var(--bp-color-border-soft);
+  flex: 0 0 auto;
+}
+
+.bp_dashboard_detail {
+  margin-top: 0;
+  border-top: 1px solid var(--bp-color-border-soft);
+  padding-top: 0.6rem;
+}
+
+.bp_dashboard_detail > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--bp-color-text-muted);
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--bp-radius-md);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.bp_dashboard_detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bp_dashboard_detail > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.46rem;
+  height: 0.46rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease;
+  opacity: 0.6;
+}
+
+.bp_dashboard_detail[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.bp_dashboard_detail > summary:hover {
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-strong);
+}
+
+/* Progress bars (shared by the hero overall bar and per-chapter bars). */
+.bp_progress {
+  margin: 0.5rem 0;
+}
+
+.bp_progress_head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.bp_progress_label {
+  font-weight: 600;
+  color: var(--bp-color-text);
+  font-size: var(--bp-fs-small);
+}
+
+.bp_progress_pct {
+  font-weight: 700;
+  color: var(--bp-color-text-subtle);
+  font-size: var(--bp-fs-small);
+}
+
+.bp_progress_track {
+  display: flex;
+  width: 100%;
+  height: 0.85rem;
+  border-radius: var(--bp-radius-pill);
+  overflow: hidden;
+  background: var(--bp-color-surface-muted);
+  border: 1px solid var(--bp-color-border-soft);
+}
+
+.bp_progress_hero .bp_progress_track {
+  height: 1.4rem;
+}
+
+.bp_progress_seg {
+  display: block;
+  height: 100%;
+}
+
+.bp_progress_seg_closed {
+  background: var(--bp-color-status-formalized);
+}
+
+.bp_progress_seg_ready {
+  background: var(--bp-color-status-ready);
+}
+
+.bp_progress_seg_blocked {
+  background: var(--bp-color-status-blocked);
+}
+
+.bp_progress_seg_other {
+  background: var(--bp-color-border-strong);
+}
+
+.bp_progress_legend {
+  margin-top: 0.22rem;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_dashboard_chapters_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+@media (max-width: 700px) {
+  .bp_dashboard_charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* "Start here" reading map: foundations / critical-path spine / goals, computed
+   from the graph metrics and shown above the charts as a guided reading path. */
+.bp_readingmap {
+  margin: 0;
+  padding: 0;
+}
+
+.bp_readingmap_title {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.bp_readingmap_intro {
+  margin: 0 0 0.85rem;
+  font-size: var(--bp-fs-small);
+  color: var(--bp-color-text-muted, #475569);
+}
+
+.bp_readingmap_cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem 1.2rem;
+}
+
+/* Let each column shrink below the min-content width of a long unbreakable Lean
+   identifier (grid items default to `min-width: auto`), so a token like
+   `Complex.norm_natCast_cpow_sub_add_…` can't expand its column and overlap the
+   neighbouring one. Paired with the item wrapping rule below. */
+.bp_readingmap_cols > div {
+  min-width: 0;
+}
+
+.bp_readingmap_col_title {
+  margin: 0 0 0.35rem;
+  font-size: var(--bp-fs-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bp-color-text-muted, #475569);
+}
+
+.bp_readingmap_col_hint {
+  margin: 0 0 0.5rem;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint, #64748b);
+}
+
+.bp_readingmap_list,
+.bp_readingmap_spine {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--bp-fs-small);
+  /* Long Lean identifiers carry injected <wbr> break points (Sections.lean
+     `withIdentifierBreaks`) after each `_`/`.`, so wrapping prefers those segment
+     boundaries; `break-word` only splits an otherwise-unbreakable token as a last
+     resort (avoiding a lone trailing character on its own line). */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.bp_readingmap_list {
+  list-style: disc;
+}
+
+.bp_readingmap_spine {
+  list-style: decimal;
+}
+
+.bp_readingmap a {
+  color: var(--bp-color-accent, #2563eb);
+  text-decoration: none;
+}
+
+.bp_readingmap a:hover {
+  text-decoration: underline;
+}

@@ -85,14 +85,12 @@ public def renderNodeWithContent
     (cfg : ManifestRenderConfig)
     (node : BlueprintNode)
     (entry : Informal.PreviewManifest.Entry)
-    (content : Informal.PreviewManifest.BlockRender.RenderedContent)
-    (group? : Option Informal.PreviewManifest.GroupRelation := none) : Html :=
+    (content : Informal.PreviewManifest.BlockRender.RenderedContent) : Html :=
   .tag "div" (cfg.nodeAttrs node) <|
     Informal.PreviewManifest.BlockRender.renderWithRenderedContent
       cfg.blockRenderConfig
       entry
       content
-      group?
       {
         displayLabelOverride? := node.displayLabel?
         compact := node.compact
@@ -116,7 +114,7 @@ public def renderNodeFromManifestCache
         | none =>
             pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
         | some content =>
-            pure <| renderNodeWithContent cfg node entry content (index.groupForEntry? entry)
+            pure <| renderNodeWithContent cfg node entry content
 
 public def readBlueprintManifest (path : System.FilePath) :
     IO Informal.PreviewManifest.File :=
