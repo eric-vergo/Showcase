@@ -53,7 +53,7 @@ def Summary.previewLabels (data : Summary) : Array Name :=
     data.renderFailures.map (·.label) ++
     data.definitionIndex.map (·.label) ++
     data.theoremLikeIndex.map (·.label) ++
-    data.actionablePriorities.map (·.label) ++
+    data.topPriorities.map (·.label) ++
     data.quickWins.map (·.label) ++
     data.mostUsed.map (·.label) ++
     data.heaviestPrerequisites.map (·.label) ++
@@ -75,8 +75,20 @@ def Summary.previewLabels (data : Summary) : Array Name :=
 -- Keep this binding in Lean so summary CSS edits ride along with command module rebuilds.
 def summaryCss := include_str "../summary.css"
 
+-- Dashboard styling (hero/progress bars + chart layout) rides along with command
+-- module rebuilds; it themes via the same `--bp-color-*` tokens as the summary.
+-- (The hero summary cards + worklist/audit/mathlib CTA links were dropped from the
+-- landing dashboard, so their now-orphaned CSS was removed from dashboard.css.)
+def dashboardCss := include_str "../dashboard.css"
+
 def summaryAssetBundle : BlueprintAssetBundle :=
   previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss])
+
+-- The dashboard embeds the full summary detail sections (and their preview panel)
+-- inside a collapsed `<details>`, so it needs the summary CSS in addition to the
+-- dashboard layout CSS.
+def dashboardAssetBundle : BlueprintAssetBundle :=
+  previewPanelInlinePreviewAssetBundle (cssExtras := [summaryCss, dashboardCss])
 
 open Verso Doc Html Genre Manual
 open Verso.Output.Html
@@ -87,15 +99,22 @@ abbrev SummaryHtmlM := HtmlT Manual (ReaderT AllRemotes (ReaderT ExtensionImpls 
 structure SummaryHtmlContext where
   entryHref? : Name → Option String
   declHref? : Name → Name → Option String
-  declPreviewLookupKey? : Name → Name → Option String
   previewLookupKey? : Name → Option String
+  /-- Friendly display label for an entry (e.g. "Lemma 7.7"), matching the
+      dashboard reading map. Populated at the call sites from
+      `Informal.NodeRoute.friendlyEntryLabel`. -/
+  displayLabel : Name → String
+  /-- Whether Lean decl spans carry their inline hover-preview hook. Disabled on
+      surfaces that ship no preview runtime (e.g. the audit page) so decl spans
+      don't advertise a preview interaction that does nothing (STY-AUDIT-13). -/
+  declPreviews : Bool := true
 
 structure SummaryRows where
   pendingInformalRows : Array Output.Html := #[]
   sorryRows : Array Output.Html := #[]
   missingRows : Array Output.Html := #[]
   renderFailureRows : Array Output.Html := #[]
-  actionablePriorityRows : Array Output.Html := #[]
+  topPriorityRows : Array Output.Html := #[]
   quickWinRows : Array Output.Html := #[]
   statementUsedItems : Array UsageItem := #[]
   proofUsedItems : Array UsageItem := #[]
@@ -121,29 +140,30 @@ structure SummaryRows where
 
 private def summaryRenderLeanDeclLink (target : Name) (node : Output.Html)
     (href? : Option String) (linkTitle? : Option String := Option.none)
-    (previewLookupKey? : Option String := Option.none) : Output.Html :=
+    (withPreview : Bool := true) : Output.Html :=
   match href? with
   | some href =>
     Informal.LeanCodeLink.renderResolved
       target node "" (some href) linkTitle?
       (previewTitle := Informal.LeanCodePreview.title target)
-      (previewLookupKey? := previewLookupKey?)
+      (withPreview := withPreview)
   | Option.none => node
 
 private def SummaryHtmlContext.entryRef (ctx : SummaryHtmlContext) (label : Name) : Output.Html :=
   let previewLookupKey? := ctx.previewLookupKey? label
   let previewLabel? : Option Name := previewLookupKey?.map (fun _ => label)
+  let labelText := ctx.displayLabel label
   let labelNode : Output.Html :=
     match ctx.entryHref? label with
-    | Option.some href => {{ <a href={{href}}> <code>s!"{label}"</code> </a> }}
-    | Option.none => {{ <code>s!"{label}"</code> }}
+    | Option.some href => {{ <a href={{href}}>{{.text true labelText}}</a> }}
+    | Option.none => {{ <span>{{.text true labelText}}</span> }}
   Informal.HoverRender.summaryPreviewWrap labelNode previewLabel? previewLookupKey?
 
 private def SummaryHtmlContext.declItems (ctx : SummaryHtmlContext) (label : Name)
     (decls : List Name) : Array Output.Html :=
   decls.toArray.map fun decl =>
-    let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}}
-      (ctx.declHref? label decl) (previewLookupKey? := ctx.declPreviewLookupKey? label decl)
+    let declNode := summaryRenderLeanDeclLink decl {{<code>s!"{decl}"</code>}} (ctx.declHref? label decl)
+      (withPreview := ctx.declPreviews)
     {{ <li>{{declNode}}</li> }}
 
 private def summaryBadgeClass : String := "bp_summary_badge"
@@ -162,14 +182,6 @@ private def summaryWarnBadge (text : String) : Output.Html :=
 
 private def summaryErrorBadge (text : String) : Output.Html :=
   summaryBadge text summaryBadgeErrorClass
-
-private def summaryBadgeClassForStatus (status : Data.ProvedStatus) : String :=
-  if status.isMissing then
-    summaryBadgeErrorClass
-  else if status.isIncomplete then
-    summaryBadgeWarnClass
-  else
-    summaryBadgeClass
 
 private def summaryBadgeRow (badges : Array Output.Html) : Output.Html :=
   if badges.isEmpty then
@@ -228,9 +240,11 @@ def summaryCard (label value : String) (status? : Option String := Option.none)
     match status? with
     | Option.some status => {{<span class="bp_summary_status">{{.text true status}}</span>}}
     | Option.none => .empty
+  -- De-emphasise a zero count so live, actionable numbers dominate the card row.
+  let valueClass := if value == "0" then "bp_summary_value bp_summary_value_zero" else "bp_summary_value"
   {{ <div class={{className}}>
       <span class="bp_summary_label">{{.text true label}}</span>
-      <span class="bp_summary_value">{{.text true value}}</span>
+      <span class={{valueClass}}>{{.text true value}}</span>
       {{statusNode}}
     </div> }}
 
@@ -252,6 +266,45 @@ def summaryOptionalWarnCard (visible : Bool) (label value : String)
     summaryWarnCard label value status?
   else
     .empty
+
+/--
+A segmented horizontal progress bar with a numeric breakdown rendered beside it.
+
+The numeric breakdown (`closed` / `ready` / `blocked` / `total`) is plain
+server-rendered text and is the JS-off fallback: it is always present in the HTML
+regardless of whether any client chart enhancement runs. Segment widths are
+percentages of `max 1 total`, so an empty group never divides by zero. A trailing
+"other" segment fills whatever is left between the highlighted buckets and the
+total (e.g. informal-only / incomplete entries).
+-/
+def summaryProgressBar (label : String) (closed ready blocked total : Nat) : Output.Html :=
+  let denom := Nat.max 1 total
+  let closedPct := closed * 100 / denom
+  let readyPct := ready * 100 / denom
+  let blockedPct := blocked * 100 / denom
+  let otherPct := 100 - Nat.min 100 (closedPct + readyPct + blockedPct)
+  let seg (cls : String) (pct : Nat) : Output.Html :=
+    if pct == 0 then .empty
+    else {{ <span class={{cls}} "style"={{s!"width:{pct}%"}}></span> }}
+  let segs : Array Output.Html := #[
+    seg "bp_progress_seg bp_progress_seg_closed" closedPct,
+    seg "bp_progress_seg bp_progress_seg_ready" readyPct,
+    seg "bp_progress_seg bp_progress_seg_blocked" blockedPct,
+    seg "bp_progress_seg bp_progress_seg_other" otherPct
+  ]
+  let ariaLabel := s!"{label}: {closed} closed, {ready} ready, {blocked} blocked of {total} total"
+  {{ <div class="bp_progress" role="group" "aria-label"={{ariaLabel}}>
+      <div class="bp_progress_head">
+        <span class="bp_progress_label">{{.text true label}}</span>
+        <span class="bp_progress_pct">{{.text true s!"{closedPct}%"}}</span>
+      </div>
+      <div class="bp_progress_track">
+        {{segs}}
+      </div>
+      <div class="bp_progress_legend">
+        {{.text true s!"closed {closed} / ready {ready} / blocked {blocked} / total {total}"}}
+      </div>
+    </div> }}
 
 private def summaryCapRows (rows : Array Output.Html) (noun : String) : Array Output.Html :=
   let visible := (rows.toList.take triageVisibleLimit).toArray
@@ -365,10 +418,8 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     SummaryHtmlM Output.Html := do
   let entryRef := ctx.entryRef item.label
   let declLink :=
-    summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}}
-      (ctx.declHref? item.label item.decl)
-      (previewLookupKey? := ctx.declPreviewLookupKey? item.label item.decl)
-  let view := item.status.presentation
+    summaryRenderLeanDeclLink item.decl {{<code>s!"{item.decl}"</code>}} (ctx.declHref? item.label item.decl)
+      (withPreview := ctx.declPreviews)
   let declPrefix ←
     match item.status with
     | .missing => pure "Missing declaration: "
@@ -377,34 +428,30 @@ private def SummaryHtmlContext.sorryRow (ctx : SummaryHtmlContext) (item : Sorry
     | .proved =>
       Verso.reportError s!"Unexpected proved status in summary sorry details for {item.decl}"
       pure "Declaration: "
-  let refsTxt :=
+  -- Discrete, scannable pills instead of one bracketed semicolon-run-on blob.
+  -- The severity pill (the headline fact) carries the warn tint; the kind /
+  -- location / refs pills stay neutral (lead-metric-only convention, AUDIT-05).
+  -- The "refs: N" pill is emitted only when the count is actually known, so the
+  -- internal "unknown" sentinel never leaks.
+  let kindBadge := summaryBadge (if item.isTheorem then "theorem/lemma" else "definition")
+  let severityBadge := summaryWarnBadge item.status.statusLabel
+  let locationText := item.status.sorryLocationText
+  let locationBadges : Array Output.Html :=
+    if locationText == "location unknown" then #[] else #[summaryBadge locationText]
+  let refsBadges : Array Output.Html :=
     match item.status with
     | .containsSorry _ =>
       let (typeSorryRefs, proofSorryRefs) := item.status.sorryRefCounts
       let sorryRefs := typeSorryRefs + proofSorryRefs
-      if sorryRefs > 0 then toString sorryRefs else "unknown"
-    | .proved => "0"
-    | _ => "n/a"
-  let statusLabel :=
-    if item.status.isProved then
-      item.status.statusLabel
-    else
-      view.externalHeaderText
-  let whereTxt :=
-    if item.status.isProved then
-      item.status.statusLabel
-    else
-      item.status.sorryLocationText
-  let badgeClass := summaryBadgeClassForStatus item.status
+      if sorryRefs > 0 then #[summaryMetricBadge "refs" sorryRefs] else #[]
+    | _ => #[]
+  let badges := #[kindBadge, severityBadge] ++ locationBadges ++ refsBadges
   let body := {{
     <div class="bp_summary_item_body">
-      {{.text true declPrefix}} {{declLink}} " "
-      <span class={{badgeClass}}>
-        s!"[{if item.isTheorem then "theorem/lemma" else "definition"}; {statusLabel}; {whereTxt}; refs: {refsTxt}]"
-      </span>
+      {{.text true declPrefix}} {{declLink}}
     </div>
   }}
-  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body #[] #[]
+  pure <| summaryItemShell entryRef (some (.text true s!"({item.kind})")) body badges #[]
 
 private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (label written canonical : Name) :
     Output.Html :=
@@ -413,7 +460,7 @@ private def SummaryHtmlContext.externalDeclNode (ctx : SummaryHtmlContext) (labe
       canonical
       {{<code>s!"{canonical}"</code>}}
       (ctx.declHref? label canonical)
-      (previewLookupKey? := ctx.declPreviewLookupKey? label canonical)
+      (withPreview := ctx.declPreviews)
   if written == canonical then
     canonicalNode
   else
@@ -543,6 +590,38 @@ private def summaryTagRollupRow (item : TagRollupItem) : Output.Html :=
     badges
     #[]
 
+/--
+Owner rollup row whose head links to the owner's dedicated PM page (`href`).
+
+Identical to `summaryOwnerRollupRow` except the display name is wrapped in an
+anchor. Used by the dashboard cross-links; the plain (unlinked) variant remains
+the default for the standalone summary block.
+-/
+def summaryOwnerRollupRowLinked (item : OwnerRollupItem) (href : String) : Output.Html :=
+  let badges :=
+    summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
+  summaryItemShell
+    {{ <a href={{href}}>{{.text true item.displayName}}</a> }}
+    (some {{<code>s!"{item.owner}"</code>}})
+    .empty
+    badges
+    #[]
+
+/--
+Tag rollup row whose head links to the tag's dedicated PM page (`href`).
+
+Identical to `summaryTagRollupRow` except the tag badge is wrapped in an anchor.
+-/
+def summaryTagRollupRowLinked (item : TagRollupItem) (href : String) : Output.Html :=
+  let badges :=
+    summaryRollupBadges item.totalEntries item.actionableEntries item.quickWins item.linkedPrs
+  summaryItemShell
+    {{ <a href={{href}}>{{summaryWarnMetricBadge "tag" item.tag}}</a> }}
+    Option.none
+    .empty
+    badges
+    #[]
+
 private def SummaryHtmlContext.metadataEntryRow (ctx : SummaryHtmlContext) (item : MetadataEntryItem)
     (bodyText : String) : Output.Html :=
   let entryRef := ctx.entryRef item.label
@@ -614,7 +693,7 @@ private def SummaryRows.withOverviewRows
   let pendingInformalRows := ctx.leanRows data.pendingInformalEntries
   let sorryRows ← data.sorryDetails.toArray.mapM ctx.sorryRow
   let missingRows := data.missingLeanDecls.toArray.map ctx.missingRow
-  let actionablePriorityRows := data.actionablePriorities.toArray.map ctx.priorityRow
+  let topPriorityRows := data.topPriorities.toArray.map ctx.priorityRow
   let quickWinRows := data.quickWins.toArray.map ctx.priorityRow
   let blockerCount := data.missingLeanDecls.length + data.sorryDetails.length
   let blockerRows := missingRows ++ sorryRows
@@ -623,7 +702,7 @@ private def SummaryRows.withOverviewRows
     pendingInformalRows
     sorryRows
     missingRows
-    actionablePriorityRows
+    topPriorityRows
     quickWinRows
     blockerCount
     blockerRows

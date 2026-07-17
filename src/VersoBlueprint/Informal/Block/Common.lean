@@ -145,26 +145,33 @@ def externalCodeEntryTitle (found total missing withGaps : Nat) : String :=
   else
     s!"Lean declarations (all present: {found}/{total})"
 
+/--
+Wrap a rendered code body in the standard Blueprint code panel.
+
+The panel is *bare* (1E): no wrapper box, no visible "Lean code for …" header,
+no status indicator — just the code. The `<details class="bp_code_block">`
+skeleton stays because the fold options (`verso.blueprint.foldCodeBlocks`) and
+the proof-hider JS selectors key off it; its `<summary>` is visually hidden
+(sr-only, see `.bp_code_summary_hidden` in `Informal/Block/Assets.lean`) so the
+caption + `summaryTitle` remain as the accessible name and keyboard toggle.
+-/
 def mkCodePanel
     (header : CodePanelHeader) (summaryTitle : String)
-    (progressBar body : Output.Html)
+    (body : Output.Html)
     (attrs : Array (String × String) := #[])
     (folded : Bool := false) : Output.Html :=
   open Verso.Output.Html in
   let attrs :=
     if folded then attrs else attrs.push ("open", "open")
+  let summaryText :=
+    match header.number? with
+    | some number => s!"{header.caption} {number}"
+    | none => header.caption
   {{
-    <div class="bp_wrapper bp_code_panel_wrapper">
+    <div class="bp_code_panel_wrapper">
       <details class="bp_code_block bp_code_panel" {{attrs}}>
-        <summary class="bp_heading lemma_thmheading" title={{summaryTitle}}>
-          <span class="bp_heading_title_row">
-            <span class="bp_caption lemma_thmcaption bp_code_summary_text">{{.text true header.caption}}</span>
-            {{if let some number := header.number? then
-                {{<span class="bp_label lemma_thmlabel bp_code_summary_label">{{.text true number}}</span>}}
-              else
-                .empty}}
-          </span>
-          {{progressBar}}
+        <summary class="bp_code_summary_hidden" title={{summaryTitle}}>
+          {{.text true summaryText}}
         </summary>
         {{body}}
       </details>

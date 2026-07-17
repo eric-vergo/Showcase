@@ -18,8 +18,6 @@ abbrev Entry := Informal.PreviewManifest.Entry
 abbrev RelatedEntry := Informal.PreviewManifest.RelatedEntry
 abbrev GroupRelation := Informal.PreviewManifest.GroupRelation
 abbrev RelationAxis := Informal.PreviewManifest.RelationAxis
-abbrev PreviewArtifactIndex := Informal.PreviewManifest.PreviewArtifactIndex
-abbrev WorkQueueItem := Informal.PreviewManifest.WorkQueueItem
 
 def defaultSite : FilePath := "_out" / "site"
 
@@ -38,7 +36,6 @@ def querySelectorLines : List String := [
   "owners",
   "tags",
   "work-queue",
-  "metadata",
   "search <text>",
   "code <decl>",
   "stats"
@@ -100,7 +97,7 @@ private def relatedEntryJson (entry : RelatedEntry) : Json :=
     ("label", nameJson entry.label),
     ("title", Json.str entry.title),
     ("href", optionStringJson entry.href),
-    ("previewKey", toJson entry.previewKey),
+    ("previewKey", Json.str entry.previewKey),
     ("axes", Json.arr (entry.axes.map relationAxisJson))
   ]
 
@@ -115,7 +112,6 @@ private def groupRelationJson (group : GroupRelation) : Json :=
 private def entrySummaryFields (entry : Entry) : List (String × Json) := [
     ("key", Json.str entry.key),
     ("label", nameJson entry.label),
-    ("authoredLabel", Json.str entry.authoredLabel),
     ("title", Json.str entry.title),
     ("kind", toJson entry.kind),
     ("facet", toJson entry.facet),
@@ -132,25 +128,15 @@ private def entrySummaryFields (entry : Entry) : List (String × Json) := [
 private def entrySummaryJson (entry : Entry) : Json :=
   Json.mkObj (entrySummaryFields entry)
 
-private def workQueueItemJson (item : WorkQueueItem) : Json :=
-  Json.mkObj <| entrySummaryFields item.entry ++ [
-    ("nextStep", Json.str item.nextStep),
-    ("statementStatus", Json.str item.graphNode.statementStatus.toText),
-    ("proofStatus", Json.str item.graphNode.proofStatus.toText)
-  ]
-
-private def entryGroupJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  match manifest.groupForEntry? entry with
+private def entryGroupJson (entry : Entry) : Json :=
+  match entry.group with
   | none => Json.null
   | some group => groupRelationJson group
 
-private def entryDetailFields
-    (entry : Entry)
-    (group? : Option GroupRelation := none) : List (String × Json) := [
+private def entryDetailFields (entry : Entry) : List (String × Json) := [
     ("key", Json.str entry.key),
     ("targetKind", toJson entry.targetKind),
     ("label", nameJson entry.label),
-    ("authoredLabel", Json.str entry.authoredLabel),
     ("facet", toJson entry.facet),
     ("kind", toJson entry.kind),
     ("title", Json.str entry.title),
@@ -165,28 +151,28 @@ private def entryDetailFields
     ("codeData", toJson entry.codeData),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", group?.map groupRelationJson |>.getD Json.null),
+    ("group", entryGroupJson entry),
     ("ownerDisplayName", optionStringJson entry.ownerDisplayName),
     ("tags", stringArrayJson entry.tags),
     ("priority", optionStringJson entry.priority),
     ("effort", optionStringJson entry.effort)
   ]
 
-def entryJson (entry : Entry) (group? : Option GroupRelation := none) : Json :=
-  Json.mkObj (entryDetailFields entry group?)
+def entryJson (entry : Entry) : Json :=
+  Json.mkObj (entryDetailFields entry)
 
-private def entryResponseJson (manifest : ManifestFile) (entry : Entry) : Json :=
-  responseJson (entryDetailFields entry (manifest.groupForEntry? entry))
+private def entryResponseJson (entry : Entry) : Json :=
+  responseJson (entryDetailFields entry)
 
-private def entryAllJson (manifest : ManifestFile) (label : String) (entry : Entry) : Json :=
+private def entryAllJson (label : String) (entry : Entry) : Json :=
   responseJson [
     ("label", Json.str label),
-    ("node", entryJson entry (manifest.groupForEntry? entry)),
+    ("node", entryJson entry),
     ("statementUses", Json.arr (entry.statementUses.map useRefJson)),
     ("proofUses", Json.arr (entry.proofUses.map useRefJson)),
     ("uses", Json.arr (entry.uses.map relatedEntryJson)),
     ("usedBy", Json.arr (entry.usedBy.map relatedEntryJson)),
-    ("group", entryGroupJson manifest entry)
+    ("group", entryGroupJson entry)
   ]
 
 private def incrementCount (counts : Array (String × Nat)) (key : String) : Array (String × Nat) :=
@@ -205,7 +191,7 @@ private def countsJson (counts : Array (String × Nat)) : Json :=
   Json.mkObj (counts.toList.map fun (key, count) => (key, Json.num count))
 
 private def statsJson (manifest : ManifestFile) : Json :=
-  let entries := manifest.queryableStatementEntries
+  let entries := manifest.blockStatementEntries
   let byKind := entries.foldl (fun counts entry => incrementCount counts (kindString entry.kind)) #[]
   let byOwner := entries.foldl
     (fun counts entry => entry.ownerDisplayName.map (incrementCount counts ·) |>.getD counts)
@@ -228,7 +214,7 @@ private def missingLabelJson (label : String) : Json :=
 
 private def withPrimaryEntry
     (manifest : ManifestFile) (label : String) (mkJson : Entry → Json) : Except String Json :=
-  match manifest.findPrimaryQueryableEntry? label with
+  match manifest.findPrimaryBlockEntry? label with
   | some entry => .ok (mkJson entry)
   | none => .ok (missingLabelJson label)
 
@@ -238,12 +224,12 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok querySelectorsJson
   | ["labels"] =>
       .ok <| responseJson [
-        ("labels", Json.arr (manifest.queryableStatementEntries.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries.map entrySummaryJson))
       ]
   | ["node", label] =>
-      withPrimaryEntry manifest label (entryResponseJson manifest)
+      withPrimaryEntry manifest label entryResponseJson
   | ["all", label] =>
-      withPrimaryEntry manifest label (entryAllJson manifest label)
+      withPrimaryEntry manifest label (entryAllJson label)
   | ["uses", label] =>
       withPrimaryEntry manifest label fun entry =>
         responseJson [
@@ -262,7 +248,7 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       withPrimaryEntry manifest label fun entry =>
         responseJson [
           ("label", Json.str label),
-          ("group", entryGroupJson manifest entry)
+          ("group", entryGroupJson entry)
         ]
   | ["owners"] =>
       .ok <| responseJson [("owners", stringArrayJson manifest.ownerValues)]
@@ -270,21 +256,17 @@ def queryJson (manifest : ManifestFile) (args : List String) : Except String Jso
       .ok <| responseJson [("tags", stringArrayJson manifest.tagValues)]
   | ["work-queue"] =>
       .ok <| responseJson [
-        ("entries", Json.arr (manifest.workQueueItems.map workQueueItemJson))
-      ]
-  | ["metadata"] =>
-      .ok <| responseJson [
-        ("entries", Json.arr (manifest.metadataEntries.map entrySummaryJson))
+        ("entries", Json.arr (manifest.workQueueEntries.map entrySummaryJson))
       ]
   | ["search", text] =>
       .ok <| responseJson [
         ("query", Json.str text),
-        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesText text) |>.map entrySummaryJson))
       ]
   | ["code", decl] =>
       .ok <| responseJson [
         ("query", Json.str decl),
-        ("labels", Json.arr (manifest.queryableStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
+        ("labels", Json.arr (manifest.blockStatementEntries |>.filter (fun entry => entry.matchesCode decl) |>.map entrySummaryJson))
       ]
   | ["stats"] =>
       .ok (statsJson manifest)
@@ -312,97 +294,50 @@ def readGeneratedData (site : FilePath) : IO GeneratedData := do
   let htmlCache ← readHtmlCacheForSite site
   pure { manifest, htmlCache }
 
+def cacheKeySet (cache : HtmlCacheFile) : Std.HashSet String :=
+  cache.entries.foldl (fun keys entry => keys.insert entry.key) {}
+
+def manifestKeySet (manifest : ManifestFile) : Std.HashSet String :=
+  manifest.previews.foldl (fun keys entry => keys.insert entry.key) {}
+
 private def pushMissingCacheKey
-    (index : PreviewArtifactIndex) (errors : Array String) (context key : String) :
-    Array String :=
-  if index.hasCacheKey key then
+    (keys : Std.HashSet String) (errors : Array String) (context key : String) : Array String :=
+  if keys.contains key then
     errors
   else
     errors.push s!"missing HTML cache entry for {context}: {key}"
 
-private def pushMissingManifestKey
-    (index : PreviewArtifactIndex) (errors : Array String) (context key : String) :
-    Array String :=
-  if index.hasManifestKey key then
-    errors
-  else
-    errors.push s!"missing manifest entry for {context}: {key}"
-
-private def checkPreviewReference
-    (index : PreviewArtifactIndex) (context key : String) (errors : Array String) :
-    Array String :=
-  let errors := pushMissingManifestKey index errors context key
-  pushMissingCacheKey index errors context key
-
 private def checkRelatedEntries
-    (index : PreviewArtifactIndex) (context : String) (entries : Array RelatedEntry)
+    (cacheKeys : Std.HashSet String) (context : String) (entries : Array RelatedEntry)
     (errors : Array String) : Array String :=
   entries.foldl
     (fun errors entry =>
-      match entry.previewKey with
-      | none => errors
-      | some key =>
-        let context := s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
-        checkPreviewReference index context key.value errors)
-    errors
-
-private def checkGraphNodePreviewKey
-    (index : PreviewArtifactIndex) (graphKey : String) (node : Informal.Graph.NodeData)
-    (errors : Array String) : Array String :=
-  match node.previewKey with
-  | none => errors
-  | some key =>
-      checkPreviewReference index
-        s!"graph {graphKey} node {Informal.PreviewManifest.labelString node.label}"
-        key.value errors
-
-private def checkGraphVariantPreviewKeys
-    (index : PreviewArtifactIndex) (graphKey : String)
-    (variant : Informal.Graph.GraphRenderVariant) (errors : Array String) : Array String :=
-  variant.previewKeyByNodeId.foldl
-    (fun errors (nodeId, key) =>
-      checkPreviewReference index
-        s!"graph {graphKey} variant {variant.key} node {nodeId}"
-        key errors)
-    errors
-
-private def checkGraphPreviewKeys
-    (index : PreviewArtifactIndex) (graph : Informal.Graph.GraphData)
-    (errors : Array String) : Array String :=
-  let errors :=
-    graph.nodes.foldl (fun errors node => checkGraphNodePreviewKey index graph.key node errors) errors
-  graph.variants.foldl
-    (fun errors variant => checkGraphVariantPreviewKeys index graph.key variant errors)
+      pushMissingCacheKey cacheKeys errors
+        s!"{context} relation {Informal.PreviewManifest.labelString entry.label}"
+        entry.previewKey)
     errors
 
 def checkGeneratedData (manifest : ManifestFile) (htmlCache : HtmlCacheFile) : Array String :=
-  let index := Informal.PreviewManifest.PreviewArtifactIndex.ofFiles manifest htmlCache
-  let errors := manifest.previews.foldl
+  let manifestKeys := manifestKeySet manifest
+  let cacheKeys := cacheKeySet htmlCache
+  manifest.previews.foldl
     (fun errors entry =>
-      let errors :=
-        if entry.requiresRenderedBody then
-          pushMissingCacheKey index errors s!"entry {entry.key}" entry.key
-        else
-          errors
+      let errors := pushMissingCacheKey cacheKeys errors s!"entry {entry.key}" entry.key
       let errors := entry.leanCodePreviewKeys.foldl
         (fun errors key =>
           let errors :=
-            if index.hasManifestKey key then
-              errors
-            else
-              errors.push s!"missing manifest entry for Lean preview key {key}"
-          pushMissingCacheKey index errors s!"Lean preview key on {entry.key}" key)
+            if manifestKeys.contains key then errors else errors.push s!"missing manifest entry for Lean preview key {key}"
+          pushMissingCacheKey cacheKeys errors s!"Lean preview key on {entry.key}" key)
         errors
-      let errors := checkRelatedEntries index s!"uses of {entry.key}" entry.uses errors
-      checkRelatedEntries index s!"used-by of {entry.key}" entry.usedBy errors)
+      let errors := checkRelatedEntries cacheKeys s!"uses of {entry.key}" entry.uses errors
+      let errors := checkRelatedEntries cacheKeys s!"used-by of {entry.key}" entry.usedBy errors
+      match entry.group with
+      | none => errors
+      | some group =>
+          checkRelatedEntries cacheKeys
+            s!"group {Informal.PreviewManifest.labelString group.label} on {entry.key}"
+            group.entries errors)
     #[]
-  let errors := manifest.groups.foldl
-    (fun errors group =>
-      checkRelatedEntries index
-        s!"group {Informal.PreviewManifest.labelString group.label}"
-        group.entries errors)
-    errors
-  manifest.graphs.foldl (fun errors graph => checkGraphPreviewKeys index graph errors) errors
 
 def checkJsonFromErrors
     (manifest : ManifestFile) (htmlCache : HtmlCacheFile) (errors : Array String) : Json :=

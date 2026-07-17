@@ -50,7 +50,9 @@
     const options = rawOptions && typeof rawOptions === "object" ? rawOptions : {};
     return {
       direction: normalizeGraphDirection(options.direction),
-      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : false)
+      pack: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "pack") ? options.pack : false),
+      // Reuses the pack boolean coercion (handles true/false/"true"/"false"/undefined).
+      allEdges: normalizeGraphPack(Object.prototype.hasOwnProperty.call(options, "allEdges") ? options.allEdges : false)
     };
   }
 
@@ -60,7 +62,10 @@
 
   export function graphOptionsKey(options) {
     const normalized = normalizeGraphOptions(options);
-    return normalized.direction + "|" + graphPackAttr(normalized.pack);
+    // `allEdges` is part of the key so toggling it forces a re-layout: the reduced
+    // and unreduced DOT are different graphs, not a CSS show/hide.
+    return normalized.direction + "|" + graphPackAttr(normalized.pack) +
+      "|" + (normalized.allEdges ? "all" : "reduced");
   }
 
   export function graphLayoutMode(graphRoot, options) {
@@ -114,16 +119,6 @@
     return rect.bottom;
   }
 
-  function updateGraphCanvasOffset(graphRoot) {
-    if (!(graphRoot instanceof Element)) return;
-    const block = graphRoot.closest(".bp_graph_fullwidth");
-    if (!(block instanceof HTMLElement)) return;
-    block.style.setProperty(
-      "--bp-graph-canvas-top",
-      Math.max(0, Math.round(graphRoot.offsetTop)) + "px"
-    );
-  }
-
   function layoutGraphCanvasFill(graphRoot, graphState) {
     const rect = graphRoot.getBoundingClientRect();
     const parent = graphRoot.parentElement;
@@ -148,32 +143,30 @@
 
   export function layoutGraphCanvas(graphRoot, graphState, options) {
     if (!(graphRoot instanceof Element)) return;
-    updateGraphCanvasOffset(graphRoot);
+    // Static/local embeds (node & decl "Local dependency graph") own their height
+    // via CSS — a fixed box that the SVG fills and `fit(true)` centers the graph
+    // within, drag-resizable via CSS `resize: vertical`. NEVER inline-set a page /
+    // viewport height on them: an inflated inline height overrides the CSS box and
+    // mis-fits the fitted SVG (it collapsed to a sliver at constrained widths). CSS
+    // owns the box; the render path reads its client size for `gv.width()/height()`.
+    if (graphRoot.getAttribute("data-bp-graph-static") === "true") return;
     const layoutMode = graphLayoutMode(graphRoot, options);
     if (layoutMode === "fill") {
       layoutGraphCanvasFill(graphRoot, graphState);
       return;
     }
-    const rect = graphRoot.getBoundingClientRect();
-    const viewportHeight = readViewportHeight();
-    const bottomGap = 20;
-    const viewportMaxHeight = Math.max(280, Math.floor(viewportHeight * 0.84));
-    const flowBottom = readGraphCanvasFlowBottom(graphRoot, layoutMode);
-    const trailingHeight = Math.max(0, flowBottom - rect.bottom);
-    const rawAvailableHeight = Math.floor(viewportHeight - rect.top - bottomGap - trailingHeight);
-    const availableHeight =
-      layoutMode === "block" && rawAvailableHeight < 280
-        ? viewportMaxHeight
-        : Math.max(1, rawAvailableHeight);
-    const autoHeight = Math.min(viewportMaxHeight, availableHeight);
-    const minHeight = Math.min(autoHeight, 280);
+    // Page-mode graphs get a fixed, deliberate default height (~40rem) rather than
+    // one derived from the viewport. The user can still drag-resize the canvas
+    // (CSS `resize: vertical`); a dragged height sticks across re-renders (width
+    // reflows, etc.) via the `canvasUserResized` override below.
+    const autoHeight = 640;
+    const minHeight = 280;
     const currentHeight = parsePixelSize(graphRoot.style.height);
     const state = graphState && typeof graphState === "object" ? graphState : null;
 
     graphRoot.style.minHeight = minHeight + "px";
-    // Keep the initial auto-fit height flow-aware, but leave headroom for explicit
-    // user resizing instead of clamping the canvas back to the auto height.
-    graphRoot.style.maxHeight = viewportMaxHeight + "px";
+    // No upper clamp: `resize: vertical` can grow the canvas freely.
+    graphRoot.style.maxHeight = "none";
     if (
       state &&
       Number.isFinite(currentHeight) &&
@@ -183,7 +176,7 @@
       state.canvasUserResized = true;
     }
     if (state && state.canvasUserResized && Number.isFinite(currentHeight)) {
-      const clampedHeight = Math.max(minHeight, Math.min(currentHeight, viewportMaxHeight));
+      const clampedHeight = Math.max(minHeight, currentHeight);
       if (Math.abs(clampedHeight - currentHeight) > 1) {
         graphRoot.style.height = clampedHeight + "px";
       }

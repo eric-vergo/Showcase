@@ -7,8 +7,10 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.Block.Store
+import VersoBlueprint.Informal.Group
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.Lib.PreviewSource
+import VersoBlueprint.PreviewCache
 import VersoBlueprint.TraversalIndex
 
 /-!
@@ -23,7 +25,6 @@ from the main block renderer.
 namespace Informal
 namespace RelatedPanel
 
-open Lean
 open Verso
 open Verso.Genre Manual
 open Verso.Output.Html
@@ -40,17 +41,19 @@ private structure GroupRenderInfo where
 /-- Traversal-backed render context shared by group and dependency header panels. -/
 structure RelationContext where
   state : Verso.Genre.Manual.TraverseState
+  storedBlocks : Array BlockData
 
 /-- Collect the traversal data needed to render related-block panels. -/
 def RelationContext.ofState (state : Verso.Genre.Manual.TraverseState) : RelationContext := {
   state
+  storedBlocks := collectStoredBlocks state
 }
 
 private def blockSummaryTitle (ctx : RelationContext) (data : BlockData) : String :=
   data.displayTitle ctx.state
 
 private def storedBlockByLabel? (ctx : RelationContext) (label : Data.Label) : Option BlockData :=
-  Informal.TraversalIndex.Nodes.data? ctx.state label
+  ctx.storedBlocks.find? (·.label == label)
 
 private def groupRenderInfo?
     (ctx : RelationContext) (data : BlockData) : Option GroupRenderInfo := do
@@ -62,11 +65,12 @@ private def groupRenderInfo?
 /-- One previewable row in a Blueprint related-entry panel. -/
 structure PanelEntry where
   previewId : String
-  previewKey : Option Informal.PreviewKey := none
+  previewKey : String
   previewTitle : String
   label : Data.Label
   href : Option String := none
-  badgeCodes : Array String := #[]
+  badgesHtml : Output.Html := .empty
+  previewFallbackLabel? : Option String := none
   active : Bool := false
 
 /-- Whether a one-entry related panel should stay as an inline preview chip or render the full panel. -/
@@ -216,27 +220,6 @@ private structure UsedByEntry where
   origins : Array Data.UseOrigin := #[]
   intents : Array Data.UseIntent := #[]
 
-private def UsedByEntry.toCacheEntry (entry : UsedByEntry) :
-    Informal.TraversalIndex.RelatedPanelUsedByCache.Entry := {
-  sourceLabel := entry.source.label
-  inStatement := entry.inStatement
-  inProof := entry.inProof
-  origins := entry.origins
-  intents := entry.intents
-}
-
-private def UsedByEntry.ofCacheEntry?
-    (ctx : RelationContext)
-    (entry : Informal.TraversalIndex.RelatedPanelUsedByCache.Entry) : Option UsedByEntry := do
-  let source ← storedBlockByLabel? ctx entry.sourceLabel
-  return {
-    source
-    inStatement := entry.inStatement
-    inProof := entry.inProof
-    origins := entry.origins
-    intents := entry.intents
-  }
-
 private structure UsesEntry where
   label : Data.Label
   target? : Option BlockData := none
@@ -276,74 +259,17 @@ private def addUsedByEntry
   else
     acc.push <| mergeUsedByEntry { source } useRef isProof
 
-private def addUsedByCacheEntry
-    (cache : Data.LabelMap (Array UsedByEntry)) (source : BlockData)
-    (useRef : Data.UseRef) (isProof : Bool) : Data.LabelMap (Array UsedByEntry) :=
-  if source.label == useRef.label then
-    cache
-  else
-    let entries := cache.find? useRef.label |>.getD #[]
-    cache.insert useRef.label (addUsedByEntry entries source useRef isProof useRef.label)
-
-private def buildUsedByCache (blocks : Array BlockData) :
-    Data.LabelMap (Array UsedByEntry) :=
-  let seeded := blocks.foldl
-      (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache block =>
-    match block.kind with
-    | .statement _ => cache.insert block.label #[]
-    | .proof => cache
-  let unsorted := blocks.foldl
-      (init := seeded) fun cache source =>
-    let cache := source.statementUses.foldl (init := cache) fun cache useRef =>
-      addUsedByCacheEntry cache source useRef false
-    source.proofUses.foldl (init := cache) fun cache useRef =>
-      addUsedByCacheEntry cache source useRef true
-  unsorted.foldl
-      (init := (Std.TreeMap.empty : Data.LabelMap (Array UsedByEntry))) fun cache label entries =>
-    cache.insert label (sortUsedByEntries entries)
-
-private def buildGroupMembersCache (blocks : Array BlockData) :
-    Data.LabelMap (Array Data.Label) :=
-  blocks.foldl
-      (init := (Std.TreeMap.empty : Data.LabelMap (Array Data.Label))) fun cache block =>
-    match block.kind, block.parent with
-    | .statement _, some parent =>
-        let members := cache.find? parent |>.getD #[]
-        cache.insert parent (members.push block.label)
-    | _, _ => cache
-
-/--
-Cache relation-panel indexes in traversal domains before HTML emission.
-
-Block renderers are called once per rendered block. Without these caches, each
-renderer rebuilds or scans the full stored-block list for group and reverse
-dependency panels.
--/
-def patchRelationCaches (state : TraverseState) : TraverseState :=
-  let blocks := collectStoredBlocks state
-  let usedByCache := buildUsedByCache blocks
-  let groupMembersCache := buildGroupMembersCache blocks
-  let state :=
-    usedByCache.foldl (init := state) fun state label entries =>
-      Informal.TraversalIndex.RelatedPanelUsedByCache.saveData state label
-        (entries.map fun entry => entry.toCacheEntry)
-  groupMembersCache.foldl (init := state) fun state label entries =>
-    Informal.TraversalIndex.RelatedPanelGroupMembersCache.saveData state label entries
-
 private def collectUsedByEntries
     (ctx : RelationContext) (target : Data.Label) : Array UsedByEntry :=
-  match Informal.TraversalIndex.RelatedPanelUsedByCache.data? ctx.state target with
-  | some entries => entries.filterMap (UsedByEntry.ofCacheEntry? ctx)
-  | none =>
-      sortUsedByEntries <| collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
-        if source.label == target then
-          acc
-        else
-          let acc :=
-            source.statementUses.foldl (init := acc) fun acc useRef =>
-              addUsedByEntry acc source useRef false target
-          source.proofUses.foldl (init := acc) fun acc useRef =>
-            addUsedByEntry acc source useRef true target
+  sortUsedByEntries <| ctx.storedBlocks.foldl (init := #[]) fun acc source =>
+    if source.label == target then
+      acc
+    else
+      let acc :=
+        source.statementUses.foldl (init := acc) fun acc useRef =>
+          addUsedByEntry acc source useRef false target
+      source.proofUses.foldl (init := acc) fun acc useRef =>
+        addUsedByEntry acc source useRef true target
 
 private def mergeUsesEntry (existing : UsesEntry) (useRef : Data.UseRef) (isProof : Bool) :
     UsesEntry :=
@@ -393,19 +319,15 @@ private def collectUsesEntries
 private def collectGroupEntries
     (ctx : RelationContext) (target : BlockData) (group : GroupRenderInfo) :
     Array BlockData :=
-  match Informal.TraversalIndex.RelatedPanelGroupMembersCache.data? ctx.state group.label with
-  | some labels => labels.filterMap fun label =>
-      if label == target.label then none else storedBlockByLabel? ctx label
-  | none =>
-      collectStoredBlocks ctx.state |>.foldl (init := #[]) fun acc source =>
-        if source.label == target.label then
-          acc
-        else if source.parent == some group.label then
-          match source.kind with
-          | .statement _ => acc.push source
-          | .proof => acc
-        else
-          acc
+  ctx.storedBlocks.foldl (init := #[]) fun acc source =>
+    if source.label == target.label then
+      acc
+    else if source.parent == some group.label then
+      match source.kind with
+      | .statement _ => acc.push source
+      | .proof => acc
+    else
+      acc
 
 private def usedByPreviewId (targetLabel sourceLabel : Data.Label) : String :=
   s!"bp-used-by-{Informal.HoverRender.previewKey (toString targetLabel)}-{Informal.HoverRender.previewKey (toString sourceLabel)}"
@@ -415,6 +337,9 @@ private def usesPreviewId (sourceLabel targetLabel : Data.Label) : String :=
 
 private def groupPreviewId (targetLabel sourceLabel : Data.Label) : String :=
   s!"bp-group-{Informal.HoverRender.previewKey (toString targetLabel)}-{Informal.HoverRender.previewKey (toString sourceLabel)}"
+
+private def previewLookupKey (source : BlockData) : String :=
+  PreviewCache.key source.label (PreviewCache.Facet.ofInProgressKind source.kind)
 
 /-- Render a relation-row badge with semantic relation styling classes. -/
 private def relationBadge (className title text : String) : Output.Html :=
@@ -439,107 +364,78 @@ private def useIntentBadgeClass : Data.UseIntent → String
   | .auxiliary => relationScopedBadgeClass "intent" "auxiliary"
   | .technical => relationScopedBadgeClass "intent" "technical"
 
-/-- Compact relation-row payload code for a statement dependency axis. -/
-def statementAxisBadgeCode : String := "s"
-
-/-- Compact relation-row payload code for a proof dependency axis. -/
-def proofAxisBadgeCode : String := "p"
-
-private def useOriginBadgeCode? : Data.UseOrigin → Option String
-  | .manual => none
-  | .automatic => some "oa"
-
-private def useIntentBadgeCode? : Data.UseIntent → Option String
-  | .regular => none
-  | .auxiliary => some "ia"
-  | .technical => some "it"
-
 /-- Statement-axis badge used by normal and manifest-backed relation panels. -/
-private def statementAxisBadge : Output.Html :=
+def statementAxisBadge : Output.Html :=
   relationBadge
     (relationAxisBadgeClass "statement")
     "Declared in the statement"
     "statement"
 
 /-- Proof-axis badge used by normal and manifest-backed relation panels. -/
-private def proofAxisBadge : Output.Html :=
+def proofAxisBadge : Output.Html :=
   relationBadge
     (relationAxisBadgeClass "proof")
     "Declared in the proof"
     "proof"
 
-private def relationBadgeHtml? : String → Option Output.Html
-  | "s" => some statementAxisBadge
-  | "p" => some proofAxisBadge
-  | "oa" =>
-      some <| relationBadge
-        (useOriginBadgeClass .automatic)
-        "Origin: automatic"
-        "automatic"
-  | "ia" =>
-      some <| relationBadge
-        (useIntentBadgeClass .auxiliary)
-        "Intent: auxiliary"
-        "auxiliary"
-  | "it" =>
-      some <| relationBadge
-        (useIntentBadgeClass .technical)
-        "Intent: technical"
-        "technical"
-  | _ => none
+private def renderAxisBadges (inStatement inProof : Bool) : Output.Html :=
+  let statementBadge : Array Output.Html :=
+    if inStatement then #[statementAxisBadge] else #[]
+  let proofBadge : Array Output.Html :=
+    if inProof then #[proofAxisBadge] else #[]
+  .seq (statementBadge ++ proofBadge)
 
-/-- Render compact relation-row badge codes for inline, server-rendered relation chips. -/
-private def renderRelationBadgeCodes (codes : Array String) : Output.Html :=
-  .seq <| codes.filterMap relationBadgeHtml?
+private def renderUsedByAxisBadges (entry : UsedByEntry) : Output.Html :=
+  renderAxisBadges entry.inStatement entry.inProof
 
-private def axisBadgeCodes (inStatement inProof : Bool) : Array String :=
-  let statementBadge : Array String :=
-    if inStatement then #[statementAxisBadgeCode] else #[]
-  let proofBadge : Array String :=
-    if inProof then #[proofAxisBadgeCode] else #[]
-  statementBadge ++ proofBadge
+private def renderUseAxisBadges (entry : UsesEntry) : Output.Html :=
+  renderAxisBadges entry.inStatement entry.inProof
 
-private def usedByAxisBadgeCodes (entry : UsedByEntry) : Array String :=
-  axisBadgeCodes entry.inStatement entry.inProof
-
-private def useAxisBadgeCodes (entry : UsesEntry) : Array String :=
-  axisBadgeCodes entry.inStatement entry.inProof
-
-private def useMetadataBadgeCodes
-    (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Array String :=
-  origins.filterMap useOriginBadgeCode? ++ intents.filterMap useIntentBadgeCode?
+private def renderUseMetadataBadges
+    (origins : Array Data.UseOrigin) (intents : Array Data.UseIntent) : Output.Html :=
+  let originBadges :=
+    origins.filter (· != .manual) |>.map fun origin =>
+      let text := toString origin
+      relationBadge (useOriginBadgeClass origin) s!"Origin: {text}" text
+  let intentBadges :=
+    intents.filter (· != .regular) |>.map fun intent =>
+      let text := toString intent
+      relationBadge (useIntentBadgeClass intent) s!"Intent: {text}" text
+  .seq (originBadges ++ intentBadges)
 
 private def mkBlockEntry {m}
     [Monad m]
     (ctx : RelationContext)
     (source : BlockData) (previewId : String)
-    (badgeCodes : Array String := #[]) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := blockSummaryTitle ctx source
   let href := Informal.TraversalIndex.Nodes.href? ctx.state source.label
   pure {
     previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state source.label
+    previewKey := previewLookupKey source
     previewTitle
     label := source.label
     href
-    badgeCodes
+    badgesHtml
+    previewFallbackLabel? := some s!"{source.label}"
   }
 
 private def mkLabelEntry {m}
     [Monad m]
     (ctx : RelationContext)
     (label : Data.Label) (previewId : String)
-    (badgeCodes : Array String := #[]) :
+    (badgesHtml : Output.Html := .empty) :
     Verso.Doc.Html.HtmlT Verso.Genre.Manual m PanelEntry := do
   let previewTitle := s!"{label}"
   pure {
     previewId
-    previewKey := Informal.PreviewSource.traversalRelationPreviewKey? ctx.state label
+    previewKey := Informal.PreviewSource.traversalLookupKeyOrStatement ctx.state label
     previewTitle
     label
     href := Informal.TraversalIndex.Nodes.href? ctx.state label
-    badgeCodes
+    badgesHtml
+    previewFallbackLabel? := some s!"{label}"
   }
 
 private def loadingBody (detail : String) : Output.Html :=
@@ -558,40 +454,6 @@ private def selectedPanelEntry? (cfg : PanelConfig) (entries : Array PanelEntry)
   entries.find? (fun entry => entry.active) <|>
     if cfg.selectFirst then entries[0]? else none
 
-private def optionStringJson (value? : Option String) : Json :=
-  match value? with
-  | some value => Json.str value
-  | none => Json.null
-
-private def panelEntryActive (selectedEntry? : Option PanelEntry) (entry : PanelEntry) : Bool :=
-  match selectedEntry? with
-  | some selected => samePanelEntry selected entry
-  | none => entry.active
-
-/--
-Compact relation-row payload consumed by `relation-panel.mjs`.
-
-Array order is an internal renderer/runtime contract:
-`[title, previewKey?, label, href?, badgeCodes, active]`.
--/
-private def panelEntryDataJson (selectedEntry? : Option PanelEntry) (entry : PanelEntry) : Json :=
-  Json.arr #[
-    Json.str entry.previewTitle,
-    optionStringJson <| entry.previewKey.map toString,
-    Json.str s!"{entry.label}",
-    optionStringJson entry.href,
-    Json.arr <| entry.badgeCodes.map Json.str,
-    Json.bool <| panelEntryActive selectedEntry? entry
-  ]
-
-private def panelEntriesDataJson (selectedEntry? : Option PanelEntry) (entries : Array PanelEntry) :
-    Json :=
-  Json.arr <| entries.map (panelEntryDataJson selectedEntry?)
-
-private def htmlScriptJsonString (json : Json) : String :=
-  json.compress
-  |>.replace "<" "\\u003c"
-
 def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :=
   open Verso.Output.Html in
   let renderChip (chipClass : String) (chipTitle : String) (n : Nat) : Output.Html :=
@@ -605,28 +467,55 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
       else
         renderChip cfg.chipClass (cfg.singleTitle entry) 1
     let previewFooterHtml? :=
-      let html := renderRelationBadgeCodes entry.badgeCodes |>.asString
+      let html := entry.badgesHtml.asString
       if html.isEmpty then none else some html
     Informal.HoverRender.inlinePreviewNode
       chipNode entry.previewId entry.previewTitle
-      (previewLookupKey? := entry.previewKey.map (toString ·))
+      (previewLookupKey? := some entry.previewKey)
+      (previewFallbackLabel? := entry.previewFallbackLabel?)
       (previewHeaderLabel? := some s!"{entry.label}")
       (previewHeaderHref? := entry.href)
       (previewFooterHtml? := previewFooterHtml?)
   let selectedEntry? := selectedPanelEntry? cfg entries
+  let renderRow (entry : PanelEntry) : Output.Html :=
+    let itemClass :=
+      match selectedEntry? with
+      | some selected =>
+        if samePanelEntry selected entry then
+          "bp_relation_item bp_relation_item_active"
+        else
+          "bp_relation_item"
+      | none =>
+        if entry.active then "bp_relation_item bp_relation_item_active" else "bp_relation_item"
+    let rowNode : Output.Html :=
+      let titleNode := {{<span class="bp_relation_target_title">{{.text true entry.previewTitle}}</span>}}
+      let metaNode := {{
+        <span class="bp_relation_target_meta">
+          <code>s!"{entry.label}"</code>
+          {{entry.badgesHtml}}
+        </span>
+      }}
+      if let some href := entry.href then
+        {{<a class="bp_relation_target" href={{href}}>{{titleNode}}{{metaNode}}</a>}}
+      else
+        {{<span class="bp_relation_target">{{titleNode}}{{metaNode}}</span>}}
+    let attrs := Id.run do
+      let mut attrs := #[
+        ("class", itemClass),
+        ("data-bp-relation-preview-id", entry.previewId),
+        ("data-bp-relation-preview-key", entry.previewKey),
+        ("data-bp-relation-preview-title", entry.previewTitle)
+      ]
+      for attr in Informal.HoverRender.previewHeaderLinkAttrs (some s!"{entry.label}") entry.href do
+        attrs := attrs.push attr
+      pure attrs
+    .tag "li" attrs rowNode
   let previewTitle :=
     match selectedEntry? with
     | some entry => entry.previewTitle
     | none => cfg.previewDefaultTitle
   let previewBody : Output.Html := loadingBody cfg.previewEmptyText
-  let rowData := panelEntriesDataJson selectedEntry? entries |> htmlScriptJsonString
-  let rowList : Output.Html :=
-    .tag "ul" #[("class", "bp_relation_list")] <|
-      {{
-        <script type="application/json" class="bp-relation-entries">
-          {{.text false rowData}}
-        </script>
-      }}
+  let rows := entries.map renderRow
   let panel : Output.Html :=
     .tag "div" (#[("class", cfg.panelClass)] ++ cfg.panelAttrs) <|
       {{
@@ -635,7 +524,9 @@ def renderPanel (cfg : PanelConfig) (entries : Array PanelEntry) : Output.Html :
           <div class={{cfg.panelMetaClass}}>{{.text true cfg.panelMeta}}</div>
         </div>
         <div class="bp_relation_panel_body">
-          {{rowList}}
+          <ul class="bp_relation_list">
+            {{rows}}
+          </ul>
           <div class="bp_relation_preview_surface">
             <div class="bp_relation_preview_header">
               <div class="bp_relation_preview_label">"Preview"</div>
@@ -679,31 +570,13 @@ def renderUsedByExtra {m}
   | .statement _ =>
     let entries := collectUsedByEntries ctx data.label
     let panelEntries ← entries.mapM fun entry =>
-      let badgeCodes := usedByAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
       mkBlockEntry ctx entry.source
         (usedByPreviewId data.label entry.source.label)
-        (badgeCodes := badgeCodes)
+        (badgesHtml := {{
+          {{renderUsedByAxisBadges entry}}
+          {{renderUseMetadataBadges entry.origins entry.intents}}
+        }})
     pure <| renderPanel (usedByPanelConfig (some data.label)) panelEntries
-
-/-- Render the forward-dependency header extra for a statement or proof block. -/
-def renderUsesExtra {m}
-    [Monad m]
-    (ctx : RelationContext)
-    (data : BlockData) :
-    Verso.Doc.Html.HtmlT Verso.Genre.Manual m Output.Html := do
-  let entries := collectUsesEntries ctx data
-  let panelEntries ← entries.mapM fun entry => do
-    let badgeCodes := useAxisBadgeCodes entry ++ useMetadataBadgeCodes entry.origins entry.intents
-    match entry.target? with
-    | some target =>
-      mkBlockEntry ctx target
-        (usesPreviewId data.label entry.label)
-        (badgeCodes := badgeCodes)
-    | none =>
-      mkLabelEntry ctx entry.label
-        (usesPreviewId data.label entry.label)
-        (badgeCodes := badgeCodes)
-  pure <| renderPanel (usesPanelConfigForBlock data) panelEntries
 
 /-- Render the group-membership header extra, if the block belongs to a group. -/
 def renderGroupExtra {m}

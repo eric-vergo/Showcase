@@ -230,6 +230,13 @@ def Config.resolveForDirective {m}
     if isProof then .proof else .statement kind
   let resolvedExternalCode ←
     ExternalCode.resolveExternalCodeList cfg.label cfg.labelSyntax kind cfg.externalCode
+  -- Unconditional single-declaration rule: a blueprint node pairs with exactly one
+  -- Lean declaration. Multiple `(lean := "a, b")` refs are a hard build error (no
+  -- option gate) — split the node so each declaration gets its own one-to-one node.
+  if resolvedExternalCode.size > 1 then
+    let names := String.intercalate ", " (resolvedExternalCode.toList.map (·.written.toString))
+    throwErrorAt cfg.labelSyntax
+      m!"Label {cfg.label} pairs with {resolvedExternalCode.size} Lean declarations ({names}); blueprint nodes must pair with exactly one Lean declaration — split this node so each declaration has its own node."
   let hasExternalRaw := !resolvedExternalCode.isEmpty
   if !cfg.invalidExternalCode.isEmpty then
     logWarningAt cfg.labelSyntax m!"Label {cfg.label}: ignoring malformed names in '(lean := ...)' ({String.intercalate ", " cfg.invalidExternalCode.toList})"

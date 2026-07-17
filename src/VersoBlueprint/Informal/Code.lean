@@ -7,19 +7,18 @@ Author: Emilio J. Gallego Arias
 import VersoManual
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Environment
+import VersoBlueprint.Html
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Common
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.CodeSummary
-import VersoBlueprint.Informal.ExternalMarkupView
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.Lean
 import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Profiling
 import VersoBlueprint.Resolve
-import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
@@ -56,7 +55,6 @@ private partial def previewCodeBlocks
 
 block_extension Block.informalCode (data : InlineCodeData) where
   data := toJson data
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some cdata ← ExtensionDecode.decode? (α := InlineCodeData) data
         (fun _ => s!"Malformed data: {data}")
@@ -74,17 +72,11 @@ block_extension Block.informalCode (data : InlineCodeData) where
           }
           modify fun s => Informal.TraversalIndex.Nodes.saveData s label (toJson updated)
       let previewBlocks := previewCodeBlocks id _contents
-      let declarations := cdata.declarations
-      if !declarations.isEmpty then
-        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupInlineKey label
-        let sourceLocation :=
-          match declarations[0]? with
-          | some decl => decl.sourceLocation
-          | none =>
-              Informal.Data.SourceLocationResult.unavailable
-                "inline Lean preview source location unavailable"
-        let previewData := toJson
-          (LeanCodePreview.Entry.ofInlineBlocks label previewBlocks sourceLocation)
+      let previewTargets :=
+        (cdata.definedDefs.map (·.name)) ++ (cdata.definedTheorems.map (·.name))
+      for target in previewTargets do
+        let previewKey := Informal.TraversalIndex.LeanCodePreviews.lookupKey target
+        let previewData := toJson (LeanCodePreview.Entry.ofInlineBlocks target previewBlocks)
         let existingPreview? := Informal.TraversalIndex.LeanCodePreviews.object? (← get) previewKey
         modify fun s => Informal.TraversalIndex.LeanCodePreviews.saveData s previewKey previewData
         if existingPreview?.isNone then
@@ -96,15 +88,7 @@ block_extension Block.informalCode (data : InlineCodeData) where
       modify λ s => Informal.TraversalIndex.InlineCode.saveId s label id
       modify λ s => Informal.TraversalIndex.InlineCode.saveData s label (toJson cdata)
       pure none
-  toTeX := some <| fun _goI goB _id data blocks => do
-      let title ←
-        match fromJson? (α := InlineCodeData) data with
-        | .ok cdata => pure s!"Lean code for {cdata.label}"
-        | .error err =>
-          Verso.reportError s!"Malformed data in Block.informalCode.toTeX ({err}): {data}"
-          pure "Lean code"
-      let body ← blocks.mapM goB
-      pure <| Informal.TeX.boldHeadingBlocks title body
+  toTeX := none
   extraCss := Informal.Block.Assets.codeCssAssets
   extraJs := ([] : List String)
   toHtml :=
@@ -124,17 +108,16 @@ block_extension Block.informalCode (data : InlineCodeData) where
           let b := b.withResolvedNumberingInContext s ctxt
           codePanelHeader b (b.displayNumber s)
         | none => fallbackCodePanelHeader
-      let getDeclHref (decl : Name) : Option String :=
-        Resolve.resolveInlineLeanDeclHref? s decl
-      let panelSummary :=
-        renderPanelIndicator label
+      let namePrefix := (Informal.TraversalIndex.DeclRegistry.namePrefix? s).getD ""
+      let summaryTitle :=
+        panelSummaryTitle label
           {
             source := some (.inline { label, definedDefs, definedTheorems, foldCodeBlock, foldProofs })
           }
-          getDeclHref
+          namePrefix
       let panelAttrs := attrs.push ("data-bp-proof-fold", if foldProofs then "on" else "off")
       let panelBody := .seq (← blocks.mapM goB)
-      pure <| mkCodePanel panelHeader panelSummary.summaryTitle panelSummary.indicator panelBody panelAttrs
+      pure <| mkCodePanel panelHeader summaryTitle panelBody panelAttrs
         (folded := foldCodeBlock)
 
 structure CodeConfig where
@@ -267,9 +250,27 @@ structure ExternalMarkupBlockData where
   display : ExternalMarkupDisplayMode := .hidden
 deriving Repr, Inhabited, FromJson, ToJson, Quote
 
+private def externalMarkupSummary (language : Data.ExternalMarkupLanguage)
+    (slot : String) (location? : Option Data.ExternalMarkupLocation) : String :=
+  let base := s!"External {language.displayName} markup ({slot})"
+  match location? with
+  | none => base
+  | some location =>
+      let start := location.range.start
+      let stop := location.range.«end»
+      s!"{base}: {location.path}:{start.line}:{start.character}-{stop.line}:{stop.character}"
+
+private def externalMarkupSummaryHtml (summary : String) : Verso.Output.Html := open Verso.Output in
+  Html.tag "p" #[("class", "bp_external_markup_summary")] (VersoBlueprint.Html.text summary)
+
+private def externalMarkupSourceHtml (summary raw : String) : Verso.Output.Html := open Verso.Output in
+  let summaryHtml := Html.tag "summary" #[] (VersoBlueprint.Html.text summary)
+  let codeHtml := Html.tag "code" #[] (VersoBlueprint.Html.text raw)
+  let preHtml := Html.tag "pre" #[("class", "bp_external_markup_source")] codeHtml
+  Html.tag "details" #[("class", "bp_external_markup")] (Html.seq #[summaryHtml, preHtml])
+
 block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
   data := toJson data
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse id data _contents := do
     let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
         (fun _ => s!"Malformed external markup data: {data}")
@@ -291,18 +292,7 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
       modify fun s => Informal.TraversalIndex.ExternalMarkup.saveId s cdata.label id
       modify fun s => Informal.TraversalIndex.ExternalMarkup.saveData s cdata.label (toJson updated)
     pure none
-  toTeX :=
-    open Verso.Output.TeX in
-    some <| fun _goI _goB _id data _blocks => do
-      let .ok cdata := fromJson? (α := ExternalMarkupBlockData) data
-        | Verso.reportError s!"Malformed external markup data in Block.externalMarkup.toTeX: {data}"
-          pure .empty
-      let summary := ExternalMarkupView.displaySummary cdata.markup
-      match cdata.display with
-      | .hidden => pure .empty
-      | .summary => pure <| .text summary
-      | .source =>
-        pure <| Informal.TeX.verbatimBlock summary cdata.markup.raw
+  toTeX := none
   extraCss := ({} : Std.HashSet CSS)
   extraJs := ([] : List String)
   toHtml :=
@@ -311,18 +301,12 @@ block_extension Block.externalMarkup (data : ExternalMarkupBlockData) where
       let some cdata ← ExtensionDecode.decode? (α := ExternalMarkupBlockData) data
           (fun _ => s!"Malformed external markup data: {data}")
         | pure .empty
+      let summary := externalMarkupSummary cdata.markup.language cdata.markup.slot cdata.markup.location
       pure <|
         match cdata.display with
         | .hidden => .empty
-        | .summary => ExternalMarkupView.summaryHtml (ExternalMarkupView.displaySummary cdata.markup)
-        | .source => ExternalMarkupView.sourceDetailsHtml cdata.markup
-
-private def inlineDeclSourceLocation (declName : Name) (stx : Syntax) : DocElabM Data.SourceLocationResult := do
-  match ← Data.SourceLocation.ofSyntax? stx with
-  | some location => pure <| Data.SourceLocationResult.found location
-  | none =>
-      pure <| Data.SourceLocationResult.unavailable
-        s!"inline Lean declaration source location unavailable for {declName}"
+        | .summary => externalMarkupSummaryHtml summary
+        | .source => externalMarkupSourceHtml summary cdata.markup.raw
 
 /-- Interpreting Embedded Lean Code blocks -/
 private def leanImpl : CodeBlockExpanderOf CodeConfig
@@ -330,12 +314,8 @@ private def leanImpl : CodeBlockExpanderOf CodeConfig
     let leanCfg : Lean.LeanBlockConfig := { Lean.defaultConfig with name := some cfg.leanLabel }
     let res ← Lean.elabCommands leanCfg contents
     let codeBlock := res.block
-    let definedDefs ← res.definedDefs.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateDef decl sourceLocation
-    let definedTheorems ← res.definedTheorems.mapM fun decl => do
-      let sourceLocation ← inlineDeclSourceLocation decl.name decl.commandStx
-      pure <| CodeDeclData.ofLiterateThm decl sourceLocation
+    let definedDefs := res.definedDefs.map CodeDeclData.ofLiterateDef
+    let definedTheorems := res.definedTheorems.map CodeDeclData.ofLiterateThm
     let mut inferredUseRefs : DependencyAnalysis.InferredUseRefs := {}
     let codeRef ← getRef
     Environment.registerCode cfg.label codeRef res.definedDefs res.definedTheorems

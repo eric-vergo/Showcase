@@ -23,10 +23,6 @@ open Lean
 def informalDomainName : Name := Name.mkSimple "Informal.Block.informal"
 def informalCodeDomainName : Name := Name.mkSimple "Informal.Block.informalCode"
 def informalRustCodeDomainName : Name := Name.mkSimple "Informal.Block.informalRustCode"
-/-- Traversal domain for declared source documents. -/
-def sourceDocumentDomainName : Name := Name.mkSimple "Informal.Source.document"
-/-- Traversal domain for source provenance attached to informal Blueprint nodes. -/
-def sourceRefDomainName : Name := Name.mkSimple "Informal.Source.ref"
 /--
 Traversal domain for external-markup attachments.
 
@@ -44,14 +40,15 @@ def graphDomainName : Name := Name.mkSimple "Informal.Block.graph"
 Domain that stores anchors for rendered external declaration rows.
 
 We intentionally keep this separate from `inlineLeanDeclDomainName`: inline Lean links are
-declaration-anchor-centric (one destination per declaration), while rendered external rows are
+declaration-centric (one destination per declaration), while rendered external rows are
 reference-centric (one destination per `(informal label, canonical declaration)` pair). This
 allows summary/graph UI to jump to the specific rendered instance, even when the same declaration
-is referenced by many blueprint entries. Inline preview bodies themselves are keyed by the owning
-inline Blueprint code label.
+is referenced by many blueprint entries.
 -/
 def externalRenderedDeclDomainName : Name := Name.mkSimple "Informal.Block.externalRenderedDecl"
 def bibliographyDomainName : Name := Name.mkSimple "Informal.Block.bpCitations"
+def formalizationDomainName : Name := Name.mkSimple "Informal.Block.formalization"
+def summaryPageDomainName : Name := Name.mkSimple "Informal.Block.summaryPage"
 def citationPreviewDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.previews"
 def citationUsageDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.usages"
 /--

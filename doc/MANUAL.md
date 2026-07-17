@@ -1,7 +1,7 @@
 # Blueprint Manual
 
 This document is the current reference for Blueprint authoring and rendering.
-For documented Lean, generated-data, and browser integration APIs, see
+For stable Lean, generated-data, and browser integration APIs, see
 [`API.md`](./API.md).
 
 If you are starting a first project, read
@@ -130,7 +130,7 @@ The role of each file is:
   intentionally unfinished open problem
 - `ProjectTemplate/Blueprint.lean`: the Blueprint top-level file
 - `ProjectTemplateMain.lean`: the renderer entry point
-- `lakefile.lean`: the package definition
+- `lakefile.lean`: the package definition and optional generator executable
 
 ## The Blueprint Top-Level File
 
@@ -481,9 +481,7 @@ Imported Markdown proof sketch.
 
 External markup attachments are intended for faithful import and comparison
 workflows. They are stored on the associated Blueprint node, exported in the
-Blueprint manifest, and do not replace an authored Verso body. Rendered node
-headers show a small `MD` and/or `TeX` badge when external markup is attached;
-the badge is only an attachment signal and does not display the raw source.
+Blueprint manifest, and hidden in rendered pages by default.
 
 To keep an external markup witness without attaching it to a Blueprint node,
 omit the label:
@@ -506,30 +504,6 @@ For every natural number $n$, adding zero on the right leaves it unchanged.
 \end{theorem}
 ```
 ````
-
-A bodyless Markdown-backed node can still keep Lean links by pairing a bodyless
-Blueprint directive with a labeled Markdown witness. The directive contributes
-the semantic Blueprint node and `(lean := ...)` declarations; the Markdown block
-contributes the source-backed preview body:
-
-````md
-:::theorem "raw_addition_right_identity" (lean := "Nat.add_zero")
-:::
-
-```md "raw_addition_right_identity" (slot := statement)
-# Addition right identity
-
-For every natural number `n`, adding zero on the right leaves it unchanged.
-```
-````
-
-The generated manifest entry is `targetKind: "externalMarkup"` with key
-`externalMarkup:raw_addition_right_identity`. Its external-markup data records
-the Markdown source, and its Lean preview keys and `codeData` still refer to
-`Nat.add_zero`. Because the directive has no authored Verso body, rendered pages
-and the HTML cache use a source-backed Markdown fragment for the visible body;
-HTML-cache generation can disable that fragment with
-`--external-markup-render none`.
 
 If a label needs more than one external span, give each block a separate slot.
 Common slots are `statement` and `proof`; importer-specific slots are also
@@ -569,28 +543,7 @@ Current behavior:
   under slot `"default"` unless `(slot := ...)` is provided
 - a labeled standalone external-markup block is exported to the semantic
   manifest as `targetKind: "externalMarkup"` with key `externalMarkup:<label>`;
-  by default the generated HTML cache also gets a source-backed rendered
-  fragment for that key
-- a bodyless statement directive with external markup uses the same
-  source-backed rendering path for the ordinary generated page body
-- manifest entries include `authoredLabel` alongside the canonical `label` so
-  clients can display and round-trip punctuation-heavy authored labels without
-  parsing Lean pretty-name quoting
-- source-backed rendered fragments choose Markdown `statement`, Markdown
-  `default`, TeX `statement`, then TeX `default` when multiple source slots are
-  available; Markdown is rendered by MD4Lean with raw HTML disabled and falls
-  back to escaped source if MD4Lean cannot render the fragment, while TeX
-  sources are escaped
-- if a bodyless directive for the same label carried `(lean := ...)`, the
-  external-markup manifest entry keeps the corresponding Lean preview keys and
-  `codeData`
-- generation emits a non-fatal warning if traversal recorded Lean preview
-  metadata for a bodyless/source-backed node but the exported manifest entry no
-  longer carries it
-- pass `--external-markup-render source` during manifest/cache generation to
-  render the selected source as escaped source text, or
-  `--external-markup-render none` to keep source-backed entries manifest-only with
-  no HTML cache body
+  it does not create a rendered-fragment preview body
 - if the same label also has a rendered statement or proof, the external markup
   is attached to that block's manifest entry instead of creating a separate
   external-markup entry
@@ -602,101 +555,8 @@ Current behavior:
 - the block is not displayed in the rendered output unless `(display := summary)`
   or `(display := source)` is provided, or the file sets
   `set_option verso.blueprint.externalMarkup.display "summary"` or `"source"`
-- display and source-backed cache rendering are intentionally a preview path:
-  Markdown cache fragments use MD4Lean with escaped-source fallback, while
-  richer converters can still replace this path when projects need TeX or
-  native Blueprint structure
-
-### Original Source Provenance
-
-Blueprint can record a three-level source provenance chain for audit tooling:
-original source document, Verso Blueprint node, and associated Lean material.
-This phase stores the source-document catalog and node-local source spans.
-Generated Blueprint node shells show a compact source chip when a node has
-source provenance. The chip opens a lightweight source preview with the
-document id and recorded span details. Fuller source review interfaces such as
-PDF page viewers, crop overlays, and side-by-side text review remain interface
-work for clients or later Blueprint UI.
-
-Declare source documents with `:::source_document`. The directive body must
-contain exactly one Verso metadata block:
-
-````md
-:::source_document "paper"
-%%%
-title := "Representation Theory"
-kind := .pdf
-pdf := "source/paper.pdf"
-pageRoot := "source/pages"
-imageRoot := "source/pages/images"
-%%%
-:::
-````
-
-Attach source provenance to a Blueprint node with a leading metadata block
-inside the node directive. The metadata block must be the first block in the
-directive body; a later metadata block is rejected so that provenance is easy to
-find and strip before rendering the visible statement.
-
-````md
-:::lemma_ "addition_right_identity"
-%%%
-source := {
-  document := "paper"
-  spans := #[
-    {
-      page := "12"
-      text := some {
-        path := "source/pages/page-12.md"
-        startLine := 41
-        endLine := 45
-      }
-      pdf := some {
-        path := "source/pages/page-12.pdf"
-        image := "source/pages/images/page-12.png"
-      }
-    }
-  ]
-}
-%%%
-
-For every natural number $`n`, $`n + 0 = n`.
-:::
-````
-
-The generated manifest exports declared documents in `sourceDocuments` and each
-manifest entry's original-source refs in `entry.sources`. Normal generated node
-shells also show a compact source chip when source provenance is present; open
-it to inspect the source document id, page summary, and recorded text/PDF span
-details.
-
-Manifest clients should read `entry.sources`; there is no singular
-`entry.source` field. Lean code preview entries may contain multiple refs when
-several sourced Blueprint nodes share the same rendered Lean preview. External
-declaration previews are keyed by canonical declaration, while inline code
-previews are keyed by the inline Blueprint code label and use
-`targetKind: "inlineLeanCode"`. Declaration-specific inline identity is the
-owning inline code label plus the declaration's position in the owning block
-entry's ordered inline code metadata (`definedDefs` followed by
-`definedTheorems`).
-Browser clients can resolve those document ids with `loadSourceDocument` or
-read the complete catalog with `loadSourceDocuments`.
-
-Browser clients can call `resolveSourceMetadata` from `api/data.mjs` or
-`api/preview.mjs` to resolve source refs for a preview key, manifest entry, or
-render result. The API returns structured source-document metadata and recorded
-text/PDF spans.
-Manifest entries also include `sourceLocation`, a lookup result for the authored
-Blueprint label/facet location or Lean declaration source. Browser clients that
-start from semantic names can call `resolveLabel`, or `resolveDeclaration` for
-declaration-keyed previews, from `api/data.mjs` or `api/preview.mjs` to get the
-generated link and source location together. Inline code previews are keyed by
-the inline Blueprint code label and should be loaded through the explicit key in
-`leanCodePreviewKeys`.
-Use the data API for metadata-only audit or dashboard clients; use the preview
-API when the same client also renders Blueprint nodes or cached previews.
-The built-in source preview is intentionally lightweight; richer PDF page
-viewers and crop overlays remain Blueprint/Verso interface work.
+- display rendering is intentionally simple; future converters can replace the
+  raw display path with Markdown-to-Verso or TeX-to-Verso rendering
 
 Blueprint also supports best-effort KaTeX linting during elaboration. KaTeX is
 the renderer used by the generated HTML, so this helps catch math problems
@@ -736,22 +596,23 @@ views.
 ### Rendered statement blocks
 
 Rendered statement headers show related metadata chips in this order: group,
-uses, used by, external-markup badge, then Lean status. The statement `uses`
-chip shows statement-side dependencies; proof headers show their own `uses`
-chip for proof-side dependencies on the same label. This keeps prerequisites
-for the statement and prerequisites used only by the proof visually distinct.
-When local or external Lean material is available, the rendered page links or
-previews the associated content. Rows in the uses and used-by panels show
-statement/proof badges plus any non-default dependency origin or intent badges.
+uses, used by, then Lean status. The statement `uses` chip shows statement-side
+dependencies; proof headers show their own `uses` chip for proof-side
+dependencies on the same label. This keeps prerequisites for the statement and
+prerequisites used only by the proof visually distinct. When local or external
+Lean material is available, the rendered page links or previews the associated
+content. Rows in the uses and used-by panels show statement/proof badges plus
+any non-default dependency origin or intent badges.
 
 Relation previews show the human title and a right-aligned concrete Blueprint
 label in the preview header; the label links to the target statement. Single
 uses or used-by entries use the same inline preview chrome, with relation
 metadata badges shown in the preview footer.
 
-Inline preview triggers require manifest-backed rendered fragments. A missing
-or stale preview key renders the shared preview diagnostic instead of inventing
-label-only fallback HTML.
+Inline preview triggers prefer manifest-backed rendered fragments. The small
+fallback HTML path is reserved for triggers that explicitly carry
+`data-bp-preview-fallback-*` attributes, so intentionally authored fallback
+metadata still renders when no generated preview key is available.
 
 When labeled inline Rust code is attached to a node, the rendered page also
 shows an associated Rust code panel below the statement body.
@@ -772,6 +633,7 @@ or with explicit graph layout options:
 ```lean
 {blueprint_graph (direction := LR)}
 {blueprint_graph (direction := LR) (pack := true)}
+{blueprint_graph (allEdges := true)}
 {blueprint_graph (preview := hover)}
 {blueprint_graph (preview := hover) (previewPlacement := anchored)}
 ```
@@ -782,6 +644,16 @@ is omitted, the command falls back to the
 The `(pack := true | false)` option controls Graphviz component packing for
 disconnected graph components. It defaults to
 `verso.blueprint.graph.defaultPack`, which is `false`.
+The `(allEdges := true | false)` option controls whether transitively-redundant
+dependency edges are drawn. By default the graph is **transitively reduced**: an
+edge `a → b` is dropped whenever `b` is already reachable from `a` through a longer
+path in the union of statement and proof dependencies, so the layout shows the
+essential dependency spine instead of a hairball. The public graph data
+(`bp-graph-data`, the ancestors/descendants traversals, and the metrics) always
+keeps the full edge set — only the drawn DOT is reduced. Setting `allEdges := true`
+(or the `verso.blueprint.graph.defaultAllEdges` option, which is `false`) draws every
+edge; the rendered `Graph options` popover also carries a **Show all edges** toggle
+that re-lays-out the graph on demand.
 The `(preview := pinned | hover)` option chooses the initial graph-node preview
 behavior. The default is `pinned`: clicking a node opens a persistent preview
 panel that stays open until closed. `hover` opens a transient preview that
@@ -806,17 +678,17 @@ The command-side options and the runtime graph controls are compatible:
 - `(direction := ...)` chooses the initial graph direction when the page first
   loads
 - the rendered `Graph options` control lets readers switch among the supported
-  directions, toggle component packing, and choose between pinned and
-  hover previews and docked or anchored placement without regenerating the site
+  directions, toggle component packing, show all edges (the transitively-redundant
+  ones the default view hides), and choose between pinned and hover previews and
+  docked or anchored placement without regenerating the site
 
 Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
 
-Graph data is also available through documented Lean, manifest, and browser APIs.
-Lean callers build a semantic `GraphModel` before traversal and cross one
-finalization boundary to obtain an immutable `GraphData` record after traversal,
-while browser clients can read generated manifest graph records or data embedded
-in a rendered graph block. See
+Graph data is also available through stable Lean, manifest, and browser APIs.
+Lean callers can build semantic graph data before traversal or finalized graph
+records after traversal, while browser clients can read generated manifest graph
+records or data embedded in a rendered graph block. See
 [`API.md#graph-data-apis`](./API.md#graph-data-apis) for the full graph API
 contract and examples.
 
@@ -868,8 +740,8 @@ For routine project work, read the summary from top to bottom:
 
 1. Start with **Current blockers**. Missing external declarations and incomplete
    Lean declarations usually explain why apparently small tasks are not ready.
-2. Use **Actionable priorities** for work that can start now and already
-   unlocks downstream entries.
+2. Use **Ready next** for work that can start now and already unlocks downstream
+   entries.
 3. Check **Quick wins** when you want small high-priority tasks.
 4. Use **Dependency insights** and **Structure and coverage** when planning a
    larger batch of work or reviewing the shape of a Blueprint.
@@ -880,9 +752,6 @@ Some summary sections use deliberately practical project-management terms:
 
 - **Actionable** entries are not locally formalized yet, and their statement or
   proof status says there is work that can start now.
-- **Actionable priorities** are the actionable entries that also unlock
-  downstream work. The broader **Ready now** count, quick wins, and owner/tag
-  rollups still include actionable leaf entries with no dependents.
 - **Quick wins** are actionable entries marked with high priority and small
   effort metadata.
 - **Direct uses** count immediate statement or proof dependency edges into an
@@ -929,18 +798,16 @@ useful for:
 For informal blocks, these files are the same semantic manifest and opaque
 rendered-fragment cache used by generated previews, grafts, Slides, and custom
 clients. See [`API.md#generated-data-files`](./API.md#generated-data-files)
-for the current consumer contract. The manifest may also include VBP-internal
-generated-data markers for stale-artifact diagnostics; those markers are not
-part of the public interface.
+for the stable consumer contract.
 
 After building the relevant Lean targets, useful inspection flags on a
 Blueprint generator are:
 
 ```bash
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-schema
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-html-cache
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --help
+lake env lean --run <GeneratorMain>.lean --dump-schema
+lake env lean --run <GeneratorMain>.lean --dump-manifest
+lake env lean --run <GeneratorMain>.lean --dump-html-cache
+lake env lean --run <GeneratorMain>.lean --help
 ```
 
 - `--dump-schema` prints the JSON Schema for the manifest
@@ -1082,7 +949,7 @@ the generated ESM modules and Lean-side graft helpers.
 See [`API.md#browser-esm-apis`](./API.md#browser-esm-apis) for ordinary
 `import { ... } from ...` usage, module path rules, and copyable inline
 examples. See [`API.md#browser-runtime-api`](./API.md#browser-runtime-api) for
-the public render API table.
+the stable render API table.
 
 ### Troubleshooting Grafts
 
@@ -1095,10 +962,7 @@ the public render API table.
   `previewManifest?` to `slidesMainWithBlueprintPreviews`.
 - `Blueprint HTML cache entry not found` means the manifest entry was found, but
   the matching rendered-fragment body was not in `blueprint-html-cache.json`.
-  Keep the manifest and cache from the same Blueprint render. For source-backed
-  external-markup entries generated with `--external-markup-render none`, a
-  semantic manifest entry without a cache body is expected; custom renderers
-  should treat those entries as metadata-only.
+  Keep the manifest and cache from the same Blueprint render.
 - `siteBase` only affects Slides link rewriting. Manual grafts resolve from the
   current document traversal state and do not need it.
 - `-header`, `+compact`, and `+boxed` are presentation options only. They do not
@@ -1116,7 +980,7 @@ The detailed public API reference lives in [`API.md`](./API.md). It covers:
   for custom generators
 - [generated ESM modules](./API.md#browser-esm-apis) such as `api/preview.mjs`
   and `api/graph.mjs`
-- [the public browser runtime API](./API.md#browser-runtime-api) and the
+- [the stable browser runtime API](./API.md#browser-runtime-api) and the
   boundary around bundled helper APIs
 
 ## The Generator Entry Point
@@ -1149,83 +1013,40 @@ Blueprint-specific rendered surfaces, applies Blueprint's preview-data and
 public-xref emission policy, and keeps downstream projects from needing to
 remember those dependencies manually.
 
-Blueprint does not keep compatibility layers for renamed helpers, documented
-public entry points, read-through aliases, command aliases, or old rendering
-paths. When an interface changes, update the in-repository callers, tests,
-examples, and documentation together; downstream projects can migrate when
-they update their pinned Blueprint revision. New generators should call
-`Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
+Blueprint does not keep broad compatibility layers for internal helper names,
+read-through aliases, command aliases, or old rendering paths. Documented public
+entry points that real Blueprint projects already use are different: if such an
+entry point is renamed, keep the old exported name only as a deprecated thin
+forwarder to the canonical function until those projects migrate. Do not add
+forwarders for undocumented internals or convenience aliases. New generators
+should call `Informal.PreviewManifest.blueprintMainWithPreviewData` directly.
 
-For normal local and CI usage, prefer the project helper:
-
-```bash
-lake exe vbp build
-lake exe vbp build --serve
-```
-
-It builds the Blueprint library's OLean dependency closure, prepares and runs
-the generator, and optionally serves the result. When a maintainer harness or
-advanced CI job must drive those stages explicitly, the equivalent lower-level
-shape is:
+Recommended CI usage builds the Lean library or formalization targets needed by
+the document, then runs the generator file directly:
 
 ```bash
-lake build +<BlueprintLibrary>:olean
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
+lake build <library-or-formalization-target>
+lake env lean --run <GeneratorMain>.lean --output _out/site
 ```
 
-Keep the explicit `:olean` facet. The default `leanArts` facet also emits C and
-can accidentally turn a Blueprint generation run into a native dependency
-build.
+That path still checks the Blueprint document and writes the same HTML output,
+but it does not force Lake to compile the generator executable and its
+transitive native artifacts. In Mathlib-heavy projects this is often faster for
+cold CI jobs, even though the interpreted generator step itself can be a little
+slower than a compiled executable.
 
-The project helper can emit TeX and compile a PDF in the same run:
+Projects may also declare a `lean_exe` for repeated local runs:
+
+```lean
+lean_exe «blueprint-gen» where
+  root := `ProjectTemplateMain
+```
+
+Then the compiled-executable path remains available:
 
 ```bash
-lake exe vbp build --pdf
+lake exe blueprint-gen --output _out/site
 ```
-
-The PDF is written to `_out/site/pdf/main.pdf`. The default engine is
-`lualatex`, run with `-shell-escape` because Verso TeX output may include
-assets that require it. Use `--pdf-engine <cmd>` for another
-lualatex-compatible command and `--pdf-runs <n>` to change the number of LaTeX
-passes. The generated prelude uses standard TeX Live packages plus the Source
-font packages; on Ubuntu CI, install `python3-pygments`, `texlive-luatex`,
-`texlive-latex-extra`, `texlive-fonts-recommended`, and
-`texlive-fonts-extra`, and `texlive-plain-generic`. `--pdf` implies
-`--with-tex`; `--with-tex` alone still only writes the TeX tree under
-`_out/site/tex/`.
-
-### HTML and PDF Feature Support
-
-PDF generation is a static TeX/PDF output path. It is useful for reading,
-archiving, and print-oriented review, but it is not a replacement for the
-interactive HTML site. Unless a generator disables the HTML modes explicitly,
-`--pdf` still writes the usual HTML and preview-data artifacts in addition to
-the TeX tree and `main.pdf`.
-
-The table below describes the current built-in rendering behavior. The PDF
-column refers to what appears in `_out/site/pdf/main.pdf`, not to data files
-that may still be emitted alongside the HTML site. PDF status values mean:
-`Supported` renders directly in PDF, `Static only` renders without HTML
-interaction, `Partial` renders only selected static pieces, `Notice only`
-renders a pointer to the HTML output, and `Not in PDF` is absent from
-`main.pdf`.
-
-| Feature | HTML site | PDF status | PDF output |
-| --- | --- | --- | --- |
-| Ordinary Manual prose, headings, lists, and structure | Full generated HTML pages | Supported | Static TeX/PDF via Verso's TeX renderer |
-| Blueprint statement and proof blocks | Numbered headers, metadata chips, folding, relation panels, Lean status, previews, and authored body content | Static only | Static title and authored body content; no folding, chips, panels, or hover UI |
-| Math and project TeX macros | KaTeX-rendered math, with best-effort KaTeX linting during elaboration | Supported | LaTeX math in the generated TeX/PDF; Blueprint inserts project TeX preludes into the generated TeX |
-| Citations and bibliography | Linked citation and bibliography UI | Supported | Static citations and bibliography entries |
-| `{uses ...}` and `{bpref ...}` inline references | Links, preview triggers, and dependency metadata | Static only | Static inline text, or the resolved target title when no inline text is provided |
-| Attached Lean code | Code panels, Lean declaration summaries, hovers, and preview data | Static only | Static code content when present; no hovers, status widgets, or runtime previews |
-| Attached Rust code | Styled and foldable Rust code panels | Static only | Static verbatim Rust code block |
-| External Markdown or TeX markup attachments | Stored in the manifest; headers show attachment badges; bodyless Markdown-backed nodes can render source-backed HTML cache fragments | Partial | Explicit external-markup blocks render only when shown with `(display := summary)` or `(display := source)`; source-backed HTML cache bodies are not converted into PDF bodies |
-| Source provenance and source-PDF spans | Source chips, manifest entries, and data/preview API access for source document ids and text/PDF spans | Not in PDF | Not shown as source chips or page overlays in the PDF |
-| Dependency graph and progress summary pages | Interactive graph and summary views with runtime controls and previews | Notice only | Static notice pointing readers to the HTML output |
-| Grafted Blueprint nodes | Rendered from the preview manifest and HTML cache | Partial | Inserted graft nodes render as a static notice; side-by-side authored content still renders statically |
-| Browser preview runtime, relation panels, and interactive controls | Supported in generated HTML | Not in PDF | Not available in PDF |
-| Preview manifest, HTML cache, and JavaScript APIs | Emitted for generated-data and browser consumers | Not in PDF | Not embedded in `main.pdf`; still emitted alongside HTML unless those outputs are disabled |
-| Slides and other generator-side consumers | Supported through their own HTML/data render paths | Not in PDF | Not part of the `--pdf` output path |
 
 ## Blueprint Options
 
@@ -1301,6 +1122,11 @@ prefixes with document-order block counts.
   - default: `false`
   - sets the fallback Graphviz component packing behavior for
     `blueprint_graph` when `(pack := ...)` is omitted
+- `verso.blueprint.graph.defaultAllEdges`
+  - default: `false`
+  - sets the fallback for whether transitively-redundant dependency edges are
+    drawn for `blueprint_graph` when `(allEdges := ...)` is omitted (`false` draws
+    the transitively-reduced graph)
 - `verso.blueprint.graph.defaultPreviewMode`
   - default: `pinned`
   - sets the fallback graph-node preview behavior for `blueprint_graph` when

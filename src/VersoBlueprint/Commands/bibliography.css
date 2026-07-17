@@ -4,21 +4,33 @@
 
 .bp_bibliography_section {
   border: 1px solid var(--bp-color-biblio-border);
-  border-radius: 0.6rem;
-  padding: 0.2rem 0.8rem 0.75rem;
-  margin-bottom: 0.8rem;
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-biblio-surface));
+  border-radius: var(--bp-radius-lg);
+  padding: 0.25rem 0.75rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--bp-color-surface);
+}
+
+.bp_bibliography_lead {
+  margin: 0.25rem 0 0;
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-caption, 0.78rem);
 }
 
 .bp_bibliography_section > summary {
   cursor: pointer;
   font-weight: 700;
-  padding: 0.6rem 0;
+  padding: 0.5rem 0;
 }
 
 .bp_bibliography_list {
-  margin: 0.25rem 0 0.15rem;
-  padding-left: 1.2rem;
+  list-style: none;
+  margin: 0.25rem 0;
+  padding-left: 0;
+}
+
+.bp_bibliography_list > li {
+  padding-left: 1.5rem;
+  text-indent: -1.5rem;
 }
 
 .bp_bibliography_empty {
@@ -27,58 +39,56 @@
 }
 
 .bp_bibliography_uses {
-  margin-top: 0.3rem;
+  margin-top: 0.25rem;
   border: 1px solid var(--bp-color-biblio-border-soft);
   border-radius: var(--bp-radius-md);
-  padding: 0.2rem 0.5rem 0.4rem;
+  padding: 0.25rem 0.5rem 0.5rem;
   background: var(--bp-color-biblio-surface-soft);
+  /* Reset the parent entry's hanging indent inside the nested disclosure. */
+  text-indent: 0;
 }
 
 .bp_bibliography_uses > summary {
   cursor: pointer;
-  font-size: 0.88rem;
-  color: var(--bp-color-biblio-link);
+  font-size: var(--bp-fs-control, 0.82rem);
+  color: var(--bp-color-link, #1c5fb8);
+}
+
+.bp_bibliography_uses > summary:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
 }
 
 .bp_bibliography_uses_list {
-  margin: 0.2rem 0 0;
-  padding-left: 1.2rem;
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
 }
 
 .bp_bibliography_use_item {
-  margin-top: 0.18rem;
-}
-
-.bp_bibliography_use_line {
-  color: inherit;
+  margin-top: 0.25rem;
 }
 
 .bp_bibliography_use_inline_meta {
+  /* Inherit the link color from the enclosing backref anchor. */
   color: inherit;
   font-style: normal;
 }
 
-html[data-bp-style="modern"] .bp_bibliography_section {
-  border-color: var(--bp-color-biblio-border);
-  background: linear-gradient(180deg, var(--bp-color-surface), var(--bp-color-biblio-surface));
+/* One coherent brand-link affordance for every bibliography link: the reference
+   titles (`.citation a`) and the backref lines (`.bp_bibliography_use_line`, which
+   is itself the anchor) share the system link color and the site-wide content-link
+   treatment — a faint underline that firms up to full on hover (STY-BIB-06).
+   Themes via --bp-color-link, which carries both light and dark values. */
+.bp_bibliography_list a {
+  color: var(--bp-color-link, #1c5fb8);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+  text-decoration-color: color-mix(in srgb, var(--bp-color-link, #1c5fb8) 45%, transparent);
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
 }
 
-html[data-bp-style="modern"] .bp_bibliography_uses {
-  border-color: var(--bp-color-biblio-border-soft);
-  background: var(--bp-color-biblio-surface-soft);
+.bp_bibliography_list a:hover {
+  text-decoration-color: currentColor;
 }
 
-html[data-bp-style="bold"] .bp_bibliography_section {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: 0.9rem;
-  box-shadow: var(--bp-shadow-bold);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(167, 139, 250, 0.18), transparent 40%),
-    var(--bp-color-surface);
-}
-
-html[data-bp-style="bold"] .bp_bibliography_uses {
-  border: 2px solid var(--bp-color-text-strong);
-  border-radius: var(--bp-radius-2xl);
-  background: var(--bp-color-surface);
-}

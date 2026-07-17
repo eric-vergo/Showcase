@@ -16,7 +16,6 @@ import VersoBlueprint.Lib.ExtensionDecode
 import VersoBlueprint.Lib.HoverRender
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Profiling
-import VersoBlueprint.TeX
 import VersoBlueprint.TraversalIndex
 
 open Verso Doc Elab
@@ -113,11 +112,11 @@ private def wrapUseLinkPreview (node : Verso.Output.Html)
   let ptitle := blockHoverTitle state block
   let previewTarget := Informal.HoverRender.InlinePreviewTarget.withLookupKey
     pid ptitle pkey
+    (fallbackLabel? := some s!"{label}")
   Informal.HoverRender.inlinePreviewTargetNode node previewTarget
 
 inline_extension Inline.informal (data : InlineData) where
   data := toJson data
-  usePackages := Informal.TeX.standardMathUsePackages
   traverse _id data _contents := do
     let some _ ← ExtensionDecode.decode? (α := InlineData) data
         (fun _ => s!"Malformed data in Inline.informal traversal: {data}")
@@ -170,34 +169,7 @@ inline_extension Inline.informal (data : InlineData) where
             renderedInlines
         let hovered := wrapUseLinkPreview plainContent st label block
         return {{<span>{{hovered}}</span>}}
-  toTeX :=
-    open Verso.Output.TeX in
-    some <| fun goI _id data inlines => do
-      let .ok inlineData := fromJson? (α := InlineData) data
-        | Verso.reportError s!"Malformed data in Inline.informal.toTeX: {data}"
-          pure .empty
-      if inlines.isEmpty then
-        let st ← Verso.Doc.TeX.state
-        let storedBlock? := resolveStoredBlockData? st inlineData.label
-        let resolvedBlock : Option BlockData :=
-          match inlineData.block, storedBlock? with
-          | some b, some stored =>
-            some {
-              b with
-              partPrefix := b.partPrefix <|> stored.partPrefix
-              globalCount := b.globalCount <|> stored.globalCount
-            }
-          | none, some stored => some stored
-          | some b, none => some b
-          | none, none => none
-        match resolvedBlock with
-        | some block =>
-          let block := block.withResolvedNumbering st
-          pure <| .text (block.displayTitle st)
-        | none =>
-          pure <| .text s!"{inlineData.label}"
-      else
-        inlines.mapM goI
+  toTeX := none
 
 private def Data.Node.toBlockInfo (node : Data.Node) (label : Data.Label) : BlockData :=
   {

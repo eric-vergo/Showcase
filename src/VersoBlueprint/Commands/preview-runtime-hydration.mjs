@@ -4,8 +4,24 @@
   export const previewHydrators = localPreviewHydrators;
   let bindTemplatePreviewDescriptorsImpl = function (_root) { return []; };
 
+  function previewPrivateNamespace() {
+    const globalScope = typeof globalThis !== "undefined" ? globalThis : {};
+    const namespace =
+      globalScope.VersoBlueprint && typeof globalScope.VersoBlueprint === "object"
+        ? globalScope.VersoBlueprint
+        : null;
+    return namespace && namespace.__private && typeof namespace.__private === "object"
+      ? namespace.__private
+      : null;
+  }
+
   function activePreviewHydrators() {
-    return localPreviewHydrators;
+    const namespace = previewPrivateNamespace();
+    if (!namespace) return localPreviewHydrators;
+    if (!(namespace.previewHydrators instanceof Map)) {
+      namespace.previewHydrators = localPreviewHydrators;
+    }
+    return namespace.previewHydrators;
   }
 
   // Hydration extension points and math rendering.

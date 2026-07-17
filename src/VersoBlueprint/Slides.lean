@@ -26,7 +26,7 @@ into already-rendered HTML blocks.
 `blueprint_node` elaboration only knows the requested label/options, so it emits
 a `BlockExt.wrap` placeholder. At `slidesMainWithBlueprintPreviews` time we also
 have the Blueprint manifest/cache and can render that placeholder to static
-Blueprint HTML. `BlockExt.ofHtml` hands the result back to the normal Slides
+Blueprint HTML. `BlockExt.ofHtml` is the 4.31 handoff back to the normal Slides
 renderer.
 -/
 @[reducible] private def blueprintSlidesTraverse
@@ -50,11 +50,12 @@ renderer.
 Render Blueprint slide-node carriers to `VersoSlides.BlockExt.ofHtml` during
 the normal Verso Slides traversal.
 
-Backport note: the supported 4.30 branch keeps its older
+Release-line note: the supported 4.30 branch must keep its older
 `GenreHtml.block` override because `verso-slides` 4.30 does not provide
-`BlockExt.ofHtml`. The current implementation uses `BlockExt.ofHtml` while
-still mirroring the small `slidesMain` output loop so `quiet := true` remains
-supported and the rendered-fragment cache can seed the generated hover table.
+`BlockExt.ofHtml`. On the 4.31 line, this implementation should stay on the
+`BlockExt.ofHtml` path while still mirroring the small `slidesMain` output loop
+so `quiet := true` remains supported and the rendered-fragment cache can seed
+the generated hover table.
 -/
 private def slidesMainWithBlueprintRenderer
     (config : VersoSlides.Config)
@@ -121,8 +122,7 @@ Generate a slide deck with Blueprint preview-node assets enabled.
 When `previewManifest?` and `previewHtmlCache?` are provided, the manifest and
 rendered-fragment cache are read during slide generation so `{blueprint_node}`
 blocks render as static Blueprint shells. Both files are also copied to the
-deck's `-verso-data/` directory after the deck is written, alongside the ESM
-runtime modules used to hydrate the deck in the browser.
+deck's `-verso-data/` directory after the deck is written.
 -/
 public def slidesMainWithBlueprintPreviews
     (config : VersoSlides.Config := {})
@@ -137,8 +137,7 @@ public def slidesMainWithBlueprintPreviews
   let htmlCache? ← htmlCachePath?.mapM Informal.Graft.readBlueprintHtmlCache
   let rc ← slidesMainWithBlueprintRenderer config manifest? htmlCache? doc (quiet := quiet)
   if rc == 0 then
-    Informal.PreviewManifest.writeBlueprintRuntimeModules (config.outputDir / "-verso-data")
-    writeBlueprintSlidesRuntimeModules config.outputDir
+    writeBlueprintSlidesJs config.outputDir
     if let some previewManifest := previewManifest? then
       copyBlueprintManifest config.outputDir previewManifest
     if let some previewHtmlCache := htmlCachePath? then

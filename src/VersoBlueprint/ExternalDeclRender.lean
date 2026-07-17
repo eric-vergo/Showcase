@@ -7,6 +7,8 @@ Author: Emilio J. Gallego Arias
 import Lean
 import Verso
 import VersoManual
+import VersoManual.Markdown
+import MD4Lean
 import VersoBlueprint.Lib.HtmlId
 import VersoBlueprint.Lib.HoverInline
 
@@ -43,10 +45,9 @@ Rendered external declaration HTML in both forms needed by Blueprint.
 
 `html` is a compact template: it uses Blueprint-local hover ids, carries hover
 bodies separately in `hoverPayloads`, and contains a tiny marker where the
-standalone hover body should be reinserted. The final page and generated-cache
-renderers rewrite the local ids into Verso hover ids and remove the markers;
-isolated preview paths inline the payloads at the markers to recover standalone
-HTML.
+standalone hover body should be reinserted. The final page renderer rewrites the
+local ids into Verso page hover ids and removes the markers; preview and
+manifest paths inline the payloads at the markers to recover standalone HTML.
 
 The local ids in `html` are not stable semantic ids. They are only positions in
 the isolated highlighted-code hover table produced while rendering this snippet.
@@ -62,117 +63,20 @@ def externalDeclHoverLocalAttrName : String := "data-bp-external-hover-local"
 
 def externalDeclHoverInlineMarkerAttrName : String := "data-bp-external-hover-inline-local"
 
-/--
-Replacement pair for one snippet-local external-declaration hover id.
--/
-structure ExternalDeclHoverRewrite where
-  localId : Nat
-  attrReplacement : String
-  inlineReplacement : String
-deriving Repr, Inhabited
+def externalDeclHoverLocalAttr (localId : Nat) : String :=
+  s!"{externalDeclHoverLocalAttrName}=\"{localId}\""
 
-private def externalDeclHoverLocalAttrPrefix : String :=
-  s!"{externalDeclHoverLocalAttrName}=\""
-
-private def externalDeclHoverInlineMarkerPrefix : String :=
-  s!"<span {externalDeclHoverInlineMarkerAttrName}=\""
-
-private def externalDeclHoverInlineMarkerSuffix : String :=
-  "></span>"
-
-private inductive ExternalDeclHoverMarkerKind where
-  | attr
-  | inline
-
-private def findExternalDeclHoverRewrite?
-    (rewrites : Array ExternalDeclHoverRewrite) (localId : Nat) :
-    Option ExternalDeclHoverRewrite :=
-  rewrites.find? (fun rewrite => rewrite.localId == localId)
-
-private def parseExternalDeclHoverMarker?
-    (html : String) (markerPrefix : String) (start : html.Pos) :
-    Option (Nat × html.Pos) := do
-  let idStart := start.nextn markerPrefix.length
-  let quotePos ← idStart.find? "\""
-  let localId ← (html.extract idStart quotePos).toNat?
-  let afterQuote ← quotePos.next?
-  some (localId, afterQuote)
-
-private def parseExternalDeclHoverInlineMarker?
-    (html : String) (start : html.Pos) : Option (Nat × html.Pos) := do
-  let (localId, afterQuote) ←
-    parseExternalDeclHoverMarker? html externalDeclHoverInlineMarkerPrefix start
-  let markerEnd := afterQuote.nextn externalDeclHoverInlineMarkerSuffix.length
-  if html.extract afterQuote markerEnd == externalDeclHoverInlineMarkerSuffix then
-    some (localId, markerEnd)
-  else
-    none
-
-private def findNextExternalDeclHoverMarker?
-    (html : String) (pos : html.Pos) :
-    Option (ExternalDeclHoverMarkerKind × html.Pos) :=
-  let attrPos? := pos.find? externalDeclHoverLocalAttrPrefix
-  let inlinePos? := pos.find? externalDeclHoverInlineMarkerPrefix
-  match attrPos?, inlinePos? with
-  | none, none => none
-  | some attrPos, none => some (.attr, attrPos)
-  | none, some inlinePos => some (.inline, inlinePos)
-  | some attrPos, some inlinePos =>
-      if attrPos <= inlinePos then
-        some (.attr, attrPos)
-      else
-        some (.inline, inlinePos)
-
-private partial def rewriteExternalDeclHoverTemplateLoop
-    (html : String)
-    (rewrites : Array ExternalDeclHoverRewrite)
-    (pos : html.Pos)
-    (parts : Array String) : Array String :=
-  match findNextExternalDeclHoverMarker? html pos with
-  | none =>
-      parts.push (html.extract pos html.endPos)
-  | some (kind, markerPos) =>
-      let parts := parts.push (html.extract pos markerPos)
-      let fallback : Unit → Array String := fun _ =>
-        match markerPos.next? with
-        | some nextPos =>
-            rewriteExternalDeclHoverTemplateLoop html rewrites nextPos
-              (parts.push (html.extract markerPos nextPos))
-        | none =>
-            parts.push (html.extract markerPos html.endPos)
-      let parsed? :=
-        match kind with
-        | .attr =>
-            parseExternalDeclHoverMarker? html externalDeclHoverLocalAttrPrefix markerPos
-        | .inline =>
-            parseExternalDeclHoverInlineMarker? html markerPos
-      match parsed? with
-      | none => fallback ()
-      | some (localId, nextPos) =>
-          match findExternalDeclHoverRewrite? rewrites localId with
-          | none => fallback ()
-          | some rewrite =>
-              let replacement :=
-                match kind with
-                | .attr => rewrite.attrReplacement
-                | .inline => rewrite.inlineReplacement
-              let parts :=
-                if replacement.isEmpty then parts else parts.push replacement
-              rewriteExternalDeclHoverTemplateLoop html rewrites nextPos parts
-
-def ExternalDeclRenderedHtml.rewriteHovers
-    (rendered : ExternalDeclRenderedHtml)
-    (rewrites : Array ExternalDeclHoverRewrite) : String :=
-  String.join <|
-    (rewriteExternalDeclHoverTemplateLoop rendered.html rewrites rendered.html.startPos #[]).toList
+def externalDeclHoverInlineMarker (localId : Nat) : String :=
+  s!"<span {externalDeclHoverInlineMarkerAttrName}=\"{localId}\"></span>"
 
 def ExternalDeclRenderedHtml.selfContained (rendered : ExternalDeclRenderedHtml) : String :=
-  rendered.rewriteHovers <|
-    rendered.hoverPayloads.map fun payload => {
-      localId := payload.localId
-      attrReplacement := ""
-      inlineReplacement := s!"<span class=\"hover-info\">{payload.html}</span>"
-    }
+  rendered.hoverPayloads.foldl
+    (init := rendered.html)
+    (fun html payload =>
+      html
+        |>.replace (externalDeclHoverLocalAttr payload.localId) ""
+        |>.replace (externalDeclHoverInlineMarker payload.localId)
+          s!"<span class=\"hover-info\">{payload.html}</span>")
 
 abbrev ExternalDeclRenderResult := Except ExternalDeclRenderError ExternalDeclRenderedHtml
 
@@ -183,7 +87,11 @@ private def highlightedHtmlContext : Verso.Code.HighlightHtmlM.Context Verso.Gen
   linkTargets := {}
   traverseContext := {}
   definitionIds := {}
-  options := {}
+  -- Disable Verso's inline proof-state widgets: decl bodies are rendered for
+  -- per-token type hovers, and the `.tactic` toggle wrappers (a) swallow those hovers
+  -- and (b) emit stray stadium glyphs. Rendering proofs as plain highlighted tokens
+  -- keeps every identifier hoverable.
+  options := { inlineProofStates := false }
 }
 
 private def runHighlightedHtml
@@ -231,8 +139,8 @@ Run isolated highlighted-code rendering and preserve both useful outcomes.
 
 The compact template is what normal pages should use: hover references are kept
 as local ids so repeated payloads can be registered once in the page hover
-table. The same template also reconstructs self-contained snippets for isolated
-previews, where there is no surrounding page table to consult. Keeping one template avoids
+table. The same template also reconstructs self-contained snippets for previews,
+where there is no surrounding page table to consult. Keeping one template avoids
 holding both full HTML forms for every external declaration while a large
 blueprint page is generated.
 
@@ -252,6 +160,20 @@ private def renderWithHoverPayloads
 private def highlightedToHtml (h : SubVerso.Highlighting.Highlighted) :
     ExternalDeclHighlightRender ExternalDeclHtml :=
   runHighlightedHtml (h.toHtml (g := Verso.Genre.Manual))
+
+/--
+Render a standalone `SubVerso.Highlighting.Highlighted` value to a self-contained
+HTML string via the isolated highlighted-code renderer.
+
+Reuses the same `runHighlightedHtml`/`renderWithHoverPayloads` machinery as the
+signature path. Syntactic highlights (produced with no info trees) carry no
+hovers, so the payload-inlining `selfContained` pass yields a plain,
+page-independent token-span fragment suitable for direct injection into a code
+block (no page hover-table rewriting needed). The result is the inner token
+markup only — callers wrap it in their own `<pre><code class="hl lean …">`.
+-/
+def renderHighlightedSelfContainedHtml (hl : SubVerso.Highlighting.Highlighted) : String :=
+  (renderWithHoverPayloads (highlightedToHtml hl)).selfContained
 
 private def renderExternalDeclSignatureVariant
     (keywordText : String) (signature : SubVerso.Highlighting.Highlighted) :
@@ -276,16 +198,107 @@ private def signatureToHtml (keywordText : String) (sig : Verso.Genre.Manual.Sig
     </div>
   }}
 
+/--
+Render the subset of Verso `Doc` inline nodes that the pure Markdown pipeline
+(`Markdown.inlineFromMarkdown'`) can produce. This mirrors Verso's core
+`Inline.toHtml`, but runs purely here because the only `GenreHtml` instance able
+to drive `Block.toHtml` lives in the heavy traverse/`BuildLogT IO` monad, which
+is not available at this pre-page snapshot render site.
+
+Inline `$…$` and display `$$…$$` math become `<code class="math …">`, exactly as
+Verso core does, so the already-shipped offline KaTeX assets
+(`-verso-data/katex/{katex.js,katex.css,math.js}`) render them client-side with
+no new assets. Markdown never yields `.other`; that case degrades to its
+children to keep the function total.
+-/
+private partial def docstringInlineToHtml {g} (inline : Verso.Doc.Inline g) : ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match inline with
+  | .text str => .text true str
+  | .linebreak str => .text false str
+  | .emph content => {{ <em>{{content.map docstringInlineToHtml}}</em> }}
+  | .bold content => {{ <strong>{{content.map docstringInlineToHtml}}</strong> }}
+  | .code str => {{ <code>{{.text true str}}</code> }}
+  | .math mode str =>
+    let classes := "math " ++ match mode with | .inline => "inline" | .display => "display"
+    {{ <code class={{classes}}>{{.text true str}}</code> }}
+  | .link content dest => {{ <a href={{dest}}>{{content.map docstringInlineToHtml}}</a> }}
+  | .image alt dest => {{ <img src={{dest}} alt={{alt}}/> }}
+  | .footnote name content =>
+    {{ <details class="footnote"><summary>"["{{.text true name}}"]"</summary>{{content.map docstringInlineToHtml}}</details> }}
+  | .concat content => .seq (content.map docstringInlineToHtml)
+  | .other _ content => .seq (content.map docstringInlineToHtml)
+
+/-- Render the core Verso `Doc` block nodes produced by `Markdown.blockFromMarkdown'`. Mirrors Verso's core `Block.toHtml`; see `docstringInlineToHtml`. -/
+private partial def docstringBlockToHtml {g} (block : Verso.Doc.Block g) : ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match block with
+  | .para contents => {{ <p>{{contents.map docstringInlineToHtml}}</p> }}
+  | .blockquote contents => {{ <blockquote>{{contents.map docstringBlockToHtml}}</blockquote> }}
+  | .code content => {{ <pre>{{.text true content}}</pre> }}
+  | .ul items =>
+    {{ <ul>{{items.map fun li => {{ <li>{{li.contents.map docstringBlockToHtml}}</li> }} }}</ul> }}
+  | .ol start items =>
+    {{ <ol start={{toString (max start 0)}}>{{items.map fun li => {{ <li>{{li.contents.map docstringBlockToHtml}}</li> }} }}</ol> }}
+  | .dl items =>
+    {{ <dl>{{items.map fun ⟨t, d⟩ => {{ <dt>{{t.map docstringInlineToHtml}}</dt><dd>{{d.map docstringBlockToHtml}}</dd> }} }}</dl> }}
+  | .concat contents => .seq (contents.map docstringBlockToHtml)
+  | .other _ contents => .seq (contents.map docstringBlockToHtml)
+
+/--
+Markdown parser flags for docstrings. Enables `$…$`/`$$…$$` LaTeX math (off by
+default in `MD_DIALECT_COMMONMARK`) and disables raw HTML so docstring angle
+brackets render as text rather than tripping the pure pipeline's HTML guard
+(and so no raw HTML from a docstring can reach the offline site).
+-/
+private def docstringMdParserFlags : UInt32 :=
+  MD4Lean.MD_FLAG_LATEXMATHSPANS ||| MD4Lean.MD_FLAG_NOHTMLSPANS ||| MD4Lean.MD_FLAG_NOHTMLBLOCKS
+
+/--
+Render a docstring through Verso's pure Markdown pipeline (markdown structure +
+`$…$` math). Returns `none` if the parser fails or produces a node the pure
+pipeline rejects (e.g. headers deeper than two levels, tables), so the caller
+can fall back to escaped plain text.
+-/
+private def renderDocstringMarkdown? (docs : String) : Option ExternalDeclHtml :=
+  open Verso.Output.Html in
+  match MD4Lean.parse docs (parserFlags := docstringMdParserFlags) with
+  | none => none
+  | some ast =>
+    match ast.blocks.mapM (fun b =>
+        Verso.Genre.Manual.Markdown.blockFromMarkdown' (g := Verso.Doc.Genre.none) b
+          (handleHeaders := Verso.Genre.Manual.Markdown.strongEmphHeaders')) with
+    | .error _ => none
+    | .ok blocks => some {{ <div class="docstring">{{blocks.map docstringBlockToHtml}}</div> }}
+
+/--
+Render a Lean docstring for a code panel. Routes the prose through Verso's
+Markdown pipeline so markdown and inline/display `$…$` math render, falling back
+to the original escaped `<pre>` for docstrings the pipeline can't handle.
+-/
 private def plainDocstringHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
   match docs? with
   | none => .empty
   | some docs =>
-    {{<pre class="docstring">{{.text true docs}}</pre>}}
+    match renderDocstringMarkdown? docs with
+    | some html => html
+    | none => {{<pre class="docstring">{{.text true docs}}</pre>}}
 
 private def docsHtml (docs? : Option String) : ExternalDeclHtml :=
   open Verso.Output.Html in
   {{<div class="docs">{{plainDocstringHtml docs?}}</div>}}
+
+/--
+Render a docstring to a self-contained HTML *string* for out-of-page surfaces
+(the declaration registry's `docstringHtml?` → the metadata rail's Docstring
+section). Same pure Markdown pipeline as the in-page docstrings — raw HTML is
+disabled (`MD_FLAG_NOHTMLSPANS`/`NOHTMLBLOCKS`), so the result is safe to inject
+via `innerHTML` — falling back to an escaped `<pre class="docstring">` for
+docstrings the pipeline can't handle. `none` for `none`.
+-/
+def docstringHtmlString? (docs? : Option String) : Option String :=
+  docs?.map fun docs => (plainDocstringHtml (some docs)).asString
 
 private def externalDeclSectionLabelId (decl : Name) (title : String) : String :=
   Informal.HtmlId.prefixed "bp-external-decl-section" s!"{decl.toString}:{title}"
@@ -322,20 +335,6 @@ private structure ExternalDeclPresentation where
   kindMarker : String
   keywordText : String
 
-structure ExternalDeclHeaderBadge where
-  className : String
-  text : String
-
-structure ExternalDeclHeaderSource where
-  text : String
-  href? : Option String := none
-
-private def countMeta? (singular plural : String) (count : Nat) : Option String :=
-  if count == 0 then
-    none
-  else
-    some s!"{count} {if count == 1 then singular else plural}"
-
 private def keywordTextOfDefinitionSafety (safety : DefinitionSafety) (base : String) : String :=
   match safety with
   | .unsafe => s!"unsafe {base}"
@@ -367,47 +366,15 @@ private def externalDeclPresentation
         keywordText := kindMarker
       }
 
+/-- Bare-code declaration wrapper (1E): just the signature and the (nested
+constructor/field) body — no kicker row, no kind/"defined in …" text, no status
+badge. The `data-decl`/`data-kind` attributes stay as stable selectors. -/
 private def renderExternalDeclWrapper
     (decl : Name) (kindClass : String) (kindMarker : String)
-    (signature : ExternalDeclHtml) (body : ExternalDeclHtml)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerMeta : Array String := #[])
-    (headerSource? : Option ExternalDeclHeaderSource := none) : ExternalDeclHtml :=
+    (signature : ExternalDeclHtml) (body : ExternalDeclHtml) : ExternalDeclHtml :=
   open Verso.Output.Html in
-  let headerMetaHtml : ExternalDeclHtml :=
-    if headerMeta.isEmpty then
-      .empty
-    else
-      {{<span class="bp_external_decl_header_meta">{{.text true s!"({String.intercalate ", " headerMeta.toList})"}}</span>}}
-  let headerSourceHtml : ExternalDeclHtml :=
-    match headerSource? with
-    | none => .empty
-    | some source =>
-      let sourceNode : ExternalDeclHtml :=
-        match source.href? with
-        | some href =>
-          {{<a class="bp_external_decl_source_path" href={{href}}>{{.text true source.text}}</a>}}
-        | none =>
-          {{<span class="bp_external_decl_source_path">{{.text true source.text}}</span>}}
-      {{
-        <span class="bp_external_decl_source">
-          "defined in " {{sourceNode}}
-        </span>
-      }}
   {{
     <div class={{s!"declaration decl {kindClass}"}} data-decl={{decl.toString}} data-kind={{kindMarker}}>
-      <div class="bp_external_decl_kicker">
-        <div class="bp_external_decl_kicker_main">
-          <span class="bp_external_decl_kind">{{.text true kindMarker}}</span>
-          {{headerMetaHtml}}
-          {{headerSourceHtml}}
-        </div>
-        <div class="bp_external_decl_kicker_status">
-          {{if let some badge := headerBadge? then
-            {{<span class={{s!"bp_external_status_badge bp_external_decl_header_status {badge.className}"}}>{{.text true badge.text}}</span>}}
-          else .empty}}
-        </div>
-      </div>
       {{signature}}
       <div class="bp_external_decl_body">{{body}}</div>
     </div>
@@ -478,50 +445,19 @@ private def renderParentsSection
       </div>
     }}
 
-private def safetyHeaderMeta (cinfo : ConstantInfo) : Array String :=
-  match cinfo with
-  | .defnInfo defn =>
-    match defn.safety with
-    | .unsafe => #["unsafe"]
-    | .partial => #["partial"]
-    | .safe => #[]
-  | _ => #[]
-
-private def renderExternalDeclHeaderMeta
-    (declType : Verso.Genre.Manual.Block.Docstring.DeclType) :
-    Array String := Id.run do
-  let mut items : Array String := #[]
-  match declType with
-  | .structure isClass _ _ fieldInfo _ parents =>
-    if !parents.isEmpty then
-      items := items.push s!"extends {parents.size}"
-    let visibleFields := fieldInfo.filter (fun f => f.subobject?.isNone)
-    if let some fieldCount := countMeta?
-        (if isClass then "method" else "field")
-        (if isClass then "methods" else "fields")
-        visibleFields.size then
-      items := items.push fieldCount
-  | .inductive ctors numArgs propOnly =>
-    if let some ctorCount := countMeta? "constructor" "constructors" ctors.size then
-      items := items.push ctorCount
-    if propOnly then
-      items := items.push "Prop"
-    if let some paramCount := countMeta? "parameter" "parameters" numArgs then
-      items := items.push paramCount
-  | _ => pure ()
-  return items
-
 private def renderDeclHtmlDocstringFromInfoE
     (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult :=
+    (sourceSig? : Option Verso.Genre.Manual.Signature := none) : MetaM ExternalDeclRenderResult :=
   open Verso.Output.Html in do
-  let env ← getEnv
   let declType ←
     withOptions (verso.docstring.allowMissing.set · true) <|
       Verso.Genre.Manual.Block.Docstring.DeclType.ofName decl (hideStructureConstructor := true)
-  let signature ← Verso.Genre.Manual.Signature.forName decl
-  let docs? ← liftM <| findDocString? env decl
+  -- Prefer the verbatim-source signature (full hovers + author's exact layout) when the
+  -- caller resolved it from local source; otherwise delaborate via `Signature.forName`.
+  let signature ←
+    match sourceSig? with
+    | some s => pure s
+    | none => Verso.Genre.Manual.Signature.forName decl
 
   let rendered := renderWithHoverPayloads <| do
     let ctorSection? : Option ExternalDeclHtml ←
@@ -565,17 +501,15 @@ private def renderDeclHtmlDocstringFromInfoE
       sections := sections.push s
 
     let presentation := externalDeclPresentation declType cinfo
-    let signatureHtml ← signatureToHtml presentation.keywordText signature
-    let headerMeta := safetyHeaderMeta cinfo ++ renderExternalDeclHeaderMeta declType
 
-    let body : ExternalDeclHtml :=
-      if sections.isEmpty then
-        plainDocstringHtml docs?
-      else
-        {{ {{plainDocstringHtml docs?}} {{sections}} }}
+    let signatureHtml ← signatureToHtml presentation.keywordText signature
+
+    -- Bare code (1E): the top-level docstring is not rendered here anymore (it
+    -- moves to the metadata rail in Stage 2); nested constructor / field
+    -- docstrings inside the sections are kept.
+    let body : ExternalDeclHtml := .seq sections
     pure <| renderExternalDeclWrapper
       decl presentation.kindClass presentation.kindMarker signatureHtml body
-      (headerBadge? := headerBadge?) (headerMeta := headerMeta) (headerSource? := headerSource?)
   pure <| .ok rendered
 
 /--
@@ -584,11 +518,9 @@ Errors represent rendering failures only; declaration lookup is handled by calle
 -/
 def renderDeclHtmlDirectFromInfoE
     (decl : Name) (cinfo : ConstantInfo)
-    (headerBadge? : Option ExternalDeclHeaderBadge := none)
-    (headerSource? : Option ExternalDeclHeaderSource := none) : MetaM ExternalDeclRenderResult := do
+    (sourceSig? : Option Verso.Genre.Manual.Signature := none) : MetaM ExternalDeclRenderResult := do
   try
-    renderDeclHtmlDocstringFromInfoE decl cinfo
-      (headerBadge? := headerBadge?) (headerSource? := headerSource?)
+    renderDeclHtmlDocstringFromInfoE decl cinfo sourceSig?
   catch ex =>
     return .error (.exception decl (← ex.toMessageData.toString))
 

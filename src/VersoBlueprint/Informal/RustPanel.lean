@@ -21,6 +21,6 @@ def renderRawCodePanel
     (header : CodePanelHeader) (summaryTitle raw : String)
     (attrs : Array (String × String) := #[]) (folded : Bool := false) :
     Verso.Output.Html :=
-  mkCodePanel header summaryTitle .empty (highlightHtml raw) attrs (folded := folded)
+  mkCodePanel header summaryTitle (highlightHtml raw) attrs (folded := folded)
 
 end Informal.Rust

@@ -85,6 +85,14 @@ deriving Inhabited, FromJson, ToJson, Quote
 structure GroupHealthItem where
   parent : Name
   header : String := ""
+  /-- Short, human-readable chapter title for the per-chapter progress bar label
+  (e.g. "The Digit Layer"), resolved at PM-page emit from `chapterLabel?`. Empty
+  when unresolved, in which case consumers fall back to `header`/`parent`. -/
+  title : String := ""
+  /-- A representative child entry of this group, captured at elaboration so the
+  emit-time step can resolve the containing chapter title from its in-chapter
+  href (see `ExtraPages`). Cleared before the chart JSON is serialized. -/
+  chapterLabel? : Option Name := none
   totalEntries : Nat := 0
   closedEntries : Nat := 0
   localOnlyEntries : Nat := 0
@@ -96,6 +104,7 @@ structure GroupHealthItem where
 deriving Inhabited, FromJson, ToJson, Quote
 
 structure CoverageSplit where
+  informalOnly : Nat := 0
   readyToFormalize : Nat := 0
   formalizedWithoutAncestors : Nat := 0
   fullyClosed : Nat := 0
@@ -150,6 +159,43 @@ structure MetadataEntryItem where
   leanObjects : List Name := []
 deriving Inhabited, FromJson, ToJson, Quote
 
+/--
+Per-entry worklist record covering every registered blueprint entry.
+
+`readiness` is one of `ready`, `blocked`, `closed`, `localOnly`, or
+`informalOnly`, mirroring `collectCoverageSplit`'s bucket logic.
+-/
+structure WorklistItem where
+  label : Name
+  kind : String
+  statementStatus : String
+  proofStatus : String := ""
+  readiness : String
+  ownerDisplayName : Option String := none
+  tags : List String := []
+  effort : Option String := none
+  priority : Option String := none
+  prUrl : Option String := none
+  directUses : Nat := 0
+  downstreamUses : Nat := 0
+deriving Inhabited, FromJson, ToJson, Quote
+
+/--
+One blueprint entry that the project formalizes locally *and* whose Lean
+declaration(s) now resolve into Mathlib (`Informal.Graph.nodeInMathlib`), i.e. an
+upstream-candidate the project could drop in favour of the Mathlib version.
+
+`mathlibDecls` lists the entry's external declarations that resolve to a Mathlib
+module. Friendly title / chapter / node-page href are resolved at emit time from
+the traversal state (this payload is environment-derived and carries none of
+that).
+-/
+structure MathlibCandidateItem where
+  label : Name
+  kind : String
+  mathlibDecls : List Name := []
+deriving Inhabited, FromJson, ToJson, Quote
+
 structure Summary where
   showDebugDiagnostics : Bool := false
   totalEntries : Nat := 0
@@ -178,7 +224,7 @@ structure Summary where
   theoremLikeIndex : List IndexItem := []
   axiomIndex : List IndexItem := []
   theoremLikeByParent : List ParentTheoremGroup := []
-  actionablePriorities : List PriorityItem := []
+  topPriorities : List PriorityItem := []
   mostUsed : List UsageItem := []
   groupHealth : List GroupHealthItem := []
   coverageSplit : CoverageSplit := {}
@@ -193,6 +239,36 @@ structure Summary where
   missingOwners : List MetadataEntryItem := []
   missingEffort : List MetadataEntryItem := []
   untaggedEntries : List MetadataEntryItem := []
+  worklist : List WorklistItem := []
+  mathlibCandidates : List MathlibCandidateItem := []
+  /-- Consumer-configured node labels (via the `blueprint_dashboard` `featured := "…"`
+  argument) whose full two-column cards are featured on the landing dashboard, in
+  order. Empty by default; unresolvable labels are skipped at render time. -/
+  featuredLabels : Array Name := #[]
 deriving Inhabited, FromJson, ToJson, Quote
+
+/--
+Lean-serializable projection of a `Summary` carrying only what dashboard charts
+need: status counts, the coverage split, per-group health, and owner/tag
+rollups.
+-/
+structure DashboardChartData where
+  totalEntries : Nat := 0
+  totalStatus : EntryStatusCounts := {}
+  coverageSplit : CoverageSplit := {}
+  groupHealth : List GroupHealthItem := []
+  ownerRollups : List OwnerRollupItem := []
+  tagRollups : List TagRollupItem := []
+deriving Inhabited, FromJson, ToJson
+
+/-- Pure projection of a `Summary` into the dashboard chart payload. -/
+def Summary.chartData (summary : Summary) : DashboardChartData := {
+  totalEntries := summary.totalEntries
+  totalStatus := summary.totalStatus
+  coverageSplit := summary.coverageSplit
+  groupHealth := summary.groupHealth
+  ownerRollups := summary.ownerRollups
+  tagRollups := summary.tagRollups
+}
 
 end Informal.Commands

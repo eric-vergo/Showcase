@@ -65,7 +65,11 @@ def renderManualHtmlWithStateAndHovers
   }
   let ctxt : Verso.Genre.Manual.TraverseContext := {}
   let definitionIds : Lean.NameMap String := {}
-  let codeOptions : Verso.Code.HighlightHtmlM.Options := {}
+  -- Disable Verso's inline proof-state widgets: blueprint decl/proof code is rendered
+  -- for per-token type hovers, and the `.tactic` toggle wrappers (a) swallow those
+  -- hovers and (b) emit stray stadium glyphs. Rendering proofs as plain highlighted
+  -- tokens keeps every identifier hoverable. (Matches ExternalDeclRender's context.)
+  let codeOptions : Verso.Code.HighlightHtmlM.Options := { inlineProofStates := false }
   let remotes : Verso.Multi.AllRemotes := {}
   let htmlContext : Verso.Doc.Html.HtmlT.Context Verso.Genre.Manual := {
     options := opts

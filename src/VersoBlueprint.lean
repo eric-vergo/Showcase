@@ -23,15 +23,25 @@ import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.Macros
 import VersoBlueprint.Math
 import VersoBlueprint.Rust
-import VersoBlueprint.Source
 import VersoBlueprint.Environment
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Attribute
 import VersoBlueprint.Cite
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphMetrics
+import VersoBlueprint.GraphChecks
+import VersoBlueprint.NodeRoute
+import VersoBlueprint.NodeCard
+import VersoBlueprint.NodePage
+import VersoBlueprint.ExtraPages
+import VersoBlueprint.DeclIndex
+import VersoBlueprint.DeclPage
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
+import VersoBlueprint.Commands.Formalization
+import VersoBlueprint.Commands.TrustStrip
+import VersoBlueprint.FormalizationYaml
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Config
 import VersoBlueprint.Informal.Code
@@ -41,13 +51,14 @@ import VersoBlueprint.Informal.Block.RelatedPanel
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Block.Traversal
 import VersoBlueprint.Informal.MetadataView
-import VersoBlueprint.Informal.LeanCodePreviewKey
+import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.Group
 import VersoBlueprint.Informal.Author
 import VersoBlueprint.Informal.Uses
 import VersoBlueprint.ExternalDeclRender
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.Lean
 import VersoBlueprint.LabelNameParsing
 import VersoBlueprint.LeanNameParsing
@@ -56,7 +67,11 @@ import VersoBlueprint.PreviewManifest
 import VersoBlueprint.Graft
 import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
-import VersoBlueprint.StyleSwitcher
+import VersoBlueprint.ProofReveal
+import VersoBlueprint.ColorScheme
+import VersoBlueprint.CopyButton
+import VersoBlueprint.Tikz
+import VersoBlueprint.Main
 import VersoBlueprint.Profiling
 
 set_option doc.verso true

@@ -83,22 +83,13 @@ export function createPreviewRuntimeApi(options) {
     loadManifest: function (options) { return dataApi.loadManifest(options); },
     readManifestStatus: dataApi.readManifestStatus,
     loadManifestEntry: function (key, options) { return dataApi.loadManifestEntry(key, options); },
-    loadGroups: function (options) { return dataApi.loadGroups(options); },
-    loadGroup: function (label, options) { return dataApi.loadGroup(label, options); },
-    loadSourceDocuments: function (options) { return dataApi.loadSourceDocuments(options); },
-    loadSourceDocument: function (id, options) { return dataApi.loadSourceDocument(id, options); },
     loadHtmlCache: function (options) { return dataApi.loadHtmlCache(options); },
     readHtmlCacheStatus: dataApi.readHtmlCacheStatus,
     loadHtmlCacheEntry: function (key, options) { return dataApi.loadHtmlCacheEntry(key, options); },
     dataApiModuleUrl: dataApi.dataApiModuleUrl,
     previewApiModuleUrl: dataApi.previewApiModuleUrl,
-    graphApiModuleUrl: dataApi.graphApiModuleUrl,
     previewKey: dataApi.previewKey,
     statementPreviewKey: dataApi.statementPreviewKey,
-    resolveLabel: function (label, options) { return dataApi.resolveLabel(label, options); },
-    resolveDeclaration: function (declName, options) {
-      return dataApi.resolveDeclaration(declName, options);
-    },
     resolvePreview: function (previewKey, options) {
       return resolveBlueprintPreview(
         previewKey,
@@ -142,12 +133,6 @@ export function createPreviewRuntimeApi(options) {
         mergePreviewRenderOptions(defaultRenderOptions, options)
       );
     },
-    resolveSourceMetadata: function (source, options) {
-      return dataApi.resolveSourceMetadata(
-        source,
-        mergePreviewRenderOptions(defaultRenderOptions, options)
-      );
-    },
     hydrate: function (element, options) {
       return hydrateRenderedPreview(
         element,
@@ -180,33 +165,25 @@ export function createPreviewRuntimeApi(options) {
     previewDebugLabel: previewDebugLabel
   };
 
-  const publicCustomClientApi = {
+  const stableCustomClientApi = {
     dataUrl: previewDataApi.dataUrl,
     manifestUrl: previewDataApi.manifestUrl,
     htmlCacheUrl: previewDataApi.htmlCacheUrl,
     loadManifest: previewDataApi.loadManifest,
     readManifestStatus: previewDataApi.readManifestStatus,
     loadManifestEntry: previewDataApi.loadManifestEntry,
-    loadGroups: previewDataApi.loadGroups,
-    loadGroup: previewDataApi.loadGroup,
-    loadSourceDocuments: previewDataApi.loadSourceDocuments,
-    loadSourceDocument: previewDataApi.loadSourceDocument,
     loadHtmlCache: previewDataApi.loadHtmlCache,
     readHtmlCacheStatus: previewDataApi.readHtmlCacheStatus,
     loadHtmlCacheEntry: previewDataApi.loadHtmlCacheEntry,
     dataApiModuleUrl: previewDataApi.dataApiModuleUrl,
     previewApiModuleUrl: previewDataApi.previewApiModuleUrl,
-    graphApiModuleUrl: previewDataApi.graphApiModuleUrl,
     previewKey: previewDataApi.previewKey,
     statementPreviewKey: previewDataApi.statementPreviewKey,
-    resolveLabel: previewDataApi.resolveLabel,
-    resolveDeclaration: previewDataApi.resolveDeclaration,
     resolvePreview: previewDataApi.resolvePreview,
     renderPreviewInto: previewRenderApi.renderPreviewInto,
     resolveCanonicalPreview: previewDataApi.resolveCanonicalPreview,
     renderCanonicalPreviewInto: previewRenderApi.renderCanonicalPreviewInto,
     renderNode: previewRenderApi.renderNode,
-    resolveSourceMetadata: previewRenderApi.resolveSourceMetadata,
     hydrate: previewRenderApi.hydrate
   };
 
@@ -238,7 +215,7 @@ export function createPreviewRuntimeApi(options) {
 
   const renderApi = Object.assign(
     {},
-    publicCustomClientApi,
+    stableCustomClientApi,
     bundledFeatureRenderHelpers
   );
 
@@ -247,8 +224,46 @@ export function createPreviewRuntimeApi(options) {
   return renderApi;
 }
 
+export function installPreviewRuntimeApi(options) {
+  const renderApi = createPreviewRuntimeApi(options);
+  if (typeof window === "undefined") return renderApi;
+
+  function reportRenderReadyError(err) {
+    window.setTimeout(function () {
+      throw err;
+    }, 0);
+  }
+
+  function onRenderReady(fn) {
+    if (typeof fn !== "function") return;
+    fn(renderApi);
+  }
+
+  const namespace =
+    window.VersoBlueprint && typeof window.VersoBlueprint === "object"
+      ? window.VersoBlueprint
+      : {};
+  const queuedRenderReadyCallbacks = Array.isArray(namespace.renderReadyCallbacks)
+    ? namespace.renderReadyCallbacks.slice()
+    : [];
+  namespace.render = renderApi;
+  namespace.onRenderReady = onRenderReady;
+  namespace.renderReadyCallbacks = [];
+  window.VersoBlueprint = namespace;
+  queuedRenderReadyCallbacks.forEach(function (fn) {
+    try {
+      onRenderReady(fn);
+    } catch (err) {
+      reportRenderReadyError(err);
+    }
+  });
+
+  return renderApi;
+}
+
 export const previewRuntimeApi = {
-  createPreviewRuntimeApi
+  createPreviewRuntimeApi,
+  installPreviewRuntimeApi
 };
 
 export default previewRuntimeApi;
