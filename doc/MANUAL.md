@@ -813,9 +813,10 @@ Group metadata may be used to organize the presentation, but grouping does not
 change dependency edges.
 
 Graph data is also available through documented Lean, manifest, and browser APIs.
-Lean callers can build semantic graph data before traversal or finalized graph
-records after traversal, while browser clients can read generated manifest graph
-records or data embedded in a rendered graph block. See
+Lean callers build a semantic `GraphModel` before traversal and cross one
+finalization boundary to obtain an immutable `GraphData` record after traversal,
+while browser clients can read generated manifest graph records or data embedded
+in a rendered graph block. See
 [`API.md#graph-data-apis`](./API.md#graph-data-apis) for the full graph API
 contract and examples.
 
