@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Whitespace/case/entity/encoded and protocol-variant restatements of the same
+     off-origin loads. Each is a real request a browser will make; each must be caught. -->
+
+<!-- leading/trailing whitespace inside the attribute value -->
+<img srcset="   https://assets.invalid/ws-1x.png 1x ,  https://assets.invalid/ws-2x.png 2x">
+
+<!-- ASCII case variation on the scheme -->
+<video poster="HTTPS://assets.invalid/case.png"></video>
+<object data="HtTp://assets.invalid/case.pdf"></object>
+
+<!-- HTML entity-encoded scheme colon and slashes -->
+<img src="https&#58;&#47;&#47;assets.invalid/entity.png">
+
+<!-- protocol-relative (no scheme, inherits the page scheme) -->
+<svg xmlns="http://www.w3.org/2000/svg"><image href="//assets.invalid/proto.svg" /></svg>
+<img srcset="//assets.invalid/proto-1x.png 1x">
+
+<!-- SVG xlink:href legacy attribute -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <image xlink:href="https://assets.invalid/xlink.svg" />
+</svg>
+
+<!-- form / input / meta-refresh request surfaces -->
+<form action="https://assets.invalid/submit"></form>
+<input type="image" src="https://assets.invalid/input.png">
+<meta http-equiv="refresh" content="3; url=https://assets.invalid/refresh">
+
+<!-- WebSocket / sendBeacon / setAttribute JS sinks -->
+<script>
+  const ws = new WebSocket("wss://assets.invalid/socket");
+  navigator.sendBeacon("https://assets.invalid/beacon", "x");
+  const img = document.createElement("img");
+  img.setAttribute("src", "https://assets.invalid/setattr.png");
+  import("https://assets.invalid/module.mjs");
+</script>

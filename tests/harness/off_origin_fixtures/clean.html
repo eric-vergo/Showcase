@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- A self-contained page: every reference is same-origin, a fragment, or a data: URI.
+     The scanner must NOT flag any of these (they never leave the origin), and outbound
+     <a> links are the point of a blueprint and stay allowed. -->
+<link rel="stylesheet" href="book.css">
+<link rel="stylesheet" href="./verso-vars.css">
+<script src="-verso-data/blueprint-page-runtime.mjs" type="module"></script>
+<img src="assets/logo.svg" srcset="assets/logo-1x.png 1x, assets/logo-2x.png 2x">
+<img src="data:image/svg+xml;base64,PHN2Zy8+">
+<video poster="/media/cover.png"></video>
+<object data="../embed/diagram.svg"></object>
+<svg xmlns="http://www.w3.org/2000/svg"><image href="#glyph" /></svg>
+<a href="https://example.org/paper">An outbound citation link is allowed</a>
+<form action="#local-anchor"></form>
+<style>.bg { background: url("assets/tile.png"); }</style>
+<script type="application/json">{"url": "https://data.invalid/not-executed.json"}</script>
+<script>
+  // Vendored banner style comment: https://d3js.org v7.9.0 — a URL in a comment is inert.
+  const endpoint = "-verso-data/node-search.json";
+  fetch(endpoint);
+  fetch("xref.json");
+  const img = new Image();
+  img.src = "assets/pixel.png";
+</script>

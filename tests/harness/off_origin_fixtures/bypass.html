@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Each construct below can initiate an off-origin request in a browser, but is
+     outside the CI gate's current regular-expression vocabulary. -->
+<img alt="srcset probe" srcset="https://assets.invalid/image-1x.png 1x, https://assets.invalid/image-2x.png 2x">
+<video controls poster="https://assets.invalid/poster.png"></video>
+<object data="https://assets.invalid/document.pdf"></object>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
+  <image href="https://assets.invalid/pixel.svg" width="10" height="10" />
+</svg>
+<script>
+  const beacon = new Image();
+  beacon.src = "https://assets.invalid/runtime.png";
+</script>
