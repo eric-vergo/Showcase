@@ -239,6 +239,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(args.change, ["Add a public PR message helper"])
         self.assertEqual(args.source_branch, "fix/public-pr-scaffold")
         self.assertEqual(args.exempt, ["v4.28.0=docs-only"])
+        self.assertFalse(args.release_line_bootstrap)
 
     def test_prepare_backport_pr_parses_required_fields(self) -> None:
         parser = build_parser()
@@ -266,15 +267,36 @@ class BlueprintHarnessCliTests(unittest.TestCase):
 
     def test_bump_toolchain_parses_optional_flags(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["bump-toolchain", "4.29.0", "--verso-ref", "v4.29.0", "--skip-validation"])
+        args = parser.parse_args(
+            [
+                "bump-toolchain",
+                "4.29.0",
+                "--verso-ref",
+                "v4.29.0",
+                "--verso-slides-ref",
+                "v4.29.0",
+                "--skip-validation",
+            ]
+        )
         self.assertEqual(args.toolchain, "4.29.0")
         self.assertEqual(args.verso_ref, "v4.29.0")
+        self.assertEqual(args.verso_slides_ref, "v4.29.0")
         self.assertTrue(args.skip_validation)
 
     def test_start_release_line_parses_optional_flags(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["start-release-line", "4.30-rc2", "--deploy-pages", "--skip-validation"])
+        args = parser.parse_args(
+            [
+                "start-release-line",
+                "4.30-rc2",
+                "--verso-slides-ref",
+                "v4.30.0-rc2",
+                "--deploy-pages",
+                "--skip-validation",
+            ]
+        )
         self.assertEqual(args.toolchain, "4.30-rc2")
+        self.assertEqual(args.verso_slides_ref, "v4.30.0-rc2")
         self.assertTrue(args.deploy_pages)
         self.assertTrue(args.skip_validation)
 
@@ -708,6 +730,36 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 self.assertEqual(harness_mod.command_prepare_pr(args), 0)
 
         self.assertIn("Backport v4.28.0: exempt: documentation-only change", out.getvalue())
+
+    def test_prepare_pr_emits_machine_checked_release_line_bootstrap_status(self) -> None:
+        args = argparse.Namespace(
+            title="chore: start Lean 4.30 release line",
+            summary=None,
+            change=None,
+            source_branch="chore/start-lean-4-30-release-line",
+            exempt=None,
+            release_line_bootstrap=True,
+        )
+        layout = SimpleNamespace(package_root=Path("/tmp/worktree"))
+        out = io.StringIO()
+        with patched_attrs(
+            harness_mod,
+            detect_harness_layout=lambda _start=None: layout,
+            load_branch_policy=lambda _checkout_root: SimpleNamespace(
+                default_dev_branch="v4.30.0",
+                required_backport_branches=("v4.29.0", "v4.28.0"),
+            ),
+            require_checkout_role=lambda *_args, **_kwargs: None,
+            source_changed_files=lambda _repo_root, _source_branch: ["branch-policy.json", "lean-toolchain"],
+        ):
+            with redirect_stdout(out):
+                self.assertEqual(harness_mod.command_prepare_pr(args), 0)
+
+        output = out.getvalue()
+        self.assertIn("Backport v4.29.0: release-line bootstrap", output)
+        self.assertIn("Backport v4.28.0: release-line bootstrap", output)
+        self.assertIn("recommended_merge_method=squash", output)
+        self.assertIn("CI verifies this is a real release-line bootstrap", output)
 
     def test_prepare_pr_allows_squash_when_all_backports_are_exempt(self) -> None:
         out = io.StringIO()
@@ -1233,7 +1285,7 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 reference_harness_mod.command_generate(args)
 
     def test_bump_toolchain_uses_helper(self) -> None:
-        args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, skip_validation=False)
+        args = argparse.Namespace(toolchain="4.29.0", verso_ref=None, verso_slides_ref=None, skip_validation=False)
         layout = SimpleNamespace(package_root=Path("/tmp/package"))
         seen: dict[str, object] = {}
         with patched_attrs(
@@ -1247,11 +1299,12 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 }
             ),
             active_release_branch=lambda _package_root: "v4.29.0",
-            bump_toolchain_checkout=lambda package_root, toolchain, *, verso_ref, validate: seen.update(
+            bump_toolchain_checkout=lambda package_root, toolchain, *, verso_ref, verso_slides_ref, validate: seen.update(
                 {
                     "package_root": package_root,
                     "toolchain": toolchain,
                     "verso_ref": verso_ref,
+                    "verso_slides_ref": verso_slides_ref,
                     "validate": validate,
                 }
             )
@@ -1260,6 +1313,8 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 toolchain_spec="leanprover/lean4:v4.29.0",
                 verso_ref="v4.29.0",
                 verso_tag_oid="deadbeef",
+                verso_slides_ref="v4.29.0",
+                verso_slides_tag_oid="feedface",
             ),
             resolve_manifest_path=lambda _path, _package_root: Path("/tmp/projects.json"),
             update_release_line_project_manifest=lambda manifest_path, *, release_id, rc: seen.update(
@@ -1278,13 +1333,16 @@ class BlueprintHarnessCliTests(unittest.TestCase):
         self.assertEqual(seen["operation"], "bump-toolchain")
         self.assertEqual(seen["toolchain"], "4.29.0")
         self.assertEqual(seen["verso_ref"], None)
+        self.assertEqual(seen["verso_slides_ref"], None)
         self.assertTrue(seen["validate"])
         self.assertEqual(seen["manifest_path"], Path("/tmp/projects.json"))
         self.assertEqual(seen["manifest_release_id"], "v4.29.0")
         self.assertIsNone(seen["manifest_rc"])
 
     def test_bump_toolchain_rejects_a_different_release_line_before_mutation(self) -> None:
-        args = argparse.Namespace(toolchain="4.30-rc2", verso_ref=None, skip_validation=True)
+        args = argparse.Namespace(
+            toolchain="4.30-rc2", verso_ref=None, verso_slides_ref=None, skip_validation=True
+        )
         layout = SimpleNamespace(package_root=Path("/tmp/package"))
         called = False
 
@@ -1415,25 +1473,35 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            pull_request_template = root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+            pull_request_template.parent.mkdir(parents=True)
+            pull_request_template.write_text(
+                "This PR <summary>.\n\nBackport v4.28.0: pending\n",
+                encoding="utf-8",
+            )
             args = argparse.Namespace(
                 toolchain="4.30-rc2",
                 verso_ref=None,
+                verso_slides_ref=None,
                 deploy_pages=False,
                 skip_validation=True,
             )
             layout = SimpleNamespace(package_root=root)
             seen: dict[str, object] = {}
 
-            def fake_bump(package_root, toolchain, *, verso_ref, validate):
+            def fake_bump(package_root, toolchain, *, verso_ref, verso_slides_ref, validate):
                 seen["package_root"] = package_root
                 seen["toolchain"] = toolchain
                 seen["verso_ref"] = verso_ref
+                seen["verso_slides_ref"] = verso_slides_ref
                 seen["validate"] = validate
                 return SimpleNamespace(
                     lean_ref="v4.30.0-rc2",
                     toolchain_spec="leanprover/lean4:v4.30.0-rc2",
                     verso_ref="v4.30.0-rc2",
                     verso_tag_oid="deadbeef",
+                    verso_slides_ref="v4.30.0-rc2",
+                    verso_slides_tag_oid="feedface",
                 )
 
             out = io.StringIO()
@@ -1492,12 +1560,17 @@ class BlueprintHarnessCliTests(unittest.TestCase):
                 [target["release"] for target in manifest["projects"][1]["targets"]],
                 ["v4.29.0"],
             )
+            self.assertEqual(
+                pull_request_template.read_text(encoding="utf-8"),
+                "This PR <summary>.\n\nBackport v4.29.0: pending\nBackport v4.28.0: pending\n",
+            )
             self.assertIn("set-default-dev-branch v4.30.0", out.getvalue())
 
     def test_start_release_line_rejects_mismatched_rc_verso_line_before_mutation(self) -> None:
         args = argparse.Namespace(
             toolchain="4.30-rc2",
             verso_ref="v4.29.0",
+            verso_slides_ref=None,
             deploy_pages=False,
             skip_validation=True,
         )

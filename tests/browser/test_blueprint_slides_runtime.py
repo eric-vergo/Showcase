@@ -172,14 +172,16 @@ class TestBlueprintSlidesRuntime:
             "multiplication_spec",
         }
         assert [entry["label"] for entry in collatz_entry["usedBy"]] == ["collatz_conjecture"]
-        assert collatz_entry["group"]["label"] == "collatz_core"
-        assert collatz_entry["leanCodePreviewKeys"] == [
-            "Informal.LeanCodePreview.Inline.collatz_step"
+        collatz_group = next(
+            group for group in manifest["groups"] if group["label"] == "collatz_core"
+        )
+        assert collatz_group["declared"]
+        assert [entry["label"] for entry in collatz_group["entries"]] == [
+            "collatz_step",
+            "collatz_conjecture",
         ]
-        assert collatz_entry["codeData"]
-        assert "blocks" not in collatz_entry
-        assert "html" not in collatz_entry
-        assert "bp_math inline" in html_by_key[collatz_entry["key"]]
+        assert collatz_entry["parent"] == "collatz_core"
+        assert "group" not in collatz_entry
         multiplication_entry = next(
             entry
             for entry in manifest["previews"]
@@ -326,12 +328,14 @@ class TestBlueprintSlidesRuntime:
             "Multiplication/#--informal-preview-multiplication_spec--statement",
             "/blueprint/Multiplication/#--informal-preview-multiplication_spec--statement",
         )
+        node.locator(".bp_extra_slot_group .bp_relation_chip").hover()
         expect_slide_link(
             page,
             ".bp_extra_slot_group .bp_relation_target",
             COLLATZ_CONJECTURE_HREF,
             COLLATZ_CONJECTURE_REWRITTEN,
         )
+        node.locator(".bp_extra_slot_used_by .bp_relation_chip").hover()
         expect_slide_link(
             page,
             ".bp_extra_slot_used_by .bp_relation_target",

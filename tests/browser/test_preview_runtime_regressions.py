@@ -2162,6 +2162,8 @@ class TestPreviewRuntimeRegressions:
     def test_source_header_chip_opens_source_preview(self, server: str, page: Page):
         errors = record_runtime_errors(page)
         page.goto(f"{server}/Custom-Render-Client/")
+        client = page.locator("#custom-render-client-example").first
+        expect(client).to_have_attribute("data-bp-custom-client-status", "ready")
 
         statement = page.locator(
             '.bp_wrapper[title="custom_client_external_markdown_metadata"]'

@@ -336,17 +336,19 @@ python3 -m scripts.blueprint_harness bump-toolchain v4.31.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
-package's direct `require verso` pin, refreshes the committed manifests for the
-root package, `project_template`, and
+package's direct `require verso` and `require «verso-slides»` pins, refreshes
+the committed manifests for the root package, `project_template`, and
 `tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release
 candidates use the official short RC name, for example `4.31-rc2`; the harness
-writes the corresponding Lean and `verso` tag ref, such as `v4.31.0-rc2`.
+writes the corresponding Lean, `verso`, and `verso-slides` tag ref, such as
+`v4.31.0-rc2`.
 The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
-release tag need to differ.
+release tag need to differ, or `--verso-slides-ref <tag>` for the corresponding
+Slides override.
 
 ### Start a New Lean Release Line
 
@@ -360,9 +362,9 @@ python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
 
 Run this from the new local branch, for example `v4.31.0`. The command:
 
-- rewrites the managed `lean-toolchain` files, the root `verso` pin, and the
-  committed manifests for the root package, `project_template`, and the
-  preview showcase
+- rewrites the managed `lean-toolchain` files, the root `verso` and
+  `verso-slides` pins, and the committed manifests for the root package,
+  `project_template`, and the preview showcase
 - updates `branch-policy.json` so the new branch is the default-development
   line, the previous default-development branch becomes a required backport
   target, and the new release target is recorded
@@ -370,6 +372,8 @@ Run this from the new local branch, for example `v4.31.0`. The command:
   `project-template` and records their RC override while the root package is on
   a release candidate; fixtures remain explicitly selectable for validation
   but are not added to the public reference catalog
+- rewrites the PR template's managed `Backport ...` lines from the resulting
+  `branch-policy.json` backport sequence
 
 For release candidates, use the official short RC name such as `4.31-rc2`.
 The branch name remains the stable release branch, for example `v4.31.0`, while
@@ -393,6 +397,14 @@ python3 -m scripts.blueprint_harness set-default-dev-branch v4.32.0
 Commit that metadata-only change separately on each older branch that still
 carries `branch-policy.json`, such as `v4.31.0`. Preserve their own Lean
 toolchain pins.
+
+For the branch-start PR, run `prepare-pr --release-line-bootstrap`. This emits
+`Backport ...: release-line bootstrap` for each inherited maintenance line.
+The paired-backport check accepts that status in draft and ready PRs only after
+comparing the PR base with the head checkout and verifying that the Lean
+toolchain and branch policy advance coherently. It is distinct from the
+documentation/metadata exemption path and does not create paired PRs carrying
+the new toolchain onto older branches.
 
 To remove stale harness-managed reference caches and orphaned local clones:
 

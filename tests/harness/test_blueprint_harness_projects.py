@@ -24,7 +24,7 @@ from scripts.blueprint_harness_projects import (
 )
 from scripts.blueprint_harness_branches import load_branch_policy
 from scripts.blueprint_harness_project_commands import tracked_project_manifest_path
-from scripts.blueprint_harness_releases import release_candidate_ref
+from scripts.blueprint_harness_releases import release_candidate_name_or_none, release_candidate_ref
 from scripts.blueprint_harness_references import (
     bootstrap_reference_checkout,
     bump_reference_project,
@@ -146,10 +146,16 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(catalog.release_targets, branch_policy.release_targets)
-        self.assertEqual(branch_policy.required_backport_branches, ("v4.31.0",))
+        release_ids = [target.release_id for target in branch_policy.release_targets]
+        self.assertIn(branch_policy.default_dev_branch, release_ids)
+        self.assertNotIn(branch_policy.default_dev_branch, branch_policy.required_backport_branches)
         self.assertEqual(
-            [target.release_id for target in branch_policy.release_targets],
-            ["v4.31.0", "v4.32.0"],
+            branch_policy.required_backport_branches,
+            tuple(
+                reversed(
+                    [release_id for release_id in release_ids if release_id != branch_policy.default_dev_branch]
+                )
+            ),
         )
         self.assertTrue(projects[0].in_repo_project)
         self.assertTrue(projects[0].in_repo_command_project)
@@ -172,6 +178,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
         self.assertEqual([target.release for target in projects[0].targets], expected_template_targets)
         default_template_target = projects[0].target_for_release(branch_policy.default_dev_branch)
         self.assertIsNotNone(default_template_target)
+        self.assertEqual(
+            default_template_target.rc,
+            release_candidate_name_or_none((PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")),
+        )
         self.assertFalse(default_template_target.publish_reference)
         self.assertFalse(any(target.publish_reference for target in projects[0].targets))
         self.assertTrue(catalog.release_target("v4.31.0").deploy_pages)
@@ -839,7 +849,10 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             for (release_id, _project_id), entry in rows.items()
             if release_id == branch_policy.default_dev_branch
         ]
-        self.assertTrue(current_release_projects)
+        if catalog.release_target(branch_policy.default_dev_branch).deploy_pages:
+            self.assertTrue(current_release_projects)
+        else:
+            self.assertFalse(current_release_projects)
         for entry in current_release_projects:
             self.assertTrue(entry["publish_pdf"])
             self.assertIn("--pdf", entry["project_manifest"]["projects"][0]["generate_command"])

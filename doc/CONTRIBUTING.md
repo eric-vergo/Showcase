@@ -106,11 +106,17 @@ Do those upstream write actions only when they are explicitly requested.
   `branch-policy.json`.
 - Non-draft PRs targeting the default-development branch must replace each
   `pending` entry with a paired backport PR number or an explicit exemption
-  reason.
+  reason. New-release branch-start PRs instead use the machine-checked
+  `release-line bootstrap` status for every required line.
 - Exemptions are limited to changes whose files are all documentation or
   repository metadata. Source, scripts, tests, templates, package
   configuration, and runtime assets require paired backports so maintenance
   lines remain structurally aligned for future cherry-picks.
+- `release-line bootstrap` is not a general exemption. CI accepts it only when
+  every required line uses that status and the PR demonstrably advances the
+  Lean toolchain, default-development branch, and inherited backport sequence
+  from its base commit. Generate it with
+  `python3 -m scripts.blueprint_harness prepare-pr --release-line-bootstrap`.
 - Backported default-development PRs should normally be landed with a merge
   commit rather than squash or rebase, so the source commits recorded by
   `git cherry-pick -x` remain present in default-dev history.
@@ -128,6 +134,9 @@ Do those upstream write actions only when they are explicitly requested.
   - keep the default-development PR in draft while the change is still converging
   - run `python3 -m scripts.blueprint_harness prepare-pr` and use the emitted
     public title/body scaffold
+  - for a new release-line branch-start PR, add
+    `--release-line-bootstrap`; do not open paired PRs that apply the new Lean
+    toolchain to older release branches
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs

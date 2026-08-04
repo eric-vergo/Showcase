@@ -947,6 +947,8 @@ custom clients:
   values when the client is not running on a generated Blueprint page.
 - `hydrators`: a function, array, `Map`, or plain object of named functions.
   Each hydrator receives `(root, context)` after VBP inserts a fragment.
+  Hydrators may run more than once and on later lazy insertions such as relation
+  rows, so they should scope work to `root` and bind idempotently.
 - `inheritPageHydrators`: defaults to `true`. Set it to `false` for standalone
   clients that should not reuse generated-page feature hydrators.
 - `templateBinder`: an optional function for clients that need to bind preview

@@ -14,9 +14,17 @@
         },
         {
           "release": "v4.32.0"
+        },
+        {
+          "release": "v4.33.0",
+          "rc": "4.33-rc2"
         }
       ],
-      "build_command": ["lake", "build", "ProjectTemplate"],
+      "build_command": [
+        "lake",
+        "build",
+        "ProjectTemplate"
+      ],
       "generate_command": [
         "lake",
         "lean",
@@ -45,7 +53,14 @@
           "rc": "4.32-rc1"
         }
       ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
+      "generate_command": [
+        "lake",
+        "exe",
+        "vbp",
+        "build",
+        "--output",
+        "{output_dir}"
+      ],
       "site_subdir": "html-multi"
     },
     {
@@ -63,7 +78,14 @@
           "publish_reference": true
         }
       ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
+      "generate_command": [
+        "lake",
+        "exe",
+        "vbp",
+        "build",
+        "--output",
+        "{output_dir}"
+      ],
       "site_subdir": "html-multi"
     },
     {
@@ -82,7 +104,14 @@
           "rc": "4.32-rc1"
         }
       ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
+      "generate_command": [
+        "lake",
+        "exe",
+        "vbp",
+        "build",
+        "--output",
+        "{output_dir}"
+      ],
       "site_subdir": "html-multi"
     },
     {
@@ -100,7 +129,14 @@
           "publish_reference": true
         }
       ],
-      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
+      "generate_command": [
+        "lake",
+        "exe",
+        "vbp",
+        "build",
+        "--output",
+        "{output_dir}"
+      ],
       "site_subdir": "html-multi"
     }
   ]

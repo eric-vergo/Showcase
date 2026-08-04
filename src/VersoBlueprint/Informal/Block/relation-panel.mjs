@@ -174,6 +174,9 @@
       }) && items[0] instanceof Element) {
         items[0].classList.add("bp_relation_item_active");
       }
+      if (typeof previewUtils.hydrate === "function") {
+        previewUtils.hydrate(list, { renderMath: false });
+      }
       return items;
     }
 
