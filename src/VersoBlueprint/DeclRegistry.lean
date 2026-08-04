@@ -284,9 +284,22 @@ paired with its (canonical, possibly private-mangled) `ConstantInfo` name and
 defining module.
 
 Compiler-internal byproducts (equational lemmas, `match_`/`proof_` auxiliaries,
-recursors, projections' internals, …) are filtered via `isInternalDetail`, applied
-to the *user-facing* name so a `private` user declaration survives while its own
-internal byproducts do not.
+recursors, projections' internals, …) are filtered via `isInternalDetail` *and*
+`Lean.isAutoDeclOrPrivate_Internal`, both applied to the *user-facing* name so a
+`private` user declaration survives while its own internal byproducts do not.
+
+`isInternalDetail` alone is not enough: it recognises the `_`-prefixed and
+macro-scoped families, but v4.32 also generates plenty of unprefixed companions —
+`f.congr_simp` for every definition, and for every structure a `ctorIdx`,
+`casesOn`, `recOn`, `noConfusion`, `noConfusionType`, `mk.inj`, `mk.injEq`,
+`mk.sizeOf_spec`. Those are indistinguishable from hand-written declarations by
+name shape, and a corpus with one structure in it acquired thirteen of them, each
+of which would otherwise become a registry entry, a graph node, a declaration page
+and (for a generated blueprint) a prose slot for someone to write about
+`PaletteBlockCertificate.mk.injEq`. `isAutoDeclOrPrivate_Internal` is Lean's own
+notion of "generated, not written" — it consults `isReservedName` and the
+inductive/constructor suffix families — and it keeps genuine structure projections
+(`c.palette`, `c.label`), which are real API.
 
 `includePrivate := false` (the all-decls graph) keeps the graph readable by
 dropping `private` helpers; `includePrivate := true` (the declaration registry)
@@ -312,6 +325,7 @@ def enumerateProjectDecls (roots : NameSet) (includePrivate : Bool := false) :
       -- survive (when requested) but their compiler byproducts never do.
       let userName := if includePrivate then (privateToUserName? cname).getD cname else cname
       if userName.isInternalDetail then continue
+      if ← Lean.isAutoDeclOrPrivate_Internal userName then continue
       match env.find? cname with
       | some cinfo =>
         if (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).isSome then
