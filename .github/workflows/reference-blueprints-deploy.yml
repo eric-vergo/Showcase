@@ -67,7 +67,6 @@ jobs:
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
           echo "reference_cache_key=${{ matrix.reference_cache_key }}"
-          echo "publish_pdf=${{ matrix.publish_pdf }}"
       - name: Write deploy project manifest
         env:
           BP_PROJECT_ID: ${{ matrix.project_id }}
@@ -109,17 +108,6 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Install PDF toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.publish_pdf }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            python3-pygments \
-            texlive-fonts-extra \
-            texlive-fonts-recommended \
-            texlive-latex-extra \
-            texlive-luatex \
-            texlive-plain-generic
       - name: Restore Lake package cache
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache@v5
@@ -163,9 +151,6 @@ jobs:
         run: |
           lean --version
           lake --version
-          if [ "${{ matrix.publish_pdf }}" = "true" ]; then
-            lualatex --version | head -n 1
-          fi
           python3 --version
       - name: Generate release reference blueprints
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}

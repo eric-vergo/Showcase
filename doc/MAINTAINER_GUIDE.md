@@ -131,15 +131,14 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
-> **Known broken (inherited from upstream).** `vbp build` in this fork accepts
-> only `--output`, `--serve`, and `--port`; TeX/PDF export is not carried over.
-> Every remaining PDF path in the maintainer tooling therefore passes a flag the
-> CLI rejects and cannot succeed: `scripts/blueprint_test_blueprints.py`'s
-> `--run-real-pdf-smoke`, `scripts/generate-reference-blueprints.sh --pdf` (used
-> by `.github/workflows/reference-blueprints.yml`), and the `publish_pdf` deploy
-> matrix entries. Do not follow PDF instructions from upstream documentation
-> against this fork; the sections below describe what that inherited tooling
-> attempts, not a working capability.
+> **PDF/TeX export is not carried over from upstream.** `vbp build` in this fork
+> accepts only `--output`, `--serve`, and `--port`. The maintainer tooling and CI
+> no longer request PDF output: the `--pdf` generator flag, the reference/deploy
+> matrix `--pdf`/`publish_pdf` plumbing, and the real-PDF smoke check were
+> removed (CX-006), so no path passes the CLI a flag it rejects. The reference-site
+> staging helper still copies a `pdf/main.pdf` beside the HTML *only if one is
+> present*, which it is not in this fork; that path is inert, not a working PDF
+> capability. Do not reintroduce PDF instructions from upstream documentation.
 
 Use browser pytest directly only when the patch changes browser runtime or
 interaction behavior:
@@ -712,8 +711,6 @@ pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 - resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
   `publish_reference: true`
-- builds `pdf/main.pdf` for those reference targets, using the workflow's
-  installed TeX toolchain
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
 - stages a branch-local site artifact under `_site/` only when the selected
@@ -739,10 +736,8 @@ default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
 `projects.json` refs. The per-project target entry also owns any RC override,
 so two projects in the same release line can deploy against different release
-candidate tags when needed. Deploy one-project manifests append `--pdf` to the
-selected generator command only for the default-development release target, so
-the current published catalog includes PDFs while archived release targets stay
-HTML-only unless their deploy policy is deliberately expanded.
+candidate tags when needed. The published catalog is HTML-only; PDF export is
+not carried over in this fork (see the PDF note above).
 
 All runs of the deploy workflow share one repository-wide concurrency group
 because every run replaces the same combined Pages site. A deploy matrix entry
@@ -772,8 +767,6 @@ release includes:
 - `_site/index.html`
 - `_site/reference-blueprints/<project-id>/` for each deployable reference
   target selected on that branch
-- `_site/reference-blueprints/<project-id>/pdf/main.pdf` for each deployable
-  reference target selected on that branch
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -789,8 +782,6 @@ includes:
 - `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release targets
-- `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
-  selected reference target whose deploy matrix entry enables `publish_pdf`
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`

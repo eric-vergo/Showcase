@@ -14,7 +14,6 @@ from scripts.blueprint_harness_releases import (
 )
 from scripts.blueprint_harness_projects import (
     HarnessProject,
-    command_with_pdf,
     reference_dependency_cache_key,
     selected_project_toolchain,
 )
@@ -55,11 +54,10 @@ def command_with_verbose(command: tuple[str, ...]) -> tuple[str, ...]:
 def reference_generation_command(
     command: tuple[str, ...],
     *,
-    pdf: bool,
     verbose: bool,
 ) -> tuple[str, ...]:
-    if pdf:
-        command = command_with_pdf(command)
+    # PDF export was dropped from this fork (CX-006): the `vbp build` CLI rejects
+    # `--pdf`, so the harness must never append it. Only `--verbose` is threaded here.
     if verbose:
         command = command_with_verbose(command)
     return command
@@ -928,7 +926,6 @@ def generate_in_repo_command_project(
     project: HarnessProject,
     *,
     skip_build: bool,
-    pdf: bool = False,
     verbose: bool = False,
 ) -> None:
     project_dir = layout.package_root / project.project_root
@@ -942,7 +939,7 @@ def generate_in_repo_command_project(
     original_manifest = snapshot_tracked_project_manifest(project_dir)
     try:
         with maybe_in_repo_blueprint_dependency_override(project_dir, layout.package_root, log=True):
-            generate_command = reference_generation_command(project.generate_command or (), pdf=pdf, verbose=verbose)
+            generate_command = reference_generation_command(project.generate_command or (), verbose=verbose)
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,
@@ -976,7 +973,6 @@ def generate_git_project(
     *,
     skip_build: bool,
     package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
-    pdf: bool = False,
     verbose: bool = False,
 ) -> None:
     package_mode = validate_reference_package_mode(package_mode)
@@ -999,7 +995,7 @@ def generate_git_project(
             seed_lake_path_builds_from_dependency_cache(layout, project, project_dir)
 
         with local_blueprint_dependency_override(layout.package_root, project_dir, restore_lakefile=False, log=True):
-            generate_command = reference_generation_command(project.generate_command or (), pdf=pdf, verbose=verbose)
+            generate_command = reference_generation_command(project.generate_command or (), verbose=verbose)
             run_project_update_build_generate(
                 layout.package_root,
                 project_dir,

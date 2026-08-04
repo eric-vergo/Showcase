@@ -632,7 +632,6 @@ def reference_executable_args(
     project: HarnessProject,
     output_dir: Path,
     *,
-    pdf: bool,
     verbose: bool,
 ) -> list[str]:
     args = [
@@ -640,7 +639,7 @@ def reference_executable_args(
         "--output",
         str(output_dir),
     ]
-    return list(reference_generation_command(tuple(args), pdf=pdf, verbose=verbose))
+    return list(reference_generation_command(tuple(args), verbose=verbose))
 
 
 def render_in_repo_projects(
@@ -649,7 +648,6 @@ def render_in_repo_projects(
     projects: list[HarnessProject],
     serial: bool,
     *,
-    pdf: bool = False,
     verbose: bool = False,
 ) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
@@ -659,7 +657,7 @@ def render_in_repo_projects(
             run(
                 lean_low_priority_command(
                     package_root,
-                    *reference_executable_args(package_root, project, output_dir, pdf=pdf, verbose=verbose),
+                    *reference_executable_args(package_root, project, output_dir, verbose=verbose),
                 ),
                 cwd=package_root,
             )
@@ -672,7 +670,7 @@ def render_in_repo_projects(
             output_dir.mkdir(parents=True, exist_ok=True)
             command = lean_low_priority_command(
                 package_root,
-                *reference_executable_args(package_root, project, output_dir, pdf=pdf, verbose=verbose),
+                *reference_executable_args(package_root, project, output_dir, verbose=verbose),
             )
             print(f"[blueprint-reference-harness] launching {project.project_id} -> {output_dir}", flush=True)
             procs.append((project.project_id, spawn_managed_process(command, cwd=package_root)))
@@ -699,7 +697,6 @@ def generate_projects(
     serial: bool,
     allow_local_build: bool,
     reference_package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
-    pdf: bool = False,
     verbose: bool = False,
 ) -> None:
     in_repo_projects = [project for project in projects if project.in_repo_project]
@@ -725,7 +722,7 @@ def generate_projects(
         elif not skip_build and not use_local_build:
             for project in in_repo_target_projects:
                 ensure_prebuilt_executable(layout.package_root, project.generator or project.project_id)
-        render_in_repo_projects(layout.package_root, output_root, in_repo_target_projects, serial, pdf=pdf, verbose=verbose)
+        render_in_repo_projects(layout.package_root, output_root, in_repo_target_projects, serial, verbose=verbose)
 
     if in_repo_command_projects:
         print(f"[blueprint-reference-harness] package root: {layout.package_root}")
@@ -740,7 +737,6 @@ def generate_projects(
                 output_root,
                 project,
                 skip_build=skip_build,
-                pdf=pdf,
                 verbose=verbose,
             )
 
@@ -752,7 +748,6 @@ def generate_projects(
             project,
             skip_build=skip_build,
             package_mode=reference_package_mode,
-            pdf=pdf,
             verbose=verbose,
         )
 
@@ -772,7 +767,6 @@ def command_generate(args: argparse.Namespace) -> int:
         serial=args.serial,
         allow_local_build=args.allow_local_build,
         reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
-        pdf=args.pdf,
         verbose=getattr(args, "verbose", False),
     )
 
@@ -1171,11 +1165,6 @@ def add_generation_commands(subparsers) -> None:
         "--skip-build",
         action="store_true",
         help="Skip project builds and only run already-built or command-only generation steps.",
-    )
-    generate.add_argument(
-        "--pdf",
-        action="store_true",
-        help="Also build pdf/main.pdf for each generated reference blueprint.",
     )
     add_generation_verbose_argument(generate)
     add_allow_unsafe_root_release_argument(generate)
