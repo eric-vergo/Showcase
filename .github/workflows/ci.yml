@@ -91,6 +91,18 @@ jobs:
       - name: Check Python harness syntax
         run: python3 -m compileall -q scripts
 
+  header-provenance:
+    name: Header Provenance (CX-004)
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so the upstream v4.32.0 baseline commit is present for the
+      # lineage check.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Fork-original files must not carry the upstream header template
+        run: ./scripts/check-header-provenance.sh
+
   js-api-tooling:
     name: JavaScript API Tooling
     runs-on: ubuntu-latest
