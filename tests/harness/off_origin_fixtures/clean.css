@@ -1,0 +1,4 @@
+@import "reset.css";
+.hero { background-image: url("assets/hero.jpg"); }
+.blob { background: url(data:image/png;base64,AAAA); }
+.local { background: url('/media/bg.png'); }

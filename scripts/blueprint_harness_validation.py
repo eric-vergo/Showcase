@@ -7,9 +7,30 @@ import shutil
 import sys
 
 from scripts.blueprint_harness_utils import StepFailure, run_capturing_failure
+from scripts.check_off_origin_assets import scan_tree
 
 
 UV_CACHE_DIR = "/tmp/verso-blueprint-uv-cache"
+
+
+def off_origin_failure(label: str, site_dir: Path) -> StepFailure | None:
+    """Fail if the generated site references any off-origin asset (CX-013).
+
+    Uses the format-aware scanner rather than a substring gate, so it enumerates every
+    URL-bearing HTML attribute, CSS construct, and JS network sink. A self-contained
+    blueprint site must load nothing from another origin.
+    """
+    if not site_dir.exists():
+        return None
+    hits = scan_tree(site_dir)
+    if not hits:
+        return None
+    detail = "\n".join(f"  {hit}" for hit in hits[:50])
+    more = "" if len(hits) <= 50 else f"\n  … and {len(hits) - 50} more"
+    return StepFailure(
+        f"{label} off-origin assets",
+        f"{len(hits)} off-origin asset reference(s) in {site_dir}:\n{detail}{more}",
+    )
 
 
 @dataclass(frozen=True)
@@ -82,6 +103,13 @@ def run_site_validation_checks(
 ) -> list[StepFailure]:
     failures: list[StepFailure] = []
     for check in checks:
+        # Off-origin gate: unconditional, format-aware, and dependency-free (CX-013).
+        off_origin = off_origin_failure(check.label, check.site_dir)
+        if off_origin is not None:
+            failures.append(off_origin)
+            if stop_on_first_failure:
+                return failures
+
         if check.panel_regression_script is not None and not skip_panel_regression:
             failure = run_capturing_failure(
                 f"{check.label} panel regression",
