@@ -134,6 +134,79 @@ set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
     s!"an entry is missing a source link into the dependency's own repository (first: {(registry.decls[0]?).map (·.sourceHref?)}, path {(registry.decls[0]?).map (·.sourcePath)})"
   check (!bodies.bodies.isEmpty) "no proof/value bodies were captured"
 
+/-! ## The pinned checkout wins over a same-named neighbour -/
+
+-- Absolute, because the resolution helpers under test interpret a relative path as
+-- workspace-relative and would prepend the workspace root to it a second time.
+private partial def freshFixtureRoot : IO System.FilePath := do
+  let suffix ← IO.rand 0 1000000000000
+  let root :=
+    (← IO.currentDir) / ".lake" / "build" / "tmp" /
+      "verso-blueprint-subject-roots-test" / toString suffix
+  if ← root.pathExists then freshFixtureRoot else pure root
+
+-- Substring test on a resolved path. A top-level helper because the comparison needs a
+-- known `Bool` expected type; inline in an `Option.map` it elaborates as a `Prop`.
+private def pathContains (path needle : String) : Bool :=
+  (path.splitOn needle).length > 1
+
+private def writeModuleFile (path : System.FilePath) (contents : String) : IO Unit := do
+  if let some parent := path.parent then
+    IO.FS.createDirAll parent
+  IO.FS.writeFile path contents
+
+/--
+Lay out a consumer whose subject module arrives as a pinned Lake dependency while a
+*different* checkout of the same module sits next to the consumer:
+
+```
+<fixture>/decoy/Fixture/Subject.lean                        -- sibling, wrong bytes
+<fixture>/consumer/.lake/packages/pinned/Fixture/Subject.lean  -- the pinned source
+```
+
+`workspaceModuleSourcePath?` scans the parent's child directories, so the decoy is
+reachable — and used to win, because the `.lake/packages` probe only ran as a last
+resort. Source provenance would then depend on what happened to be checked out beside
+the repository on that machine.
+-/
+private def writeNeighbourFixture : IO (System.FilePath × System.FilePath) := do
+  let fixture ← freshFixtureRoot
+  let consumer := fixture / "consumer"
+  writeModuleFile (fixture / "decoy" / "Fixture" / "Subject.lean") "-- neighbouring clone\n"
+  writeModuleFile
+    (consumer / ".lake" / "packages" / "pinned" / "Fixture" / "Subject.lean")
+    "-- the pinned dependency\n"
+  pure (fixture, consumer)
+
+-- The pinned dependency wins for a *subject* module even though the neighbour is
+-- there to be found. (`Fixture.Subject` is not imported, so the source search path
+-- cannot answer and the fallback chain is what is under test.)
+/-- info: (true, false) -/
+#guard_msgs in
+set_option verso.blueprint.subjectModuleRoots "Fixture" in
+#eval show CoreM (Bool × Bool) from do
+  let (fixture, consumer) ← writeNeighbourFixture
+  try
+    let resolved := (← Informal.sourcePathForModule? consumer `Fixture.Subject).map toString
+    let has (needle : String) : Bool := (resolved.map (pathContains · needle)).getD false
+    return (has "/.lake/packages/pinned/Fixture/Subject.lean", has "/decoy/")
+  finally
+    IO.FS.removeDirAll fixture
+
+-- Without the subject-root declaration nothing changes: a module the consumer has not
+-- claimed keeps the outward scan (and so keeps finding the neighbour), because the
+-- `.lake/packages` probe is deliberately scoped to declared subject modules.
+/-- info: (false, true) -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool) from do
+  let (fixture, consumer) ← writeNeighbourFixture
+  try
+    let resolved := (← Informal.sourcePathForModule? consumer `Fixture.Subject).map toString
+    let has (needle : String) : Bool := (resolved.map (pathContains · needle)).getD false
+    return (has "/.lake/packages/pinned/Fixture/Subject.lean", has "/decoy/")
+  finally
+    IO.FS.removeDirAll fixture
+
 /-! ## Diagnostics for a root that matches nothing -/
 
 -- A typo'd root is reported once, and the remaining roots still work. (The
