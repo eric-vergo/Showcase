@@ -49,6 +49,7 @@ def externalRenderedDeclDomainName : Name := Name.mkSimple "Informal.Block.exter
 def bibliographyDomainName : Name := Name.mkSimple "Informal.Block.bpCitations"
 def formalizationDomainName : Name := Name.mkSimple "Informal.Block.formalization"
 def summaryPageDomainName : Name := Name.mkSimple "Informal.Block.summaryPage"
+def trustModelDomainName : Name := Name.mkSimple "Informal.Block.trustModel"
 def citationPreviewDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.previews"
 def citationUsageDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.usages"
 /--

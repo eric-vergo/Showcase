@@ -145,6 +145,75 @@ private def payloadWithUseRefs
     | none =>
       some { stx := ref, deps := useRefs }
 
+/-! ## Authored-edge validation
+
+With `autoDeps` off — the default, and what a hand-written blueprint wants — the
+dependency graph's edges are entirely author-asserted, while the ground truth sits
+right there in the compiled terms. Nothing previously compared the two.
+
+This pass does, without changing the graph: for every node with associated Lean, it
+diffs the authored `uses` edges against the constants the declarations actually
+mention.
+
+* An edge the code has but the author did not draw is a **build warning**: the
+  reading order the graph presents omits a real dependency.
+* An edge the author drew that the code does not exhibit is *not* an error — it is
+  routinely how a blueprint records that a result depends on an earlier one
+  mathematically even though the Lean proof reaches it by a different route. It is
+  reported as an **informal-level edge** so the count is visible rather than assumed
+  away.
+
+Reporting only. The graph keeps the curated narrative the author wrote.
+-/
+
+/-- Divergence between the authored `uses` graph and the const-level dependencies of
+the associated Lean declarations. -/
+structure EdgeAudit where
+  /-- Nodes with associated Lean declarations that were compared. -/
+  nodesChecked : Nat := 0
+  /-- `"node → dep"` edges the Lean terms exhibit but the author did not declare. -/
+  inferredUndeclared : Array String := #[]
+  /-- `"node → dep"` edges the author declared that the Lean terms do not exhibit —
+  legitimate informal-level edges, reported for visibility. -/
+  declaredNotInferred : Array String := #[]
+deriving Inhabited, Repr, ToJson, FromJson, Quote
+
+/--
+Diff every blueprint node's authored `uses` edges against the const-level
+dependencies inferred from its associated Lean declarations.
+
+A no-op returning an empty audit when `autoDeps` is *on* (the edges are then
+machine-derived by construction, so there is nothing to diff) or when no node has
+associated Lean. Never fails: an unresolvable declaration simply contributes no
+inferred edges.
+-/
+def auditAuthoredEdges (autoDepsEnabled : Bool) : CoreM EdgeAudit := do
+  if autoDepsEnabled then return {}
+  let st := Environment.informalExt.getState (← getEnv)
+  let mut nodesChecked := 0
+  let mut inferredUndeclared : Array String := #[]
+  let mut declaredNotInferred : Array String := #[]
+  for (label, node) in st.data.toList do
+    let refs := node.externalRefs.filter (·.present)
+    if refs.isEmpty then continue
+    nodesChecked := nodesChecked + 1
+    let authored : Array Data.Label :=
+      (node.statement.map (·.dependencyLabels) |>.getD #[]) ++
+      (node.proof.map (·.dependencyLabels) |>.getD #[])
+    let inferred ← inferExternalRefs refs
+    let inferredLabels := (inferred.statement ++ inferred.proof).filter (· != label)
+    for dep in inferredLabels do
+      unless authored.contains dep do
+        let edge := s!"{label} → {dep}"
+        unless inferredUndeclared.contains edge do
+          inferredUndeclared := inferredUndeclared.push edge
+    for dep in authored do
+      unless inferredLabels.contains dep || dep == label do
+        let edge := s!"{label} → {dep}"
+        unless declaredNotInferred.contains edge do
+          declaredNotInferred := declaredNotInferred.push edge
+  return { nodesChecked, inferredUndeclared, declaredNotInferred }
+
 def attachInferredUseRefs (label : Data.Label) (ref : Syntax) (useRefs : InferredUseRefs) :
     CoreM Unit := do
   if useRefs.statement.isEmpty && useRefs.proof.isEmpty then

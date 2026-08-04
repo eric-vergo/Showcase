@@ -52,6 +52,20 @@ def fullCommitAt? (dir : System.FilePath) : IO (Option String) :=
 def subjectAt? (dir : System.FilePath) : IO (Option String) :=
   Process.runTrimmedCommand? "git" #["-C", dir.toString, "log", "-1", "--pretty=%s"]
 
+/--
+Whether the worktree at `dir` has uncommitted changes (`git status --porcelain`
+prints at least one entry).
+
+`none` when the probe could not run (no git, not a repository). Callers use this
+to qualify a displayed commit: a source link or build stamp naming commit `abc123`
+is only accurate if the tree it was built from actually *is* `abc123`.
+-/
+def dirtyAt? (dir : System.FilePath) : IO (Option Bool) := do
+  match ← Process.runCommandAllowingEmpty? "git"
+      #["-C", dir.toString, "status", "--porcelain", "--untracked-files=no"] with
+  | some out => pure (some !out.isEmpty)
+  | none => pure none
+
 def toplevelAt? (dir : System.FilePath) : IO (Option System.FilePath) := do
   let some root ← Process.runTrimmedCommand? "git" #["-C", dir.toString, "rev-parse", "--show-toplevel"]
     | return none

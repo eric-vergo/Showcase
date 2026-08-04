@@ -1,4 +1,4 @@
-name: Reference Blueprints
+name: Reference Showcases
 
 on:
   pull_request:

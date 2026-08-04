@@ -506,7 +506,7 @@ def graphLegendGroups (includeMathlib : Bool := false) (includeSupporting : Bool
       #[{
         key := "supporting"
         title := "Supporting Declarations"
-        summary? := some "Muted nodes are project declarations without an authored blueprint node, shown with their real Lean dependencies."
+        summary? := some "Muted nodes are project declarations without an authored showcase node, shown with their real Lean dependencies."
         items := #[
           legendItem "Supporting declaration"
             (some { background := supportingFillColor, borderColor := supportingBorderColor })

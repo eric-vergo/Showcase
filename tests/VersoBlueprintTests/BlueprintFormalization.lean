@@ -337,7 +337,10 @@ private def comparatorJson := r##"{
   -- The badge links to the standalone `comparator/` page (not the removed `trust/…`).
   hasSubstr configured "href=\"comparator/\"" &&
   hasSubstr verified "bp_summary_badge_success" &&
-  hasSubstr verified "comparator: verified" &&
+  -- The verified label names its SOURCE and its DATE ("comparator: CI-verified
+  -- 2026-07-03") rather than asserting a present-tense "verified": the badge is a
+  -- read-back of a past CI run's artifact, not a live check.
+  hasSubstr verified "comparator: CI-verified" &&
   hasSubstr verified "2026-07-03"
 
 /-- info: true -/
@@ -498,5 +501,90 @@ end ChallengeTest
   | some html =>
     return !html.isEmpty && hasSubstr html "namespace" && hasSubstr html "two" &&
       hasSubstr html "<span"
+
+
+/-! ### Status ↔ config cross-check helpers
+
+The consumer's trust options resolve against the *build CWD* (`site/`) while the
+comparator status artifact records *repo-root-relative* paths, so the same file is
+spelled `../comparator/comparator.json` and `comparator/comparator.json`. The
+agreement check must compare path components, not strings — string equality would
+reject every correctly-configured project.
+-/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  -- The real a362583 spelling: option path (site-CWD-relative) vs. status `config`
+  -- (repo-root-relative). Must agree.
+  pathHasSuffix "../comparator/comparator.json" "comparator/comparator.json" &&
+  pathHasSuffix "./comparator/comparator.json" "comparator/comparator.json" &&
+  pathHasSuffix "comparator/comparator.json" "comparator/comparator.json" &&
+  -- A genuinely different file must NOT agree, including one whose name merely ends
+  -- with the same characters (component-boundary matching, not string suffix).
+  !pathHasSuffix "../comparator/other.json" "comparator/comparator.json" &&
+  !pathHasSuffix "../elsewhere/xcomparator.json" "comparator.json" &&
+  -- Suffix longer than the path cannot match.
+  !pathHasSuffix "comparator.json" "a/b/comparator.json"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  -- A config module name maps to the file the page renders by basename, so the
+  -- nested `ComparatorChallenges/` layout and the flat one both resolve.
+  moduleBasename "Challenge" == "Challenge" &&
+  moduleBasename "ComparatorChallenges.I_MulticolorTriangleRamsey" == "I_MulticolorTriangleRamsey" &&
+  leanFileStem "../comparator/Challenge.lean" == "Challenge" &&
+  leanFileStem ".lake/packages/ten-proofs/ComparatorChallenges/I_Foo.lean" == "I_Foo" &&
+  leanFileStem "Solution" == "Solution"
+
+/-! ### Reproduce commands pin what CI actually ran -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let pinned := reproCommands {
+    toolRef := "v4.32.0", toolSha := "abc123", nanodaRef := "def456",
+    enableNanoda := true, configArgPath := "comparator/comparator.json" }
+  let unpinned := reproCommands {
+    toolRef := "v4.32.0", enableNanoda := true, configArgPath := "comparator/comparator.json" }
+  let joinedPinned := String.intercalate "\n" pinned
+  let joinedUnpinned := String.intercalate "\n" unpinned
+  -- A mutable tag is not enough: when CI recorded the resolved commit, check it out.
+  hasSubstr joinedPinned "git checkout abc123" &&
+  hasSubstr joinedPinned "git checkout def456" &&
+  -- Without recorded revisions the commands degrade rather than inventing a pin
+  -- (the page then says so in prose).
+  !hasSubstr joinedUnpinned "git checkout" &&
+  hasSubstr joinedUnpinned "nanoda_lib"
+
+/-! ### comparator.live permalink -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let url := comparatorLivePermalink "mathlib-stable" "theorem t : True := by trivial" "def s := 1"
+  -- Plain (uncompressed) fragment keys, percent-encoded payloads.
+  hasSubstr url "comparator.live.lean-lang.org/#project=mathlib-stable" &&
+  hasSubstr url "&challenge=" &&
+  hasSubstr url "&code=" &&
+  -- No raw spaces survive into the fragment.
+  !hasSubstr url "theorem t :"
+
+/-! ### Rendering-tier markers -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let reelab := (Informal.NodeCard.tierMarker (some "reelab")).asString
+  let delab := (Informal.NodeCard.tierMarker (some "delaborated")).asString
+  let unknown := (Informal.NodeCard.tierMarker (some "not-a-tier")).asString
+  let absent := (Informal.NodeCard.tierMarker none).asString
+  hasSubstr reelab "bp_tier_marker" &&
+  hasSubstr reelab "data-bp-tier=\"reelab\"" &&
+  hasSubstr reelab "Re-elaborated from source" &&
+  hasSubstr delab "data-bp-tier=\"delaborated\"" &&
+  -- An unrecognized tier renders NO marker rather than a wrong one.
+  unknown.isEmpty && absent.isEmpty
 
 end Verso.VersoBlueprintTests.BlueprintFormalization

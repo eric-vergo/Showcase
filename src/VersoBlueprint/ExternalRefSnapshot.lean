@@ -746,6 +746,34 @@ def highlightDeclFromSource? (declName : Lean.Name) (content : String)
       | .ok (result, _) => return result
     catch _ => return none
 
+/-- The `sorryAx` constant, whose presence anywhere in a declaration's axiom closure
+means the proof is incomplete — including *transitively*, through a helper lemma
+whose own body carries the `sorry`. Direct `Expr.hasSorry` inspection cannot see
+that; `Lean.collectAxioms` can. -/
+def sorryAxiomName : Lean.Name := Lean.Name.mkSimple "sorryAx"
+
+/-- The declaration's kernel axiom footprint (`Lean.collectAxioms`), as sorted display
+strings. Cheap for imported declarations: `collectAxioms` reads a pre-computed
+per-module table rather than walking bodies across module boundaries. -/
+def declAxiomNames (name : Lean.Name) : Lean.CoreM (Array String) := do
+  let axs ← Lean.collectAxioms name
+  return (axs.map toString).qsort (· < ·)
+
+/-- Whether the module's source file is newer than the `.olean` it was compiled into.
+Best-effort: any lookup/stat failure yields `false` (never a build error) — the
+annotation is a warning surface, not a gate. -/
+def sourceNewerThanOlean (moduleName : Lean.Name) (sourcePath : System.FilePath) :
+    IO Bool := do
+  try
+    let oleanPath ← Lean.findOLean moduleName
+    let srcMeta ← sourcePath.metadata
+    let oleanMeta ← oleanPath.metadata
+    let src := srcMeta.modified
+    let ole := oleanMeta.modified
+    return src.sec > ole.sec || (src.sec == ole.sec && src.nsec > ole.nsec)
+  catch _ =>
+    return false
+
 /--
 Build a full snapshot for one external declaration reference using the environment
 available at elaboration/registration time.
@@ -773,12 +801,28 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
           pure ref.kind
         | _ =>
           throwError m!"Unsupported external Lean reference '{ref.written}' (canonical '{canonical}') with kind '{Informal.Data.ConstantInfo.blueprintKindText cinfo}'. Only definition-like declarations, theorems, and axiom-like placeholders are currently supported."
+    -- Kernel axiom audit (layer A): the transitive axiom closure. `sorryAx` in the
+    -- closure means the proof is incomplete even when nothing in *this* declaration
+    -- carries a literal `sorry`, so it upgrades the status — and, because every
+    -- roll-up (node badge, dashboard progress, worklist) reads `provedStatus`, the
+    -- transitive gap propagates everywhere for free.
+    let axioms ← declAxiomNames canonical
+    let directStatus :=
+      Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true)
+    let provedStatus :=
+      if axioms.contains (toString sorryAxiomName) then
+        match directStatus with
+        | .containsSorry _ => directStatus
+        | .axiomLike => directStatus
+        | _ => .containsSorry #[{ location := .proof }]
+      else directStatus
     let ref : Data.ExternalRef := {
       ref with
       canonical
       present := true
-      provedStatus := Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true)
+      provedStatus
       kind := nodeKind
+      axioms? := some axioms
     }
     let ranges? ← findDeclarationRanges? canonical
     let moduleName? := moduleNameForDecl? env canonical
@@ -846,6 +890,26 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
         match proofSource? with
         | some src => highlightProofSourceHtml? src
         | none => pure none
+    -- Rendering tiers, decided exactly where the fallback chain above resolved. A
+    -- silent downgrade (heartbeat cap, unparsable source, module `open`s out of
+    -- scope) therefore becomes a *visible* tier change rather than an invisible one.
+    let sigTier? : Option String :=
+      if fullDecl?.isSome then some "reelab"
+      else if sourceSig?.isSome then some "signature"
+      else some "delaborated"
+    let proofTier? : Option String :=
+      match fullDecl? with
+      | some (_, some _) => some "reelab"
+      | _ =>
+        if proofHtml?.isSome then some "syntactic"
+        else if proofSource?.isSome then some "raw"
+        else none
+    -- Displayed text comes from the source file; status comes from the compiled
+    -- environment. Flag the case where those two can disagree.
+    let sourceStale ←
+      match moduleName?, sourcePath? with
+      | some m, some p => liftM (sourceNewerThanOlean m p)
+      | _, _ => pure false
     pure {
       ref with
       provenance
@@ -855,6 +919,9 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       render
       proofSource?
       proofHtml?
+      sigTier?
+      proofTier?
+      sourceStale
     }
 
 def workspaceRoot : Lean.CoreM System.FilePath := do

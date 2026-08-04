@@ -1,6 +1,6 @@
 # Project Template
 
-This folder is a copyable starter Blueprint project.
+This folder is a copyable starter Showcase project.
 
 To inspect the generated output, copy this folder and run the local workflow
 below; it writes the site to `_out/site/html-multi/`.
@@ -9,8 +9,8 @@ The goal is not to show every feature. The goal is to give you one small
 project that already has the right moving parts:
 
 - a GitHub Pages workflow under `.github/workflows/`
-- chapter files with real Blueprint blocks
-- a Blueprint top-level file
+- chapter files with real Showcase blocks
+- a Showcase top-level file
 - a generator entry point
 - a local CI script for build-and-render checks
 - rendered graph and summary pages

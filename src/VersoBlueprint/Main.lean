@@ -58,7 +58,9 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages
         :: Informal.DeclPage.emitBlueprintDeclPages
-        :: Informal.Commands.emitBlueprintGraphGate
+        -- The structural `uses`-graph gate is NOT an `ExtraStep`: it runs between
+        -- traversal and emission inside `emitBlueprintHtml` (`Informal.GraphGate`),
+        -- so a failing gate leaves no rendered site behind.
         :: Informal.Commands.emitBlueprintComparatorPage
         :: extraSteps)
 

@@ -12,6 +12,7 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Commands.Summary.Html
 import VersoBlueprint.Commands.Summary.Sections
+import VersoBlueprint.Commands.TrustStrip
 
 /-!
 Project-management surfaces emitted as standalone static pages, plus the README
@@ -583,8 +584,78 @@ private def auditSummaryCards (data : Summary) : Output.Html :=
   </div>
 }}
 
+/-- The build-time axiom-audit section of the audit page.
+
+Distinct from the "Sorries" list above it: that list is the *authored* view (nodes
+whose snapshot recorded a sorry), while this is the kernel's transitive verdict from
+`Lean.collectAxioms` over every wired and project declaration — it catches a theorem
+whose own body is clean but which invokes a sorried helper. Reads the audit findings
+cached in the trust payload; renders nothing when no audit ran. -/
+private def auditAxiomSection (state : TraverseState) : Output.Html :=
+  let audit? : Option Informal.AxiomAudit.Summary := do
+    let j ← Informal.TraversalIndex.TrustData.raw? state
+    let trust ← (fromJson? (α := Informal.Commands.TrustData) j).toOption
+    trust.audit?
+  match audit? with
+  | none => .empty
+  | some a =>
+    if !a.ran then .empty
+    else
+      let codeList := fun (names : Array String) =>
+        Output.Html.seq (names.map fun n => {{ <li><code>{{.text true n}}</code></li> }})
+      let sorriedBlock : Output.Html :=
+        if a.sorried.isEmpty then .empty
+        else {{
+          <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
+            <summary>{{Informal.NodeCard.withCodeSpans s!"Incomplete proofs — `sorryAx` in the closure ({a.sorried.size})"}}</summary>
+            <ul class="bp_summary_list">{{codeList a.sorried}}</ul>
+          </details> }}
+      let nonstandardBlock : Output.Html :=
+        if a.nonstandard.isEmpty then .empty
+        else
+          let rows := a.nonstandard.map fun d =>
+            {{ <li><code>{{.text true d.name}}</code>" — "
+                 {{.text true (String.intercalate ", " d.nonstandard.toList)}}</li> }}
+          {{
+            <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
+              <summary>{{.text true s!"Nonstandard axioms ({a.nonstandard.size})"}}</summary>
+              <ul class="bp_summary_list">{{Output.Html.seq rows}}</ul>
+            </details> }}
+      let clean : Output.Html :=
+        if !a.sorried.isEmpty || !a.nonstandard.isEmpty then .empty
+        else {{
+          <p class="bp_summary_empty">
+            {{Informal.NodeCard.withCodeSpans
+              s!"`Lean.collectAxioms` over {a.checked} declarations found no `sorryAx` in any \
+                 transitive closure and no axiom beyond propext, Classical.choice, and \
+                 Quot.sound."}}
+          </p> }}
+      let axiomList : Output.Html :=
+        if a.allAxioms.isEmpty then .empty
+        else {{
+          <p class="bp_summary_note">
+            "Axioms used across the development: "
+            {{.text true (String.intercalate ", " a.allAxioms.toList)}}"."
+          </p> }}
+      {{
+        <section class="bp_audit_axioms">
+          <h2>"Kernel axiom audit"</h2>
+          <p class="bp_summary_note">
+            {{Informal.NodeCard.withCodeSpans
+              s!"Computed at build time with `Lean.collectAxioms` over {a.checked} declarations \
+                 — every declaration a blueprint node wires plus every project declaration. \
+                 Unlike the sorry list above, this is transitive: a theorem that invokes a \
+                 sorried helper is reported even though its own body is clean."}}
+          </p>
+          {{clean}}
+          {{sorriedBlock}}
+          {{nonstandardBlock}}
+          {{axiomList}}
+        </section>
+      }}
+
 /-- Body of the audit / technical-debt page. -/
-private def auditBody (data : Summary) (rows : SummaryRows) : Output.Html :=
+private def auditBody (state : TraverseState) (data : Summary) (rows : SummaryRows) : Output.Html :=
   let warnClass := "bp_summary_subsection bp_summary_subsection_warn"
   let nothing :=
     data.sorryDetails.isEmpty && data.missingLeanDecls.isEmpty && data.axiomIndex.isEmpty &&
@@ -616,6 +687,7 @@ private def auditBody (data : Summary) (rows : SummaryRows) : Output.Html :=
           s!"Proof-debt hotspots ({data.proofDebtHotspots.length})" rows.proofDebtHotspotRows warnClass true}}
       {{summaryOptionalDetailsList (!rows.renderFailureRows.isEmpty)
           s!"Render failures ({data.renderFailures.length})" rows.renderFailureRows warnClass true}}
+      {{auditAxiomSection state}}
     </div>
   }}
 
@@ -638,12 +710,12 @@ def emitBlueprintAuditPage : ExtraStep :=
       match Informal.TraversalIndex.Summary.cachedSummary? state with
       | none =>
         logger.reportWarning
-          "Blueprint audit page: no cached Summary in traversal state; skipping \
+          "Showcase audit page: no cached Summary in traversal state; skipping \
            audit/index.html (is a `blueprint_dashboard` block present?)."
       | some summary =>
         let rows ← runSummaryHtml state (SummaryRows.render (auditHtmlContext state) summary)
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-          Informal.NodeRoute.auditPath "Audit and technical debt" (auditBody summary rows)
+          Informal.NodeRoute.auditPath "Audit and technical debt" (auditBody state summary rows)
 
 /-! ## Mathlib upstream-candidates page -/
 
@@ -779,7 +851,7 @@ def emitBlueprintMathlibCandidatesPage : ExtraStep :=
       match Informal.TraversalIndex.Summary.cachedSummary? state with
       | none =>
         logger.reportWarning
-          "Blueprint Mathlib candidates page: no cached Summary in traversal state; skipping \
+          "Showcase Mathlib candidates page: no cached Summary in traversal state; skipping \
            mathlib-candidates/index.html (is a `blueprint_dashboard` block present?)."
       | some summary =>
         Informal.NodePage.emitStaticBlueprintPage mode cfg state text
@@ -791,7 +863,7 @@ def emitBlueprintMathlibCandidatesPage : ExtraStep :=
 The landing page is minimal (title / authors / trust strip / featured cards); the PM
 hub is where the orienting overview lives: the overall progress hero, the guided
 reading map, a compact hub of links to every project-management and catalog surface
-(worklist / audit / candidates / modules / index / blueprint summary / formalization
+(worklist / audit / candidates / modules / index / showcase summary / formalization
 metadata), the next actionable tasks, per-chapter progress, the dependency-depth
 histogram, and a collapsed build-provenance footer. The full per-entry summary, the
 owner/tag rollups, and the coverage-split status cards are NOT duplicated here — they
@@ -871,25 +943,29 @@ private def comparatorConfigured (state : TraverseState) : Bool :=
   | none => false
 
 /-- The PM hub's navigation row: quiet links to every project-management and catalog
-surface. The Blueprint Summary, Formalization Metadata, and Statement Comparator links
-are omitted when the document carries no such page (their traversal anchors / trust
-payload resolve to `none`), so an unconfigured consumer degrades gracefully rather than
-dead-linking. -/
+surface. The Showcase Summary, Trust model, Formalization Metadata, and Statement
+Comparator links are omitted when the document carries no such page (their traversal
+anchors / trust payload resolve to `none`), so an unconfigured consumer degrades
+gracefully rather than dead-linking. -/
 private def pmHubLinks (state : TraverseState) : Output.Html :=
   let summaryLink : Output.Html :=
     match Informal.TraversalIndex.SummaryPage.href? state with
-    | some href => {{ <a href={{href}}>"Blueprint summary"</a> }}
+    | some href => {{ <a href={{href}}>"Showcase summary"</a> }}
     | none => .empty
   let formalizationLink : Output.Html :=
     match Informal.TraversalIndex.FormalizationPage.href? state with
     | some href => {{ <a href={{href}}>"Formalization metadata"</a> }}
+    | none => .empty
+  let trustModelLink : Output.Html :=
+    match Informal.TraversalIndex.TrustModelPage.href? state with
+    | some href => {{ <a href={{href}}>"Trust model"</a> }}
     | none => .empty
   let comparatorLink : Output.Html :=
     if comparatorConfigured state then
       {{ <a href={{Informal.NodeRoute.comparatorHref}}>"Statement comparator"</a> }}
     else .empty
   {{
-    <nav class="bp_pm_links" "aria-label"="Blueprint sections">
+    <nav class="bp_pm_links" "aria-label"="Showcase sections">
       <a href={{Informal.NodeRoute.defsHref}}>"Definitions"</a>
       <a href={{Informal.NodeRoute.theoremsHref}}>"Theorems"</a>
       <a href={{Informal.NodeRoute.worklistHref}}>"Worklist"</a>
@@ -898,6 +974,7 @@ private def pmHubLinks (state : TraverseState) : Output.Html :=
       <a href={{Informal.NodeRoute.modulesHref}}>"Modules"</a>
       <a href={{Informal.NodeRoute.declIndexHref}}>"Index"</a>
       {{comparatorLink}}
+      {{trustModelLink}}
       {{summaryLink}}
       {{formalizationLink}}
     </nav>
@@ -956,7 +1033,7 @@ private def pmDepthHistogram (state : TraverseState) : Output.Html :=
 quick links to every section, the next actionable tasks, per-chapter progress, the
 dependency-depth histogram, and a collapsed build-provenance footer — plus the offline
 `bp-dashboard-data` JSON that feeds the chart mounts. The full per-entry summary now
-lives on its own standalone Blueprint Summary page, linked from the hub. -/
+lives on its own standalone Showcase Summary page, linked from the hub. -/
 private def pmBody (state : TraverseState) (summary : Summary)
     (metadata : Informal.PreviewManifest.BuildMetadata) : Output.Html :=
   -- Resolve a short chapter title for each group's per-chapter progress bar from a
@@ -1023,7 +1100,7 @@ def emitBlueprintPmPage : ExtraStep :=
       match Informal.TraversalIndex.Summary.cachedSummary? state with
       | none =>
         logger.reportWarning
-          "Blueprint PM page: no cached Summary in traversal state; skipping \
+          "Showcase PM page: no cached Summary in traversal state; skipping \
            pm/index.html (is a `blueprint_dashboard` block present?)."
       | some summary =>
         let metadata ← Informal.PreviewManifest.readBuildMetadata
@@ -1050,7 +1127,7 @@ def emitBlueprintExtraPages : ExtraStep :=
       match Informal.TraversalIndex.Summary.cachedSummary? state with
       | none =>
         logger.reportWarning
-          "Blueprint extra pages: no cached Summary in traversal state; skipping \
+          "Showcase extra pages: no cached Summary in traversal state; skipping \
            worklist/owner/tag pages and progress badge (is a `blueprint_dashboard` block present?)."
       | some summary =>
         -- Worklist (filterable; full server-rendered list).
@@ -1065,7 +1142,7 @@ def emitBlueprintExtraPages : ExtraStep :=
           let slug := Informal.NodeRoute.ownerPageSlug owner.owner
           if seenOwnerSlugs.contains slug then
             logger.reportWarning <|
-              s!"Blueprint owner pages: slug collision for owner {owner.owner} (slug {slug}); " ++
+              s!"Showcase owner pages: slug collision for owner {owner.owner} (slug {slug}); " ++
               "this owner page may overwrite another owner's page"
           seenOwnerSlugs := seenOwnerSlugs.insert slug
           let items := summary.worklist.filter (fun i => i.ownerDisplayName == some owner.displayName)
@@ -1079,7 +1156,7 @@ def emitBlueprintExtraPages : ExtraStep :=
           let slug := Informal.NodeRoute.tagPageSlug tag.tag
           if seenTagSlugs.contains slug then
             logger.reportWarning <|
-              s!"Blueprint tag pages: slug collision for tag {tag.tag} (slug {slug}); " ++
+              s!"Showcase tag pages: slug collision for tag {tag.tag} (slug {slug}); " ++
               "this tag page may overwrite another tag's page"
           seenTagSlugs := seenTagSlugs.insert slug
           let items := summary.worklist.filter (fun i => i.tags.contains tag.tag)

@@ -1,27 +1,49 @@
-# Verso Blueprint
+# Showcase
 
-Verso Blueprint is a Lean package for writing Blueprint documents in
-[Verso](https://github.com/leanprover/verso).
+**Showcase** is a tool for *presenting* formal Lean proofs: it turns a repository of
+Lean declarations into a browsable, self-contained site where every result sits
+beside its informal statement, its dependencies, and the evidence for believing it.
 
-A Blueprint project combines:
+It is agnostic about where the Lean came from. A hand-written blueprint developed
+alongside its prose and a machine-generated corpus of twenty-five thousand
+declarations get the same treatment, and the second case is the one that shaped the
+design: at that scale nobody reads the repository, so the presentation layer *is* the
+interface, and its trust claims have to survive scrutiny they were never going to
+receive by hand.
 
-- informal mathematical exposition
+That commitment runs through the whole tool. The site distinguishes, visibly and per
+item, between what a machine checked and what a person asserted — a build-time
+`Lean.collectAxioms` audit over every presented declaration, structural gates on the
+dependency graph run before any HTML is written, per-block markers recording how each
+piece of code was rendered, and a "Trust model" page stating plainly what none of that
+covers. Claims contradicted by the environment fail the build rather than rendering
+as green badges.
+
+A Showcase project combines:
+
+- informal mathematical exposition beside each formal declaration
 - links to local Lean code or existing Lean declarations
 - optional attached Rust code blocks on labeled nodes for mixed-language notes
 - optional external TeX or Markdown markup attachments on labeled nodes to help
   port existing documents
 - automatic tracking of formalization progress by analyzing the associated Lean
   code and declarations, including incomplete declarations such as `sorry`
+- a build-time kernel axiom audit, checked against the project's declared claims
 - rendered overview pages such as dependency graphs and progress summaries
 - HTML output with previews, navigation, and exported metadata
+
+**Naming.** "Showcase" is the product name. The Lake package is still
+`VersoBlueprint`, the directives are still `blueprint_*`, and the option namespace is
+still `verso.blueprint.*` — renaming those would break every consumer for no
+benefit. Expect the code to say "blueprint" and the site to say "Showcase".
 
 ## What this fork changes vs upstream
 
 This is **eric-vergo/verso-blueprint**, a fork of
 [leanprover/verso-blueprint](https://github.com/leanprover/verso-blueprint) that
-turns the Blueprint genre into a browsable, self-contained documentation site for
-mathematicians and formalization contributors. It is the genre powering the
-**A362583 irrationality showcase** — <https://eric-vergo.github.io/OEIS-A362583-Irrationality/>.
+turns the Blueprint genre into a browsable, self-contained presentation layer for
+formal proofs. It is the genre powering the **A362583 irrationality showcase** —
+<https://eric-vergo.github.io/OEIS-A362583-Irrationality/>.
 
 The fork's feature program, layered over upstream's genre:
 
@@ -35,15 +57,23 @@ The fork's feature program, layered over upstream's genre:
   a landing dashboard with self-hosted d3 charts; and a single "Project management"
   top-nav feeding a `pm/` hub (worklist, owners, tags, audit, Mathlib candidates,
   definitions, theorems, modules, index).
-- **Claim-first comparator / trust surface.** A comparator page with a trust strip
-  and a `formalization.yaml` metadata page, an unconditional acyclicity build gate
-  plus an optional single-connectivity gate, and `verso.blueprint.trust.*` /
-  `declNamePrefix` / `graph.includeAllDecls` / `math.lint` /
-  `externalCode.strictResolve` lakefile options.
-- **Verbatim-source signatures & faithful highlighting.** Node signatures are the
+- **Trust surfaces that fail closed.** A claim-first comparator page (verdict, scope,
+  the certified statement verbatim, reproduce commands pinned to what CI actually
+  ran), a `formalization.yaml` metadata page, a **Trust model** page separating
+  machine-checked from author-asserted, and a build-time **axiom audit**
+  (`Lean.collectAxioms` over every wired and project declaration) whose findings
+  contradict-check the project's own `formalization.yaml` and fail the build when they
+  disagree. Structural `uses`-graph gates (acyclicity, unresolved labels, optional
+  connectivity) run *between traversal and emission*, so a failing gate leaves no site
+  on disk. Configured through `verso.blueprint.trust.*` / `declNamePrefix` /
+  `graph.includeAllDecls` / `math.lint` / `externalCode.strictResolve` lakefile
+  options.
+- **Verbatim-source signatures & marked rendering tiers.** Node signatures are the
   author's verbatim source, re-elaborated in the declaration's own namespace (with a
   delaborated fallback); proof bodies render without inline proof-state toggles so
-  per-token type hovers work; build-time TikZ → SVG offline figures.
+  per-token type hovers work; build-time TikZ → SVG offline figures. Every code block
+  carries a corner marker recording which pipeline produced it, so a silent fallback
+  from "re-elaborated and checked" to "coloured text" is visible to the reader.
 - **Full light/dark theming.** Everything themes via `data-bp-color-scheme` with the
   `--bp-color-*` / `--bp-space-*` / `--bp-duration-*` / `--bp-fs-*` token scales, a
   restrained dev-tool-docs visual identity, and **offline / self-contained** emitted
@@ -83,7 +113,7 @@ not currently carried over.
 
 ### Start a project
 
-If you want to start a Blueprint project today, start here:
+If you want to start a Showcase project today, start here:
 
 1. [project_template/README.md](./project_template/README.md)
 2. [doc/GETTING_STARTED.md](./doc/GETTING_STARTED.md)

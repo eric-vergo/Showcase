@@ -172,7 +172,7 @@ private def declLinkHtml (st : TraverseState) (declMap : Lean.NameMap (Array Lea
   match href? with
   | Option.some href =>
     Informal.LeanCodeLink.renderResolved declName node (href? := Option.some href)
-      (linkTitle? := Option.some s!"Blueprint entry for {declStr}")
+      (linkTitle? := Option.some s!"Showcase entry for {declStr}")
       (withPreview := false)
   | Option.none => node
 

@@ -133,7 +133,7 @@ def pageOutlineCss : String := r##"
 }
 
 /* Separator above the non-chapter (unnumbered) ToC tail — Dependency Graph,
-   Blueprint Summary, Formalization Metadata, Bibliography — mirroring the
+   Showcase Summary, Formalization Metadata, Bibliography — mirroring the
    "On this page" outline separator above. Verso core's split-toc
    (`Toc.localHtml` / `splitTocElem`) emits the numbered chapter rows
    (`tr.numbered`) contiguously, then the unnumbered tail (`tr.unnumbered`); we

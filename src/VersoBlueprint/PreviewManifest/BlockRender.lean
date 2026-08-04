@@ -194,7 +194,7 @@ private def formalBodyFromEntry (entry : Entry) : Html :=
     let isDefinition := !(entry.kind.getD .theorem).isTheoremLike
     Informal.NodeCard.formalSourceBody
       (refs.filterMap fun ref =>
-        if ref.present then some (ref.proofHtml?, ref.proofSource?) else none)
+        if ref.present then some (ref.proofHtml?, ref.proofSource?, ref.proofTier?) else none)
       (assignPrefix := isDefinition)
   | _ => .empty
 

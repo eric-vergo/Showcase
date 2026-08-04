@@ -484,13 +484,42 @@ def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState
 
 end FormalizationPage
 
+namespace TrustModelPage
+
+/--
+Singleton key under which the trust-model page anchor is indexed.
+`Block.trustModel`'s traversal saves the block's anchor id here (mirroring
+`FormalizationPage`) so the dashboard trust strip, the comparator page, and the PM
+hub can cross-link "Trust model" without guessing its slug — and omit the link
+entirely when the document carries no such page.
+-/
+def pageKey : String := "trustModel"
+
+def spec : StoreSpec := {
+  name := Resolve.trustModelDomainName
+  kind := .semanticDomain
+  key := "singleton trust-model key"
+  value := "trust-model page anchor id"
+  summary := "Anchor index for the standalone \"Trust model\" page (trust-strip / comparator / PM-hub cross-links)."
+}
+
+def domainName : Name := spec.name
+
+def href? (state : TraverseState) : Option String :=
+  Resolve.resolveDomainHref? state domainName pageKey
+
+def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName pageKey id
+
+end TrustModelPage
+
 namespace SummaryPage
 
 /--
 Singleton key under which the blueprint-summary page anchor is indexed.
 `Block.summary`'s traversal saves the block's anchor id here (mirroring
 `FormalizationPage`) so other surfaces (the PM hub links) can cross-link the
-standalone Blueprint Summary page without guessing its slug. When a document
+standalone Showcase Summary page without guessing its slug. When a document
 carries several `blueprint_summary` blocks, more than one id lands under this key
 and `href?` resolves to `none` (Verso only links a single-target ref), so the
 cross-link is simply omitted rather than pointing at an arbitrary block.
@@ -501,8 +530,8 @@ def spec : StoreSpec := {
   name := Resolve.summaryPageDomainName
   kind := .semanticDomain
   key := "singleton summary-page key"
-  value := "blueprint-summary page anchor id"
-  summary := "Anchor index for the standalone blueprint-summary page (PM-hub cross-link)."
+  value := "showcase-summary page anchor id"
+  summary := "Anchor index for the standalone Showcase Summary page (PM-hub cross-link)."
 }
 
 def domainName : Name := spec.name
@@ -628,7 +657,7 @@ def spec : StoreSpec := {
   kind := .runtimeCache
   key := "singleton trust key"
   value := "raw trust-strip JSON payload (sorry count, axioms, review status, comparator verdict)"
-  summary := "Carries the elaboration-time trust-strip data (`Commands.TrustData`, saved by `Block.trustStrip`'s traverse) to the generation-time ExtraSteps: `emitBlueprintGraphGate` reads `requireConnected` and `emitBlueprintComparatorPage` reads the comparator verdict to emit the `comparator/` page. Absent when no `verso.blueprint.trust.*` option is configured."
+  summary := "Carries the elaboration-time trust-strip data (`Commands.TrustData`, saved by `Block.trustStrip`'s traverse) — comparator verdict, `requireConnected`, and the build-time axiom-audit findings — to the generation-time consumers: `Informal.GraphGate` (run between traversal and emission) reads `requireConnected`, `emitBlueprintComparatorPage` reads the comparator verdict to emit the `comparator/` page, and the audit/trust-model pages report the audit summary. Absent when no `verso.blueprint.trust.*` option is configured."
 }
 
 def domainName : Name := spec.name
@@ -668,6 +697,7 @@ def allSpecs : Array StoreSpec := #[
   CitationPreviews.spec,
   Bibliography.spec,
   FormalizationPage.spec,
+  TrustModelPage.spec,
   SummaryPage.spec,
   CitationUsages.spec,
   Summary.spec,

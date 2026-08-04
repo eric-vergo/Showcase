@@ -1,4 +1,4 @@
-# Blueprint Maintainer Guide
+# Showcase Maintainer Guide
 
 Last updated: 2026-05-04
 

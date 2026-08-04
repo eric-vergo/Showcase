@@ -30,8 +30,8 @@
   "docdash": {
     "collapse": "top",
     "meta": {
-      "description": "Verso Blueprint JavaScript API reference",
-      "title": "Verso Blueprint JavaScript API"
+      "description": "Showcase JavaScript API reference",
+      "title": "Showcase JavaScript API"
     },
     "nameInOutputPath": false,
     "private": false,

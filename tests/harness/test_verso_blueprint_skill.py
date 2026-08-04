@@ -14,7 +14,7 @@ class VersoBlueprintSkillTests(unittest.TestCase):
         text = skill.read_text(encoding="utf-8")
         self.assertTrue(text.startswith("---\n"))
         self.assertIn("name: verso-blueprint", text)
-        self.assertIn("description: Work with Verso Blueprint Lean projects.", text)
+        self.assertIn("description: Work with Showcase (Verso Blueprint) Lean projects.", text)
         self.assertIn("references/vbp.md", text)
         self.assertIn("references/authoring-patterns.md", text)
         self.assertIn("JSON shapes as unstable", text)
@@ -88,8 +88,8 @@ class VersoBlueprintSkillTests(unittest.TestCase):
 
     def test_openai_metadata_matches_skill(self) -> None:
         text = (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn('display_name: "Verso Blueprint"', text)
-        self.assertIn('short_description: "Work with Verso Blueprint projects"', text)
+        self.assertIn('display_name: "Showcase (Verso Blueprint)"', text)
+        self.assertIn('short_description: "Work with Showcase (Verso Blueprint) projects"', text)
         self.assertIn('default_prompt: "Use $verso-blueprint', text)
 
 

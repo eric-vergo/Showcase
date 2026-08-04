@@ -1,4 +1,4 @@
-name: Blueprint Pages
+name: Showcase Pages
 
 on:
   pull_request:

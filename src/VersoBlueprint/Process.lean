@@ -29,4 +29,20 @@ def runTrimmedCommand? (cmd : String) (args : Array String) : IO (Option String)
   catch _ =>
     pure none
 
+/--
+Run a command and return its trimmed stdout on success, keeping *empty* output as
+a real `some ""` result.
+
+`runTrimmedCommand?` collapses "the command succeeded and printed nothing" into
+`none`, which is exactly wrong for probes where silence is the informative answer
+(`git status --porcelain` prints nothing for a clean worktree). Failures and
+missing commands are still `none`.
+-/
+def runCommandAllowingEmpty? (cmd : String) (args : Array String) : IO (Option String) := do
+  try
+    let out ← IO.Process.output { cmd, args }
+    if out.exitCode == 0 then pure (some out.stdout.trimAscii.toString) else pure none
+  catch _ =>
+    pure none
+
 end Informal.Process

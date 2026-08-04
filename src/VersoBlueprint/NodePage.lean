@@ -421,7 +421,7 @@ def emitBlueprintNodePages (extensionImpls : ExtensionImpls) : ExtraStep :=
         let slug := Informal.NodeRoute.nodePageSlug entry.label
         if usedSlugs.contains slug then
           logError <|
-            s!"Blueprint node pages: slug collision for {entry.label} (slug {slug}); " ++
+            s!"Showcase node pages: slug collision for {entry.label} (slug {slug}); " ++
             "node page may overwrite another node's page"
         usedSlugs := usedSlugs.insert slug
         let body :=

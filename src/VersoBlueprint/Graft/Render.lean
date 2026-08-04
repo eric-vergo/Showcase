@@ -39,7 +39,7 @@ public def renderedContent?
     IO (Option Informal.PreviewManifest.BlockRender.RenderedContent) := do
   match ctx.htmlCacheIndex.findHtml? entry.key with
   | none =>
-      ctx.logError s!"Blueprint HTML cache: missing rendered body for {entry.key}"
+      ctx.logError s!"Showcase HTML cache: missing rendered body for {entry.key}"
       pure none
   | some bodyHtml =>
       let codeBodies :=
@@ -108,11 +108,11 @@ public def renderNodeFromManifestCache
   | some index =>
     match index.findEntry? node.key with
     | none =>
-        pure <| cfg.renderMissingNode node "Blueprint node not found" node.selectionDescription
+        pure <| cfg.renderMissingNode node "Showcase node not found" node.selectionDescription
     | some entry =>
         match ← ctx.renderedContent? node entry with
         | none =>
-            pure <| cfg.renderMissingNode node "Blueprint HTML cache entry not found" entry.key
+            pure <| cfg.renderMissingNode node "Showcase HTML cache entry not found" entry.key
         | some content =>
             pure <| renderNodeWithContent cfg node entry content
 

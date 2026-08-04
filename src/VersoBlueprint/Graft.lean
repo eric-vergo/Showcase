@@ -82,10 +82,10 @@ private def renderLeanCodePreviewBody?
     Doc.Html.HtmlT Verso.Genre.Manual m (Option Html) := do
   match Informal.TraversalIndex.LeanCodePreviews.decodedEntry? state key with
   | none =>
-      Verso.reportError s!"Blueprint graft: missing Lean-code preview {key}"
+      Verso.reportError s!"Showcase graft: missing Lean-code preview {key}"
       pure none
   | some (.error err) =>
-      Verso.reportError s!"Blueprint graft: malformed Lean-code preview {key}: {err.message}"
+      Verso.reportError s!"Showcase graft: malformed Lean-code preview {key}: {err.message}"
       pure none
   | some (.ok stored) =>
       match stored.data.source with
@@ -121,13 +121,13 @@ private def renderManualGraftNode
   match Informal.PreviewManifest.findTraversalBlockEntry? state node.key with
   | none =>
       pure <| Html.tag "div" (manualNodeAttrs node) <|
-        renderNotice "bp_graft_node_notice" "error" "Blueprint node not found"
+        renderNotice "bp_graft_node_notice" "error" "Showcase node not found"
           node.selectionDescription
   | some (preview, entry) =>
       if preview.blocks.isEmpty then
         pure <| Html.tag "div" (manualNodeAttrs node) <|
           renderNotice "bp_graft_node_notice" "error"
-            "Blueprint node has no cached content" node.key
+            "Showcase node has no cached content" node.key
       else
         let body ← renderManualBlocks goB preview.blocks
         let codeBodies ←

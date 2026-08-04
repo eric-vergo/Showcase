@@ -1,4 +1,4 @@
-# Blueprint Manual
+# Showcase Manual
 
 This document is the current reference for Blueprint authoring and rendering.
 For stable Lean, generated-data, and browser integration APIs, see

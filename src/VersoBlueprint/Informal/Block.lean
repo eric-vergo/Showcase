@@ -178,7 +178,7 @@ block_extension Block.informal (data : BlockData) where
           -- signature; theorem proof bodies keep the default (no prefix).
           let formalBody := NodeCard.formalSourceBody
             (externalDecls.filterMap fun ref =>
-              if ref.present then some (ref.proofHtml?, ref.proofSource?) else none)
+              if ref.present then some (ref.proofHtml?, ref.proofSource?, ref.proofTier?) else none)
             (assignPrefix := !isTheoremLike)
           -- Primary decl name + slim identity metadata for the selection bus /
           -- metadata rail (matches the manifest card path in `BlockRender`): the

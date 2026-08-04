@@ -125,11 +125,12 @@ available (for `private` declarations this is the syntactic type highlight — t
 `_private.…` mangling never reaches the page), degrading to an escaped `<pre>`
 of the pretty-printed type. -/
 private def signatureCell (e : Entry) : Html :=
+  let marker := Informal.NodeCard.tierMarker e.sigTier?
   match e.signatureHtml? with
   | some inner =>
-    {{ <pre class="bp_external_decl_signature signature hl lean block">{{Html.text false inner}}</pre> }}
+    {{ <pre class="bp_external_decl_signature signature hl lean block">{{marker}}{{Html.text false inner}}</pre> }}
   | none =>
-    {{ <pre class="bp_external_decl_signature signature">{{Html.text true e.signatureText}}</pre> }}
+    {{ <pre class="bp_external_decl_signature signature">{{marker}}{{Html.text true e.signatureText}}</pre> }}
 
 /-- Quiet provenance marker shown under the informal-statement prose: notes that
 it is derived from the declaration's docstring. -/
@@ -165,7 +166,9 @@ private def declCardParts (bodies : Std.HashMap String Body)
   let isDefinition := e.kind == "Definition"
   let formalBody : Html :=
     match bodies.get? e.name with
-    | some b => Informal.NodeCard.formalSourceBody #[(b.html?, b.text?)] (assignPrefix := isDefinition)
+    | some b =>
+      Informal.NodeCard.formalSourceBody #[(b.html?, b.text?, e.proofTier?)]
+        (assignPrefix := isDefinition)
     | none => .empty
   let shortName? := if short == e.name then none else some short
   let metaJson := Informal.NodeCard.declMetaJson e.name e.kind e.status e.moduleName
@@ -321,7 +324,7 @@ def emitBlueprintDeclPages : ExtraStep :=
         match (do let j ← Json.parse raw; (FromJson.fromJson? j : Except String Registry)) with
         | .error e =>
           logger.reportWarning
-            s!"Blueprint decl pages: could not parse decl-registry.json ({e}); \
+            s!"Showcase decl pages: could not parse decl-registry.json ({e}); \
                skipping the decl/ pages."
         | .ok registry =>
           -- Internal proof/value bodies (may be absent; pages degrade to the
@@ -345,7 +348,7 @@ def emitBlueprintDeclPages : ExtraStep :=
             let slug := Informal.NodeRoute.declPageSlug e.name
             if usedSlugs.contains slug then
               logger.reportError <|
-                s!"Blueprint decl pages: slug collision for {e.name} (slug {slug}); " ++
+                s!"Showcase decl pages: slug collision for {e.name} (slug {slug}); " ++
                 "decl page may overwrite another declaration's page"
             usedSlugs := usedSlugs.insert slug
             let body := renderDeclPageBody master bodies text.titleString e slug

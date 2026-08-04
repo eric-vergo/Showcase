@@ -1,4 +1,4 @@
-# Blueprint Design Rationale
+# Showcase Design Rationale
 
 Last updated: 2026-06-20
 

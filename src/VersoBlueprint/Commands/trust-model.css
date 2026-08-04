@@ -1,0 +1,114 @@
+/* Trust-model page ("Trust model", `blueprint_trust_model`).
+
+   Deliberately plain: a table of what was checked, prose about what was not, and a
+   legend. No cards, no chrome — the page's job is to be read carefully, and every
+   color comes from the shared `--bp-color-*` tokens, so light and dark are free.
+
+   The page shares the widened content column with the other data-first surfaces via
+   the `.content-wrapper:has(...)` rule in summary.css. */
+
+.bp_trustmodel {
+  margin: 0 auto;
+  max-width: var(--bp-dashboard-column, 110rem);
+}
+
+.bp_trustmodel_lead {
+  margin: 0 0 var(--bp-space-5);
+  color: var(--bp-color-text-muted);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  max-width: 46rem;
+}
+
+.bp_trustmodel_section {
+  margin-block: var(--bp-space-6);
+}
+
+.bp_trustmodel_subtitle {
+  margin: var(--bp-space-5) 0 var(--bp-space-2);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_trustmodel .bp_trust_prose {
+  max-width: 46rem;
+  line-height: 1.65;
+}
+
+.bp_trustmodel_list {
+  margin: var(--bp-space-2) 0 var(--bp-space-4);
+  padding-inline-start: var(--bp-space-5);
+  max-width: 46rem;
+  line-height: 1.65;
+  color: var(--bp-color-text);
+}
+
+.bp_trustmodel_list li {
+  margin-block: var(--bp-space-2);
+}
+
+/* ---- The "what is machine-checked" / tier-legend tables ------------------- */
+
+.bp_trustmodel_table_wrap {
+  margin-block: var(--bp-space-3);
+  overflow-x: auto;
+}
+
+.bp_trustmodel_table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--bp-fs-control, 0.9rem);
+  line-height: 1.55;
+}
+
+.bp_trustmodel_table th {
+  padding: var(--bp-space-2) var(--bp-space-3);
+  border-bottom: 1px solid var(--bp-color-border);
+  color: var(--bp-color-text-muted);
+  font-weight: 600;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.bp_trustmodel_table td {
+  padding: var(--bp-space-3);
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  vertical-align: top;
+}
+
+.bp_trustmodel_table tr:last-child td {
+  border-bottom: 0;
+}
+
+.bp_trustmodel_what {
+  color: var(--bp-color-text-strong);
+  font-weight: 600;
+  min-width: 12rem;
+}
+
+.bp_trustmodel_verdict {
+  white-space: nowrap;
+}
+
+.bp_trustmodel_detail {
+  color: var(--bp-color-text-muted);
+}
+
+/* The tier legend's glyph column mirrors the in-code corner markers. */
+.bp_trustmodel_glyph {
+  width: 2.5rem;
+  color: var(--bp-color-text-faint);
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+@media (max-width: 45rem) {
+  .bp_trustmodel_what {
+    min-width: 0;
+  }
+
+  .bp_trustmodel_table {
+    font-size: var(--bp-fs-caption, 0.82rem);
+  }
+}

@@ -42,8 +42,8 @@ def parseFeaturedLabels (featured? : Option String) : Array Name :=
 
 open Verso Doc Elab Syntax in
 def mkSummaryPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
-  let titlePreview := "Blueprint Summary"
-  let titleInlines ← `(inline | "Blueprint Summary")
+  let titlePreview := "Showcase Summary"
+  let titleInlines ← `(inline | "Showcase Summary")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   let summary ← buildSummary
@@ -79,12 +79,31 @@ public meta def blueprintDashboardCmd : PartCommand
     let summary : Summary := { base with featuredLabels := parseFeaturedLabels cfg.featured }
     if verso.blueprint.debug.commands.get (← Lean.getOptions) then
       logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
-    -- Trust strip: carries the sorry/axiom/review/comparator badges when the
-    -- `verso.blueprint.trust.*` options name artifacts, plus the always-on structural
-    -- `uses`-graph badges (acyclicity / connectivity) computed at render time. The
-    -- strip renders nothing when it would carry no signal (no trust config and an
-    -- empty master graph), so unconfigured consumers see no change.
-    let trust := (← elabTrustData?).getD {}
+    -- Trust strip: carries the comparator badge when the `verso.blueprint.trust.*`
+    -- options name artifacts, plus the structural `uses`-graph badges (acyclicity /
+    -- connectivity) and the axiom-audit result. The strip renders nothing when it
+    -- would carry no signal, so unconfigured consumers see no change.
+    let mut trust := (← elabTrustData?).getD {}
+    -- Build-time audits run HERE because this is where the environment is: the
+    -- dashboard command elaborates inside the document, with every chapter's imports
+    -- in scope, so `Lean.collectAxioms` and the const-level dependency inference both
+    -- see the real project. Contradictions against `formalization.yaml` throw; softer
+    -- findings become warnings plus a dashboard badge.
+    let opts ← Lean.getOptions
+    let requireAuditClean :=
+      opts.get verso.blueprint.trust.requireAuditClean.name
+        verso.blueprint.trust.requireAuditClean.defValue
+    let yamlDoc? ← elabFormalizationDoc?
+    let audit ← liftM (Informal.AxiomAudit.run yamlDoc? requireAuditClean)
+    -- Authored `uses` edges vs. the dependencies the Lean terms actually exhibit.
+    let autoDeps := Informal.DependencyAnalysis.enabled opts none
+    let edgeAudit ← liftM (Informal.DependencyAnalysis.auditAuthoredEdges autoDeps)
+    unless edgeAudit.inferredUndeclared.isEmpty do
+      logWarning s!"blueprint dependency audit: {edgeAudit.inferredUndeclared.size} \
+        dependency edge(s) are present in the Lean terms but not declared with `uses`, so the \
+        graph understates the real dependency structure: \
+        {String.intercalate "; " (edgeAudit.inferredUndeclared.extract 0 (min edgeAudit.inferredUndeclared.size 12)).toList}"
+    trust := { trust with audit? := some audit, edgeAudit? := some edgeAudit }
     PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.trustStrip $(quote trust)) #[]))
     PartElabM.addBlock (← ``(Verso.Doc.Block.other (Informal.Commands.Block.dashboard $(quote summary)) #[]))
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
