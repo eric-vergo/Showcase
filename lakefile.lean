@@ -29,6 +29,16 @@ lean_exe «vbp» where
   srcDir := "src"
   supportInterpreter := true
 
+-- Blueprint skeleton generator. Loads a *subject* module with `importModules` at
+-- runtime (hence `supportInterpreter`), so it is run from the presentation repository
+-- whose Lake workspace supplies the module's oleans on LEAN_PATH:
+--   lake exe showcase-gen --module <Module> --out .
+@[default_target]
+lean_exe «showcase-gen» where
+  root := `VersoBlueprint.ShowcaseGenMain
+  srcDir := "src"
+  supportInterpreter := true
+
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
@@ -64,6 +74,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintRustCode,
     `VersoBlueprintTests.BlueprintSharedChrome,
     `VersoBlueprintTests.BlueprintSubjectRoots,
+    `VersoBlueprintTests.ShowcaseGen,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,
     `VersoBlueprintTests.BlueprintTexMacros,
