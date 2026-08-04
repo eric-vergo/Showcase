@@ -100,14 +100,29 @@ published consumers:
 - Upstream release branches (`v4.28.0` … `v4.32.0`) are retained for reference and
   to track upstream.
 
+### Fork status: upstream capabilities not carried over
+
 Because upstream v4.32.0 and this fork independently rewrote the shared
 graph / preview / manifest subsystem (upstream added a `GraphModel`/`GraphData`
 split and a strict `PreviewKey` type; the fork kept a combined `GraphData` with
 `String` preview keys under a large feature layer), the fork's `src/` is carried as
 a coherent unit adapted to build on v4.32 Verso. Upstream v4.32 preview/graph
-capabilities that are inseparable from that replaced subsystem (external-markup /
-foreign-LSP refs, TeX/PDF export, standalone-slide + source-metadata runtime) are
-not currently carried over.
+capabilities that are inseparable from that replaced subsystem are not carried over.
+This section is the single source for those absences; nothing else in the
+documentation should describe them as available.
+
+- **TeX and PDF export.** Upstream only. This fork emits HTML and nothing else:
+  there is no `--pdf`, no `--pdf-engine`, and no TeX writer. `vbp build` accepts
+  exactly `--output`, `--serve`, and `--port`, and rejects anything else.
+- **The external-markup *fragment renderer*.** The metadata half of external markup
+  is retained — see
+  [Math, TeX, and external markup](#math-tex-and-external-markup) for the
+  implemented contract — but the generated HTML-cache fragment bodies, the
+  `--external-markup-render` switch, and the `Informal.ExternalMarkupView` /
+  `Informal/ExternalMarkupRender.lean` / `PreviewManifest/Cli.lean` modules that
+  produced them are deleted relative to upstream.
+- **Foreign-LSP references**, and the **standalone-slide + source-metadata
+  runtime**.
 
 ## Start Here
 
@@ -164,10 +179,11 @@ For the broader rendered artifact index, including published reference
 blueprints and local test fixtures, see the
 [published rendered artifact index](https://leanprover.github.io/verso-blueprint/).
 
-By default, `lake exe vbp build` writes the HTML site under
-`_out/site/html-multi/`. Passing `--pdf` also emits TeX and runs `lualatex` to
-write `_out/site/pdf/main.pdf`; use `--pdf-engine <cmd>` for another
-lualatex-compatible command.
+`lake exe vbp build` writes the HTML site under `_out/site/html-multi/`. Its
+whole option surface is `--output <dir>`, `--serve`, and `--port <n>`; run
+`lake exe vbp --help` for the local synopsis. HTML is the only output this fork
+produces — TeX and PDF export are upstream capabilities it does not carry (see
+[Fork status](#fork-status-upstream-capabilities-not-carried-over)).
 
 ## Three-Level Blueprint Model
 
@@ -314,22 +330,29 @@ This was imported from a Markdown proof sketch.
 ````
 
 Labeled standalone `tex` and `md` blocks are exported as semantic
-external-markup catalog entries. Generated preview data also includes a
-rendered fragment backed by that external markup for markup-only entries:
-Markdown is rendered by MD4Lean with raw HTML disabled and falls back to escaped
-source if MD4Lean cannot render it, while TeX is shown as escaped source.
-Pass `--external-markup-render source` to force escaped source text, or
-`--external-markup-render none` to keep manifest-only entries without generated
-HTML cache fragments. When the same label also has a rendered Blueprint
-statement or proof, the raw markup is attached to that block's manifest entry
-instead. Bodyless Blueprint directives that carry `(lean := ...)` still
-contribute their Lean preview keys and code data to the exported manifest entry;
-the generator warns if that metadata is ever dropped during manifest export.
+external-markup catalog entries. What survives the fork is the **metadata half**:
+the attachment is stored on the labeled node and exported in the Blueprint
+manifest, either as its own `externalMarkup:<label>` entry (for a label with no
+rendered Blueprint statement or proof) or folded into that label's block entry
+(when there is one). Bodyless Blueprint directives that carry `(lean := ...)`
+still contribute their Lean preview keys and code data to the exported manifest
+entry; the generator warns if that metadata is ever dropped during manifest
+export.
+
+Display at the code-block location is controlled entirely from Lean, not the
+command line. The default is `hidden`; set
+`set_option verso.blueprint.externalMarkup.display "summary"` (a metadata
+summary) or `"source"` (escaped source text) document-wide, or `(display :=
+summary | source | hidden)` on an individual block.
+
+There is **no generated rendered fragment** for external markup in this fork, and
+no `--external-markup-render` switch: the MD4Lean-backed fragment renderer that
+produced HTML-cache bodies for markup-only entries is among the deletions listed
+under [Fork status](#fork-status-upstream-capabilities-not-carried-over). A
+consumer that needs rendered Markdown should author a native Verso body.
 
 These `ExternalMarkup` attachments are primarily a porting aid for existing TeX
-or Markdown documents. They are stored on the labeled node, exported in the
-Blueprint manifest, and are not rendered at the code-block location in the
-output site by default. Use `slot` names such as `statement` and `proof` when
+or Markdown documents. Use `slot` names such as `statement` and `proof` when
 one Blueprint node corresponds to multiple informal markup witnesses.
 
 Blueprint can separately record Level 1 original-source provenance for audit
@@ -554,8 +577,8 @@ post-edit checks.
 
 `lake exe vbp build` is the normal Blueprint generation interface for projects.
 It discovers the project generator entry point and runs it through Lake's Lean
-wrapper internally. Treat `vbp` query JSON as an unstable agent interface, not a
-public compatibility contract and not part of the documented integration API.
+wrapper internally. Treat `vbp` query JSON as an unstable agent interface,
+not a public compatibility contract and not part of the documented integration API.
 
 ### Maintainer CLI Split
 

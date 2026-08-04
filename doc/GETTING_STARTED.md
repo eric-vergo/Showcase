@@ -186,18 +186,13 @@ The project helper builds the Lean library artifacts, prepares the generator
 file, and then runs the generator through Lake's Lean wrapper:
 
 ```bash
-lake lean ProjectTemplateMain.lean -- --run ProjectTemplateMain.lean --output _out/site
+lake lean ProjectTemplateMain.lean
+lake env lean --run ProjectTemplateMain.lean --output _out/site
 ```
 
-To build a PDF as well as the HTML site, pass `--pdf` to the project helper:
-
-```bash
-lake exe vbp build --pdf
-```
-
-This writes `_out/site/pdf/main.pdf`. PDF generation requires a local
-`lualatex`-compatible command; use `--pdf-engine <cmd>` if your command has a
-different name.
+`vbp build` accepts `--output <dir>`, `--serve`, and `--port <n>`, and nothing
+else. HTML is the only output: this fork does not carry upstream's TeX/PDF
+export, so there is no `--pdf` flag.
 
 ## What to change first
 
