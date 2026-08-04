@@ -23,3 +23,9 @@ is intentionally small, so it can serve as a starting point for a new project.
 
 {blueprint_graph}
 {blueprint_summary}
+
+# Third-party licenses
+
+This site bundles the open-source components listed below.
+
+{licenseInfo}
