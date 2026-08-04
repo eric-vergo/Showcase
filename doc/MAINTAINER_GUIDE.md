@@ -406,6 +406,14 @@ toolchain and branch policy advance coherently. It is distinct from the
 documentation/metadata exemption path and does not create paired PRs carrying
 the new toolchain onto older branches.
 
+When retiring old maintenance lines from an existing release branch, use
+`Backport ...: release-line retirement` for each removed line. The check
+accepts this only when the default Lean toolchain and branch stay fixed, the
+removed branches are the oldest contiguous suffix of the maintenance sequence,
+and all remaining release targets are byte-for-byte equivalent in policy.
+This makes the policy transition self-validating without constructing obsolete
+backport projects solely to satisfy the policy being removed.
+
 To remove stale harness-managed reference caches and orphaned local clones:
 
 ```bash

@@ -14,6 +14,7 @@ from tests.harness.release_fixtures import (
     backport_line,
     branch_policy_json,
     lean_toolchain,
+    release_target,
 )
 
 
@@ -88,6 +89,7 @@ Backport v4.28.0: #42
 Backport v4.27.0: pending
 Backport v4.26.0: exempt: no longer maintained
 Backport v4.25.0: release-line bootstrap
+Backport v4.24.0: release-line retirement
 """
         entries = backport_mod.parse_backport_entries(body)
         self.assertEqual(entries["v4.28.0"].pr_number, 42)
@@ -95,6 +97,7 @@ Backport v4.25.0: release-line bootstrap
         self.assertTrue(entries["v4.27.0"].pending)
         self.assertEqual(entries["v4.26.0"].exempt_reason, "no longer maintained")
         self.assertTrue(entries["v4.25.0"].release_line_bootstrap)
+        self.assertTrue(entries["v4.24.0"].release_line_retirement)
 
     def test_parse_backport_entries_accepts_pull_request_url(self) -> None:
         body = "Backport v4.28.0: https://github.com/leanprover/verso-blueprint/pull/123\n"
@@ -330,6 +333,102 @@ Backport v4.25.0: release-line bootstrap
                 patch.object(backport_mod, "PACKAGE_ROOT", package_root),
             ):
                 with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing lean-toolchain"):
+                    backport_mod.run(str(event_path), token="token")
+
+    def test_run_accepts_machine_checked_release_line_retirement(self) -> None:
+        self.assertGreaterEqual(len(REQUIRED_BACKPORT_RELEASES), 1)
+        retired = REQUIRED_BACKPORT_RELEASES[-1]
+        retained = REQUIRED_BACKPORT_RELEASES[:-1]
+        base_targets = [
+            *(release_target(branch) for branch in REQUIRED_BACKPORT_RELEASES),
+            release_target(DEFAULT_DEV_RELEASE),
+        ]
+        head_targets = [target for target in base_targets if target["id"] != retired]
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "package"
+            package_root.mkdir()
+            (package_root / "branch-policy.json").write_text(
+                branch_policy_json(
+                    default_dev=DEFAULT_DEV_RELEASE,
+                    required_backports=REQUIRED_BACKPORT_RELEASES,
+                    release_targets=base_targets,
+                ),
+                encoding="utf-8",
+            )
+            (package_root / "lean-toolchain").write_text(
+                f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                encoding="utf-8",
+            )
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=backport_line(retired, backport_mod.RELEASE_LINE_RETIREMENT_STATUS),
+            )
+            api = FakeGitHubApi(
+                pull_request_files={11: ["branch-policy.json", "tests/harness/projects.json"]},
+                file_texts={
+                    ("branch-policy.json", "head-sha"): branch_policy_json(
+                        default_dev=DEFAULT_DEV_RELEASE,
+                        required_backports=retained,
+                        release_targets=head_targets,
+                    ),
+                    ("lean-toolchain", "base-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                    ("lean-toolchain", "head-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                },
+            )
+            with (
+                patch.object(backport_mod, "GitHubApi", return_value=api),
+                patch.object(backport_mod, "PACKAGE_ROOT", package_root),
+            ):
+                self.assertEqual(backport_mod.run(str(event_path), token="token"), 0)
+
+    def test_run_rejects_retiring_a_non_oldest_backport(self) -> None:
+        newest = "v4.32.0"
+        oldest = "v4.31.0"
+        base_targets = [
+            release_target(oldest),
+            release_target(newest),
+            release_target(DEFAULT_DEV_RELEASE),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            package_root = Path(tmp) / "package"
+            package_root.mkdir()
+            (package_root / "branch-policy.json").write_text(
+                branch_policy_json(
+                    default_dev=DEFAULT_DEV_RELEASE,
+                    required_backports=(newest, oldest),
+                    release_targets=base_targets,
+                ),
+                encoding="utf-8",
+            )
+            (package_root / "lean-toolchain").write_text(
+                f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                encoding="utf-8",
+            )
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=backport_line(newest, backport_mod.RELEASE_LINE_RETIREMENT_STATUS),
+            )
+            api = FakeGitHubApi(
+                pull_request_files={11: ["branch-policy.json"]},
+                file_texts={
+                    ("branch-policy.json", "head-sha"): branch_policy_json(
+                        default_dev=DEFAULT_DEV_RELEASE,
+                        required_backports=(oldest,),
+                        release_targets=[release_target(oldest), release_target(DEFAULT_DEV_RELEASE)],
+                    ),
+                    ("lean-toolchain", "base-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                    ("lean-toolchain", "head-sha"): f"{lean_toolchain(DEFAULT_DEV_RELEASE)}\n",
+                },
+            )
+            with (
+                patch.object(backport_mod, "GitHubApi", return_value=api),
+                patch.object(backport_mod, "PACKAGE_ROOT", package_root),
+            ):
+                with self.assertRaisesRegex(backport_mod.BackportCheckError, "oldest contiguous suffix"):
                     backport_mod.run(str(event_path), token="token")
 
 

@@ -117,6 +117,10 @@ Do those upstream write actions only when they are explicitly requested.
   Lean toolchain, default-development branch, and inherited backport sequence
   from its base commit. Generate it with
   `python3 -m scripts.blueprint_harness prepare-pr --release-line-bootstrap`.
+- `release-line retirement` is likewise machine-checked rather than exempt.
+  CI accepts it only when the default Lean line stays fixed, the oldest
+  contiguous suffix of required backports is removed, and every remaining
+  release target is unchanged.
 - Backported default-development PRs should normally be landed with a merge
   commit rather than squash or rebase, so the source commits recorded by
   `git cherry-pick -x` remain present in default-dev history.
@@ -137,6 +141,8 @@ Do those upstream write actions only when they are explicitly requested.
   - for a new release-line branch-start PR, add
     `--release-line-bootstrap`; do not open paired PRs that apply the new Lean
     toolchain to older release branches
+  - for a maintenance-line retirement, replace the retiring
+    `Backport ...: pending` lines with `Backport ...: release-line retirement`
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs
