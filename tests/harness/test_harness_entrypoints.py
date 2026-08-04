@@ -147,7 +147,7 @@ class HarnessEntrypointSmokeTests(unittest.TestCase):
     def test_project_template_fresh_repo_smoke_help(self) -> None:
         result = self.run_command([sys.executable, "scripts/check_project_template_fresh_repo.py", "--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("--site-output", result.stdout)
+        self.assertIn("--build", result.stdout)
 
     def test_math_lint_fresh_repo_smoke_help(self) -> None:
         result = self.run_command([sys.executable, "scripts/check_math_lint_fresh_repo.py", "--help"])

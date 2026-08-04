@@ -4,7 +4,6 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.blueprint_harness_branches import active_release_branch
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
 import scripts.blueprint_harness_toolchains as toolchains_mod
 from tests.harness.release_fixtures import (
@@ -16,7 +15,6 @@ from tests.harness.release_fixtures import (
     SAMPLE_PREVIOUS_RELEASE,
     lean_toolchain,
     official_blueprint_require,
-    official_verso_slides_require,
     official_verso_require,
 )
 
@@ -61,7 +59,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.assertEqual(previous_ref, "main")
             self.assertIn(official_verso_require(SAMPLE_DEFAULT_RELEASE), lakefile.read_text(encoding="utf-8"))
 
-    def test_rewrite_pinned_verso_slides_dependency_replaces_official_git_require(self) -> None:
+    def test_rewrite_pinned_verso_dependency_canonicalizes_temporary_fix_fork(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp)
             lakefile = project_dir / "lakefile.lean"
@@ -71,8 +69,8 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                         "import Lake",
                         "open Lake DSL",
                         (
-                            'require «verso-slides» from git "https://github.com/leanprover/verso-slides"'
-                            '@"main"'
+                            'require verso from git "https://github.com/ejgallego/verso"'
+                            '@"a61eb8993e8d1a617a60c502020f95f3525e6c9d"'
                         ),
                         "",
                     ]
@@ -80,13 +78,11 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            result, previous_ref = toolchains_mod.rewrite_pinned_verso_slides_dependency(
-                project_dir, SAMPLE_NEXT_RELEASE
-            )
+            result, previous_ref = toolchains_mod.rewrite_pinned_verso_dependency(project_dir, SAMPLE_NEXT_RELEASE)
 
             self.assertEqual(result, lakefile)
-            self.assertEqual(previous_ref, "main")
-            self.assertIn(official_verso_slides_require(SAMPLE_NEXT_RELEASE), lakefile.read_text(encoding="utf-8"))
+            self.assertEqual(previous_ref, "a61eb8993e8d1a617a60c502020f95f3525e6c9d")
+            self.assertIn(official_verso_require(SAMPLE_NEXT_RELEASE), lakefile.read_text(encoding="utf-8"))
 
     def test_bump_toolchain_checkout_updates_managed_files_and_preserves_inherited_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -96,7 +92,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
                     "import Lake",
                     "open Lake DSL",
                     'require verso from git "https://github.com/leanprover/verso"@"main"',
-                    'require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"main"',
                     'require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.92"',
                     "",
                 ]
@@ -133,13 +128,11 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
 
             originals = {
                 "resolve_remote_verso_tag_oid": toolchains_mod.resolve_remote_verso_tag_oid,
-                "resolve_remote_verso_slides_tag_oid": toolchains_mod.resolve_remote_verso_slides_tag_oid,
                 "run": toolchains_mod.run,
             }
             commands: list[tuple[list[str], Path]] = []
             try:
                 toolchains_mod.resolve_remote_verso_tag_oid = lambda _package_root, _ref: "deadbeef"
-                toolchains_mod.resolve_remote_verso_slides_tag_oid = lambda _package_root, _ref: "feedface"
                 toolchains_mod.run = lambda command, *, cwd: commands.append((command, cwd))
 
                 result = toolchains_mod.bump_toolchain_checkout(
@@ -153,7 +146,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
 
             self.assertEqual(result.lean_ref, SAMPLE_DEFAULT_RELEASE)
             self.assertEqual(result.verso_ref, SAMPLE_DEFAULT_RELEASE)
-            self.assertEqual(result.verso_slides_ref, SAMPLE_DEFAULT_RELEASE)
             self.assertEqual(
                 (package_root / "lean-toolchain").read_text(encoding="utf-8"),
                 lean_toolchain(SAMPLE_DEFAULT_RELEASE),
@@ -170,10 +162,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             )
             self.assertIn(
                 official_verso_require(SAMPLE_DEFAULT_RELEASE),
-                (package_root / "lakefile.lean").read_text(encoding="utf-8"),
-            )
-            self.assertIn(
-                official_verso_slides_require(SAMPLE_DEFAULT_RELEASE),
                 (package_root / "lakefile.lean").read_text(encoding="utf-8"),
             )
             template_text = (package_root / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
@@ -206,10 +194,7 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
     def test_bump_toolchain_checkout_accepts_release_candidate_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package_root = Path(tmp)
-            root_lakefile = (
-                f"{official_verso_require(SAMPLE_DEFAULT_RELEASE)}\n"
-                f"{official_verso_slides_require(SAMPLE_DEFAULT_RELEASE)}\n"
-            )
+            root_lakefile = f"{official_verso_require(SAMPLE_DEFAULT_RELEASE)}\n"
             template_lakefile = f"{official_blueprint_require(SAMPLE_DEFAULT_RELEASE)}\n"
             preview_lakefile = 'require VersoBlueprint from "../../../"\n'
 
@@ -228,13 +213,11 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
 
             originals = {
                 "resolve_remote_verso_tag_oid": toolchains_mod.resolve_remote_verso_tag_oid,
-                "resolve_remote_verso_slides_tag_oid": toolchains_mod.resolve_remote_verso_slides_tag_oid,
                 "run": toolchains_mod.run,
             }
             commands: list[tuple[list[str], Path]] = []
             try:
                 toolchains_mod.resolve_remote_verso_tag_oid = lambda _package_root, _ref: "deadbeef"
-                toolchains_mod.resolve_remote_verso_slides_tag_oid = lambda _package_root, _ref: "feedface"
                 toolchains_mod.run = lambda command, *, cwd: commands.append((command, cwd))
 
                 result = toolchains_mod.bump_toolchain_checkout(
@@ -250,18 +233,12 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.assertEqual(result.toolchain_spec, lean_toolchain(SAMPLE_NEXT_RC_REF))
             self.assertEqual(result.verso_ref, SAMPLE_NEXT_RC_REF)
             self.assertEqual(result.verso_tag_oid, "deadbeef")
-            self.assertEqual(result.verso_slides_ref, SAMPLE_NEXT_RC_REF)
-            self.assertEqual(result.verso_slides_tag_oid, "feedface")
             self.assertEqual(
                 (package_root / "lean-toolchain").read_text(encoding="utf-8"),
                 lean_toolchain(SAMPLE_NEXT_RC_REF),
             )
             self.assertIn(
                 official_verso_require(SAMPLE_NEXT_RC_REF),
-                (package_root / "lakefile.lean").read_text(encoding="utf-8"),
-            )
-            self.assertIn(
-                official_verso_slides_require(SAMPLE_NEXT_RC_REF),
                 (package_root / "lakefile.lean").read_text(encoding="utf-8"),
             )
             self.assertIn(
@@ -277,7 +254,6 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             self.write(
                 package_root / "lakefile.lean",
                 'require verso from git "https://github.com/leanprover/verso"@"main"\n',
-                # The matching tag check happens before either managed dependency is rewritten.
             )
             self.write(package_root / "project_template" / "lean-toolchain", f"{lean_toolchain(SAMPLE_DEFAULT_RC_REF)}\n")
             self.write(
@@ -301,42 +277,17 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             finally:
                 toolchains_mod.resolve_remote_verso_tag_oid = original
 
-    def test_bump_toolchain_checkout_rejects_missing_matching_verso_slides_tag(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            package_root = Path(tmp)
-            original_verso = toolchains_mod.resolve_remote_verso_tag_oid
-            original_slides = toolchains_mod.resolve_remote_verso_slides_tag_oid
-            try:
-                toolchains_mod.resolve_remote_verso_tag_oid = lambda _package_root, _ref: "deadbeef"
-                toolchains_mod.resolve_remote_verso_slides_tag_oid = lambda _package_root, _ref: None
-                with self.assertRaisesRegex(SystemExit, "no matching `verso-slides` tag"):
-                    toolchains_mod.bump_toolchain_checkout(package_root, SAMPLE_DEFAULT_RELEASE, validate=False)
-            finally:
-                toolchains_mod.resolve_remote_verso_tag_oid = original_verso
-                toolchains_mod.resolve_remote_verso_slides_tag_oid = original_slides
-
-    def test_project_template_blueprint_dependency_tracks_active_release_branch(self) -> None:
+    def test_project_template_blueprint_dependency_pins_immutable_showcase_commit(self) -> None:
+        # CX-009/010: the distributed template pins the Showcase fork at an immutable commit (not a
+        # mutable release branch) so a fresh out-of-tree copy resolves the reviewed fork tree with
+        # no `lake update`; the committed manifest locks the rest of the dependency graph.
         text = (PACKAGE_ROOT / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
         match = next(OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text), None)
 
         self.assertIsNotNone(match)
         assert match is not None
-        self.assertEqual(match.group("ref"), active_release_branch(PACKAGE_ROOT))
-
-    def test_root_release_dependencies_track_the_exact_lean_release_ref(self) -> None:
-        text = (PACKAGE_ROOT / "lakefile.lean").read_text(encoding="utf-8")
-        verso_match = next(toolchains_mod.VERSO_REQUIRE_PATTERN.finditer(text), None)
-        slides_match = next(toolchains_mod.VERSO_SLIDES_REQUIRE_PATTERN.finditer(text), None)
-        lean_ref = toolchains_mod.normalize_lean_release_ref(
-            (PACKAGE_ROOT / "lean-toolchain").read_text(encoding="utf-8")
-        )
-
-        self.assertIsNotNone(verso_match)
-        self.assertIsNotNone(slides_match)
-        assert verso_match is not None
-        assert slides_match is not None
-        self.assertEqual(verso_match.group("ref"), lean_ref)
-        self.assertEqual(slides_match.group("ref"), lean_ref)
+        self.assertEqual(match.group("url"), "https://github.com/eric-vergo/Showcase.git")
+        self.assertRegex(match.group("ref"), r"^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":
