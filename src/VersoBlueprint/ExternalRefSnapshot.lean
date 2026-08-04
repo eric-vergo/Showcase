@@ -290,14 +290,23 @@ def sourcePathForModule? (workspaceRoot : System.FilePath)
     | none =>
       if moduleName == (← getEnv).mainModule then
         currentSourcePath? workspaceRoot
-      else
-        match ← liftM <| workspaceModuleSourcePath? workspaceRoot moduleName with
+      else if isSubjectModule (← getOptions) moduleName then
+        -- For a module the consumer declared to be its *subject*, the pinned
+        -- `.lake/packages` checkout is authoritative: it is the source the build
+        -- actually elaborated, so the source links, verbatim signatures, and captured
+        -- bodies derived from it describe the presented declarations. It therefore
+        -- runs *first*, ahead of the outward sibling scan. `workspaceModuleSourcePath?`
+        -- deliberately looks one level up at sibling directories, so an unrelated
+        -- checkout of the same project sitting next to the consumer would otherwise
+        -- win purely by being on that machine's disk. (Observed: a pilot resolved all
+        -- 146 subject links to a neighbouring clone of the upstream repository instead
+        -- of the pinned fork.) Provenance must not depend on the environment.
+        match ← liftM <|
+            lakePackageModuleSourcePath? workspaceRoot (moduleSourcePathText moduleName) with
         | some path => pure (some path)
-        | none =>
-          if isSubjectModule (← getOptions) moduleName then
-            liftM <| lakePackageModuleSourcePath? workspaceRoot (moduleSourcePathText moduleName)
-          else
-            pure none
+        | none => liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
+      else
+        liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
 
 private def workspacePathPrefix (workspaceRoot : System.FilePath) : String :=
   let root := workspaceRoot.toString
