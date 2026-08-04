@@ -288,7 +288,7 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             browser_tests_path=None,
         )
         doc_slugs, fixtures = split_generation_targets(
-            PACKAGE_ROOT,
+            [{"slug": "summary-doc"}],
             [fixture],
             ["summary-doc", "runtime-showcase"],
         )
@@ -310,31 +310,28 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             browser_tests_path=None,
         )
         originals = {
-            "list_curated_test_doc_slugs": test_blueprints_mod.list_curated_test_doc_slugs,
+            "list_curated_test_doc_meta": test_blueprints_mod.list_curated_test_doc_meta,
             "generate_curated_test_doc": test_blueprints_mod.generate_curated_test_doc,
             "generate_standalone_test_blueprint": test_blueprints_mod.generate_standalone_test_blueprint,
-            "test_blueprint_index_entries": test_blueprints_mod.test_blueprint_index_entries,
         }
         generated: list[tuple[str, str]] = []
         try:
-            test_blueprints_mod.list_curated_test_doc_slugs = lambda _package_root: ["summary-doc"]
+            test_blueprints_mod.list_curated_test_doc_meta = lambda _package_root, _categories: [
+                {
+                    "slug": "summary-doc",
+                    "title": "Summary Doc",
+                    "category": "Runtime",
+                    "summary": "summary",
+                    "tags": [],
+                    "kind": "curated_doc",
+                }
+            ]
             test_blueprints_mod.generate_curated_test_doc = (
                 lambda _package_root, slug, _output_dir: generated.append(("doc", slug))
             )
             test_blueprints_mod.generate_standalone_test_blueprint = (
                 lambda _package_root, standalone, _output_dir: generated.append(("standalone", standalone.slug))
             )
-            test_blueprints_mod.test_blueprint_index_entries = lambda _package_root, _fixtures, selected: [
-                {
-                    "slug": slug,
-                    "title": slug,
-                    "category": "Runtime",
-                    "summary": "summary",
-                    "tags": [],
-                    "kind": "curated_doc",
-                }
-                for slug in selected
-            ]
 
             with tempfile.TemporaryDirectory() as tmp:
                 output_root = Path(tmp) / "test-blueprints"

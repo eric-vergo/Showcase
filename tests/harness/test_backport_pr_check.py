@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.blueprint_harness_branches import load_branch_policy
 import scripts.check_backport_pr as backport_mod
@@ -27,15 +28,20 @@ class FakeGitHubApi:
         *,
         pull_requests: dict[int, dict[str, object]] | None = None,
         pull_request_commits: dict[int, list[backport_mod.PullRequestCommit]] | None = None,
+        pull_request_files: dict[int, list[str]] | None = None,
     ) -> None:
         self._pull_requests = pull_requests or {}
         self._pull_request_commits = pull_request_commits or {}
+        self._pull_request_files = pull_request_files or {}
 
     def pull_request(self, number: int) -> dict[str, object]:
         return self._pull_requests[number]
 
     def pull_request_commits(self, number: int) -> list[backport_mod.PullRequestCommit]:
         return self._pull_request_commits[number]
+
+    def pull_request_files(self, number: int) -> list[str]:
+        return self._pull_request_files[number]
 
 
 def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
@@ -44,6 +50,7 @@ def write_pull_request_event(path: Path, *, draft: bool, body: str) -> None:
             {
                 "repository": {"full_name": "leanprover/verso-blueprint"},
                 "pull_request": {
+                    "number": 11,
                     "base": {"ref": DEFAULT_DEV_RELEASE},
                     "draft": draft,
                     "body": body,
@@ -186,7 +193,9 @@ Backport v4.26.0: exempt: no longer maintained
             with self.assertRaisesRegex(backport_mod.BackportCheckError, "pending backport entries are not allowed"):
                 backport_mod.run(str(event_path), token=None)
 
-    def test_run_accepts_ready_default_dev_prs_with_only_exemptions_and_no_token(self) -> None:
+    def test_run_accepts_ready_docs_only_exemptions(self) -> None:
+        # Exemptions are now verified against the source PR's changed files (cb3d84a): a docs-only
+        # change is legitimately exempt, but only with a source PR number and a token to look it up.
         with tempfile.TemporaryDirectory() as tmp:
             event_path = Path(tmp) / "event.json"
             write_pull_request_event(
@@ -194,7 +203,33 @@ Backport v4.26.0: exempt: no longer maintained
                 draft=False,
                 body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'exempt: docs-only change')}\n",
             )
-            self.assertEqual(backport_mod.run(str(event_path), token=None), 0)
+            api = FakeGitHubApi(pull_request_files={11: ["doc/API.md", "README.md"]})
+            with patch.object(backport_mod, "GitHubApi", return_value=api):
+                self.assertEqual(backport_mod.run(str(event_path), token="token"), 0)
+
+    def test_run_rejects_source_change_exemptions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'exempt: no reported release-line regression')}\n",
+            )
+            api = FakeGitHubApi(pull_request_files={11: ["src/VersoBlueprint/GraphApi.lean", "doc/API.md"]})
+            with patch.object(backport_mod, "GitHubApi", return_value=api):
+                with self.assertRaisesRegex(backport_mod.BackportCheckError, "paired backports are required"):
+                    backport_mod.run(str(event_path), token="token")
+
+    def test_run_requires_token_to_validate_exemptions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "event.json"
+            write_pull_request_event(
+                event_path,
+                draft=False,
+                body=f"{backport_line(REQUIRED_BACKPORT_RELEASE, 'exempt: docs-only change')}\n",
+            )
+            with self.assertRaisesRegex(backport_mod.BackportCheckError, "missing GitHub token"):
+                backport_mod.run(str(event_path), token=None)
 
 
 if __name__ == "__main__":
