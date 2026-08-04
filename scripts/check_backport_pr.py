@@ -393,13 +393,13 @@ def should_enforce(
     *,
     release_line_bootstrap: bool = False,
 ) -> bool:
+    if release_line_bootstrap:
+        print("[backport-check] release-line bootstrap plan declared; validating the base-to-head policy transition")
+        return True
     if not required_backports:
         print("[backport-check] no required backport branches configured; skipping")
         return False
     if str(pull_request.get("base", {}).get("ref") or "") != default_dev_branch:
-        if release_line_bootstrap:
-            print("[backport-check] release-line bootstrap plan declared; validating the base-to-head policy transition")
-            return True
         print(
             "[backport-check] PR targets "
             f"`{pull_request.get('base', {}).get('ref', '')}`, not default dev `{default_dev_branch}`; skipping"
