@@ -1,0 +1,17 @@
+{
+  "status": "verified",
+  "verified_at": "2026-08-04T00:00:00Z",
+  "config": "tests/fixtures/trust/comparator.json",
+  "challenge_module": "Challenge",
+  "solution_module": "Solution",
+  "theorem_names": ["TrustFixture.add_comm_claim"],
+  "permitted_axioms": ["propext", "Classical.choice", "Quot.sound"],
+  "tool_ref": "v4.32.0",
+  "tool_sha": "0000000000000000000000000000000000000000",
+  "nanoda_ref": "1111111111111111111111111111111111111111",
+  "landrun_ref": "2222222222222222222222222222222222222222",
+  "config_sha256": "c21e396cf9cd9a46a50eeea9694255b9ecc181076529e915e016c8da40c6e5e6",
+  "challenge_sha256": "1811a3f8941e8d1b2d558933b6738bf6a8eed1177945e05166238164c7d88dba",
+  "solution_sha256": "0e2879d13e341497563908d8aa7dda1c11901438948152aaf3e1f59695d78e2f",
+  "note": "Trust-evidence fixture: content-bound, with no nanoda_replay run record."
+}

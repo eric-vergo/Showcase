@@ -124,12 +124,39 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
   let audit? := trust?.bind (·.audit?)
   let cmp? := trust?.bind (·.comparator)
   -- Kernel / toolchain.
+  --
+  -- This row used to badge "every declaration" unconditionally. It cannot: the site
+  -- renders Lean it never elaborated — the comparator page's claim and solution blocks
+  -- are files read verbatim and coloured syntactically, with no dependency edge forcing
+  -- them through the kernel — and an unconditional green badge over that is a coverage
+  -- claim the build does not support. The row is now measured from the same audit data as
+  -- the axiom row, and names its own exclusions.
+  let kernelExclusion :=
+    " Excluded: code shown with the `≈` (syntactic) or `⌁` (raw) marker — including the \
+      statement comparator page's claim and solution blocks — is source text this build read \
+      and coloured, not source it elaborated. Nothing in this row covers those blocks; their \
+      evidence is the comparator verdict, with its own date. See the rendering-tier legend \
+      below."
+  let kernelNotMeasured :=
+    checkRow "Kernel type-checking" notCheckedBadge
+      ("This build enumerated no declarations (no dashboard block, so nothing walked the \
+        environment), so no kernel-coverage count can be shown. Whatever this site imported \
+        was necessarily elaborated to be imported, but that is not a measurement and this \
+        row will not present it as one." ++ kernelExclusion)
   let kernelRow :=
-    checkRow "Kernel type-checking"
-      (trustBadgeHtml "every declaration" "success")
-      s!"Every Lean declaration presented here was accepted by the Lean {data.leanVersion} \
-         kernel during the build that produced this site. That is a check of the proofs, not \
-         of whether the statements say what you want."
+    match audit? with
+    | Option.some a =>
+      if a.ran then
+        checkRow "Kernel type-checking"
+          (trustBadgeHtml
+            (if a.checked == 1 then "1 declaration" else s!"{a.checked} declarations") "success")
+          (s!"The {a.checked} declaration(s) this build enumerated — those wired to blueprint \
+              nodes, plus every declaration the registry finds in the project's own modules — \
+              were present in the environment this site was generated from, so the Lean \
+              {data.leanVersion} kernel accepted them during this build. That is a check of \
+              the proofs, not of whether the statements say what you want." ++ kernelExclusion)
+      else kernelNotMeasured
+    | Option.none => kernelNotMeasured
   -- Axiom audit.
   let auditRow :=
     match audit? with
@@ -341,13 +368,24 @@ private def trustingSection (data : TrustModelData) (trust? : Option TrustData) 
               s!"at tag {cmp.toolRef} — a mutable reference: the tag can be moved, and no \
                  commit hash was recorded, so \"the tool CI ran\" is not pinned down."]
         else #[]
+      -- Run evidence, not configuration: a project that switches the independent kernel
+      -- on today does not thereby add nanoda to what a past verdict rested on.
       let nanodaItem :=
-        if cmp.nanodaRef.isEmpty then #[]
-        else #[item "nanoda" s!"at revision {cmp.nanodaRef}, as the independent kernel."]
+        if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then
+          #[item "nanoda" s!"at revision {cmp.nanodaRef}, as the independent kernel the run \
+              recorded."]
+        else #[]
+      -- Confinement is claimed only for the step the record covers. Elaborating Lean runs
+      -- arbitrary code, so the first elaboration of the untrusted solution is the
+      -- security-relevant moment, and the status artifact does not say whether it happened
+      -- inside the sandbox or in an earlier prebuild step.
       let landrunItem :=
         if cmp.landrunRef.isEmpty then #[]
-        else #[item "landrun" s!"at revision {cmp.landrunRef}, as the sandbox confining the \
-                 solution during the replay."]
+        else #[item "landrun" s!"at revision {cmp.landrunRef}, as the sandbox the comparator \
+                 replay ran under. That covers the replay; if CI built the solution before \
+                 invoking the comparator, the solution's first elaboration — which is \
+                 arbitrary code execution — happened outside the sandbox, and the run record \
+                 does not distinguish the two orders."]
       toolItem ++ nanodaItem ++ landrunItem
   section' "What you are trusting" (#[
     prose
@@ -402,12 +440,16 @@ private def currencySection (trust? : Option TrustData) : Output.Html :=
   let pinNote :=
     match cmp? with
     | Option.some cmp =>
-      if !cmp.nanodaRef.isEmpty then
-        s!"This project pins its independent kernel to nanoda {cmp.nanodaRef}. That pin makes \
-           the verification reproducible; it does not make it current."
+      if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then
+        s!"The run behind this verdict used nanoda {cmp.nanodaRef} as its independent kernel. \
+           That pin makes the verification reproducible; it does not make it current."
+      else if cmp.enableNanoda then
+        "This project's comparator configuration enables an independent kernel, but the \
+         verdict's record does not say that the run performed one — so there is no second \
+         opinion here whose currency could be assessed."
       else
-        "This project does not record which revision of the independent kernel produced its \
-         verdict, so its currency cannot be assessed from this page."
+        "This project's verdict records no independent kernel replay, so the site rests on \
+         one kernel implementation."
     | Option.none => "This project runs no independent kernel."
   section' "Verifier currency" #[
     prose

@@ -17,6 +17,7 @@ import VersoBlueprint.TraversalIndex
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
+import VersoBlueprint.Sha256
 
 /-!
 Dashboard trust strip.
@@ -145,12 +146,40 @@ structure TrustComparator where
   githubSolutionUrl : String := ""
   githubConfigUrl : String := ""
   playgroundUrl : String := ""
-  /-- Whether the comparator's independent nanoda-kernel replay is enabled, parsed from
-  `enable_nanoda` in the comparator *config* JSON (the file behind
-  `verso.blueprint.trust.comparatorConfig`) — NOT the status artifact, which carries no such
-  field. Drives the nanoda clone/build lines in `reproCommands` and the "nanoda kernel" prose on
-  the comparator page. Default `false` renders every page byte-identically to before. -/
+  /-- Whether the comparator's independent nanoda-kernel replay is enabled *for the next
+  run*, parsed from `enable_nanoda` in the comparator *config* JSON (the file behind
+  `verso.blueprint.trust.comparatorConfig`).
+
+  This is **configuration, not run evidence**, and it governs exactly two things: the
+  nanoda clone/build lines in `reproCommands`, and what the page says a future run will
+  do. Nothing about the *linked past run* may be derived from it — see `nanodaReplay`. -/
   enableNanoda : Bool := false
+  /-- Whether the run that produced this verdict actually performed the independent
+  nanoda-kernel replay: the status artifact's `nanoda_replay`, machine-written by CI on a
+  successful run.
+
+  `none` ⇒ the artifact predates the field and records nothing about its run; the page
+  must then say the replay is *unrecorded*, never infer it from `enableNanoda`. Whether an
+  independent kernel replay happened is historical evidence, and a configuration file
+  edited afterwards cannot supply it. -/
+  nanodaReplay : Option Bool := none
+  /-- SHA-256 of the comparator configuration CI verified (the status artifact's
+  `config_sha256`), lowercase hex. Empty ⇒ the run recorded no digest, so the displayed
+  configuration is bound to this verdict by name alone (legacy artifact). -/
+  configSha256 : String := ""
+  /-- SHA-256 of the Challenge source CI verified (the status artifact's
+  `challenge_sha256`). Empty ⇒ unbound; see `configSha256`. -/
+  challengeSha256 : String := ""
+  /-- SHA-256 of the Solution source CI verified (the status artifact's
+  `solution_sha256`). Empty ⇒ unbound; see `configSha256`. -/
+  solutionSha256 : String := ""
+  /-- SHA-256 this build computed over the bytes it read for `configJson`. Compared
+  against `configSha256` at elaboration; a mismatch is a hard build error. -/
+  configDigest : String := ""
+  /-- SHA-256 this build computed over the bytes it read for `challengeSource`. -/
+  challengeDigest : String := ""
+  /-- SHA-256 this build computed over the bytes it read for `solutionSource`. -/
+  solutionDigest : String := ""
   /-- Exact commit of the comparator tool the verdict was produced with (the status
   artifact's `tool_sha`). `toolRef` is a *tag*, which is mutable; this is not. Empty ⇒
   the status artifact records no SHA and the page says only which tag was requested. -/
@@ -248,7 +277,65 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     landrunRef := (j.getObjValAs? String "landrun_ref").toOption.getD ""
     challengeModule := (j.getObjValAs? String "challenge_module").toOption.getD ""
     solutionModule := (j.getObjValAs? String "solution_module").toOption.getD ""
+    -- Run evidence. Absent ⇒ `none` (unrecorded), which is *not* the same as `false`
+    -- and is never filled in from the current configuration.
+    nanodaReplay := (j.getObjValAs? Bool "nanoda_replay").toOption
+    -- Content binding. Absent ⇒ empty ⇒ the displayed source is bound to this verdict
+    -- by name and path shape only.
+    configSha256 := (j.getObjValAs? String "config_sha256").toOption.getD ""
+    challengeSha256 := (j.getObjValAs? String "challenge_sha256").toOption.getD ""
+    solutionSha256 := (j.getObjValAs? String "solution_sha256").toOption.getD ""
   }
+
+/-! ### Run evidence -/
+
+/--
+Whether the run that produced this verdict performed the independent nanoda-kernel
+replay.
+
+Run evidence only: the status artifact's `nanoda_replay`. An artifact that predates the
+field records nothing about its run, so absence reads as `false` — under-claiming a
+replay that may have happened is a presentation defect; claiming one that did not is a
+false assertion about a dated verification.
+-/
+def TrustComparator.replayedWithNanoda (cmp : TrustComparator) : Bool :=
+  cmp.nanodaReplay == some true
+
+/-- Whether the status artifact carries the nanoda run-evidence field at all. `false` ⇒
+legacy artifact: the page says the replay is *unrecorded*, not that it did not happen. -/
+def TrustComparator.nanodaReplayRecorded (cmp : TrustComparator) : Bool :=
+  cmp.nanodaReplay.isSome
+
+/--
+Disagreement between the current comparator configuration and the linked run's record.
+
+`some true` ⇒ the configuration now enables the replay but the run did not perform one;
+`some false` ⇒ the run performed one but the configuration no longer enables it. Either
+way the configuration has changed since the verdict was produced, and the page says so
+rather than silently adopting one side. `none` ⇒ they agree, or the run recorded nothing
+to disagree with.
+-/
+def TrustComparator.nanodaConfigDrift? (cmp : TrustComparator) : Option Bool :=
+  match cmp.nanodaReplay with
+  | Option.some replayed =>
+    if replayed == cmp.enableNanoda then Option.none else Option.some cmp.enableNanoda
+  | Option.none => Option.none
+
+/-! ### Content binding -/
+
+/-- Displayed comparator artifacts whose bytes this build verified against a SHA-256
+recorded in the status artifact. -/
+def TrustComparator.contentBound (cmp : TrustComparator) : List String :=
+  (if !cmp.challengeSource.isEmpty && !cmp.challengeSha256.isEmpty then ["the claim"] else []) ++
+  (if !cmp.solutionSource.isEmpty && !cmp.solutionSha256.isEmpty then ["the solution"] else []) ++
+  (if !cmp.configJson.isEmpty && !cmp.configSha256.isEmpty then ["the configuration"] else [])
+
+/-- Displayed comparator artifacts tied to the verdict by name and path shape only,
+because the status artifact records no digest for them. -/
+def TrustComparator.contentUnbound (cmp : TrustComparator) : List String :=
+  (if !cmp.challengeSource.isEmpty && cmp.challengeSha256.isEmpty then ["the claim"] else []) ++
+  (if !cmp.solutionSource.isEmpty && cmp.solutionSha256.isEmpty then ["the solution"] else []) ++
+  (if !cmp.configJson.isEmpty && cmp.configSha256.isEmpty then ["the configuration"] else [])
 
 /-- The axioms every kernel-checked Mathlib development is expected to use.
 Single-sourced in `Informal.AxiomAudit` (which computes footprints); re-exported
@@ -391,9 +478,12 @@ line appears only with a `repoUrl`, the `--branch` flag only with a `toolRef`, a
 `comparator` run line only with a `configArgPath` (otherwise the reproduce section points the
 reader at the project README rather than guessing the config path). The tool is always cloned
 as `comparator-tool` — a distinct directory that cannot collide with a project's own in-repo
-`comparator/` folder (mirroring the CI checkout). When the comparator config enables the
-independent nanoda kernel (`enableNanoda`), the flow also clones and builds `nanoda_lib` and
-points the comparator at it via `COMPARATOR_NANODA`; the relative `../nanoda_lib/…` path resolves
+`comparator/` folder (mirroring the CI checkout). These are *reproduction instructions*, so
+they are the one place the current configuration legitimately drives the prose: when the
+config enables the independent nanoda kernel (`enableNanoda`), the flow clones and builds
+`nanoda_lib` — describing what a run from this configuration does, not what the linked run did
+(`replayedWithNanoda`) — and points the comparator at it via `COMPARATOR_NANODA`; the relative
+`../nanoda_lib/…` path resolves
 because the run line first cd's into the project directory, a sibling of the two clones. -/
 def reproCommands (cmp : TrustComparator) : List String :=
   let branchFlag := if cmp.toolRef.isEmpty then "" else s!"--branch {cmp.toolRef} "
@@ -714,9 +804,82 @@ naming different theorems, different permitted axioms, or a different challenge
 module than the config the verdict was produced from would render as a green
 verdict about the wrong claim. These checks make that a build error.
 
-Everything here is *path-* and *name-*level agreement, not re-verification: they
-catch drift and copy-paste error, not a dishonest CI run.
+**Two kinds of check live here, and only one of them is a security boundary.**
+
+*Content binding* (`checkComparatorDigests`) compares SHA-256 digests the verifying run
+recorded against the bytes this build is about to display. That distinguishes two
+different files, so it is the substitution barrier.
+
+*Identifier agreement* (`crossCheckComparator`) compares theorem names, axiom lists,
+module names, and path suffixes. **Path shape and module basename are identifiers, not
+content bindings**: any `fake/Challenge.lean` satisfies module `Challenge`, and
+`pathHasSuffix` deliberately accepts a differently-rooted path so a site-relative option
+can match a repo-root-relative status record. These checks catch drift and copy-paste
+error — a verdict drifting away from the configuration it was produced from — and they
+are hard errors because that drift is worth failing on. They are **not** a defence
+against a deliberately substituted same-named file; a status artifact that records no
+digests leaves the displayed source unbound, and the comparator page says so.
+
+Neither kind is re-verification: nothing here re-runs the comparator.
+
+**Both run at elaboration, so Lake caches their verdict with the module's `.olean`.**
+Editing only a comparator source file changes no Lean input, so an *incremental* rebuild
+can reuse a stale success; a cold build — CI, or any build after the document module
+itself changes — always re-checks. The binding is therefore a property of the build that
+produced a site from scratch, which is the build that publishes it. (Verified: a
+substituted challenge file is accepted by a warm rebuild and rejected as soon as the
+module re-elaborates.)
 -/
+
+/--
+Content binding: the digests the verifying run recorded, against the bytes this build
+read for display.
+
+A recorded digest that disagrees with the displayed bytes is a hard build error — the
+page would otherwise show one file under a verdict about another, which is exactly the
+substitution the identifier checks cannot see. Silent when a digest is absent (a status
+artifact written before CI recorded them) or when the corresponding file is not
+configured; the comparator page discloses which artifacts are bound and which are not,
+so an absent digest degrades into a visible weaker claim rather than a silent one.
+
+Public rather than `private` so the test suite can drive the substitution case directly:
+a security check whose failure path is only reachable by hand-editing a consumer's status
+artifact is a check nobody re-verifies after the next refactor.
+-/
+def checkComparatorDigests (cmp : TrustComparator) (statusPath : String) :
+    Lean.CoreM Unit := do
+  let check := fun (what optionName recorded computed : String) => do
+    let recorded := Informal.Sha256.normalizeDigest recorded
+    unless recorded.isEmpty || computed.isEmpty || recorded == computed do
+      throwError "the {what} this site displays is not the one the comparator verdict \
+        certifies: the SHA-256 digests are of different bytes.\n\
+        {statusPath} records: {recorded}\n\
+        {optionName} hashes to: {computed}\n\
+        Point the option at the file CI verified, or re-run CI so the status artifact is \
+        regenerated from this source."
+  check "challenge file" "verso.blueprint.trust.challengeFile"
+    cmp.challengeSha256 cmp.challengeDigest
+  check "solution file" "verso.blueprint.trust.solutionFile"
+    cmp.solutionSha256 cmp.solutionDigest
+  check "comparator configuration" "verso.blueprint.trust.comparatorConfig"
+    cmp.configSha256 cmp.configDigest
+
+/--
+Internal completeness of the status artifact's own run-evidence fields.
+
+A record claiming an independent kernel replay must say *which* kernel: `nanoda_replay:
+true` without a `nanoda_ref` is a claim nobody can check or reproduce, and the page would
+render it as a second-kernel assurance. Hard error.
+
+Public for the same reason as `checkComparatorDigests`.
+-/
+def checkComparatorRunProvenance (cmp : TrustComparator) (statusPath : String) :
+    Lean.CoreM Unit := do
+  if cmp.replayedWithNanoda && cmp.nanodaRef.trimAscii.toString.isEmpty then
+    throwError "{statusPath} records `nanoda_replay: true` but no `nanoda_ref`. An \
+      independent kernel replay with no recorded revision cannot be reproduced or \
+      assessed for currency, and would be rendered as a second-kernel assurance. Record \
+      the nanoda revision the run used, or drop the claim."
 
 /-- Normalize a filesystem path for comparison: separators to `/`, `./` segments
 dropped. Deliberately does **not** resolve `..` — the two paths being compared are
@@ -751,8 +914,14 @@ private def sameSet (a b : List String) : Bool :=
   a.all (b.contains ·) && b.all (a.contains ·)
 
 /-- Cross-check the comparator *status* artifact against the comparator *config* it
-claims to describe, and against the file paths this site renders. Every mismatch is
-a hard error: a verdict displayed next to the wrong claim is worse than no verdict.
+claims to describe, and against the file paths this site renders. Every mismatch is a
+hard error: a verdict that has drifted away from the configuration it was produced from
+is worse than no verdict.
+
+Identifier-level only — see this section's header. The theorem/axiom/module comparisons
+are between two records; the path comparisons are between two spellings of a path. None
+of them can tell two same-named files apart, which is what `checkComparatorDigests` is
+for.
 
 Silent on anything absent — a status artifact without `theorem_names`, or a project
 that configures no `comparatorConfig`, simply has less to check. -/
@@ -785,6 +954,9 @@ private def crossCheckComparator (cmp : TrustComparator) (configJson : Json)
   -- The status artifact records the config path CI passed on the command line
   -- (repo-root-relative); the option resolves against the build CWD. Agreement is
   -- checked on trailing path components, so the two roots do not have to match.
+  -- DIAGNOSTIC, not a binding: a differently-rooted path with the same trailing
+  -- components (`../fake/comparator/comparator.json`) passes by construction. The
+  -- content binding is `config_sha256`.
   unless cmp.configArgPath.isEmpty || cfgPath.isEmpty
       || pathHasSuffix cfgPath cmp.configArgPath || pathHasSuffix cmp.configArgPath cfgPath do
     throwError "the comparator status artifact was produced from a different \
@@ -792,12 +964,15 @@ private def crossCheckComparator (cmp : TrustComparator) (configJson : Json)
       {statusPath} records config: {cmp.configArgPath}\n\
       verso.blueprint.trust.comparatorConfig: {cfgPath}\n\
       Point the option at the file CI actually used."
-  -- The rendered Challenge/Solution files must be the modules the config names, or the
-  -- page shows one file while the verdict certifies another.
+  -- The rendered Challenge/Solution files must at least be *named* like the modules the
+  -- config names. DIAGNOSTIC, not a binding: this compares a module's final component
+  -- against a file's basename, so any `fake/Challenge.lean` — stating an entirely
+  -- different theorem — satisfies module `Challenge`. It catches a file pointed at the
+  -- wrong module, nothing more; `challenge_sha256`/`solution_sha256` are the binding.
   let checkModuleFile := fun (what modName path : String) => do
     unless modName.isEmpty || path.isEmpty || moduleBasename modName == leanFileStem path do
-      throwError "the {what} file rendered on the comparator page is not the module the \
-        comparator checked ({cfgPath} names module '{modName}'; \
+      throwError "the {what} file rendered on the comparator page is not named like the \
+        module the comparator checked ({cfgPath} names module '{modName}'; \
         verso.blueprint.trust.{what}File points at '{path}'). The page would show one \
         file while the verdict certifies another."
   checkModuleFile "challenge" (if cfgChallengeModule.isEmpty then cmp.challengeModule else cfgChallengeModule) chalPath
@@ -813,6 +988,20 @@ def comparatorLivePermalink (project challenge solution : String) : String :=
   "https://comparator.live.lean-lang.org/#project=" ++ System.Uri.escapeUri project
     ++ "&challenge=" ++ System.Uri.escapeUri challenge
     ++ "&code=" ++ System.Uri.escapeUri solution
+
+/--
+Read a file once as bytes, returning its SHA-256 digest and its decoded text.
+
+One read, one digest: hashing the same bytes that become the displayed text is what
+makes the digest a statement about what the page shows, rather than about a second read
+that could differ from it.
+-/
+private def readSourceWithDigest (path : String) : IO (String × String) := do
+  let bytes ← IO.FS.readBinFile path
+  match String.fromUTF8? bytes with
+  | Option.some decoded => pure (Informal.Sha256.hex bytes, decoded)
+  | Option.none =>
+    throw <| IO.userError s!"{path} is not valid UTF-8, so it cannot be displayed verbatim."
 
 open Verso Doc Elab in
 /--
@@ -863,10 +1052,13 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     let mut configJson? : Option Json := Option.none
     if !cfgPath.isEmpty then
       if (← System.FilePath.pathExists cfgPath) then
-        let raw ← IO.FS.readFile cfgPath
+        -- The digest is over the file's bytes — the thing CI hashed. The block below it
+        -- is pretty-printed *from* those bytes, so binding the bytes binds the display.
+        let (digest, raw) ← readSourceWithDigest cfgPath
+        cmp := { cmp with configDigest := digest }
         -- Pretty-print when it parses as JSON; fall back to the raw file text. The parsed
-        -- config also carries `enable_nanoda`, driving the nanoda-aware repro lines and kernel
-        -- prose (absent field / bad JSON / missing file ⇒ false, i.e. the unchanged page).
+        -- config also carries `enable_nanoda`, which governs the reproduce instructions
+        -- and what a *future* run will do — never what the linked past run did.
         match Json.parse raw with
         | .ok j =>
           configJson? := Option.some j
@@ -885,16 +1077,22 @@ def elabTrustData? : PartElabM (Option TrustData) := do
         throwError "option 'verso.blueprint.trust.challengeFile' names a missing file \
           (resolved against the build directory): {chalPath}. The comparator page must not \
           publish a verdict without the statement it certifies."
-      let src ← IO.FS.readFile chalPath
+      let (digest, src) ← readSourceWithDigest chalPath
       if src.trimAscii.toString.isEmpty then
         throwError "option 'verso.blueprint.trust.challengeFile' names an empty file: \
           {chalPath}. The comparator page must not publish a verdict without the statement \
           it certifies."
-      cmp := { cmp with challengeSource := src }
+      cmp := { cmp with challengeSource := src, challengeDigest := digest }
     if !solPath.isEmpty then
       if (← System.FilePath.pathExists solPath) then
-        cmp := { cmp with solutionSource := (← IO.FS.readFile solPath) }
-    -- Status ↔ config agreement. Hard errors: see `crossCheckComparator`.
+        let (digest, src) ← readSourceWithDigest solPath
+        cmp := { cmp with solutionSource := src, solutionDigest := digest }
+    -- Content binding: the displayed bytes against the digests the verifying run
+    -- recorded. Hard error on disagreement; see `checkComparatorDigests`.
+    liftM (checkComparatorDigests cmp cmpPath)
+    -- Internal completeness of the run record (a claimed replay names its kernel).
+    liftM (checkComparatorRunProvenance cmp cmpPath)
+    -- Status ↔ config agreement (identifier-level diagnostics). See `crossCheckComparator`.
     if let some cfgJson := configJson? then
       liftM (crossCheckComparator cmp cfgJson cmpPath cfgPath chalPath solPath)
     -- comparator.live permalink (links only; nothing is fetched at build time).
