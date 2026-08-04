@@ -82,14 +82,18 @@ The important files are:
 Typical commands:
 
 ```bash
-lake update
 ./scripts/ci-pages.sh
 ```
 
-Run `lake update` once after copying the template. After that, use
-`./scripts/ci-pages.sh` whenever you want the same local build-and-render check
-that the included GitHub Pages workflow runs. The script delegates to the
-project helper:
+The template is self-contained: `lakefile.lean` requires the published Showcase
+(`VersoBlueprint`) fork from Git at an immutable reviewed commit, and the
+committed `lake-manifest.json` locks the entire resolved dependency graph. A
+fresh out-of-tree copy therefore **resolves** the reviewed dependency tree —
+the eric-vergo `verso`/`subverso` forks at their pinned revisions — with no
+parent checkout and no re-resolution; **do not run `lake update` first**.
+
+`./scripts/ci-pages.sh` is the same local build-and-render check that the
+included GitHub Pages workflow runs. It delegates to the project helper:
 
 ```bash
 lake exe vbp build
@@ -98,6 +102,31 @@ lake exe vbp build
 `vbp build` builds the Lean library artifacts, prepares the generator file, and
 then runs the generator through Lake's Lean wrapper without relying on a
 separate Lake executable target.
+
+### Moving off the pinned revisions
+
+The committed pin is a specific reviewed Showcase commit, chosen so that a fresh
+copy resolves the exact fork tree the template was validated against (offline
+`marked`, VSCode-faithful highlighting). Running `lake update` re-resolves the
+Git dependencies to the current branch heads and rewrites `lake-manifest.json`;
+do that deliberately when you want newer fork revisions, and re-run the local
+build afterwards. Bumping the pin to a newer Showcase commit is a matter of
+editing the commit hash in `lakefile.lean` and then running
+`lake update VersoBlueprint`.
+
+### Local development against a sibling Showcase checkout
+
+To test the template against a sibling `verso-blueprint` checkout instead of the
+pinned commit, replace the `require VersoBlueprint from git …` line with:
+
+```lean
+require VersoBlueprint from ".."
+```
+
+and run `lake update VersoBlueprint`. This override points at the in-tree fork
+and is for fork development only — do not commit it. The
+`scripts/check_project_template_local_override.py` helper applies exactly this
+override in a scratch copy so the committed template is never modified.
 
 `vbp build` accepts `--output <dir>`, `--serve`, and `--port <n>`, and rejects
 anything else. The site is HTML only — this fork does not carry upstream's

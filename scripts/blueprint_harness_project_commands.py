@@ -17,13 +17,40 @@ from scripts.blueprint_harness_utils import (
 )
 
 
+# Upstream Blueprint, kept accepted for reference/toolchain flows that still track the
+# `leanprover/verso-blueprint` release line.
 OFFICIAL_BLUEPRINT_REPOSITORY = "leanprover/verso-blueprint"
-OFFICIAL_BLUEPRINT_URL_PATTERNS = (
-    rf"https://github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}(?:\.git)?",
-    rf"git@github\.com:{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
-    rf"ssh://git@github\.com/{OFFICIAL_BLUEPRINT_REPOSITORY}\.git",
+# The eric-vergo Showcase fork (package name `VersoBlueprint`) — the source the distributed
+# `project_template` pins. CX-009/010: the template requires this fork at an immutable commit.
+SHOWCASE_FORK_REPOSITORY = "eric-vergo/Showcase"
+
+
+def _github_url_patterns(repository: str) -> tuple[str, ...]:
+    return (
+        rf"https://github\.com/{repository}(?:\.git)?",
+        rf"git@github\.com:{repository}\.git",
+        rf"ssh://git@github\.com/{repository}\.git",
+    )
+
+
+OFFICIAL_BLUEPRINT_URL_PATTERNS = _github_url_patterns(OFFICIAL_BLUEPRINT_REPOSITORY)
+SHOWCASE_FORK_URL_PATTERNS = _github_url_patterns(SHOWCASE_FORK_REPOSITORY)
+# A `VersoBlueprint` Git require is approved if it points at either the Showcase fork the
+# template ships or the upstream Blueprint release line.
+APPROVED_BLUEPRINT_URL_PATTERNS = (*SHOWCASE_FORK_URL_PATTERNS, *OFFICIAL_BLUEPRINT_URL_PATTERNS)
+OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = (
+    f"`{SHOWCASE_FORK_REPOSITORY}` or `{OFFICIAL_BLUEPRINT_REPOSITORY}`"
 )
-OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = f"`{OFFICIAL_BLUEPRINT_REPOSITORY}`"
+# Immutable Showcase commit the distributed `project_template` pins (CX-009/010). The pinned
+# commit and the whole resolved dependency graph are locked in
+# `project_template/lake-manifest.json`, so a fresh out-of-tree copy builds with no `lake update`.
+# `test_official_blueprint_require_matches_committed_template` keeps this in lockstep with the
+# committed `project_template/lakefile.lean`; bump both together when moving the pin.
+SHOWCASE_TEMPLATE_PINNED_COMMIT = "c5ec9c2fd2fc134bb7fee2e1d06473c776f4c079"
+OFFICIAL_BLUEPRINT_REQUIRE = (
+    'require VersoBlueprint from git '
+    f'"https://github.com/{SHOWCASE_FORK_REPOSITORY}.git"@"{SHOWCASE_TEMPLATE_PINNED_COMMIT}"'
+)
 OFFICIAL_BLUEPRINT_REQUIRE_PATTERN = re.compile(
     r'^(?P<indent>[ \t]*)require\s+VersoBlueprint\s+from\s+git\s+"(?P<url>[^"]+)"(?:\s*@\s*"(?P<ref>[^"]+)")?[ \t]*$',
     re.MULTILINE,
@@ -50,7 +77,7 @@ def _official_blueprint_git_dependency_match(text: str) -> re.Match[str] | None:
         (
             candidate
             for candidate in OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text)
-            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in OFFICIAL_BLUEPRINT_URL_PATTERNS)
+            if any(re.fullmatch(pattern, candidate.group("url")) for pattern in APPROVED_BLUEPRINT_URL_PATTERNS)
         ),
         None,
     )

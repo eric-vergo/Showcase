@@ -7,6 +7,9 @@ import unittest
 
 from scripts.blueprint_harness_project_commands import (
     OFFICIAL_BLUEPRINT_REQUIRE,
+    SHOWCASE_FORK_REPOSITORY,
+    SHOWCASE_TEMPLATE_PINNED_COMMIT,
+    _official_blueprint_git_dependency_match,
     discard_untracked_project_manifest,
     project_lake_update_command,
     rewrite_local_blueprint_dependency,
@@ -45,6 +48,39 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             text = lakefile.read_text(encoding="utf-8")
             self.assertNotIn(OFFICIAL_BLUEPRINT_REQUIRE, text)
             self.assertIn(f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"', text)
+
+    def test_official_blueprint_require_matches_committed_template(self) -> None:
+        # CX-010: the smoke's rewrite matcher must accept the exact require line the distributed
+        # `project_template` ships. Pin the accepted form to the literal committed lakefile text so
+        # the guard can never silently reject the very artifact it is meant to protect.
+        text = (PACKAGE_ROOT / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
+        match = _official_blueprint_git_dependency_match(text)
+        self.assertIsNotNone(
+            match,
+            msg="rewrite matcher must accept the committed project_template `VersoBlueprint` require",
+        )
+        assert match is not None
+        self.assertEqual(match.group(0).strip(), OFFICIAL_BLUEPRINT_REQUIRE)
+        self.assertEqual(match.group("url"), f"https://github.com/{SHOWCASE_FORK_REPOSITORY}.git")
+        # The template must pin an immutable commit (CX-009), not a mutable branch.
+        self.assertEqual(match.group("ref"), SHOWCASE_TEMPLATE_PINNED_COMMIT)
+        self.assertRegex(match.group("ref"), r"^[0-9a-f]{40}$")
+
+    def test_rewrite_local_blueprint_dependency_accepts_committed_template_form(self) -> None:
+        # The smoke's local-override path must accept the committed template require end to end.
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            lakefile = project_dir / "lakefile.lean"
+            lakefile.write_text(
+                (PACKAGE_ROOT / "project_template" / "lakefile.lean").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            rewrite_local_blueprint_dependency(project_dir, PACKAGE_ROOT)
+
+            text = lakefile.read_text(encoding="utf-8")
+            self.assertIn(f'require VersoBlueprint from "{PACKAGE_ROOT.resolve()}"', text)
+            self.assertNotIn("from git", text)
 
     def test_rewrite_local_blueprint_dependency_accepts_official_repo_with_non_main_ref(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -245,11 +281,11 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir = root / "project"
             package_root.mkdir()
             project_dir.mkdir()
-            original_run = commands_mod.run
+            original_run = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
-                commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -264,7 +300,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     skip_build=False,
                 )
             finally:
-                commands_mod.run = original_run
+                commands_mod.run_with_heartbeat = original_run
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(
@@ -286,11 +322,11 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
             project_dir = root / "project"
             package_root.mkdir()
             project_dir.mkdir()
-            original_run = commands_mod.run
+            original_run = commands_mod.run_with_heartbeat
             original_ensure = commands_mod.ensure_and_log_embedded_asset_owner_outputs
             commands: list[list[str]] = []
             try:
-                commands_mod.run = lambda command, *, cwd: commands.append(command)
+                commands_mod.run_with_heartbeat = lambda command, *, cwd, label: commands.append(command)
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = (
                     lambda package_root: commands.append(["ensure", str(package_root)]) or []
                 )
@@ -305,7 +341,7 @@ class BlueprintHarnessProjectCommandTests(unittest.TestCase):
                     skip_build=True,
                 )
             finally:
-                commands_mod.run = original_run
+                commands_mod.run_with_heartbeat = original_run
                 commands_mod.ensure_and_log_embedded_asset_owner_outputs = original_ensure
 
         self.assertEqual(

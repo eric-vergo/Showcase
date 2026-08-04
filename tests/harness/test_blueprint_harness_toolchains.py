@@ -4,7 +4,6 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.blueprint_harness_branches import active_release_branch
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_REQUIRE_PATTERN
 import scripts.blueprint_harness_toolchains as toolchains_mod
 from tests.harness.release_fixtures import (
@@ -278,13 +277,17 @@ class BlueprintHarnessToolchainTests(unittest.TestCase):
             finally:
                 toolchains_mod.resolve_remote_verso_tag_oid = original
 
-    def test_project_template_blueprint_dependency_tracks_active_release_branch(self) -> None:
+    def test_project_template_blueprint_dependency_pins_immutable_showcase_commit(self) -> None:
+        # CX-009/010: the distributed template pins the Showcase fork at an immutable commit (not a
+        # mutable release branch) so a fresh out-of-tree copy resolves the reviewed fork tree with
+        # no `lake update`; the committed manifest locks the rest of the dependency graph.
         text = (PACKAGE_ROOT / "project_template" / "lakefile.lean").read_text(encoding="utf-8")
         match = next(OFFICIAL_BLUEPRINT_REQUIRE_PATTERN.finditer(text), None)
 
         self.assertIsNotNone(match)
         assert match is not None
-        self.assertEqual(match.group("ref"), active_release_branch(PACKAGE_ROOT))
+        self.assertEqual(match.group("url"), "https://github.com/eric-vergo/Showcase.git")
+        self.assertRegex(match.group("ref"), r"^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":

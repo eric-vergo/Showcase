@@ -152,10 +152,10 @@ jobs:
           lean --version
           lake --version
           python3 --version
-      - name: Run fresh-repo template CI smoke
-        run: python3 ./scripts/check_project_template_fresh_repo.py --site-output _out/project-template-fresh-repo/html-multi
-      - name: Upload fresh-repo template artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: project-template-fresh-repo
-          path: _out/project-template-fresh-repo
+      # CX-009/010: copy the UNMODIFIED distributed template out-of-tree and resolve it with NO
+      # `lake update`. Fails if Lake reports "manifest out of date", rewrites the committed
+      # manifest, or resolves any dependency to a revision/origin other than the committed pin.
+      # `--build` additionally compiles the pinned dependency stack to prove the pins build
+      # standalone (cold build; the dependency compile is also covered by the Blueprint Build job).
+      - name: Fresh-repo template resolves the committed pins (no lake update)
+        run: python3 ./scripts/check_project_template_fresh_repo.py --build
