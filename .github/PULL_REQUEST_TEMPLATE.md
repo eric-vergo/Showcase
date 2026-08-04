@@ -9,8 +9,9 @@
   than the PR description.
 - Keep the required `Backport ...` lines below. Draft PRs may use `pending`;
   ready PRs must use `#<pr>` or `exempt: <reason>` for each line. New-release
-  branch-start PRs use `release-line bootstrap` for every line. PRs retiring
-  the oldest maintained lines use `release-line retirement` for those lines.
+  branch-start PRs use `release-line bootstrap` for every resulting line and
+  may retire the oldest maintained suffix in that transition. PRs that retire
+  old lines without starting a new one use `release-line retirement`.
 - If the PR requires paired backports, prefer a merge commit when landing so
   cherry-pick source commits remain in default-dev history. Squash is fine for
   PRs with all backports exempt.
