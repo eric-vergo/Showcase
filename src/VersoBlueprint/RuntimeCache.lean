@@ -23,6 +23,11 @@ structure State where
   moduleSourcePaths : Std.HashMap String (Option System.FilePath) := {}
   gitRootsBySourceDir : Std.HashMap String (Option System.FilePath) := {}
   gitRepoInfoByRoot : Std.HashMap String (Option Git.RepositoryInfo) := {}
+  /-- Configured `verso.blueprint.subjectModuleRoots` entries already reported as
+  matching no imported module, so the diagnostic is emitted once per process
+  instead of once per `projectModuleRoots` call (registry, all-decls graph, and
+  axiom audit each ask for the roots). -/
+  warnedSubjectRoots : Std.HashSet String := {}
 deriving Inhabited
 
 initialize stateRef : IO.Ref State ← IO.mkRef {}
@@ -93,5 +98,17 @@ def cachedGitRepoInfo?
   stateRef.modify fun state =>
     { state with gitRepoInfoByRoot := state.gitRepoInfoByRoot.insert key resolved }
   pure resolved
+
+/--
+Claim the once-per-process diagnostic for one configured subject-module root that
+matches no imported module: `true` the first time the root is seen, `false`
+afterwards. `clear` resets the claims (tests).
+-/
+def claimSubjectRootWarning (root : String) : IO Bool := do
+  if (← stateRef.get).warnedSubjectRoots.contains root then
+    return false
+  stateRef.modify fun state =>
+    { state with warnedSubjectRoots := state.warnedSubjectRoots.insert root }
+  return true
 
 end Informal.RuntimeCache

@@ -33,6 +33,48 @@ private def externalSourceLinkTemplate (opts : Lean.Options) : String :=
     verso.blueprint.externalCode.sourceLinkTemplate.name
     verso.blueprint.externalCode.sourceLinkTemplate.defValue
 
+register_option verso.blueprint.subjectModuleRoots : String := {
+  defValue := ""
+  descr := "Comma-separated Lean module-name roots naming the *subject* modules this blueprint presents (e.g. \"ErdosProblems.MulticolorTriangleRamsey\"). When non-empty this replaces the automatic project-boundary harvest, so a consumer whose formalization arrives as a Lake/git dependency (sources under `.lake/packages/`) still gets a full declaration registry, all-declarations graph, and declaration pages. A configured root matches a module whose name equals it or has it as a prefix. Empty keeps the automatic harvest."
+}
+
+/--
+The configured `verso.blueprint.subjectModuleRoots`, split on commas and trimmed
+(empty ⇒ automatic harvest). Entries are parsed with `String.toName`, so dotted
+roots (`Foo.Bar`) name a nested module prefix, not a single atomic component.
+
+Lives here rather than in `DeclRegistry` (its main consumer) because source
+resolution below needs it too, and `DeclRegistry` imports this module.
+-/
+def configuredSubjectModuleRoots (opts : Lean.Options) : Array Name :=
+  let raw := opts.get verso.blueprint.subjectModuleRoots.name
+    verso.blueprint.subjectModuleRoots.defValue
+  (raw.splitOn ",").foldl (init := #[]) fun acc chunk =>
+    let chunk := chunk.trimAscii.toString
+    if chunk.isEmpty then acc
+    else
+      let name := chunk.toName
+      if name.isAnonymous || acc.contains name then acc else acc.push name
+
+/-- Whether `moduleName` *is* `root` or is nested under it (component-wise). -/
+def moduleUnderRoot (root moduleName : Name) : Bool :=
+  root == moduleName || root.isPrefixOf moduleName
+
+/--
+Whether a module belongs to the project, given the project's module-name roots.
+
+For harvested roots (always single components, `Name.getRoot`) this is exactly the
+original "same root" test. It additionally lets a *configured* root
+(`verso.blueprint.subjectModuleRoots`) be dotted, so one problem's modules can be
+selected out of a dependency that ships many.
+-/
+def isProjectModule (roots : NameSet) (moduleName : Name) : Bool :=
+  roots.any (moduleUnderRoot · moduleName)
+
+/-- Whether a module is one the consumer named in `verso.blueprint.subjectModuleRoots`. -/
+def isSubjectModule (opts : Lean.Options) (moduleName : Name) : Bool :=
+  (configuredSubjectModuleRoots opts).any (moduleUnderRoot · moduleName)
+
 private def workspaceRelativeSourcePath? (workspaceRoot sourcePath : System.FilePath) : Option String :=
   let root := workspaceRoot.toString
   let sep := System.FilePath.pathSeparator.toString
@@ -209,6 +251,35 @@ private def workspaceModuleSourcePath? (workspaceRoot : System.FilePath)
     scanChildDirsForModule workspaceRoot parent modulePath
   | none => pure none
 
+/--
+Probe the Lake package checkouts under `<workspaceRoot>/.lake/packages` for a
+module's source, package root first and then one level in (the `srcDir := "src"`
+layout). Packages are visited in name order so the answer does not depend on
+directory iteration order.
+
+This is the *subject-as-dependency* fallback. `lake build` does not put dependency
+sources on `LEAN_SRC_PATH` (verified on v4.32.0: the search path holds only the
+toolchain's own sources), and `workspaceModuleSourcePath?` deliberately looks
+outward at sibling packages, so a formalization delivered as a git dependency has no
+resolvable source at elaboration time — which silently costs it source links,
+captured proof bodies, and verbatim signatures. It runs last, and only for modules
+the consumer named in `verso.blueprint.subjectModuleRoots`, so a consumer that owns
+its own sources sees no change (and Mathlib/core declarations are never dragged in).
+-/
+private def lakePackageModuleSourcePath? (workspaceRoot : System.FilePath)
+    (modulePath : String) : IO (Option System.FilePath) := do
+  try
+    let packages ← (workspaceRoot / ".lake" / "packages").readDir
+    for entry in packages.qsort (fun a b => a.fileName < b.fileName) do
+      if ← entry.path.isDir then
+        if let some path ← existingSourcePath? workspaceRoot (entry.path / modulePath) then
+          return some path
+        if let some path ← scanChildDirsForModule workspaceRoot entry.path modulePath then
+          return some path
+    pure none
+  catch _ =>
+    pure none
+
 def sourcePathForModule? (workspaceRoot : System.FilePath)
     (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do
@@ -220,19 +291,50 @@ def sourcePathForModule? (workspaceRoot : System.FilePath)
       if moduleName == (← getEnv).mainModule then
         currentSourcePath? workspaceRoot
       else
-        liftM <| workspaceModuleSourcePath? workspaceRoot moduleName
+        match ← liftM <| workspaceModuleSourcePath? workspaceRoot moduleName with
+        | some path => pure (some path)
+        | none =>
+          if isSubjectModule (← getOptions) moduleName then
+            liftM <| lakePackageModuleSourcePath? workspaceRoot (moduleSourcePathText moduleName)
+          else
+            pure none
 
 private def workspacePathPrefix (workspaceRoot : System.FilePath) : String :=
   let root := workspaceRoot.toString
   let sep := System.FilePath.pathSeparator.toString
   if root.endsWith sep then root else root ++ sep
 
+/--
+Whether a declaration's source file is part of the consumer's own tree rather than a
+vendored dependency checkout.
+
+A path physically under the workspace root but inside a Lake package directory
+(`…/.lake/packages/<pkg>/…`) is a *dependency* source, not the consumer's own, so it
+is rejected here even though the prefix test would accept it. This keeps the
+in/out-of-workspace tag consistent with `DeclRegistry.isProjectSourcePath`, which has
+always rejected `/.lake/`: dependency declarations now classify as `.outWorkspace`
+under both tests.
+-/
 private def isPathInWorkspace (workspaceRoot sourcePath : System.FilePath) : Bool :=
   let root := workspaceRoot.toString
   let rootPrefix := workspacePathPrefix workspaceRoot
   let src := sourcePath.toString
-  src == root || src.startsWith rootPrefix
+  if (src.splitOn "/.lake/").length > 1 then false
+  else src == root || src.startsWith rootPrefix
 
+/--
+Tag a resolved declaration source with its provenance.
+
+This records only *where the file is*: `.inWorkspace` means the consumer's own tree,
+`.outWorkspace` means anything else (Mathlib, core, or a Lake/git dependency
+checkout). It is **not** the subject-package boundary — which declarations a
+blueprint presents is decided by module-name roots
+(`DeclRegistry.projectModuleRoots`, configurable via
+`verso.blueprint.subjectModuleRoots`), precisely so a consumer whose formalization
+arrives as a git dependency can still present it in full. Both constructors carry the
+module name and source path, and every current reader goes through
+`ExternalDeclProvenance.moduleName?` / `.sourcePath?`, which treat them alike.
+-/
 private def mkProvenance (workspaceRoot : System.FilePath)
     (moduleName? : Option Lean.Name) (sourcePath? : Option System.FilePath) : Data.ExternalDeclProvenance :=
   match moduleName? with
@@ -258,7 +360,7 @@ separator. Returns `none` when there is no top-level `:=` (e.g. `example`s the
 range does not cover, or a declaration with no body).
 -/
 private def sliceProofSource (declSrc : String) : Option String := Id.run do
-  let cs := declSrc.data.toArray
+  let cs := declSrc.toList.toArray
   let n := cs.size
   let mut depth : Nat := 0
   let mut i : Nat := 0
@@ -283,7 +385,11 @@ private def sliceProofSource (declSrc : String) : Option String := Id.run do
     else if c == '-' && next? == some '-' then inLineComment := true; i := i + 2
     else if c == '/' && next? == some '-' then blockDepth := 1; i := i + 2
     else if depth == 0 && c == ':' && next? == some '=' then
-      let tail := (String.ofList (cs.toList.drop (i + 2))).trim
+      -- `trimAscii` is the non-deprecated spelling of `trim`: both drop exactly the
+      -- characters `Char.isWhitespace` accepts (the name refers to a possible ASCII
+      -- fast path, not to a narrower predicate), so Unicode whitespace around a
+      -- proof body is still removed.
+      let tail := (String.ofList (cs.toList.drop (i + 2))).trimAscii.toString
       return (if tail.isEmpty then none else some tail)
     else if c == '(' || c == '[' || c == '{' || c == '⟨' then depth := depth + 1; i := i + 1
     else if c == ')' || c == ']' || c == '}' || c == '⟩' then

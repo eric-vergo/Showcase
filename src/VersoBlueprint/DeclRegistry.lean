@@ -33,7 +33,10 @@ all-declarations dependency graph, since both are the "track every declaration"
 feature family. Consumers without the flag pay nothing and see no behavior change.
 
 The project-module enumeration (`projectModuleRoots` / `enumerateProjectDecls`) is
-shared with the all-decls graph augmentation. The registry is the more inclusive
+shared with the all-decls graph augmentation. It normally harvests the project
+boundary from authored `(lean := …)` references; a consumer whose formalization
+arrives as a Lake/git dependency names its modules directly instead, via
+`verso.blueprint.subjectModuleRoots`. The registry is the more inclusive
 consumer: it tracks every project declaration including `private` helpers
 (`includePrivate := true`), whereas the graph drops private helpers to stay
 readable. Both agree on the public declaration set and on the project boundary.
@@ -62,6 +65,11 @@ register_option verso.blueprint.declNamePrefix : String := {
 /-- The configured `verso.blueprint.declNamePrefix` (empty ⇒ no shortening). -/
 def configuredNamePrefix (opts : Lean.Options) : String :=
   opts.get verso.blueprint.declNamePrefix.name verso.blueprint.declNamePrefix.defValue
+
+-- The subject-module machinery (`verso.blueprint.subjectModuleRoots`) lives in
+-- `ExternalRefSnapshot`, which needs it for dependency source resolution and which
+-- this module imports; re-exported here, where its main consumers are.
+export Informal (configuredSubjectModuleRoots isProjectModule)
 
 /-! ## Serializable schema -/
 
@@ -229,18 +237,34 @@ def isProjectSourcePath (workspaceRoot : System.FilePath) (p : String) : Bool :=
     underPrefix parent || underPrefix root
 
 /--
-The project's module-name roots: the roots of the modules containing authored
-`(lean := …)` declarations whose source lives inside the project (see
-`isProjectSourcePath`).
+The project's module-name roots.
 
-Reads the blueprint environment extension, so authored declarations define which
-namespaces count as "the project" — whether the formalization is the consumer's own
-package or a sibling package. This is the fix for the sibling-package no-op: the
-original harvest accepted only `.inWorkspace` provenance, which is empty when the
-formalization is a separate package (all such declarations are `.outWorkspace`).
+When `verso.blueprint.subjectModuleRoots` is set, those roots *are* the answer: the
+automatic harvest is skipped entirely. That is the supported configuration for a
+consumer whose Lean content lives in a Lake/git dependency — its sources are under
+`.lake/packages/`, hence outside the workspace by every boundary test here, so the
+harvest can never find them.
+
+Otherwise the roots are harvested from the modules containing authored
+`(lean := …)` declarations whose source lives inside the project (see
+`isProjectSourcePath`). Reading the blueprint environment extension lets authored
+declarations define which namespaces count as "the project" — whether the
+formalization is the consumer's own package or a sibling package. This is the fix
+for the sibling-package no-op: the original harvest accepted only `.inWorkspace`
+provenance, which is empty when the formalization is a separate package (all such
+declarations are `.outWorkspace`).
 -/
 def projectModuleRoots : CoreM NameSet := do
   let env ← getEnv
+  let configured := configuredSubjectModuleRoots (← getOptions)
+  if !configured.isEmpty then
+    for root in configured do
+      unless env.header.moduleNames.any (Informal.moduleUnderRoot root) do
+        if ← liftM (Informal.RuntimeCache.claimSubjectRootWarning (toString root)) then
+          logWarning m!"verso.blueprint.subjectModuleRoots names `{root}`, which matches no \
+            imported module; its declarations will be missing from the registry, the \
+            all-declarations graph, and the declaration pages."
+    return configured.foldl (init := ({} : NameSet)) (·.insert ·)
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
   return st.data.foldl (init := ({} : NameSet)) fun acc _label node =>
@@ -280,7 +304,7 @@ def enumerateProjectDecls (roots : NameSet) (includePrivate : Bool := false) :
   let mut seen : NameSet := {}
   for i in [0:moduleData.size] do
     let modName := (moduleNames[i]?).getD Name.anonymous
-    if !roots.contains modName.getRoot then continue
+    if !isProjectModule roots modName then continue
     for cname in moduleData[i]!.constNames do
       let cname := cname.eraseMacroScopes
       if seen.contains cname then continue
