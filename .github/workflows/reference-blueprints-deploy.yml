@@ -3,7 +3,11 @@ name: Reference Showcases Deploy
 on:
   workflow_run:
     workflows:
-      - Reference Blueprints
+      # Must match the producer workflow's `name:` exactly (reference-blueprints.yml
+      # declares `name: Reference Showcases`). A stale `Reference Blueprints` value
+      # here silently disables the automatic build-to-deploy route; the static
+      # topology check in tests/harness/test_workflow_topology.py guards against drift.
+      - Reference Showcases
     types:
       - completed
     branches:
