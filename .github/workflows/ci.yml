@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches:
+      # `blueprint` is the fork's product/default branch — the revision consumers pin
+      # (CX-008). Push runs give each shipped head linkable build/test evidence, not
+      # only the pre-merge PR checks. Release-line branches keep their own coverage.
+      - blueprint
       - v*
 
 permissions:
