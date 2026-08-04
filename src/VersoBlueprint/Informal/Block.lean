@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2025 Lean FRO LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Author: Emilio J. Gallego Arias, David Thrane Christiansen
+Authors: Emilio J. Gallego Arias, David Thrane Christiansen, Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code)
 -/
 
 -- XXX VersoManual is not module yet
