@@ -91,14 +91,30 @@ def humanizePath (path : String) : String :=
   let parts := (path.splitOn ".").filter (· != "")
   String.intercalate " " (parts.map humanizeIdent)
 
-/-- A Lean-identifier-safe CamelCase slug for a display title. Always starts with a letter. -/
-def identSlug (title : String) : String :=
-  let words := (title.splitOn " ").filter (· != "")
-  let joined := String.join (words.map fun w => capitalizeStr (String.ofList (w.toList.filter Char.isAlphanum)))
-  let joined := truncateStr 48 joined
+/-- A Lean-identifier-safe CamelCase slug for a display title. Always starts with a
+letter, and is capped at `slugWordBudget` characters **on a word boundary** — a slug is
+a Lean module name, and `…PaletteBlockCertifica` reads like a typo forever. -/
+def identSlug (title : String) : String := Id.run do
+  let words := ((title.splitOn " ").filter (· != "")).map fun w =>
+    capitalizeStr (String.ofList (w.toList.filter Char.isAlphanum))
+  let words := words.filter (· != "")
+  let mut joined := ""
+  for w in words do
+    if joined.isEmpty then
+      -- The first word is taken whole even if it alone blows the budget: a slug must
+      -- never be empty, and a single over-long identifier is still a valid one.
+      joined := truncateStr slugWordBudget w
+    else if joined.length + w.length ≤ slugWordBudget then
+      joined := joined ++ w
+    else
+      break
+  if joined.isEmpty then return "Group"
   match joined.toList with
-  | [] => "Group"
-  | c :: _ => if c.isAlpha then joined else "G" ++ joined
+  | c :: _ => return (if c.isAlpha then joined else "G" ++ joined)
+  | [] => return "Group"
+where
+  /-- Character budget for a generated module-name slug. -/
+  slugWordBudget : Nat := 48
 
 /-- Zero-padded three-digit index (`7 ↦ "007"`), widening past 999 rather than truncating. -/
 def pad3 (n : Nat) : String :=

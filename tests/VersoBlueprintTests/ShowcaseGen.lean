@@ -40,6 +40,14 @@ open VersoBlueprint.ShowcaseGen
 #guard humanizePath "Alpha.BetaGamma" == "Alpha Beta Gamma"
 #guard identSlug "Palette Block Certificate" == "PaletteBlockCertificate"
 #guard identSlug "Multicolour Triangle Ramsey 2" == "MulticolourTriangleRamsey2"
+/- The cap lands on a word boundary: a slug is a Lean module name, and a mid-word cut
+   (`…PaletteBlockCertifica`) reads like a typo for the life of the repository. -/
+#guard identSlug "Multicolour Triangle Ramsey to Palette Block Certificate"
+  == "MulticolourTriangleRamseyToPaletteBlock"
+/- A first word longer than the budget is still taken (truncated): a slug must never
+   be empty, and one over-long identifier is still a valid one. -/
+#guard identSlug "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX Tail"
+  == "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 #guard pad3 7 == "007"
 #guard pad3 42 == "042"
 #guard pad3 1234 == "1234"
