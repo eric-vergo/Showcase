@@ -32,14 +32,31 @@ A Showcase project combines:
 - rendered overview pages such as dependency graphs and progress summaries
 - HTML output with previews, navigation, and exported metadata
 
-**Naming.** "Showcase" is the product name. The Lake package is still
-`VersoBlueprint`, the directives are still `blueprint_*`, and the option namespace is
-still `verso.blueprint.*` — renaming those would break every consumer for no
-benefit. Expect the code to say "blueprint" and the site to say "Showcase".
+**Naming.** "Showcase" is the product name, and the GitHub repository is
+**`eric-vergo/Showcase`** (canonical). The Lake package is still `VersoBlueprint`,
+the directives are still `blueprint_*`, and the option namespace is still
+`verso.blueprint.*` — renaming those would break every consumer for no benefit.
+Expect the code to say "blueprint" and the site to say "Showcase". Older docs or
+dependency pins may still spell the repository `eric-vergo/verso-blueprint`; use
+`eric-vergo/Showcase`.
+
+## Provenance & authorship
+
+This is a **fork**, not upstream, and its files carry two layers of authorship.
+Upstream-lineage files (derived from `leanprover/verso-blueprint` v4.32.0, by
+Lean FRO, LLC and contributors including Emilio J. Gallego Arias and David Thrane
+Christiansen) keep their original copyright and author(s), with the fork's
+contributors appended where the fork modified them. Fork-original files (created
+here, with no upstream counterpart) are `Copyright (c) 2026 Eric Vergo`, authored
+by Eric Vergo with AI assistance from Anthropic's Claude models — Claude Fable 5,
+Claude Opus 4.8, and Claude Opus 5, per the git commit trailers, the record of
+which model did what. See [`NOTICE`](./NOTICE) for the full layered story;
+`scripts/check-header-provenance.sh` guards against fork-original files silently
+reacquiring the upstream header template.
 
 ## What this fork changes vs upstream
 
-This is **eric-vergo/verso-blueprint**, a fork of
+This is **eric-vergo/Showcase**, a fork of
 [leanprover/verso-blueprint](https://github.com/leanprover/verso-blueprint) that
 turns the Blueprint genre into a browsable, self-contained presentation layer for
 formal proofs. It is the genre powering the **A362583 irrationality showcase** —

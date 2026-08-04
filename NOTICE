@@ -1,0 +1,51 @@
+Showcase — provenance and authorship
+====================================
+
+This repository (eric-vergo/Showcase) is a FORK. It is not affiliated with,
+endorsed by, or maintained by the upstream Lean FRO project. It is distributed
+under the Apache License, Version 2.0 (see the LICENSE file).
+
+Two layers of authorship are present, and each source file's copyright header
+reflects which layer that file belongs to.
+
+Upstream layer
+--------------
+This fork derives from leanprover/verso-blueprint (the Verso "blueprint" genre),
+part of the Verso authoring toolchain by Lean FRO, LLC and its contributors,
+including Emilio J. Gallego Arias and David Thrane Christiansen. Files with
+genuine upstream lineage keep their original "Copyright (c) ... Lean FRO LLC"
+notice and their original author(s). Where the fork modified such a file, the
+fork's contributors are appended to its Authors line and the prior authors are
+preserved verbatim — we do not remove a real prior author of code we build on.
+
+The upstream baseline is Verso / verso-blueprint v4.32.0, commit
+51ebcae4b3133f407807e581178d2dcc705ac683.
+
+Fork layer
+----------
+The fork work in this repository is by Eric Vergo, with AI assistance from
+Anthropic's Claude models under Eric's direction. Per the git commit trailers —
+the honest record of which model did what — the contributing models are:
+
+    Claude Fable 5, Claude Opus 4.8, Claude Opus 5
+
+Files created in this fork with no upstream counterpart ("fork-original" files)
+carry a "Copyright (c) 2026 Eric Vergo" notice and list Eric Vergo together with
+the Claude models above as Authors.
+
+How lineage is determined
+-------------------------
+Lineage is decided by git history, not by guesswork. A .lean file present in the
+upstream baseline above is upstream-lineage; a .lean file first added on this
+fork (git diff --diff-filter=A / --find-renames against the baseline) with no
+upstream counterpart is fork-original. The script
+
+    scripts/check-header-provenance.sh
+
+enforces that fork-original .lean files do not silently reacquire the upstream
+copyright-header template — the class of defect recorded in the project's audit
+as finding CX-004.
+
+Vendored third-party assets (d3, d3-graphviz, marked, KaTeX, and others under
+src/VersoBlueprint/**/vendor/) retain their own upstream licenses; see
+src/VersoBlueprint/vendor/THIRD_PARTY_NOTICES.md.
