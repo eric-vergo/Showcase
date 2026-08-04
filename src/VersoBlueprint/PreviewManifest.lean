@@ -753,8 +753,87 @@ private def patchBlueprintHtmlAssets (assets : HtmlAssets) : HtmlAssets :=
         assets.extraJs.toArray.map patchHighlightedStartupJs
   }
 
+/-! ### Shared static chrome
+
+Verso's `extraCss` / `extraJs` channels are inlined into **every** page's `<head>`.
+That is the right shape for a handful of small snippets, but the blueprint genre
+registers the whole design system there — tokens, cards, graph, rail, dashboard,
+trust, print — which reaches ~100–200 KB per page and is repeated once per page.
+The `extraCssFiles` / `extraJsFiles` channels carry the same content to
+site-relative files under `-verso-data/`, linked from each `<head>` and written
+once, so the cost becomes a single cached fetch for the whole site.
+
+The move happens here rather than at the ~13 `HtmlAssets` construction sites
+because this is the one point every emit path funnels through
+(`emitBlueprintHtml`), which means (a) no bundle can be forgotten and no future
+bundle has to opt in, and (b) the cascade order is preserved *exactly*: the
+chunks are concatenated in the same `HashSet` iteration order Verso would have
+emitted `<style>` tags in, so there is no chance of an ordering regression from
+re-hashing per-file records. Nothing leaves the origin — these are ordinary
+`-verso-data/` files, like `lib/d3.min.js`.
+-/
+
+/-- Filename (under `-verso-data/`) of the shared blueprint stylesheet. -/
+def sharedChromeCssFilename : String := "bp-chrome.css"
+
+/-- Filename (under `-verso-data/`) of the shared blueprint script. -/
+def sharedChromeJsFilename : String := "bp-chrome.js"
+
+/-- Scripts of at most this size (UTF-8 bytes) stay inline in `<head>`: for a
+snippet this small the `<script src>` request costs more than the bytes saved. -/
+def inlineJsByteBudget : Nat := 2048
+
+/-- Whether a `<head>` script must keep its inline `<script>` tag. The pre-paint
+appliers (color scheme, text size) are pinned regardless of size — they run before
+first paint and must not depend on a separate fetch — and everything small enough
+stays put. -/
+def mustStayInlineJs (js : JS) : Bool :=
+  js.js == Informal.ColorScheme.applierJs ||
+    js.js == Informal.TextSize.applierJs ||
+    js.js.utf8ByteSize ≤ inlineJsByteBudget
+
+private def sharedChromeBanner (what : String) : String :=
+  s!"/* Shared blueprint {what}: the per-page `<head>` assets of this build, \
+collected into one site-relative file. Generated — do not edit. */\n"
+
+/--
+Move the page-wide blueprint CSS, and every script too big to be worth inlining,
+out of each `<head>` and into `-verso-data/bp-chrome.{css,js}`.
+
+Idempotent: a second application finds `extraCss` empty and only inline-eligible
+scripts left, so it changes nothing. That matters because
+`patchBlueprintTraverseState` runs again on the `--resume-from` path, after the
+traverse state has been round-tripped through JSON.
+-/
+def shareBlueprintChrome (assets : HtmlAssets) : HtmlAssets := Id.run do
+  let mut assets := assets
+  let css := assets.extraCss.toArray
+  unless css.isEmpty do
+    let contents :=
+      sharedChromeBanner "stylesheet" ++ String.intercalate "\n\n" (css.toList.map (·.css))
+    assets := { assets with
+      extraCss := {}
+      extraCssFiles :=
+        assets.extraCssFiles.insert
+          { filename := sharedChromeCssFilename, contents := contents } }
+  let (inline, shared) := assets.extraJs.toArray.partition mustStayInlineJs
+  unless shared.isEmpty do
+    -- `;` between scripts: each was its own `<script>` element before, so none of
+    -- them can rely on statement continuation across the boundary, and an empty
+    -- statement is always valid.
+    let contents :=
+      sharedChromeBanner "script" ++ String.intercalate "\n;\n" (shared.toList.map (·.js))
+    assets := { assets with
+      extraJs := Std.HashSet.ofArray inline
+      extraJsFiles :=
+        assets.extraJsFiles.insert
+          { filename := sharedChromeJsFilename, contents := contents, sourceMap? := none } }
+  return assets
+
 private def patchBlueprintTraverseState (state : TraverseState) : TraverseState :=
-  state.modifyHtmlAssets patchBlueprintHtmlAssets
+  -- Patch first, share second: the highlighted-code startup patch has to run while
+  -- that script is still an individual `extraJs` entry.
+  state.modifyHtmlAssets (shareBlueprintChrome ∘ patchBlueprintHtmlAssets)
 
 def manifestFilename : String := "blueprint-manifest.json"
 
