@@ -158,7 +158,16 @@ private def runtimePaths : IO (Option RuntimePaths) := do
     runtimePathsRef.set (some resolved)
     pure resolved
 
-/-- Probe `node` once per Lean process so missing Node just disables linting quietly. -/
+/--
+Probe `node` once per Lean process.
+
+Missing Node disables math linting — but *not* quietly: a silently-skipped lint is
+indistinguishable from a passing one, and a build that reports "math checked" while
+never running the checker is exactly the kind of unearned assurance the trust
+surfaces are meant to rule out. The probe therefore emits one loud warning to
+stderr per process (the memoized `nodeAvailableRef` guarantees once-only) so CI can
+gate on it.
+-/
 private def nodeAvailable : IO Bool := do
   match ← nodeAvailableRef.get with
   | some available => pure available
@@ -170,6 +179,12 @@ private def nodeAvailable : IO Bool := do
       catch _ =>
         pure false
     nodeAvailableRef.set (some available)
+    unless available do
+      IO.eprintln
+        "warning: blueprint math lint SKIPPED — `node` was not found on PATH, so no \
+         KaTeX validation ran for this build. Math errors will not be reported. \
+         Install Node, or set `verso.blueprint.math.lint := false` to declare the \
+         omission deliberate."
     pure available
 
 def enabled (opts : Options) : Bool :=

@@ -138,8 +138,8 @@ block_extension Block.bibliography (biblio : BibliographyData) where
 
 open Verso Doc Elab Syntax in
 def mkBibliographyPart (stx : Syntax) (endPos : String.Pos.Raw) : PartElabM FinishedPart := do
-  let titlePreview := "Blueprint Bibliography"
-  let titleInlines ← `(inline | "Blueprint Bibliography")
+  let titlePreview := "Bibliography"
+  let titleInlines ← `(inline | "Bibliography")
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   let entries := Informal.Cite.allBibEntries (← getEnv)

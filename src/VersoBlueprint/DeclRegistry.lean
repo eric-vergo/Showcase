@@ -146,6 +146,19 @@ structure Entry where
   /-- Longest dependent-chain length above this declaration (0 = no project
   dependents); `none` when unresolvable (cycle). -/
   height? : Option Nat := none
+  /-- Kernel axiom footprint (`Lean.collectAxioms`) — the same closure
+  `#print axioms` reports. Sorted; empty means "audited, no axioms". `sorryAx`
+  here is transitive evidence of an incomplete proof and is reflected in
+  `status` (`containsSorry`) even when nothing in this declaration's own body
+  carries a literal `sorry`. -/
+  axioms : Array String := #[]
+  /-- Which pipeline produced `signatureHtml?` — `"reelab"` / `"signature"` /
+  `"delaborated"`; `none` when no signature was rendered. See
+  `Informal.NodeCard.tierMarker`. -/
+  sigTier? : Option String := none
+  /-- Which pipeline produced this declaration's proof/value body HTML —
+  `"reelab"` / `"syntactic"` / `"raw"`; `none` when no body was captured. -/
+  proofTier? : Option String := none
 deriving Inhabited, Repr, ToJson, FromJson
 
 /-- The full declaration registry artifact. -/
@@ -368,7 +381,8 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     (sourcePath? : Option System.FilePath) (ranges? : Option DeclarationRanges)
     (statementDeps proofDeps : Array Name)
     (depth? height? : Option Nat)
-    (sigSourceHtml? : Option String := none) : MetaM Entry := do
+    (sigSourceHtml? : Option String := none)
+    (sigTier? proofTier? : Option String := none) : MetaM Entry := do
   let range? : Option Range := ranges?.map fun r =>
     { pos := { line := r.range.pos.line, column := r.range.pos.column }
       endPos := { line := r.range.endPos.line, column := r.range.endPos.column } }
@@ -402,6 +416,26 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
           pure (some ((← Verso.Genre.Manual.Signature.forName name).wide |> renderHighlightedSelfContainedHtml))
         catch _ =>
           pure none
+  -- Which pipeline actually produced the signature markup above (the caller
+  -- reports the source-re-elaboration tier when it had one). Private decls fall
+  -- back to a purely syntactic highlight; public ones to the delaborated form.
+  let sigTier? : Option String :=
+    match sigTier?, signatureHtml? with
+    | some t, _ => some t
+    | none, none => none
+    | none, some _ => if isPrivateName name then some "syntactic" else some "delaborated"
+  -- Kernel axiom audit (layer A, registry side): the transitive axiom closure.
+  -- `sorryAx` in it means the proof is incomplete even when this declaration's own
+  -- body carries no literal `sorry`, so it upgrades the reported status.
+  let axioms ← Informal.declAxiomNames name
+  let directStatus :=
+    Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true)
+  let status :=
+    if axioms.contains (toString Informal.sorryAxiomName) then
+      match directStatus with
+      | .containsSorry _ | .axiomLike => directStatus
+      | _ => Data.ProvedStatus.containsSorry #[{ location := .proof }]
+    else directStatus
   let params ← declParams cinfo.type
   -- Blueprint labels are keyed by the referenced name; authored decls are public, but
   -- fall back to the de-mangled name for robustness.
@@ -440,7 +474,7 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     usedBy := usedByNames.map display
     nodeLabels
     nodeHref?
-    status := provedStatusTag (Informal.Data.ConstantInfo.blueprintProvedStatus cinfo (allowOpaque := true))
+    status := provedStatusTag status
     authored := !nodeLabels.isEmpty
     shortName := Informal.NodeCard.shortDeclName namePrefix displayName
     isPrivate := isPrivateName name
@@ -449,6 +483,9 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     sourceHref?
     depth?
     height?
+    axioms
+    sigTier?
+    proofTier?
   }
 
 /--
@@ -574,6 +611,40 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
             | none => pure none
           else pure none
         | _, _ => pure none
+    -- Rendering tier for the signature, decided exactly where the fallback chain
+    -- above resolved (`buildEntry` fills in the delaborated/syntactic fallback when
+    -- neither source path produced markup).
+    let sigTier? : Option String :=
+      match fullDecl?, sigSourceHtml? with
+      | some _, _ => some "reelab"
+      | none, some _ => some "signature"
+      | none, none => none
+    -- Proof/value body, from the per-module cached file content (degrades to no
+    -- body on any read/slice failure — the decl page shows its quiet placeholder).
+    -- Captured *before* the entry so the entry can record which tier produced it.
+    let bodyText? : Option String :=
+      match content?, ranges? with
+      | some content, some ranges =>
+        (Informal.proofSourceFromContent? content ranges.range).filter (·.length ≤ rawBodyCap)
+      | _, _ => none
+    let bodyHtml? : Option String ←
+      match bodyText? with
+      | none => pure none
+      | some src =>
+        -- Prefer the fully re-elaborated proof body (real hovers); else syntactic.
+        match fullDecl? with
+        | some (_, some bodyHl) => pure (some (Informal.renderHighlightedSelfContainedHtml bodyHl))
+        | _ =>
+          if src.length ≤ highlightBodyCap then highlightProofSourceHtml? src else pure none
+    -- Body tier: the size caps above silently drop highlighting (>40k chars) or the
+    -- whole body (>100k); recording the tier makes that visible on the page.
+    let proofTier? : Option String :=
+      match bodyText? with
+      | none => none
+      | some _ =>
+        match fullDecl? with
+        | some (_, some _) => some "reelab"
+        | _ => if bodyHtml?.isSome then some "syntactic" else some "raw"
     -- Re-baseline the heartbeat budget per entry (`withCurrHeartbeats`): the whole
     -- registry runs in ONE `CoreM` lift of the `{blueprint_graph}` command, whose
     -- `initHeartbeats` is fixed for the lift — without a reset, the loop's own
@@ -582,24 +653,10 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     let entry ← withCurrHeartbeats <|
       (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
         n ci modName sourcePath? ranges? typeDeps valueDeps
-        depths[i]! heights[i]! sigSourceHtml?).run'
+        depths[i]! heights[i]! sigSourceHtml? sigTier? proofTier?).run'
     entries := entries.push entry
-    -- Proof/value body, from the per-module cached file content (degrades to no
-    -- body on any read/slice failure — the decl page shows its quiet placeholder).
-    let bodyText? : Option String :=
-      match content?, ranges? with
-      | some content, some ranges =>
-        (Informal.proofSourceFromContent? content ranges.range).filter (·.length ≤ rawBodyCap)
-      | _, _ => none
     match bodyText? with
-    | some src =>
-      -- Prefer the fully re-elaborated proof body (real hovers); else syntactic.
-      let bodyHtml? ←
-        match fullDecl? with
-        | some (_, some bodyHl) => pure (some (Informal.renderHighlightedSelfContainedHtml bodyHl))
-        | _ =>
-          if src.length ≤ highlightBodyCap then highlightProofSourceHtml? src else pure none
-      bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
+    | some src => bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
     | none => pure ()
   if fullDeclAttempts > 0 then
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"

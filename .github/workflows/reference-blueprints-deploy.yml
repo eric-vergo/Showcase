@@ -1,4 +1,4 @@
-name: Reference Blueprints Deploy
+name: Reference Showcases Deploy
 
 on:
   workflow_run:

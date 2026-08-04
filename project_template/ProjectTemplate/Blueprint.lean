@@ -11,7 +11,7 @@ open Verso.Genre
 open Verso.Genre.Manual
 open Informal
 
-#doc (Manual) "Starter Blueprint" =>
+#doc (Manual) "Starter Showcase" =>
 
 This small Blueprint tracks a few basic arithmetic facts on natural numbers,
 then ends with a separate Collatz chapter that is intentionally unfinished. It

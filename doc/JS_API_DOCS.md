@@ -1,4 +1,4 @@
-# Verso Blueprint JavaScript API
+# Showcase JavaScript API
 
 Verso Blueprint emits browser-facing ESM modules under `-verso-data/api/` in
 generated sites. These modules are plain JavaScript, documented with JSDoc, and

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Verso Blueprint"
-  short_description: "Work with Verso Blueprint projects"
-  default_prompt: "Use $verso-blueprint to build, query, or edit this Blueprint project."
+  display_name: "Showcase (Verso Blueprint)"
+  short_description: "Work with Showcase (Verso Blueprint) projects"
+  default_prompt: "Use $verso-blueprint to build, query, or edit this Showcase project."

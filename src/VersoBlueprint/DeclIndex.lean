@@ -556,7 +556,7 @@ def emitBlueprintDeclIndexPages : ExtraStep :=
         match (do let j ← Json.parse raw; (FromJson.fromJson? j : Except String Registry)) with
         | .error e =>
           logger.reportWarning
-            s!"Blueprint declaration index: could not parse decl-registry.json ({e}); \
+            s!"Showcase declaration index: could not parse decl-registry.json ({e}); \
                skipping the defs/theorems/decl-index/modules pages."
         | .ok registry =>
           let entries := registry.decls

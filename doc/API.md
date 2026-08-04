@@ -1,4 +1,4 @@
-# Blueprint API Reference
+# Showcase API Reference
 
 This document is for integration work: custom generators, dashboards, audit
 pages, slide adapters, and browser scripts that need to read Blueprint data or

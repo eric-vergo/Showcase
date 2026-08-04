@@ -105,7 +105,7 @@ private def renderAuditNode
       hasSubstr html "bp_graft_node" &&
         countSubstr html "Manual graft body." == 2 &&
         countSubstr html "class=\"bp_heading " == 1 &&
-        !hasSubstr html "Blueprint node not found"
+        !hasSubstr html "Showcase node not found"
 
 /-- info: true -/
 #guard_msgs in
@@ -128,7 +128,7 @@ private def renderAuditNode
         hasSubstr html "bp_math display" &&
         hasSubstr html "data-bp-facet=\"proof\"" &&
         hasSubstr html "bp_code_panel_wrapper" &&
-        !hasSubstr html "Blueprint node not found"
+        !hasSubstr html "Showcase node not found"
 
 /-- info: true -/
 #guard_msgs in
@@ -152,7 +152,7 @@ private def renderAuditNode
         hasSubstr rendered "Manual left graft body with inline math" &&
         hasSubstr rendered "graftManualLeftValue" &&
         hasSubstr rendered "bp_code_panel_wrapper" &&
-        !hasSubstr rendered "Blueprint node not found"
+        !hasSubstr rendered "Showcase node not found"
 
 /-- info: true -/
 #guard_msgs in
@@ -168,7 +168,7 @@ private def renderAuditNode
         hasSubstr rendered "Manual left graft body with inline math" &&
         !hasSubstr rendered "bp_heading" &&
         !hasSubstr rendered "bp_code_panel_wrapper" &&
-        !hasSubstr rendered "Blueprint node not found"
+        !hasSubstr rendered "Showcase node not found"
 
 #guard
   let attrs := (graftNode "def:graft.manual.left").renderedAttrsWithClass "audit_graft_node"
@@ -214,7 +214,7 @@ private def renderAuditNode
       node
     let rendered := renderedHtml.asString
     pure <|
-      hasSubstr rendered "Blueprint node not found" &&
+      hasSubstr rendered "Showcase node not found" &&
         hasSubstr rendered "label `def:graft.manual.missing`" &&
         hasSubstr rendered "facet `statement`" &&
         hasSubstr rendered node.key &&
@@ -236,9 +236,9 @@ private def renderAuditNode
     let rendered := renderedHtml.asString
     let logs ← logs.get
     pure <|
-      hasSubstr rendered "Blueprint HTML cache entry not found" &&
+      hasSubstr rendered "Showcase HTML cache entry not found" &&
         hasSubstr rendered node.key &&
-        logs.any (fun msg => hasSubstr msg "Blueprint HTML cache: missing rendered body") &&
+        logs.any (fun msg => hasSubstr msg "Showcase HTML cache: missing rendered body") &&
         logs.any (fun msg => hasSubstr msg node.key)
 
 end Verso.VersoBlueprintTests.BlueprintGraft

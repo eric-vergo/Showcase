@@ -26,6 +26,7 @@ import VersoBlueprint.Lib.PreviewSource
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
+import VersoBlueprint.GraphGate
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Git
 import VersoBlueprint.Html
@@ -540,7 +541,22 @@ def readBuildMetadata : IO BuildMetadata := do
   let cwd ← IO.currentDir
   let manifest? ← readLakeManifestJson?
   let compiledAt ← Process.runTrimmedCommand? "date" #["-u", "+%Y-%m-%dT%H:%M:%SZ"]
+  -- A build stamp naming commit `abc1234` is only accurate if the tree it was built
+  -- from *is* `abc1234`. Mark a dirty worktree in the stamp itself (and warn), rather
+  -- than publishing a commit the reader cannot use to reproduce what they are looking
+  -- at. `none` (git unavailable) leaves the stamp unqualified.
   let commit ← Git.shortCommitAt? cwd
+  let dirty? ← Git.dirtyAt? cwd
+  let commit :=
+    match commit, dirty? with
+    | some c, some true => some s!"{c}-dirty"
+    | c, _ => c
+  if dirty? == some true then
+    IO.eprintln
+      "warning: showcase build metadata: the project worktree has uncommitted changes, so \
+       the recorded commit does not describe the sources this site was built from. The build \
+       stamp is marked `-dirty`; source links will point at the last commit, not at what you \
+       see here."
   let subject ← Git.subjectAt? cwd
   let projectRepositoryUrl ← Git.repositoryUrlAt? cwd
   let projectCommitUrl := Git.commitUrl? projectRepositoryUrl (← Git.fullCommitAt? cwd)
@@ -598,7 +614,7 @@ def buildMetadataHtml (metadata : BuildMetadata) : Output.Html :=
         <span class="bp_build_metadata_value">{{VersoBlueprint.Html.text metadata.leanToolchain}}</span>
       </span>
       <span class="bp_build_metadata_item">
-        {{buildMetadataLabelHtml "VersoBlueprint" metadata.blueprintRepositoryUrl}}
+        {{buildMetadataLabelHtml "Showcase" metadata.blueprintRepositoryUrl}}
         {{buildMetadataCodeHtml metadata.blueprintVersion metadata.blueprintCommitUrl}}
       </span>
       {{if let some upstream := metadata.upstreamBlueprint then
@@ -641,12 +657,12 @@ private def writeBuildMetadataHtml
     (metadata : BuildMetadata)
     (path : System.FilePath) : BuildLogT IO Unit := do
   unless ← path.pathExists do
-    Verso.reportError s!"Blueprint build metadata: missing root page {path}"
+    Verso.reportError s!"Showcase build metadata: missing root page {path}"
     return
   let html ← IO.FS.readFile path
   match insertBuildMetadataHtml? html (buildMetadataHtmlString metadata) with
   | some html => IO.FS.writeFile path html
-  | none => Verso.reportError s!"Blueprint build metadata: could not find title page heading in {path}"
+  | none => Verso.reportError s!"Showcase build metadata: could not find title page heading in {path}"
 
 def emitBuildMetadata (metadata : BuildMetadata) : ExtraStep := fun mode cfg _state _text => do
   writeBuildMetadataHtml metadata (outDirForMode cfg mode / "index.html")
@@ -708,7 +724,7 @@ private def replaceRequiredHighlightedJs
   match replaceFirstHighlightedJs? beforeOptions after source with
   | some source => source
   | none =>
-    panic! s!"Blueprint highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
+    panic! s!"Showcase highlighted-code JS patch `{label}` did not apply; upstream Verso highlight startup JS likely changed"
 
 private def patchHighlightedStartupJs (js : JS) : JS :=
   if !isHighlightedStartupJs js.js then
@@ -1536,7 +1552,7 @@ def emitPublicXref (mode : Mode) (logError : String → IO Unit) (cfg : Verso.Ge
     let html ← IO.FS.readFile findIndex
     match replaceFindPageXref html json with
     | some html => IO.FS.writeFile findIndex html
-    | none => logError s!"Blueprint xref filter: could not find embedded xref payload in {findIndex}"
+    | none => logError s!"Showcase xref filter: could not find embedded xref payload in {findIndex}"
 
 private def blockInfo? (state : TraverseState) (label : Name) : Option Informal.BlockData :=
   match Informal.TraversalIndex.Nodes.data? state label with
@@ -1776,7 +1792,7 @@ private def buildTraversalEntries
   for decoded in Informal.PreviewSource.traversalStoredEntries state do
     match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed preview entry {err.canonicalName}: {err.message}"
+      logError s!"Showcase manifest: malformed preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.entry
       if entry.blocks.isEmpty then
@@ -1805,7 +1821,7 @@ private def buildExternalMarkupEntries
   for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
+      logError s!"Showcase manifest: malformed external-markup entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let data := stored.data
       if data.markup.isEmpty then
@@ -1851,7 +1867,7 @@ private def buildLeanCodeEntries
   for decoded in Informal.TraversalIndex.LeanCodePreviews.entries state do
     match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
+      logError s!"Showcase manifest: malformed Lean-code preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let entry := stored.data
       let rendered ← Informal.LeanCodePreview.renderWithState entry impls state
@@ -1896,7 +1912,7 @@ private def buildCitationEntries
   for decoded in Informal.TraversalIndex.CitationPreviews.entries state do
     match decoded with
     | .error err =>
-      logError s!"Blueprint manifest: malformed citation preview entry {err.canonicalName}: {err.message}"
+      logError s!"Showcase manifest: malformed citation preview entry {err.canonicalName}: {err.message}"
     | .ok stored =>
       let citation := stored.data
       let (html, hoverState') ← renderCitationEntryHtml impls logError state citation hoverState
@@ -2081,7 +2097,7 @@ def dumpHtmlCacheFlag : String := "--dump-html-cache"
 def helpFlag : String := "--help"
 
 def helpText : String := String.intercalate "\n" [
-  "Blueprint manifest/cache options:",
+  "Showcase manifest/cache options:",
   s!"  {dumpSchemaFlag}       Print the semantic manifest JSON Schema and exit.",
   s!"  {dumpManifestFlag}     Print the generated semantic manifest JSON and exit.",
   s!"  {dumpHtmlCacheFlag}  Print the generated rendered-fragment cache JSON and exit.",
@@ -2151,6 +2167,9 @@ private def emitBlueprintHtml
         IO.println s!"Saving {match mode with | .single => "single" | .multi => "multi"}-page HTML"
       let (text', traverseState) ← traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
+      -- Structural `uses`-graph gate, BEFORE anything is written: a failing gate must
+      -- not leave a rendered site on disk (see `Informal.GraphGate`).
+      liftM (Informal.GraphGate.run mode traverseState)
       emitXrefsJson (cfg.destination / outDir) traverseState
       emit cfg text' traverseState
       for step in extraSteps do
@@ -2158,11 +2177,13 @@ private def emitBlueprintHtml
   | .delay f =>
       let (text', traverseState) ← traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
+      liftM (Informal.GraphGate.run mode traverseState)
       emitXrefsJson (cfg.destination / outDir) traverseState
       SavedState.mk text' traverseState |>.save f
   | .resumeFrom f =>
       let { text, traverseState } ← SavedState.load f
       let traverseState := patchBlueprintTraverseState traverseState
+      liftM (Informal.GraphGate.run mode traverseState)
       emit cfg text traverseState
       for step in extraSteps do
         step mode cfg.toConfig traverseState text

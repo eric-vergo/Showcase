@@ -1,9 +1,9 @@
 ---
 name: verso-blueprint
-description: Work with Verso Blueprint Lean projects. Use when Codex needs to build or serve Blueprint HTML, query Blueprint labels/dependencies/owners/tags/work queues, debug generated graph/summary/preview data, inspect or edit Blueprint source modules, add conservative Blueprint nodes or metadata, or reason about `lake exe vbp` workflows in repositories using `VersoBlueprint`.
+description: Work with Showcase (Verso Blueprint) Lean projects. Use when Codex needs to build or serve Showcase HTML, query Blueprint labels/dependencies/owners/tags/work queues, debug generated graph/summary/preview data, inspect or edit Blueprint source modules, add conservative Blueprint nodes or metadata, or reason about `lake exe vbp` workflows in repositories using `VersoBlueprint`.
 ---
 
-# Verso Blueprint
+# Showcase (Verso Blueprint)
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ lake exe vbp check
 
 Read `references/vbp.md` when you need exact command behavior, JSON shapes, serve behavior, or fallback commands.
 
-Read `references/authoring-patterns.md` before editing Blueprint source, adding nodes, changing dependencies, or diagnosing authoring syntax.
+Read `references/authoring-patterns.md` before editing Showcase source, adding nodes, changing dependencies, or diagnosing authoring syntax.
 
 ## Workflow
 

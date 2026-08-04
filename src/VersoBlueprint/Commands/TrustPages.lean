@@ -13,25 +13,28 @@ import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
 
 /-!
-Statement-comparator page + `uses`-graph build gate.
+Statement-comparator evidence page.
 
-Two generation-time `ExtraStep`s that read the trust-strip payload cached during
-traversal (`TraversalIndex.TrustData`, saved by `Block.trustStrip`'s traverse):
+`emitBlueprintComparatorPage` is a generation-time `ExtraStep` reading the
+trust-strip payload cached during traversal (`TraversalIndex.TrustData`, saved by
+`Block.trustStrip`'s traverse). When a statement comparator is configured it emits a
+single claim-first `comparator/` page: a verdict header (status, date, certified
+theorems and their *scope*, permitted axioms, CI link), the challenge statement
+("the claim"), a plain account of what the comparator does and does not check, the
+one human step the reader must still perform, and a three-tier "reproduce it
+yourself" section (Lean playground / comparator.live, CI record, exact local
+commands pinned to the artifacts CI actually used), followed by the Solution source
+and the comparator configuration. Canonical comparator documentation is linked, not
+restated.
 
-- `emitBlueprintGraphGate` — the structural `uses`-graph build gate. Acyclicity is
-  an unconditional hard fail; connectivity fails the build unless
-  `verso.blueprint.trust.requireConnected` is false (a deliberately multi-topic
-  blueprint). A built site has therefore passed these checks. Skipped for an empty
-  graph and in single-page mode.
-- `emitBlueprintComparatorPage` — when a statement comparator is configured, emits a
-  single claim-first `comparator/` page: a verdict header (status, date, certified
-  theorems, permitted axioms, CI link), the challenge statement ("the claim"), a plain
-  account of what the comparator does and does not check, the one human step the reader
-  must still perform, and a three-tier "reproduce it yourself" section (Lean playground,
-  CI record, exact local commands), followed by the Solution source and the comparator
-  configuration. Canonical comparator documentation is linked, not restated. Every
-  section probes-and-degrades: absent data drops its section rather than failing. Emits
-  nothing when no comparator is configured.
+Sections probe-and-degrade *except* the claim: a comparator verdict rendered
+without the statement it certifies is the one failure mode this page cannot have,
+so a configured-but-unreadable challenge file is a build error and an unconfigured
+one renders an explicit notice rather than silently omitting the section.
+
+The structural `uses`-graph gate that used to live here is now
+`Informal.GraphGate`, run between traversal and emission so a failing gate leaves
+no rendered site on disk.
 -/
 
 namespace Informal.Commands
@@ -72,12 +75,22 @@ private def trustOutLink (href label : String) : Output.Html :=
 
 /-- A code block: highlighted token markup when available (wrapped in
 `<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
-else escaped plain text. -/
+else escaped plain text.
+
+Both branches carry a rendering-tier marker, because both are weaker than a
+re-elaborated node card: the Lean blocks here are highlighted *syntactically* (the
+module highlighter runs with empty info trees), and the fallback is raw text. A
+reader comparing this page against a node card should be able to see that. -/
 private def trustCodeBlock (extraClass htmlMarkup fallback : String) : Output.Html :=
   if htmlMarkup.isEmpty then
-    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>{{.text true fallback}}</pre> }}
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>
+         {{Informal.NodeCard.tierMarker (some "raw")}}{{.text true fallback}}
+       </pre> }}
   else
-    {{ <pre class={{s!"bp_trust_code {extraClass}"}}><code class="hl lean">{{.text false htmlMarkup}}</code></pre> }}
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>
+         {{Informal.NodeCard.tierMarker (some "syntactic")}}
+         <code class="hl lean">{{.text false htmlMarkup}}</code>
+       </pre> }}
 
 /-! ## Comparator page -/
 
@@ -98,9 +111,18 @@ private def inlineCodeList (items : List String) : Output.Html :=
 else the raw status), an optional `<time>` (from `verified_at`, date-only), and an optional
 "CI verification record" link, followed by a compact `<dl>` of the certified theorem(s) and
 permitted axioms (each row omitted when its data is empty). -/
-private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option String) : Output.Html :=
+private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option String)
+    (theoremLikeTotal : Option Nat) : Output.Html :=
+  -- "Verified" alone reads as a live claim about the site you are looking at. The
+  -- verdict is a *record of a past CI run* read back from a JSON artifact, so the
+  -- pill says so and dates itself.
   let pill : Output.Html :=
-    if cmp.status == "verified" then trustBadgeHtml "Verified" "success"
+    if cmp.status == "verified" then
+      let label :=
+        if cmp.verifiedAt.isEmpty then "CI-verified"
+        else s!"CI-verified {isoDateOnly cmp.verifiedAt}"
+      trustBadgeHtml label "success"
+        (Option.some "Recorded by the project's CI run; this page reads that run's artifact back, it does not re-run the check.")
     else if cmp.status == "configured" then trustBadgeHtml "Configured — not yet run" "warn"
     else trustBadgeHtml cmp.status
   let date : Output.Html :=
@@ -110,18 +132,46 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     match ciUrl? with
     | some u => trustOutLink u "CI verification record"
     | none => .empty
+  -- Scope, stated where the verdict is: the comparator certifies the named
+  -- theorems, not the development.
+  let scope : Output.Html :=
+    if cmp.theoremNames.isEmpty then .empty
+    else
+      let k := cmp.theoremNames.length
+      let noun := if k == 1 then "theorem" else "theorems"
+      let text :=
+        match theoremLikeTotal with
+        | some n =>
+          s!"Certifies {k} {noun} of the {n} theorem-like results presented here. \
+             Everything else on this site is built and axiom-audited, but not comparator-certified."
+        | none =>
+          s!"Certifies {k} named {noun}. Everything else on this site is built and \
+             axiom-audited, but not comparator-certified."
+      {{ <p class="bp_trust_verdict_scope">{{.text true text}}</p> }}
   let theoremRow : Output.Html :=
     if cmp.theoremNames.isEmpty then .empty
     else {{ <div><dt>"Certified theorem(s)"</dt><dd>{{inlineCodeList cmp.theoremNames}}</dd></div> }}
   let axiomRow : Output.Html :=
     if cmp.permittedAxioms.isEmpty then .empty
     else {{ <div><dt>"Permitted axioms"</dt><dd>{{inlineCodeList cmp.permittedAxioms}}</dd></div> }}
+  let toolRow : Output.Html :=
+    let refs :=
+      (if cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolSha}"]) ++
+      (if cmp.toolRef.isEmpty || !cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolRef}"]) ++
+      (if cmp.nanodaRef.isEmpty then [] else [s!"nanoda {cmp.nanodaRef}"]) ++
+      (if cmp.landrunRef.isEmpty then [] else [s!"landrun {cmp.landrunRef}"])
+    match refs with
+    | [] => .empty
+    | _ => {{ <div><dt>"Checked with"</dt><dd>{{inlineCodeList refs}}</dd></div> }}
   let metaHtml : Output.Html :=
-    if cmp.theoremNames.isEmpty && cmp.permittedAxioms.isEmpty then .empty
-    else {{ <dl class="bp_trust_verdict_meta">{{.seq #[theoremRow, axiomRow]}}</dl> }}
+    if cmp.theoremNames.isEmpty && cmp.permittedAxioms.isEmpty
+        && cmp.toolSha.isEmpty && cmp.toolRef.isEmpty
+        && cmp.nanodaRef.isEmpty && cmp.landrunRef.isEmpty then .empty
+    else {{ <dl class="bp_trust_verdict_meta">{{.seq #[theoremRow, axiomRow, toolRow]}}</dl> }}
   {{
     <section class="bp_trust_verdict">
       <div class="bp_trust_verdict_row">{{.seq #[pill, date, ci]}}</div>
+      {{scope}}
       {{metaHtml}}
     </section>
   }}
@@ -170,12 +220,43 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
         "The comparator configuration path is not recorded here; see the project README for "
         "the exact " <code>"comparator"</code> " invocation."
       </p> }}
-  let landrunNote : Output.Html :=
-    {{
+  -- The reproduce commands are only worth printing if they are at least as strong as
+  -- what CI ran. Where they are weaker, say so here rather than let the reader assume
+  -- parity.
+  let landrunInstallCommand : String → String := fun ref =>
+    s!"go install github.com/Zouuup/landrun/cmd/landrun@{ref}"
+  let nanodaPinNote : Output.Html :=
+    if !cmp.enableNanoda then .empty
+    else if !cmp.nanodaRef.isEmpty then .empty
+    else {{
       <p class="bp_trust_note">
-        "On Linux the comparator runs the solution inside a Landlock sandbox; on macOS or in a "
-        "plain development shell it runs without that sandbox (see the project README)."
+        "The status artifact records no nanoda revision, so the clone above is "
+        <em>"unpinned"</em>
+        " and will build whatever is on nanoda's default branch — not necessarily the \
+         revision CI used. Check the CI run's log for the exact revision."
       </p> }}
+  let landrunNote : Output.Html :=
+    if cmp.landrunRef.isEmpty then
+      {{
+        <p class="bp_trust_note">
+          "CI runs the solution inside a "
+          {{trustOutLink "https://landlock.io/" "Landlock"}}
+          " sandbox; the commands above do not install that sandbox, and on macOS or in a "
+          "plain development shell there is no Landlock at all. The local run is therefore a "
+          "kernel check without the sandbox, which is weaker than what CI performed."
+        </p> }}
+    else
+      {{
+        <p class="bp_trust_note">
+          "CI additionally confines the solution in a "
+          {{trustOutLink "https://landlock.io/" "Landlock"}}
+          " sandbox (landrun " <code>{{.text true cmp.landrunRef}}</code>
+          "). To match it on Linux, install landrun at that revision first — "
+          <code>{{.text true (landrunInstallCommand cmp.landrunRef)}}</code>
+          " — and re-run under it. Without that step, and always on macOS, the local run is "
+          "a kernel check without the "
+          "sandbox: weaker than what CI performed."
+        </p> }}
   let shell : Output.Html :=
     {{ <pre class="bp_trust_code bp_trust_code_shell">{{.text true (String.intercalate "\n" (reproCommands cmp))}}</pre> }}
   let tier3 : Output.Html :=
@@ -183,7 +264,7 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
       <li>
         "Run the check locally from a clean working directory:"
         {{shell}}
-        {{.seq #[toolRefNote, configNote, landrunNote]}}
+        {{.seq #[toolRefNote, configNote, nanodaPinNote, landrunNote]}}
       </li> }}
   let items := ([tier1, tier2].filterMap id) ++ [tier3]
   trustSection "Reproduce it yourself"
@@ -194,12 +275,29 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
 the reader must still perform, a three-tier "reproduce it yourself" section, then the Solution
 source and the comparator configuration. Each section probes-and-degrades to nothing when its
 data is absent. -/
-private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Output.Html :=
-  -- 1. Verdict header (pill + date + CI link + certified theorems + permitted axioms).
-  let verdict := comparatorVerdictHeader cmp ciUrl?
-  -- 2. "The claim": the challenge statement, verbatim, with GitHub + Lean-playground links.
+private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
+  -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool refs).
+  let verdict := comparatorVerdictHeader cmp ciUrl? theoremLikeTotal
+  -- 2. "The claim": the challenge statement, verbatim, with GitHub / playground /
+  --    comparator.live links.
+  --
+  --    This section FAILS CLOSED. A comparator verdict shown without the statement it
+  --    certifies is the worst thing this page can do: the reader sees a green verdict
+  --    and has no way to read what was actually proved. Where the claim is
+  --    unavailable, say so loudly instead of dropping the section (the *configured*
+  --    but unreadable case is already a build error in `elabTrustData?`).
   let claimSection : Output.Html :=
-    if cmp.challengeSource.isEmpty then .empty
+    if cmp.challengeSource.isEmpty then
+      trustSection "The claim"
+        {{
+          <p class="bp_trust_prose bp_trust_prose_warning">
+            "This project does not publish the challenge statement alongside its verdict. "
+            "The verdict above therefore cannot be read on its own: without the statement, "
+            "there is no way to tell what was certified. Consult the comparator "
+            "configuration below and the project's repository for the challenge file, and "
+            "treat the verdict as unconfirmed until you have read it."
+          </p> }}
     else
       let ghLink : Option Output.Html :=
         if cmp.githubChallengeUrl.isEmpty then Option.none
@@ -207,15 +305,30 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Ou
       let pgLink : Option Output.Html :=
         if cmp.playgroundUrl.isEmpty then Option.none
         else Option.some (trustOutLink cmp.playgroundUrl "Open in Lean playground (current Mathlib)")
-      let linkItems := ([ghLink, pgLink].filterMap id)
+      let liveLink : Option Output.Html :=
+        if cmp.comparatorLiveUrl.isEmpty then Option.none
+        else Option.some
+          (trustOutLink cmp.comparatorLiveUrl "Check this exact claim/solution pair on comparator.live")
+      let linkItems := ([ghLink, pgLink, liveLink].filterMap id)
       let linksRow : Output.Html :=
         match linkItems with
         | [] => .empty
         | first :: rest =>
           let joined := rest.foldl (init := first) fun acc x => .seq #[acc, {{ " · " }}, x]
           {{ <p class="bp_trust_links">{{joined}}</p> }}
+      let liveNote : Output.Html :=
+        if cmp.comparatorLiveUrl.isEmpty then .empty
+        else {{
+          <p class="bp_trust_note">
+            "comparator.live is experimental infrastructure run by the Lean FRO. It re-runs the "
+            "comparison in your browser against its own toolchain and Mathlib, which are not the "
+            "revisions this project pins — treat it as a convenient second opinion, not as this "
+            "project's verdict."
+          </p> }}
       trustSection "The claim"
-        (.seq #[linksRow, trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource])
+        (.seq #[linksRow,
+          trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource,
+          liveNote])
   -- 3. What this page certifies (static prose).
   let kernelClause : Output.Html :=
     if cmp.enableNanoda then
@@ -253,6 +366,9 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Ou
             {{trustOutLink "https://github.com/leanprover/comparator" "About the statement comparator"}}
             " · "
             {{trustOutLink "https://lean-lang.org/doc/reference/latest/ValidatingProofs" "Validating proofs (Lean reference)"}}
+            {{match trustModelHref? with
+              | some href => Output.Html.seq #[{{ " · " }}, {{ <a href={{href}}>"Trust model and limitations"</a> }}]
+              | none => Output.Html.empty}}
           </p> }}
       ])
   -- 5. Reproduce it yourself (three tiers).
@@ -282,46 +398,12 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String) : Ou
   trustPageShell "Statement comparator" ""
     (.seq #[verdict, claimSection, certifiesSection, checkSection, reproSection, solutionSection, configSection])
 
-/-! ## `uses`-graph build gate -/
-
-open Informal.Graph in
-/-- Friendly display text for a graph node label (used in gate failure messages):
-enriched node title, else the short display label, else the de-escaped raw label. -/
-private def graphNodeText (master : GraphData) (label : Lean.Name) : String :=
-  match master.nodes.find? (·.label == label) with
-  | some node =>
-    let t := node.title.trim
-    if !t.isEmpty then t
-    else if !node.displayLabel.isEmpty then node.displayLabel
-    else Informal.NodeRoute.stripNameEscapes label.toString
-  | none => Informal.NodeRoute.stripNameEscapes label.toString
+/-! ## Emission -/
 
 /-- Decode the (possibly-empty) trust payload cached during traversal. -/
 private def cachedTrust? (state : TraverseState) : Option TrustData :=
   (Informal.TraversalIndex.TrustData.raw? state).bind fun json =>
     (fromJson? (α := TrustData) json).toOption
-
-/--
-`ExtraStep` build gate: a structural `uses`-graph violation FAILS the site build, so a
-built site has passed. Acyclicity always hard-gates; connectivity gates unless
-`verso.blueprint.trust.requireConnected` (default true, read from the cached trust
-payload) is false. Skipped for an empty graph and in single-page mode.
--/
-def emitBlueprintGraphGate : ExtraStep :=
-  fun mode _cfg state _text => do
-    match mode with
-    | .single => pure ()
-    | .multi =>
-      let master := Informal.GraphApi.masterGraph state
-      let checks := Informal.GraphChecks.run master
-      let requireConnected := ((cachedTrust? state).map (·.requireConnected)).getD true
-      unless checks.graphEmpty do
-        unless checks.acyclic.ok do
-          let cyc := String.intercalate " → " (checks.acyclic.cycle.map (graphNodeText master)).toList
-          throw <| IO.userError s!"Blueprint uses-graph check FAILED (acyclicity): a dependency cycle was detected among: {cyc}. Remove the cyclic `uses` edges."
-        unless checks.connected.ok || !requireConnected do
-          let strag := String.intercalate ", " (checks.connected.stragglers.map (graphNodeText master)).toList
-          throw <| IO.userError s!"Blueprint uses-graph check FAILED (connectivity): the `uses` graph has {checks.connected.componentCount} disconnected components. Nodes outside the main component: {strag}. Connect them to the main development, or set verso.blueprint.trust.requireConnected := false for a deliberately multi-topic blueprint."
 
 /--
 `ExtraStep` that emits the claim-first `comparator/` page from the traversal-cached trust
@@ -335,13 +417,35 @@ def emitBlueprintComparatorPage : ExtraStep :=
     match mode with
     | .single => pure ()
     | .multi =>
-      let trust? := cachedTrust? state
-      match trust?.bind (·.comparator) with
-      | none => pure ()
-      | some cmp =>
-        let ciUrl? : Option String :=
-          if cmp.runUrl.isEmpty then trust?.bind (·.ciRunUrl) else some cmp.runUrl
-        Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-          Informal.NodeRoute.comparatorPath "Statement comparator" (comparatorBody cmp ciUrl?)
+      let logger : Verso.Logger IO ← read
+      match Informal.TraversalIndex.TrustData.raw? state, cachedTrust? state with
+      | none, _ =>
+        -- No trust payload at all: the document has no `blueprint_dashboard` block, so
+        -- any `verso.blueprint.trust.*` configuration silently produced no evidence
+        -- page. Removing the dashboard must not quietly remove the comparator record.
+        logger.reportWarning
+          "Showcase comparator page: no cached trust payload in traversal state; skipping \
+           comparator/index.html. If `verso.blueprint.trust.comparatorStatus` is set, its \
+           verdict is not being published (is a `blueprint_dashboard` block present?)."
+      | some _, none =>
+        logger.reportWarning
+          "Showcase comparator page: the cached trust payload could not be decoded; \
+           skipping comparator/index.html."
+      | some _, some trust =>
+        match trust.comparator with
+        | none => pure ()
+        | some cmp =>
+          let ciUrl? : Option String :=
+            if cmp.runUrl.isEmpty then trust.ciRunUrl else some cmp.runUrl
+          -- "k of N": N counts every theorem-like node the site presents (theorems,
+          -- lemmas, propositions, corollaries) — the population the certified set is
+          -- a subset of.
+          let theoremLikeTotal :=
+            (Informal.TraversalIndex.Summary.cachedSummary? state).map fun s =>
+              s.theorems + s.lemmas + s.propositions + s.corollaries
+          let trustModelHref? := Informal.TraversalIndex.TrustModelPage.href? state
+          Informal.NodePage.emitStaticBlueprintPage mode cfg state text
+            Informal.NodeRoute.comparatorPath "Statement comparator"
+            (comparatorBody cmp ciUrl? theoremLikeTotal trustModelHref?)
 
 end Informal.Commands

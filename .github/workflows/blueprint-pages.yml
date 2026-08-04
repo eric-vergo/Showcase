@@ -1,4 +1,4 @@
-name: Blueprint Pages Reusable
+name: Showcase Pages Reusable
 
 on:
   workflow_call:

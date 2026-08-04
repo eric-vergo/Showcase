@@ -177,6 +177,25 @@
   font-style: italic;
 }
 
+/* Explanatory note under a section heading (e.g. what the kernel axiom audit on the
+   audit page actually computed). Quieter than body prose, upright — it is
+   information, not an absence. */
+.bp_summary_note {
+  margin: var(--bp-space-2) 0 var(--bp-space-3);
+  max-width: 46rem;
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-control, 0.9rem);
+  line-height: 1.6;
+}
+
+.bp_audit_axioms {
+  margin-top: var(--bp-space-6);
+}
+
+.bp_audit_axioms > h2 {
+  margin-bottom: var(--bp-space-1);
+}
+
 .bp_summary_item_top {
   display: flex;
   flex-wrap: wrap;
@@ -332,7 +351,7 @@
    the ToC resize handle. `.content-wrapper` + a `:has(class)` (specificity 0,2,0)
    out-ranks the core `.content-wrapper` rules (0,1,0) at every width, in both the
    capped and uncapped directions. */
-.content-wrapper:has(.bp_dashboard, .bp_pm_page, .bp_formalization) {
+.content-wrapper:has(.bp_dashboard, .bp_pm_page, .bp_formalization, .bp_trustmodel) {
   margin-inline: auto;
   max-width: var(--bp-dashboard-column);
 }

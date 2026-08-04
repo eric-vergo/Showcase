@@ -1,4 +1,4 @@
-# Blueprint Roadmap
+# Showcase Roadmap
 
 Last reviewed: 2026-07-16
 
@@ -25,6 +25,39 @@ architecture narrative. Those live in
    remove them
 
 ## Active Workstreams
+
+### Verifier Currency (future work)
+
+Goal: close the gap the "Trust model" page currently documents rather than hides.
+
+The comparator verdict a Showcase site displays is produced by CI against
+*pinned* tool revisions — the comparator itself, `nanoda_lib` as the independent
+kernel, `landrun` as the sandbox. Pinning buys reproducibility: anyone can re-run
+exactly what CI ran. It does not buy currency, and 2026 showed why that matters.
+Lean kernel soundness bug
+[#14576](https://github.com/leanprover/lean4/issues/14576) was accepted by the
+kernel *and* by an independent nanoda build that happened to be a week old and
+carried its own, separate bug. Two independent checkers agreed and both were
+wrong. Independence and currency are different properties and a trust surface
+needs both.
+
+Not implemented, and stated as such on every Showcase trust page:
+
+1. **Scheduled re-verification against current tooling.** A periodic job that
+   re-runs the comparator against the *latest* comparator / nanoda revisions and
+   reports the result alongside the pinned verdict, so a soundness fix landing
+   upstream after the pinned run becomes visible instead of invisible. Needs a
+   second status artifact shape (pinned verdict + currency check) and a strip
+   badge that degrades honestly when the currency check has not run recently.
+2. **Binding a verdict to the run that produced it.** `run_url` and `verified_at`
+   are today opaque strings: nothing checks that the URL resolves, that the run
+   corresponds to the commit the site was built from, or that the artifact was
+   written by that run rather than by hand. Attestation (or at minimum a
+   commit-correspondence assertion in CI) would close this.
+
+Until both land, the honest claim is "CI reported this verdict, at this date,
+against these pinned tools" — which is exactly what the badge and the trust page
+now say.
 
 ### Rendering and Preview Boundary
 

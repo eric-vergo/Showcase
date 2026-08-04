@@ -444,6 +444,44 @@ structure ExternalRef where
   `proofSource?` as plain text. See `Informal.highlightProofSourceHtml?`.
   -/
   proofHtml? : Option String := none
+  /--
+  Kernel axiom footprint of the declaration, captured at registration time with
+  `Lean.collectAxioms` (the same closure `#print axioms` reports). `none` means
+  "not audited" — a snapshot written before the audit existed, or a declaration
+  that was absent from the environment; `some #[]` is a real, empty footprint.
+  Deliberately `Option`-typed so legacy snapshot JSON still decodes (the derived
+  `ToJson` omits `none` keys, so unaudited output stays byte-identical).
+
+  A closure containing `sorryAx` is *transitive* evidence of an incomplete proof
+  and upgrades `provedStatus` to `.containsSorry` at snapshot time — direct
+  `Expr.hasSorry` inspection only sees a `sorry` written in this declaration.
+  -/
+  axioms? : Option (Array String) := none
+  /--
+  Which rendering tier produced this reference's *signature* HTML — one of
+  `"reelab"` (the whole declaration was re-elaborated from source),
+  `"signature"` (only the signature was re-elaborated, as a bodyless `opaque`),
+  or `"delaborated"` (pretty-printed from the compiled environment, not from the
+  author's source text). `none` ⇒ unknown/not recorded. See
+  `Informal.NodeCard.tierMarker` for the reader-facing glyph and wording.
+  -/
+  sigTier? : Option String := none
+  /--
+  Which rendering tier produced this reference's *proof/value body* HTML — one of
+  `"reelab"` (re-elaborated with real info trees), `"syntactic"` (parsed and
+  coloured from source text without elaboration), or `"raw"` (escaped source
+  text, no highlighting). `none` ⇒ no body captured.
+  -/
+  proofTier? : Option String := none
+  /--
+  Whether the declaration's source file is newer than the compiled artifact its
+  status was read from (an mtime comparison against the module's `.olean`). The
+  displayed statement/proof text is sliced from the source file while the
+  proved/axiom status comes from the compiled environment, so a stale build makes
+  the two disagree; surfaced as a card annotation rather than silently trusted.
+  `false` when the check could not be performed (no error is raised).
+  -/
+  sourceStale : Bool := false
 deriving Repr, Inhabited, ToJson, FromJson, Quote
 
 def ExternalRef.ofName (name : Name) (origin : ExternalOrigin := .directiveLean) : ExternalRef :=

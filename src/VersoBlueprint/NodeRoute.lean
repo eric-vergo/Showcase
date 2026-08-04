@@ -350,7 +350,7 @@ def blueprintNodeTargets (state : TraverseState) : Verso.Code.LinkTargets Manual
         if hasNodePage state label then
           some {
             shortDescription := "blueprint"
-            description := s!"Blueprint entry for {name}"
+            description := s!"Showcase entry for {name}"
             href := nodePageHref label }
         else none }
 
