@@ -46,19 +46,19 @@ from scripts.blueprint_harness_projects import (
 )
 from scripts.blueprint_harness_project_commands import OFFICIAL_BLUEPRINT_URL_PATTERNS
 from scripts.blueprint_harness_references import (
+    REFERENCE_PACKAGE_MODE_COPY,
+    REFERENCE_PACKAGE_MODES,
     bump_reference_project,
     clone_git_project,
     generate_in_repo_command_project,
     generate_git_project,
     output_dir_for,
     prepare_reference_edit_checkout,
-    reference_build_metrics_command,
     reference_generation_command,
     ref_is_commit_hash,
+    reference_dependency_cache_keys,
     reference_prune_plan,
-    reference_source_identities,
-    reference_source_paths,
-    require_reference_rsync,
+    reference_source_cache_checkout_dir,
     site_dir_for,
     sync_reference_blueprints,
 )
@@ -116,22 +116,23 @@ BLUEPRINT_REQUIRE_PATTERN = re.compile(
 REFERENCE_HARNESS_PREFIX = "[blueprint-reference-harness]"
 
 
+def add_reference_package_mode_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--reference-package-mode",
+        choices=REFERENCE_PACKAGE_MODES,
+        default=REFERENCE_PACKAGE_MODE_COPY,
+        help=(
+            "How external reference projects receive warmed `.lake/packages` trees. "
+            "`copy` keeps the local default; `move` avoids duplicate package trees and is intended for CI."
+        ),
+    )
+
+
 def add_generation_verbose_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--verbose",
         action="store_true",
         help="Pass `--verbose` to Blueprint generator commands.",
-    )
-
-
-def add_generation_metrics_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--record-build-metrics",
-        action="store_true",
-        help=(
-            "Record structured generator phase timings beside each project artifact. "
-            "This also enables generator `--verbose` output."
-        ),
     )
 
 
@@ -253,7 +254,7 @@ def refresh_reference_status_checkout(checkout_root: Path, project: HarnessProje
 
 
 def ensure_reference_status_checkout(layout, project: HarnessProject) -> Path:
-    checkout_root = reference_source_paths(layout, project).source_checkout
+    checkout_root = reference_source_cache_checkout_dir(layout, project)
     checkout_root.parent.mkdir(parents=True, exist_ok=True)
     if not checkout_root.exists():
         clone_git_project(project, checkout_root, cwd=layout.package_root, shallow=False)
@@ -631,23 +632,14 @@ def reference_executable_args(
     project: HarnessProject,
     output_dir: Path,
     *,
-    pdf: bool,
     verbose: bool,
-    record_build_metrics: bool,
 ) -> list[str]:
     args = [
         str(ensure_prebuilt_executable(package_root, project.generator or project.project_id)),
         "--output",
         str(output_dir),
     ]
-    command = reference_generation_command(
-        tuple(args),
-        pdf=pdf,
-        verbose=verbose or record_build_metrics,
-    )
-    if record_build_metrics:
-        command = reference_build_metrics_command(package_root, project, output_dir, command)
-    return list(command)
+    return list(reference_generation_command(tuple(args), verbose=verbose))
 
 
 def render_in_repo_projects(
@@ -656,9 +648,7 @@ def render_in_repo_projects(
     projects: list[HarnessProject],
     serial: bool,
     *,
-    pdf: bool = False,
     verbose: bool = False,
-    record_build_metrics: bool = False,
 ) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     if serial:
@@ -667,14 +657,7 @@ def render_in_repo_projects(
             run(
                 lean_low_priority_command(
                     package_root,
-                    *reference_executable_args(
-                        package_root,
-                        project,
-                        output_dir,
-                        pdf=pdf,
-                        verbose=verbose,
-                        record_build_metrics=record_build_metrics,
-                    ),
+                    *reference_executable_args(package_root, project, output_dir, verbose=verbose),
                 ),
                 cwd=package_root,
             )
@@ -687,14 +670,7 @@ def render_in_repo_projects(
             output_dir.mkdir(parents=True, exist_ok=True)
             command = lean_low_priority_command(
                 package_root,
-                *reference_executable_args(
-                    package_root,
-                    project,
-                    output_dir,
-                    pdf=pdf,
-                    verbose=verbose,
-                    record_build_metrics=record_build_metrics,
-                ),
+                *reference_executable_args(package_root, project, output_dir, verbose=verbose),
             )
             print(f"[blueprint-reference-harness] launching {project.project_id} -> {output_dir}", flush=True)
             procs.append((project.project_id, spawn_managed_process(command, cwd=package_root)))
@@ -720,17 +696,13 @@ def generate_projects(
     skip_build: bool,
     serial: bool,
     allow_local_build: bool,
-    pdf: bool = False,
+    reference_package_mode: str = REFERENCE_PACKAGE_MODE_COPY,
     verbose: bool = False,
-    record_build_metrics: bool = False,
 ) -> None:
     in_repo_projects = [project for project in projects if project.in_repo_project]
     in_repo_target_projects = [project for project in in_repo_projects if project.in_repo_target_project]
     in_repo_command_projects = [project for project in in_repo_projects if project.in_repo_command_project]
     git_projects = [project for project in projects if project.git_checkout]
-
-    if git_projects:
-        require_reference_rsync()
 
     if in_repo_target_projects:
         print(f"[blueprint-reference-harness] package root: {layout.package_root}")
@@ -750,15 +722,7 @@ def generate_projects(
         elif not skip_build and not use_local_build:
             for project in in_repo_target_projects:
                 ensure_prebuilt_executable(layout.package_root, project.generator or project.project_id)
-        render_in_repo_projects(
-            layout.package_root,
-            output_root,
-            in_repo_target_projects,
-            serial,
-            pdf=pdf,
-            verbose=verbose,
-            record_build_metrics=record_build_metrics,
-        )
+        render_in_repo_projects(layout.package_root, output_root, in_repo_target_projects, serial, verbose=verbose)
 
     if in_repo_command_projects:
         print(f"[blueprint-reference-harness] package root: {layout.package_root}")
@@ -773,9 +737,7 @@ def generate_projects(
                 output_root,
                 project,
                 skip_build=skip_build,
-                pdf=pdf,
                 verbose=verbose,
-                record_build_metrics=record_build_metrics,
             )
 
     for project in git_projects:
@@ -785,9 +747,8 @@ def generate_projects(
             output_root,
             project,
             skip_build=skip_build,
-            pdf=pdf,
+            package_mode=reference_package_mode,
             verbose=verbose,
-            record_build_metrics=record_build_metrics,
         )
 
 
@@ -805,9 +766,8 @@ def command_generate(args: argparse.Namespace) -> int:
         skip_build=args.skip_build,
         serial=args.serial,
         allow_local_build=args.allow_local_build,
-        pdf=args.pdf,
+        reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
         verbose=getattr(args, "verbose", False),
-        record_build_metrics=getattr(args, "record_build_metrics", False),
     )
 
     print(f"[blueprint-reference-harness] project manifest: {manifest_path}")
@@ -894,8 +854,8 @@ def command_validate(args: argparse.Namespace) -> int:
             skip_build=False,
             serial=args.serial,
             allow_local_build=args.allow_local_build,
+            reference_package_mode=getattr(args, "reference_package_mode", REFERENCE_PACKAGE_MODE_COPY),
             verbose=getattr(args, "verbose", False),
-            record_build_metrics=getattr(args, "record_build_metrics", False),
         )
     except SystemExit as err:
         failures.append(StepFailure("generate projects", str(err)))
@@ -1130,10 +1090,10 @@ def command_reference_prune(args: argparse.Namespace) -> int:
         root_checkout_namespace(layout.repo_root) if worktree.root_checkout else worktree.name
         for worktree in git_worktrees(layout.repo_root)
     }
-    source_identities = reference_source_identities(projects)
+    cache_keys = reference_dependency_cache_keys(projects)
     removals = reference_prune_plan(
         active_names,
-        source_identities,
+        cache_keys,
         layout.reference_source_cache_root,
         layout.reference_project_root / "by-worktree",
         layout.reference_dependency_cache_root,
@@ -1206,19 +1166,14 @@ def add_generation_commands(subparsers) -> None:
         action="store_true",
         help="Skip project builds and only run already-built or command-only generation steps.",
     )
-    generate.add_argument(
-        "--pdf",
-        action="store_true",
-        help="Also build pdf/main.pdf for each generated reference blueprint.",
-    )
     add_generation_verbose_argument(generate)
-    add_generation_metrics_argument(generate)
     add_allow_unsafe_root_release_argument(generate)
     add_serial_argument(generate)
     add_allow_local_build_argument(
         generate,
         help_text="Permit `lake build` in a linked worktree instead of requiring synced root executables.",
     )
+    add_reference_package_mode_argument(generate)
     generate.set_defaults(func=command_generate)
 
     validate = subparsers.add_parser(
@@ -1246,7 +1201,6 @@ def add_generation_commands(subparsers) -> None:
     )
     add_allow_unsafe_root_release_argument(validate)
     add_generation_verbose_argument(validate)
-    add_generation_metrics_argument(validate)
     add_serial_argument(validate)
     validate.add_argument(
         "--pytest-arg",
@@ -1263,6 +1217,7 @@ def add_generation_commands(subparsers) -> None:
         action="store_true",
         help="Stop validation as soon as one phase fails instead of collecting later failures.",
     )
+    add_reference_package_mode_argument(validate)
     validate.set_defaults(func=command_validate)
 
 

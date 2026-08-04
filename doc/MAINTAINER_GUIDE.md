@@ -58,17 +58,6 @@ queries. End-user docs should present `lake exe vbp build` as the normal
 rendering workflow; it discovers the project generator entry point and invokes
 it internally.
 
-`lake exe vbp check` is an audit of an already-generated artifact boundary, not
-a repair phase or a required second half of normal generation. Production
-generation constructs the manifest and rendered-fragment cache together and
-finalizes their preview references before emission. Use `check` when validating
-persisted, copied, or externally supplied output; it deliberately performs
-stricter cross-artifact and graph-projection checks than ordinary semantic
-queries. The graph-backed `work-queue` selector also retains strict graph
-decoding; graph-free selectors avoid materializing graph projections. Query
-arguments are parsed into a validated plan before any generated file is read,
-so unknown or malformed selectors fail without paying manifest-decoding cost.
-
 Treat `vbp` JSON as fully unstable. It may change within this repository as
 agent workflows evolve, and is not part of the documented integration API.
 Prefer in-band discovery through `lake exe vbp --help`,
@@ -93,14 +82,9 @@ Reference release metadata has two tracked sources of truth. `branch-policy.json
 owns release ids, branch names, baseline Lean toolchain refs, baseline `verso`
 refs, default-development/backport policy, and the release-level Pages deploy
 flag. `tests/harness/projects.json` owns project ids, external repository refs,
-the `publish_reference` flag, and the exact `reference_toolchain` when an
-external project is behind VBP within the same release family.
-Matrix emitter scripts derive effective per-project `toolchain` and `verso_ref`
-values from those two files. A project-target `rc` is reserved for VBP's own
-in-repository fixtures, which move in lockstep with VBP. External reference
-projects never select the VBP/Verso ref: their `reference_toolchain` controls
-only the effective compiler, while the release target continues to control
-VBP/Verso.
+the `publish_reference` flag, and any per-project `rc` override. Matrix emitter
+scripts derive effective per-project `toolchain` and `verso_ref` values from
+those two files; release targets themselves do not carry `rc` metadata.
 
 ## Everyday Workflows
 
@@ -147,15 +131,14 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
-> **Known broken (inherited from upstream).** `vbp build` in this fork accepts
-> only `--output`, `--serve`, and `--port`; TeX/PDF export is not carried over.
-> Every remaining PDF path in the maintainer tooling therefore passes a flag the
-> CLI rejects and cannot succeed: `scripts/blueprint_test_blueprints.py`'s
-> `--run-real-pdf-smoke`, `scripts/generate-reference-blueprints.sh --pdf` (used
-> by `.github/workflows/reference-blueprints.yml`), and the `publish_pdf` deploy
-> matrix entries. Do not follow PDF instructions from upstream documentation
-> against this fork; the sections below describe what that inherited tooling
-> attempts, not a working capability.
+> **PDF/TeX export is not carried over from upstream.** `vbp build` in this fork
+> accepts only `--output`, `--serve`, and `--port`. The maintainer tooling and CI
+> no longer request PDF output: the `--pdf` generator flag, the reference/deploy
+> matrix `--pdf`/`publish_pdf` plumbing, and the real-PDF smoke check were
+> removed (CX-006), so no path passes the CLI a flag it rejects. The reference-site
+> staging helper still copies a `pdf/main.pdf` beside the HTML *only if one is
+> present*, which it is not in this fork; that path is inert, not a working PDF
+> capability. Do not reintroduce PDF instructions from upstream documentation.
 
 Use browser pytest directly only when the patch changes browser runtime or
 interaction behavior:
@@ -269,27 +252,6 @@ Pass `--verbose` to `compose`, `generate`, or `validate` when you want each
 Blueprint generator to print its own progress diagnostics during HTML
 emission.
 
-Pass `--record-build-metrics` to `generate` or `validate` when the phase
-timings need to be retained. This option also enables generator `--verbose`
-output, tees the normal build log unchanged, and writes `build-metrics.json`
-beside each generated project artifact. The record contains the total
-generator-command duration plus every canonical
-`Blueprint: finished <phase> in <milliseconds>ms` measurement emitted by the
-generator. In particular, single-page and multi-page HTML traversal remain
-separate measurements rather than being inferred from the surrounding Lake
-build time.
-
-Reference Blueprint CI enables this recording by default. It aggregates the
-per-project files into the Actions job summary and the published
-`/build-data/reference-blueprints.json` report. The report retains the latest
-50 snapshots and compares a run with the currently deployed baseline when the
-reference source revision and Lean toolchain match. A total-command or phase
-increase is marked as a regression warning only when it exceeds both 20
-percent and one second; warnings are initially advisory so ordinary
-hosted-runner variation cannot block a release. Full command and phase data
-remains available in JSON even when a value does not cross the warning
-threshold.
-
 When editing an external reference repository, use an editable clone rather
 than the disposable validation clones:
 
@@ -334,7 +296,7 @@ Use the harness to generate public PR/backport scaffolds:
 ```bash
 python3 -m scripts.blueprint_harness prepare-pr
 python3 -m scripts.blueprint_harness prepare-backports
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
 python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>
 ```
 
@@ -344,14 +306,8 @@ check intentionally does not require patch-id equality, because release-line
 conflict resolution often changes the exact diff while preserving provenance.
 
 Each paired backport PR should carry the scaffolded release label, such as
-`backport-v4.32.0`, so release-specific queues remain visible when several
+`backport-v4.31.0`, so release-specific queues remain visible when several
 maintenance lines are active.
-
-A change limited to `tests/harness/projects.json` updates release-specific
-catalog metadata and may use an explicit backport exemption; do not recreate
-that catalog target on older release branches. If the same PR changes scripts,
-other tests, templates, or runtime files, it still requires the normal paired
-backport.
 
 Land reviewed local work from the clean root checkout:
 
@@ -371,28 +327,26 @@ python3 -m scripts.blueprint_reference_harness sync
 ```
 
 To bump the Lean toolchain for the root package plus the tracked in-repo
-fixtures, and pin the matching `verso` and `verso-slides` releases or release
-candidates in the root package:
+fixtures, and pin the matching `verso` release or release candidate in the root
+package:
 
 ```bash
-python3 -m scripts.blueprint_harness bump-toolchain 4.33-rc2
-python3 -m scripts.blueprint_harness bump-toolchain v4.33.0 --skip-validation
+python3 -m scripts.blueprint_harness bump-toolchain 4.31-rc2
+python3 -m scripts.blueprint_harness bump-toolchain v4.31.0 --skip-validation
 ```
 
 That command rewrites the managed `lean-toolchain` files, rewrites the root
-package's direct `require verso` and `require «verso-slides»` pins, refreshes
-the committed manifests for the root package, `project_template`, and
+package's direct `require verso` pin, refreshes the committed manifests for the
+root package, `project_template`, and
 `tests/test_blueprints/preview_runtime_showcase/`, and by default runs the same
 build/test validation pass that maintainers would otherwise do manually. It
 also synchronizes the current release target's RC metadata for in-repo
 reference projects; external project RC overrides remain explicit. Release
-candidates use the official short RC name, for example `4.33-rc2`; the harness
-writes the corresponding Lean, `verso`, and `verso-slides` tag ref, such as
-`v4.33.0-rc2`.
+candidates use the official short RC name, for example `4.31-rc2`; the harness
+writes the corresponding Lean and `verso` tag ref, such as `v4.31.0-rc2`.
 The requested toolchain must belong to the checkout's current release line.
 Pass `--verso-ref <tag>` only when the Lean toolchain ref and upstream `verso`
-release tag need to differ, or `--verso-slides-ref <tag>` for the corresponding
-Slides override.
+release tag need to differ.
 
 ### Start a New Lean Release Line
 
@@ -401,14 +355,14 @@ default-development branch, then let the harness do the branch-local release
 setup:
 
 ```bash
-python3 -m scripts.blueprint_harness start-release-line 4.33-rc2
+python3 -m scripts.blueprint_harness start-release-line 4.31-rc2
 ```
 
-Run this from the new local branch, for example `v4.33.0`. The command:
+Run this from the new local branch, for example `v4.31.0`. The command:
 
-- rewrites the managed `lean-toolchain` files, the root `verso` and
-  `verso-slides` pins, and the committed manifests for the root package,
-  `project_template`, and the preview showcase
+- rewrites the managed `lean-toolchain` files, the root `verso` pin, and the
+  committed manifests for the root package, `project_template`, and the
+  preview showcase
 - updates `branch-policy.json` so the new branch is the default-development
   line, the previous default-development branch becomes a required backport
   target, and the new release target is recorded
@@ -416,19 +370,16 @@ Run this from the new local branch, for example `v4.33.0`. The command:
   `project-template` and records their RC override while the root package is on
   a release candidate; fixtures remain explicitly selectable for validation
   but are not added to the public reference catalog
-- rewrites the PR template's managed `Backport ...` lines from the resulting
-  `branch-policy.json` backport sequence
 
-For release candidates, use the official short RC name such as `4.33-rc2`.
-The branch name remains the stable release branch, for example `v4.33.0`, while
-the command pins the managed root-package files to `v4.33.0-rc2`.
+For release candidates, use the official short RC name such as `4.31-rc2`.
+The branch name remains the stable release branch, for example `v4.31.0`, while
+the command pins the managed root-package files to `v4.31.0-rc2`.
 
 External reference projects are not auto-pinned for a new release line. Add
 their release-target refs only after those repositories have been updated and
-validated on the new Lean release. If an external project still uses a release
-candidate while VBP has moved further within that release family, record its
-exact compiler, for example `"reference_toolchain": "v4.33.0-rc1"`, on that
-project target in `tests/harness/projects.json`.
+validated on the new Lean release. If one project target still needs a release
+candidate, put the short RC name, for example `"rc": "4.31-rc2"`, on that
+specific project target in `tests/harness/projects.json`.
 
 Do not backport the branch-start commit to older release lines: that commit
 changes the actual Lean toolchain. Instead, update only the tracked branch
@@ -436,37 +387,12 @@ policy metadata on each older release branch so the harness recognizes them as
 backport-only:
 
 ```bash
-python3 -m scripts.blueprint_harness set-default-dev-branch <new-default-dev-toolchain>
+python3 -m scripts.blueprint_harness set-default-dev-branch v4.32.0
 ```
 
-Use the exact command printed by `start-release-line`. For version 2 policies,
-`set-default-dev-branch` also adds the new branch's baseline release target when
-the older checkout does not have it yet and adds the corresponding target to
-in-repo project metadata. Passing the printed RC ref preserves its target-level
-RC pin. The command preserves the older checkout's own Lean toolchain, existing
-release targets, and required-backport list.
-
 Commit that metadata-only change separately on each older branch that still
-carries `branch-policy.json`, such as `v4.32.0`. Preserve their own Lean
+carries `branch-policy.json`, such as `v4.31.0`. Preserve their own Lean
 toolchain pins.
-
-For the branch-start PR, run `prepare-pr --release-line-bootstrap`. This emits
-`Backport ...: release-line bootstrap` for each resulting maintenance line.
-The paired-backport check accepts that status in draft and ready PRs only after
-comparing the PR base with the head checkout and verifying that the Lean
-toolchain and branch policy advance coherently. The previous default and an
-ordered prefix of inherited maintenance lines must remain unchanged, but the
-oldest contiguous suffix may retire as part of the bootstrap. It is distinct
-from the documentation/metadata exemption path and does not create paired PRs
-carrying the new toolchain onto older branches.
-
-When retiring old maintenance lines from an existing release branch, use
-`Backport ...: release-line retirement` for each removed line. The check
-accepts this only when the default Lean toolchain and branch stay fixed, the
-removed branches are the oldest contiguous suffix of the maintenance sequence,
-and all remaining release targets are byte-for-byte equivalent in policy.
-This makes the policy transition self-validating without constructing obsolete
-backport projects solely to satisfy the policy being removed.
 
 To remove stale harness-managed reference caches and orphaned local clones:
 
@@ -500,44 +426,6 @@ locations used by the harness.
 It also prints the shared reference checkout cache root, dependency package
 cache root, and the current checkout's local clone root.
 
-## External Reference Cache Ownership
-
-Every selected external git-checkout project source has one
-`reference_source_identity`. Its readable prefix comes from the catalog project
-id, and its digest is derived from the repository URL, project root, and
-selected source ref. The identity
-intentionally does not include the current Verso Blueprint checkout or release
-label: all paths below represent the same pinned external source. The reference
-and deploy CI matrices serialize this identity together with its canonical
-dependency paths so local and CI cache layouts agree.
-
-| Role | Path | Ownership |
-| --- | --- | --- |
-| Disposable source checkout | `.worktrees/_reference-blueprints/cache/<source-identity>/` | Shared; refreshed by `sync` and safe to prune |
-| Warmed dependencies | `.worktrees/_reference-blueprints/deps/<source-identity>/{packages,path-builds}/` | Shared; remains resident while consumers are seeded |
-| Validation checkout | `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-identity>/` | Owned by one root checkout or linked worktree |
-| Generated site | `_out/.../reference-blueprints/<project-id>/` | Output artifact; never stored in a dependency cache |
-
-Dependency packages and path-dependency build trees are copied from the shared
-cache into each validation checkout. The harness never moves them or lends
-their ownership to a consumer. Consequently, multiple worktrees can seed from
-one warmed cache, and a failed or interrupted generation does not have to move
-packages back to make the cache usable again. Cache warm-up may refresh shared
-contents with `rsync`; this ownership rule does not yet provide transactional
-publication for simultaneous writers.
-
-Maintainer `sync`, `generate`, and `validate` operations involving external
-git-checkout projects require `rsync` on `PATH`. The harness checks this before
-starting external checkout or cache work and reports a focused diagnostic when
-it is unavailable.
-
-After warm-up, the disposable source checkout's duplicate `.lake/packages/`
-tree is removed once it has been copied into the dependency cache. This deletes
-only the source checkout's copy, not the shared dependency cache. CI likewise
-keeps the shared dependency tree resident while a per-job checkout uses its own
-copy. The additional peak disk use is an intentional tradeoff for predictable
-ownership and failure behavior.
-
 ## Working from Linked Worktrees
 
 For implementation work, create a linked worktree under `.worktrees/` and keep
@@ -550,7 +438,7 @@ python3 -m scripts.blueprint_harness create-worktree <name>
 After `git worktree add`, that command syncs the root checkout's `.lake/` and
 prepares the shared and per-worktree reference blueprint clones without running
 external reference project builds. New worktrees now base off the branch policy's
-preferred default-development ref, `origin/<default-dev-branch>`.
+preferred default-development ref, typically something like `origin/v4.31.0`.
 Pass `--base <release-ref>` explicitly for backport-only work.
 
 If you want to verify that the root checkout has not drifted before branching
@@ -594,11 +482,11 @@ an exemption is acceptable.
 To create one paired backport scaffold, run:
 
 ```bash
-python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>
+python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>
 ```
 
 That helper prints a standardized paired branch name, a title of the form
-`[backport v4.32.0] ...`, a `backport-v4.32.0` release label, and a PR body
+`[backport v4.31.0] ...`, a `backport-v4.31.0` release label, and a PR body
 that points back to the primary default-development review. By default the
 title after the backport prefix is read from the GitHub title of `--main-pr`,
 which keeps multi-commit backports from inheriting the last local commit
@@ -645,9 +533,17 @@ The harness is worktree-aware:
 - in a linked worktree it writes artifacts to `_out/<worktree>/...`
 - by default it prefers reusing the root checkout's prepared package `.lake`
   artifacts and binaries
-- external reference projects follow the shared-source and per-worktree
-  ownership model described in
-  [External Reference Cache Ownership](#external-reference-cache-ownership)
+- it also keeps shared warmed reference dependency caches under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, with downloaded
+  Lake packages under `packages/` and external path-dependency build trees under
+  `path-builds/`
+- those shared caches are keyed by external repository, project root, and
+  selected project ref; they preserve expensive pinned dependency state such as
+  Mathlib package builds, not generated Blueprint site artifacts
+- disposable source checkouts for those refs live separately under
+  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
+- each checkout uses its own local reference blueprint clones under
+  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`
 - the reference CLI avoids local `lake build` and `lake test` in a linked
   worktree by default to avoid unnecessary dependency rebuilds
 
@@ -732,8 +628,19 @@ python3 -m scripts.blueprint_harness worktree-retire <name> --merged-pr <number>
 - the default validation catalog mixes in-repo projects with external reference
   blueprints; the larger published reference blueprints live in external
   repositories
-- shared cache and validation-checkout paths obey
-  [External Reference Cache Ownership](#external-reference-cache-ownership)
+- the harness warms shared reference dependency caches under
+  `.worktrees/_reference-blueprints/deps/<source-ref-key>/`, including Lake
+  packages and `.lake/build` trees for external path dependencies such as
+  formalization submodules
+- the cache key is derived from the external repository URL, project root, and
+  selected project ref, so one project can keep separate caches for different
+  Lean/mathlib release pins
+- disposable source checkouts for those keyed refs live under
+  `.worktrees/_reference-blueprints/cache/<source-ref-key>/`
+- each checkout gets its own local clone under
+  `.worktrees/_reference-blueprints/by-worktree/<checkout>/<source-ref-key>/`,
+  seeded from the dependency cache so transitive package and path-dependency
+  build artifacts stay warm across worktrees
 - editable reference-project clones live separately under
   `.worktrees/_reference-blueprints/edit/<checkout>/` and are not touched by
   `sync`, `generate`, or `prune`
@@ -801,25 +708,20 @@ template-owned CI path.
 `reference-blueprints.yml` is the shared build workflow. On pull requests,
 pushes to release branches named like `v4.32.0`, and manual dispatch, it:
 
-- resolves the triggering branch's release target from `branch-policy.json`
-- uses the triggering checkout's catalog on the default-development line, but
-  reads the default-development branch's controller catalog for maintenance
-  lines so stale branch-local targets cannot recreate retired Blueprint builds
+- resolves the current branch's release target from `branch-policy.json`
 - builds only project targets for that release that set
   `publish_reference: true`
-- passes each selected target to the release-branch harness through an exact
-  generated one-project manifest, preserving the controller ref and effective
-  reference toolchain
-- builds `pdf/main.pdf` for those reference targets, using the workflow's
-  installed TeX toolchain
 - builds the local `test-blueprints/` artifact set, including
   `preview_runtime_showcase`
 - stages a branch-local site artifact under `_site/` only when the selected
   release target has `deploy_pages: true`
 - uploads that assembled site as a normal workflow artifact
-- generates external references from per-job local clones using the same
-  [source identity and ownership model](#external-reference-cache-ownership)
-  as local worktrees
+- generates external references from per-job local clones seeded by the keyed
+  dependency cache
+- restores and saves external reference dependency caches by the same
+  repository/project-root/ref key used locally, caching the external project's
+  `.lake/packages/` tree and `.lake/build` trees for external path dependencies
+  rather than the source checkout or generated Blueprint site's own output
 
 `reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
 successful `reference-blueprints.yml` run on a release branch named like
@@ -832,13 +734,10 @@ the project id, release, pinned ref, and publication flag. For each deploy
 matrix entry, the workflow writes a small one-project manifest from that
 default-development catalog and passes it to the release-branch harness with
 `--manifest`; the deploy job therefore does not rely on stale branch-local
-`projects.json` refs. The per-project target entry also owns the exact external
-reference toolchain, so two projects in the same release family can use
-different compilers while sharing the release target's VBP/Verso ref. Deploy
-one-project manifests append `--pdf` to the
-selected generator command only for the default-development release target, so
-the current published catalog includes PDFs while archived release targets stay
-HTML-only unless their deploy policy is deliberately expanded.
+`projects.json` refs. The per-project target entry also owns any RC override,
+so two projects in the same release line can deploy against different release
+candidate tags when needed. The published catalog is HTML-only; PDF export is
+not carried over in this fork (see the PDF note above).
 
 All runs of the deploy workflow share one repository-wide concurrency group
 because every run replaces the same combined Pages site. A deploy matrix entry
@@ -868,8 +767,6 @@ release includes:
 - `_site/index.html`
 - `_site/reference-blueprints/<project-id>/` for each deployable reference
   target selected on that branch
-- `_site/reference-blueprints/<project-id>/pdf/main.pdf` for each deployable
-  reference target selected on that branch
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -885,8 +782,6 @@ includes:
 - `_site/js-api/`
 - `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
   reference target across all deployable release targets
-- `_site/reference-blueprints/<release-id>/<project-id>/pdf/main.pdf` for each
-  selected reference target whose deploy matrix entry enables `publish_pdf`
 - `_site/test-blueprints/index.html`
 - `_site/test-blueprints/preview_runtime_showcase/`
 - `_site/test-blueprints/<slug>/`
@@ -936,25 +831,20 @@ The harness is now project-driven rather than hardcoded to one project.
   external test projects exercise the local `VersoBlueprint` checkout instead
   of the committed upstream dependency
 - the external project's top-level `lean-toolchain` selects its compiler; the
-  harness validates that it exactly matches the project target's
-  `reference_toolchain` (or the release baseline when that field is omitted),
-  belongs to the same Lean release family as VBP, and is not newer than VBP;
-  the harness never promotes an RC project or rewrites dependency toolchains
+  harness validates that it exactly matches the project target's final/RC
+  metadata and belongs to the same Lean release family as the VBP checkout, but
+  never promotes an RC project or rewrites dependency toolchains
 - the current local override injection expects a `lakefile.lean` project that
   declares `VersoBlueprint` from the official `leanprover/verso-blueprint` Git
   repository, and it tolerates different Git refs and URL spellings for that
   source
 - local worktree bookkeeping is intentionally not tracked in the repository
 
-The compatibility rule is monotonic within one Lean release family. If VBP's
-subversion is older than the reference project's subversion, validation fails
-and the VBP maintainers must bump VBP. If VBP is equal or newer, the reference
-project's exact toolchain remains the effective compiler. For example, a
-`v4.33.0` VBP release may build an external project with
-`"reference_toolchain": "v4.33.0-rc1"`; VBP/Verso stay on `v4.33.0`, while the
-wrapper, formalization, Mathlib artifacts, and build all stay on `v4.33.0-rc1`.
-Cross-family combinations such as VBP `v4.34.0` with a `v4.33.0` reference are
-always rejected.
+For example, the release id may remain `v4.32.0` while a specific published
+project target records `"rc": "4.32-rc1"`. That row then builds with
+`leanprover/lean4:v4.32.0-rc1` and pins `verso` to `v4.32.0-rc1`, while another
+project target on the same release id can use a different RC or the final
+release tag.
 
 Minimal external catalog entry shape:
 

@@ -50,11 +50,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: resolve-deploy-releases
     if: ${{ needs.resolve-deploy-releases.outputs.deployable_project_count != '0' }}
-    env:
-      BP_REFERENCE_SOURCE_IDENTITY: ${{ matrix.reference_source_identity }}
-      BP_REFERENCE_DEPENDENCY_PACKAGES_PATH: ${{ matrix.reference_dependency_packages_path }}
-      BP_REFERENCE_DEPENDENCY_PATH_BUILDS_PATH: ${{ matrix.reference_dependency_path_builds_path }}
-      BP_REFERENCE_ARTIFACT_PATH: ${{ matrix.artifact_path }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve-deploy-releases.outputs.deployable_project_matrix) }}
@@ -71,8 +66,7 @@ jobs:
           echo "branch=${{ matrix.branch }}"
           echo "project_id=${{ matrix.project_id }}"
           echo "hash=${{ matrix.hash }}"
-          echo "reference_source_identity=${{ matrix.reference_source_identity }}"
-          echo "publish_pdf=${{ matrix.publish_pdf }}"
+          echo "reference_cache_key=${{ matrix.reference_cache_key }}"
       - name: Write deploy project manifest
         env:
           BP_PROJECT_ID: ${{ matrix.project_id }}
@@ -99,7 +93,7 @@ jobs:
             --output _out/deploy-projects/${{ matrix.project_id }}.identity.json \
             --github-output >> "$GITHUB_OUTPUT"
       - name: Report disk usage before cache restore
-        run: ./scripts/report-ci-disk-usage.sh "before cache restore"
+        run: ./scripts/report-ci-disk-usage.sh "before cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore exact generated reference site
         id: generated-site-cache
         uses: actions/cache/restore@v5
@@ -107,24 +101,13 @@ jobs:
           path: ${{ matrix.artifact_path }}
           key: ${{ runner.os }}-reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}
       - name: Match reference target toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.rc != '' }}
         run: printf 'leanprover/lean4:${{ matrix.toolchain }}\n' > lean-toolchain
       - name: Install elan
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-      - name: Install PDF toolchain
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.publish_pdf }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            python3-pygments \
-            texlive-fonts-extra \
-            texlive-fonts-recommended \
-            texlive-latex-extra \
-            texlive-luatex \
-            texlive-plain-generic
       - name: Restore Lake package cache
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache@v5
@@ -149,28 +132,25 @@ jobs:
             ${{ runner.os }}-reference-deploy-lake-deps-
       - name: Report disk usage after Lake cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore"
+        run: ./scripts/report-ci-disk-usage.sh "after Lake cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Restore external reference dependency cache
-        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_source_identity != '' }}
+        if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' && matrix.reference_cache_key != '' }}
         uses: actions/cache@v5
         with:
           path: |
-            ${{ matrix.reference_dependency_packages_path }}
-            ${{ matrix.reference_dependency_path_builds_path }}
-          key: ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.reference_source_identity }}
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages
+            .worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds
+          key: ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.reference_cache_key }}
           restore-keys: |
             ${{ runner.os }}-reference-deploy-deps-v2-${{ matrix.project_id }}-
       - name: Report disk usage after reference cache restore
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore"
+        run: ./scripts/report-ci-disk-usage.sh "after reference cache restore" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Show tool versions
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
           lean --version
           lake --version
-          if [ "${{ matrix.publish_pdf }}" = "true" ]; then
-            lualatex --version | head -n 1
-          fi
           python3 --version
       - name: Generate release reference blueprints
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
@@ -181,12 +161,12 @@ jobs:
             --project ${{ matrix.project_id }} \
             --allow-unsafe-root-release \
             --allow-local-build \
+            --reference-package-mode move \
             --serial \
-            --record-build-metrics \
             _out/reference-blueprints/${{ matrix.release_id }}
       - name: Report disk usage after reference generation
         if: ${{ always() }}
-        run: ./scripts/report-ci-disk-usage.sh "after reference generation"
+        run: ./scripts/report-ci-disk-usage.sh "after reference generation" --reference-cache-key "${{ matrix.reference_cache_key }}" --artifact-path "${{ matrix.artifact_path }}"
       - name: Install exact reference artifact identity
         if: ${{ steps.generated-site-cache.outputs.cache-hit != 'true' }}
         run: |
@@ -307,12 +287,6 @@ jobs:
           path: _out/test-blueprints
       - name: Prepare combined Pages artifact
         run: python3 ./scripts/prepare_reference_blueprints_pages.py --js-api-docs-root _out/jsdoc-api
-      - name: Report reference build metrics
-        run: |
-          python3 ./scripts/reference_build_metrics.py report \
-            --input-root _out/reference-blueprints \
-            --output _site/build-data/reference-blueprints.json \
-            --summary-output "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
