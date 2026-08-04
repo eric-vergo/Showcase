@@ -280,17 +280,124 @@ def printCss : String := r##"
 def printHtmlAssets : HtmlAssets where
   extraCss := ([printCss] : List String)
 
+/-- ISC license notice for the vendored d3 v7.9.0 bundle (`vendor/d3.min.js`). The version
+and copyright are read directly from the bundle's own banner; the byte identity and full
+provenance record live in `vendor/vendor-manifest.json` / `vendor/THIRD_PARTY_NOTICES.md`. -/
+def d3LicenseInfo : Verso.Genre.Manual.LicenseInfo where
+  identifier := "ISC"
+  dependency := "d3"
+  howUsed := "d3 (v7.9.0) powers the interactive dependency-graph rendering."
+  link := "https://d3js.org/"
+  text := #[(some "ISC License", d3IscText)]
+where
+  d3IscText := r#"
+Copyright 2010-2023 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+"#
+
+/-- BSD-3-Clause license notice for the vendored d3-graphviz bundle
+(`vendor/d3-graphviz.min.js`). The bundle carries no version banner; the SHA-256 in
+`vendor/vendor-manifest.json` is the authoritative byte identity, and the manifest records
+that the exact upstream version is declared, not independently verified from the bytes. -/
+def d3GraphvizLicenseInfo : Verso.Genre.Manual.LicenseInfo where
+  identifier := "BSD-3-Clause"
+  dependency := "d3-graphviz"
+  howUsed := "d3-graphviz renders Graphviz layouts for the interactive dependency graph."
+  link := "https://github.com/magjac/d3-graphviz"
+  text := #[(some "BSD 3-Clause License", bsdText)]
+where
+  bsdText := r#"
+Copyright (c) 2018-2023, Magnus Jacobsson
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"#
+
+/-- The vendored graph-runtime libraries (d3, d3-graphviz) are embedded into and emitted by
+every generated site, so their notices must reach readers. Seeding them into
+`HtmlAssets.licenseInfo` makes the site-wide `{licenseInfo}` block render them alongside
+Verso's own bundled-component notices (CX-028 / CX-041). -/
+def vendoredLicensesHtmlAssets : HtmlAssets where
+  licenseInfo := Std.HashSet.ofArray #[d3LicenseInfo, d3GraphvizLicenseInfo]
+
 def blueprintHtmlAssets : HtmlAssets :=
-  (((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+  ((((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
     colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets).combine
     bannerNavHtmlAssets).combine metadataRailHtmlAssets).combine docsChromeHtmlAssets).combine
-    printHtmlAssets
+    printHtmlAssets).combine vendoredLicensesHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"
 
 private def blueprintPageRuntimeHead : Verso.Output.Html :=
   open Verso.Output.Html in
   {{<script type="module" src={{"-verso-data/" ++ pageRuntimeModuleFilename}}></script>}}
+
+/-- A minimal `default-src 'self'`-style Content Security Policy for generated sites.
+
+This is the second, browser-enforced boundary behind the format-aware off-origin scanner
+(`scripts/check_off_origin_assets.py`, CX-013): even a careless template change that adds an
+off-origin `<img srcset>`, `<video poster>`, `fetch()`, etc. is blocked at load time. Every
+directive here confines resource loads to the origin plus in-document `data:`/`blob:`
+payloads — no off-origin host is permitted.
+
+`'unsafe-inline'` (scripts/styles) and `'unsafe-eval'`/`'wasm-unsafe-eval'` are required
+because the site is self-contained: its runtime ships as inline `<head>` scripts/styles and
+the graph library evaluates Graphviz layouts (WebAssembly) in the client. Relaxing *inline*
+execution does not relax the off-origin restriction, which is the property this enforces.
+
+Honest limitation: GitHub Pages serves these files and cannot set response headers, so this
+is a `<meta http-equiv>` policy. It governs `script`/`style`/`img`/`font`/`connect`/`object`
+loads (the off-origin surfaces at issue) but CANNOT express header-only directives such as
+`frame-ancestors`, `sandbox`, or reporting endpoints. -/
+def blueprintContentSecurityPolicy : String :=
+  String.intercalate "; "
+    [ "default-src 'self' data: blob:"
+    , "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:"
+    , "style-src 'self' 'unsafe-inline'"
+    , "img-src 'self' data:"
+    , "font-src 'self' data:"
+    , "connect-src 'self' data: blob:"
+    , "worker-src 'self' blob:"
+    , "object-src 'none'"
+    , "base-uri 'self'" ]
+
+private def blueprintCspHead : Verso.Output.Html :=
+  open Verso.Output.Html in
+  {{<meta http-equiv="Content-Security-Policy" content={{blueprintContentSecurityPolicy}}/>}}
 
 private def pushHtmlIfMissing (values : Array Verso.Output.Html) (value : Verso.Output.Html) :
     Array Verso.Output.Html :=
@@ -314,7 +421,11 @@ def withBlueprintAssets (config : RenderConfig := {}) : RenderConfig :=
     toHtmlConfig := {
       htmlConfig with
       toHtmlAssets := htmlAssets
-      extraHead := pushHtmlIfMissing htmlConfig.extraHead blueprintPageRuntimeHead
+      -- The meta-CSP is pushed first so it precedes the runtime `<script>` in `<head>`.
+      extraHead :=
+        pushHtmlIfMissing
+          (pushHtmlIfMissing htmlConfig.extraHead blueprintCspHead)
+          blueprintPageRuntimeHead
     }
     -- Add Lean const → blueprint-node cross-links to the ordinary
     -- local/remote targets. A const that is both a Lean decl and a blueprint node

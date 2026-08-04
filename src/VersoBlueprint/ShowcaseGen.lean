@@ -450,6 +450,12 @@ def renderContents (cfg : RenderConfig) (chapters : Array Chapter) : String := I
   out := out ++ "\n{blueprint_graph}\n\n{blueprint_summary}\n\n"
   out := out ++ "{blueprint_formalization \"" ++ cfg.formalizationYaml ++ "\"}\n\n"
   out := out ++ "{blueprint_trust_model}\n\n{blueprint_bibliography}\n"
+  -- Third-party notices: `{licenseInfo}` renders every open-source component bundled into
+  -- the generated site (KaTeX, the search stack, and the vendored d3/d3-graphviz graph
+  -- runtime), which are otherwise redistributed with no visible attribution (CX-041/CX-028).
+  out := out ++ "\n# Third-party licenses\n\n"
+  out := out ++ "This site bundles the open-source components listed below.\n\n"
+  out := out ++ "{licenseInfo}\n"
   return out
 
 /-- A stable author id: the display name lower-cased with non-alphanumerics dropped. -/

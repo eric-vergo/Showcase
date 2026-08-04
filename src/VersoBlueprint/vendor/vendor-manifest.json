@@ -1,0 +1,43 @@
+{
+  "$comment": "Provenance for third-party bundles vendored into src/VersoBlueprint/vendor/ and redistributed in every generated site (CX-028). `sha256`/`bytes` are the authoritative byte identity, recomputed by tests/harness/test_vendor_provenance.py; a byte change with no manifest update fails that test. `verified` distinguishes facts read from the bundle itself (its banner) from facts declared from upstream but not independently reproduced from the vendored bytes. The rendered notices are carried by d3LicenseInfo / d3GraphvizLicenseInfo in src/VersoBlueprint/PreviewManifest.lean and surfaced on the site via the {licenseInfo} block (CX-041).",
+  "vendored": [
+    {
+      "file": "d3.min.js",
+      "component": "d3",
+      "upstream_url": "https://github.com/d3/d3",
+      "homepage": "https://d3js.org/",
+      "version": "7.9.0",
+      "spdx_license_id": "ISC",
+      "license_file": "https://github.com/d3/d3/blob/v7.9.0/LICENSE",
+      "copyright": "Copyright 2010-2023 Mike Bostock",
+      "acquisition": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+      "sha256": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+      "bytes": 279706,
+      "verified": {
+        "version_from_bundle_banner": true,
+        "copyright_from_bundle_banner": true,
+        "spdx_from_upstream_tag": true,
+        "note": "The bundle's first line reads `// https://d3js.org v7.9.0 Copyright 2010-2023 Mike Bostock`. The d3 v7.9.0 upstream tag is ISC-licensed."
+      }
+    },
+    {
+      "file": "d3-graphviz.min.js",
+      "component": "d3-graphviz",
+      "upstream_url": "https://github.com/magjac/d3-graphviz",
+      "homepage": "https://github.com/magjac/d3-graphviz",
+      "version": "5.x (not stamped in the vendored bundle)",
+      "spdx_license_id": "BSD-3-Clause",
+      "license_file": "https://github.com/magjac/d3-graphviz/blob/master/LICENSE",
+      "copyright": "Copyright (c) 2018-2023, Magnus Jacobsson",
+      "acquisition": "https://cdn.jsdelivr.net/npm/d3-graphviz@5/build/d3-graphviz.min.js",
+      "sha256": "9c1ecd146ca7f2ff57c849cee4398f58cee7a7a8c7d79c24b817bbaf4dd4e05c",
+      "bytes": 762294,
+      "verified": {
+        "version_from_bundle_banner": false,
+        "copyright_from_bundle_banner": false,
+        "spdx_from_upstream_tag": true,
+        "note": "The bundle carries no version/copyright banner. The IDE preview widget (src/VersoBlueprint/Widget.lean) references CDN d3-graphviz 5.6.0, but that coordinate is not independently reproduced from the vendored bytes. The SHA-256 above is the ground-truth byte identity; d3-graphviz has been BSD-3-Clause across the 5.x line."
+      }
+    }
+  ]
+}
