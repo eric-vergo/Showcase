@@ -25,8 +25,9 @@ shape as normal Blueprint pages.
 
 ## Roadmap Decision
 
-Resolved. The `verso-slides` v4.32.0 release includes `Config.extraHead`, and
-Blueprint uses the normal v4.32.0 release pin.
+Resolved. Matching `verso-slides` release tags from v4.32.0 onward include
+`Config.extraHead`, and Blueprint follows the active Lean release line's normal
+Slides pin.
 
 ## Reproduction Status
 
@@ -53,10 +54,11 @@ hydration, and avoid a de-ESMified `blueprint-slides.js` bundle.
 ## Evidence
 
 - Upstream PR: https://github.com/leanprover/verso-slides/pull/59
-- Upstream status: `Config.extraHead` is in the `verso-slides` v4.32.0 tag.
-- Local release pin: `lakefile.lean` requires `verso-slides` v4.32.0.
+- Upstream status: `Config.extraHead` is present in matching `verso-slides`
+  release tags from v4.32.0 onward.
+- Local release pin: `lakefile.lean` follows the checkout's active release line.
 
 ## Current Workaround
 
 None. Blueprint loads the slide runtime through `Config.extraHead` from the
-normal `verso-slides` v4.32.0 release.
+normal matching `verso-slides` release.

@@ -80,6 +80,8 @@ PUBLIC_PR_TITLE_RE = re.compile(
 PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
     r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
 )
+PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE = re.compile(r"^Backport\s+[^\s:]+\s*:\s*.+$")
+RELEASE_LINE_BOOTSTRAP_STATUS = "release-line bootstrap"
 
 
 def sync_root_worktree_lake(layout) -> None:
@@ -457,6 +459,7 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
         layout.package_root,
         args.toolchain,
         verso_ref=args.verso_ref,
+        verso_slides_ref=args.verso_slides_ref,
         validate=not args.skip_validation,
     )
     rc = release_candidate_name_or_none(result.lean_ref)
@@ -471,6 +474,8 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
     print(f"toolchain_spec={result.toolchain_spec}")
     print(f"verso_ref={result.verso_ref}")
     print(f"verso_tag_oid={result.verso_tag_oid}")
+    print(f"verso_slides_ref={result.verso_slides_ref}")
+    print(f"verso_slides_tag_oid={result.verso_slides_tag_oid}")
     print(f"rc={rc or ''}")
     print(f"project_manifest={manifest_path}")
     print(f"validated={str(not args.skip_validation).lower()}")
@@ -545,6 +550,27 @@ def update_release_line_project_manifest(
         write_json(manifest_path, raw)
 
 
+def update_pull_request_template_backports(package_root: Path, required_backports: tuple[str, ...]) -> Path:
+    template_path = package_root / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    if not template_path.exists():
+        raise SystemExit(f"[blueprint-harness] missing pull request template: {template_path}")
+    original = template_path.read_text(encoding="utf-8")
+    lines = original.splitlines()
+    backport_indices = [
+        index for index, line in enumerate(lines) if PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE.fullmatch(line)
+    ]
+    if not backport_indices:
+        raise SystemExit(
+            f"[blueprint-harness] pull request template `{template_path}` has no managed `Backport ...` lines"
+        )
+    insertion_index = backport_indices[0]
+    backport_index_set = set(backport_indices)
+    retained = [line for index, line in enumerate(lines) if index not in backport_index_set]
+    retained[insertion_index:insertion_index] = [f"Backport {branch}: pending" for branch in required_backports]
+    template_path.write_text("\n".join(retained) + ("\n" if original.endswith("\n") else ""), encoding="utf-8")
+    return template_path
+
+
 def upsert_release_target(
     targets: tuple[BranchPolicyReleaseTarget, ...],
     target: BranchPolicyReleaseTarget,
@@ -575,11 +601,21 @@ def command_start_release_line(args: argparse.Namespace) -> int:
         if args.verso_ref is not None
         else requested_lean_ref
     )
-    if requested_rc is not None and release_branch_from_lean_ref(requested_verso_ref) != release_id:
-        raise SystemExit(
-            f"[blueprint-harness] release candidate `{requested_lean_ref}` expects a matching `verso` release line; "
-            f"got `{requested_verso_ref}`"
-        )
+    requested_verso_slides_ref = (
+        normalize_lean_release_ref(args.verso_slides_ref)
+        if args.verso_slides_ref is not None
+        else requested_lean_ref
+    )
+    if requested_rc is not None:
+        for dependency_name, dependency_ref in (
+            ("verso", requested_verso_ref),
+            ("verso-slides", requested_verso_slides_ref),
+        ):
+            if release_branch_from_lean_ref(dependency_ref) != release_id:
+                raise SystemExit(
+                    f"[blueprint-harness] release candidate `{requested_lean_ref}` expects a matching "
+                    f"`{dependency_name}` release line; got `{dependency_ref}`"
+                )
 
     old_policy = load_branch_policy(layout.package_root)
     inherited_backports = dedupe_release_branches(
@@ -591,6 +627,7 @@ def command_start_release_line(args: argparse.Namespace) -> int:
         layout.package_root,
         args.toolchain,
         verso_ref=args.verso_ref,
+        verso_slides_ref=args.verso_slides_ref,
         validate=not args.skip_validation,
     )
     release_toolchain = release_branch_from_lean_ref(result.lean_ref)
@@ -614,6 +651,10 @@ def command_start_release_line(args: argparse.Namespace) -> int:
         release_targets=release_targets,
         version=max(old_policy.version, 2),
     )
+    pull_request_template_path = update_pull_request_template_backports(
+        layout.package_root,
+        new_policy.required_backport_branches,
+    )
     manifest_path = resolve_manifest_path(None, layout.package_root)
     update_release_line_project_manifest(
         manifest_path,
@@ -625,8 +666,10 @@ def command_start_release_line(args: argparse.Namespace) -> int:
     print(f"release_branch={release_id}")
     print(f"toolchain_ref={result.lean_ref}")
     print(f"verso_ref={result.verso_ref}")
+    print(f"verso_slides_ref={result.verso_slides_ref}")
     print(f"rc={rc or ''}")
     print(f"branch_policy={new_policy.source_path}")
+    print(f"pull_request_template={pull_request_template_path}")
     print(f"default_dev_branch={new_policy.default_dev_branch}")
     print(f"required_backports={','.join(new_policy.required_backport_branches)}")
     print(f"project_manifest={manifest_path}")
@@ -746,10 +789,17 @@ def parse_prepare_backports_exemptions(values: list[str] | None) -> dict[str, st
     return exemptions
 
 
-def backport_plan_lines(required_backports: tuple[str, ...], exemptions: dict[str, str]) -> list[str]:
+def backport_plan_lines(
+    required_backports: tuple[str, ...],
+    exemptions: dict[str, str],
+    *,
+    release_line_bootstrap: bool = False,
+) -> list[str]:
     lines: list[str] = []
     for branch in required_backports:
-        if branch in exemptions:
+        if release_line_bootstrap:
+            lines.append(f"Backport {branch}: {RELEASE_LINE_BOOTSTRAP_STATUS}")
+        elif branch in exemptions:
             lines.append(f"Backport {branch}: exempt: {exemptions[branch]}")
         else:
             lines.append(f"Backport {branch}: pending")
@@ -765,7 +815,10 @@ def print_public_pr_message_scaffold(
     summary: str | None,
     changes: list[str] | None,
 ) -> None:
-    paired_backports_required = any(": exempt:" not in line for line in backport_lines)
+    paired_backports_required = any(
+        ": exempt:" not in line and not line.endswith(f": {RELEASE_LINE_BOOTSTRAP_STATUS}")
+        for line in backport_lines
+    )
     print(f"repository={PUBLIC_REPOSITORY}")
     print(f"base={default_dev}")
     print(f"head={source_branch}")
@@ -790,6 +843,8 @@ def print_public_pr_message_scaffold(
     print("- Do not add routine validation transcripts to the PR body; CI is the default validation record.")
     if any(": exempt:" in line for line in backport_lines):
         print("- Use backport exemptions only for documentation and repository metadata changes; CI checks the PR file list.")
+    if any(line.endswith(f": {RELEASE_LINE_BOOTSTRAP_STATUS}") for line in backport_lines):
+        print("- CI verifies this is a real release-line bootstrap by comparing the base and head release policy.")
     print()
     print("## PR Title")
     print(title)
@@ -951,6 +1006,9 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
     require_checkout_role(layout.package_root, required_role="default_dev", operation="prepare-pr")
     policy = load_branch_policy(layout.package_root)
     exemptions = parse_prepare_backports_exemptions(args.exempt)
+    release_line_bootstrap = bool(getattr(args, "release_line_bootstrap", False))
+    if release_line_bootstrap and exemptions:
+        raise SystemExit("[blueprint-harness] `--release-line-bootstrap` cannot be combined with `--exempt`")
     unknown = sorted(branch for branch in exemptions if branch not in policy.required_backport_branches)
     if unknown:
         raise SystemExit(
@@ -969,13 +1027,25 @@ def command_prepare_pr(args: argparse.Namespace) -> int:
                 "[blueprint-harness] backport exemptions are limited to documentation and repository metadata; "
                 "paired backports are required for: " + ", ".join(violations)
             )
+    if release_line_bootstrap:
+        changed_files = set(source_changed_files(layout.package_root, source_branch))
+        missing = sorted({"branch-policy.json", "lean-toolchain"} - changed_files)
+        if missing:
+            raise SystemExit(
+                "[blueprint-harness] release-line bootstrap PRs must change both release identity files; missing: "
+                + ", ".join(missing)
+            )
 
     title = validate_public_pr_title(args.title or current_commit_subject(layout.package_root))
     print_public_pr_message_scaffold(
         default_dev=policy.default_dev_branch,
         source_branch=source_branch,
         title=title,
-        backport_lines=backport_plan_lines(policy.required_backport_branches, exemptions),
+        backport_lines=backport_plan_lines(
+            policy.required_backport_branches,
+            exemptions,
+            release_line_bootstrap=release_line_bootstrap,
+        ),
         summary=args.summary,
         changes=args.change,
     )
@@ -1358,7 +1428,7 @@ def add_release_management_commands(subparsers) -> None:
 
     bump_toolchain = subparsers.add_parser(
         "bump-toolchain",
-        help="Bump the managed Lean toolchain pins, select the matching `verso` release, and refresh tracked manifests.",
+        help="Bump managed Lean, `verso`, and `verso-slides` release pins and refresh tracked manifests.",
     )
     bump_toolchain.add_argument(
         "toolchain",
@@ -1368,6 +1438,11 @@ def add_release_management_commands(subparsers) -> None:
         "--verso-ref",
         default=None,
         help="Override the `verso` release tag. Defaults to the normalized Lean toolchain ref.",
+    )
+    bump_toolchain.add_argument(
+        "--verso-slides-ref",
+        default=None,
+        help="Override the `verso-slides` release tag. Defaults to the normalized Lean toolchain ref.",
     )
     bump_toolchain.add_argument(
         "--skip-validation",
@@ -1388,6 +1463,11 @@ def add_release_management_commands(subparsers) -> None:
         "--verso-ref",
         default=None,
         help="Override the `verso` release tag. Defaults to the normalized Lean toolchain ref.",
+    )
+    start_release_line.add_argument(
+        "--verso-slides-ref",
+        default=None,
+        help="Override the `verso-slides` release tag. Defaults to the normalized Lean toolchain ref.",
     )
     start_release_line.add_argument(
         "--deploy-pages",
@@ -1466,6 +1546,11 @@ def add_pr_preparation_commands(subparsers) -> None:
         action="append",
         default=None,
         help="Pre-fill one documentation/metadata-only backport exemption. Repeat as needed.",
+    )
+    prepare_pr.add_argument(
+        "--release-line-bootstrap",
+        action="store_true",
+        help="Mark every backport entry as a machine-checked new-release-line bootstrap.",
     )
     prepare_pr.set_defaults(func=command_prepare_pr)
 

@@ -20,6 +20,10 @@ def official_verso_require(ref: str) -> str:
     return f'require verso from git "https://github.com/leanprover/verso"@"{ref}"'
 
 
+def official_verso_slides_require(ref: str) -> str:
+    return f'require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"{ref}"'
+
+
 def official_blueprint_require(ref: str) -> str:
     return f'require VersoBlueprint from git "https://github.com/leanprover/verso-blueprint"@"{ref}"'
 

@@ -50,6 +50,8 @@
 
 /**
  * Custom post-render hook for nested preview bindings, math, or client widgets.
+ * Hydrators can run repeatedly and on lazily inserted descendants, so bindings
+ * should remain scoped to `root` and idempotent.
  *
  * @callback BlueprintHydrator
  * @param {Element | Document} root Rendered root to hydrate.
