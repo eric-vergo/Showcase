@@ -226,13 +226,17 @@ def run (yaml? : Option Json) (requireAuditClean : Bool := false) : CoreM Summar
   let mut checked : Nat := 0
   let mut sorried : Array String := #[]
   let mut nonstandard : Array DeclAxioms := #[]
-  let mut allAxioms : NameSet := {}
+  -- Kept as strings, deliberately: `collectAxioms` names arrive as strings and are
+  -- compared against strings typed into `formalization.yaml`. Round-tripping them
+  -- through `Name.mkSimple` would make a dotted name a *single* component, which
+  -- re-prints escaped (`«Classical.choice»`) and matches nothing.
+  let mut allAxioms : Std.HashSet String := {}
   let mut audited : Std.HashMap String DeclAxioms := {}
   for n in targets do
     if let some d ← declAxioms? n then
       checked := checked + 1
       audited := audited.insert d.name d
-      for a in d.axioms do allAxioms := allAxioms.insert (Name.mkSimple a)
+      for a in d.axioms do allAxioms := allAxioms.insert a
       if d.sorried then sorried := sorried.push d.name
       if !d.nonstandard.isEmpty then nonstandard := nonstandard.push d
   -- 2. `formalization.yaml` side: audit every named declaration and check its claims.
@@ -291,7 +295,7 @@ def run (yaml? : Option Json) (requireAuditClean : Bool := false) : CoreM Summar
                {fmtAxioms (sorried.extract 0 (min sorried.size 8))}."
       let declaredProjectAxioms := strArrOf status "axioms"
       unless declaredProjectAxioms.isEmpty do
-        let all := (allAxioms.toList.map toString).toArray.qsort (· < ·)
+        let all := allAxioms.toArray.qsort (· < ·)
         let undeclared := all.filter fun a => a != sorryAxiom && !declaredProjectAxioms.contains a
         unless undeclared.isEmpty do
           errors := errors.push
@@ -317,7 +321,7 @@ def run (yaml? : Option Json) (requireAuditClean : Bool := false) : CoreM Summar
     throwError "showcase axiom audit FAILED:\n{String.intercalate "\n" errors.toList}"
   for w in warnings do
     logWarning w
-  let allAxiomsArr := (allAxioms.toList.map toString).toArray.qsort (· < ·)
+  let allAxiomsArr := allAxioms.toArray.qsort (· < ·)
   return {
     checked
     sorried
