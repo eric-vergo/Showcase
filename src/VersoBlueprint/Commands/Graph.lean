@@ -726,10 +726,12 @@ project's own module(s), as subordinate "supporting" nodes with edges from the
 actual Lean const-level dependency structure.
 
 Opt-in via `verso.blueprint.graph.includeAllDecls` (off by default → returns `base`,
-so existing consumers and tests keep the blueprint-only graph). Project modules are
-inferred from the authored `(lean := …)` declarations whose snapshot provenance is
-in the workspace (so Mathlib/core/dependency declarations are excluded). Every
-non-internal definition/theorem/inductive in those modules becomes a graph node:
+so existing consumers and tests keep the blueprint-only graph). Project modules come
+from `DeclRegistry.projectModuleRoots`: the configured
+`verso.blueprint.subjectModuleRoots` when set, else inferred from the authored
+`(lean := …)` declarations whose source is inside the workspace (so Mathlib / core /
+dependency declarations are excluded). Every non-internal
+definition/theorem/inductive in those modules becomes a graph node:
 authored declarations keep their blueprint node and gain const-derived edges,
 un-annotated declarations are added as muted supporting nodes. Const dependencies
 are split into statement (type) and proof (value) axes and merged as
