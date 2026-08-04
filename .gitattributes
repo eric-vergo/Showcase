@@ -1,0 +1,8 @@
+# Keep Lean sources plain text so Git never treats one as binary (CX-029). A stray
+# control byte in a `.lean` file otherwise flips default diff/stat and binary-aware
+# line search to binary handling, hiding the whole module from review tooling.
+*.lean text
+
+# Vendored, minified third-party bundles: tracked verbatim, never diffed line by line.
+src/VersoBlueprint/vendor/*.js binary
+src/VersoBlueprint/vendor/*.min.js binary
