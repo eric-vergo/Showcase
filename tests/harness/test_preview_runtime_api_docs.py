@@ -420,7 +420,15 @@ class PreviewRuntimeApiDocsTests(unittest.TestCase):
 
         for path in blueprint_js_files():
             relative_path = path.relative_to(BLUEPRINT_SRC)
-            if relative_path in RUNTIME_BOOTSTRAP_JS or relative_path == Path("Slides/blueprint-slides.mjs"):
+            if relative_path in RUNTIME_BOOTSTRAP_JS or relative_path in {
+                # Shared-singleton install points / orchestrators that idempotently attach or read
+                # their own `window.VersoBlueprint` namespace (`.selection`, `.colorScheme`,
+                # `.textSize`, `.slides`) — cross-cutting site chrome, not feature JS reaching into
+                # the render runtime (`window.VersoBlueprint.render`), which is what this guards.
+                Path("Slides/blueprint-slides.mjs"),
+                Path("Commands/selection-bus.mjs"),
+                Path("Commands/metadata-rail.mjs"),
+            }:
                 continue
             source = path.read_text(encoding="utf-8")
             display_path = relative_path.as_posix()

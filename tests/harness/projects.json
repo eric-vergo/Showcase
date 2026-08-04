@@ -10,15 +10,23 @@
       },
       "targets": [
         {
-          "release": "v4.30.0"
+          "release": "v4.31.0"
         },
         {
-          "release": "v4.31.0",
-          "publish_reference": true
+          "release": "v4.32.0"
         }
       ],
       "build_command": ["lake", "build", "ProjectTemplate"],
-      "generate_command": ["lake", "env", "lean", "--run", "ProjectTemplateMain.lean", "--output", "{output_dir}"],
+      "generate_command": [
+        "lake",
+        "lean",
+        "ProjectTemplateMain.lean",
+        "--",
+        "--run",
+        "ProjectTemplateMain.lean",
+        "--output",
+        "{output_dir}"
+      ],
       "site_subdir": "html-multi"
     },
     {
@@ -31,13 +39,13 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "023ba906e2977186e863472393e4251b2477bfd6",
-          "publish_reference": true
+          "release": "v4.32.0",
+          "ref": "ad062f0d06b891fa53db1cfcdc7e39be05c39204",
+          "publish_reference": true,
+          "rc": "4.32-rc1"
         }
       ],
-      "build_command": ["lake", "build", "Contents"],
-      "generate_command": ["lake", "env", "lean", "--run", "Main.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -50,13 +58,12 @@
       },
       "targets": [
         {
-          "release": "v4.30.0",
-          "ref": "516bab06c7f65aa60e265e56edc42acf75b51cf9",
+          "release": "v4.31.0",
+          "ref": "4cbb43d6401ff2ca8d4495b82fea99df59b633bd",
           "publish_reference": true
         }
       ],
-      "build_command": ["bash", "scripts/ci-reference-build.sh"],
-      "generate_command": ["lake", "env", "lean", "--run", "SpherePackingBlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -69,13 +76,13 @@
       },
       "targets": [
         {
-          "release": "v4.31.0",
-          "ref": "d0a3dea89451218916bfd4a29e07ea5c557f6d0b",
-          "publish_reference": true
+          "release": "v4.32.0",
+          "ref": "1695b7cb937a8022dacd2742b969a272b7d57d1e",
+          "publish_reference": true,
+          "rc": "4.32-rc1"
         }
       ],
-      "build_command": ["lake", "build", "FLTBlueprint"],
-      "generate_command": ["lake", "env", "lean", "--run", "FLTBlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     },
     {
@@ -88,14 +95,12 @@
       },
       "targets": [
         {
-          "release": "v4.30.0",
-          "ref": "73c4bac9073120109e2338e545c945d0fb87323e",
-          "rc": "4.30-rc2",
+          "release": "v4.31.0",
+          "ref": "5b34f5d43ba50bca0680b2c139b2b994857902f4",
           "publish_reference": true
         }
       ],
-      "build_command": ["lake", "build", "CarlesonBlueprint"],
-      "generate_command": ["lake", "env", "lean", "--run", "BlueprintMain.lean", "--output", "{output_dir}"],
+      "generate_command": ["lake", "exe", "vbp", "build", "--output", "{output_dir}"],
       "site_subdir": "html-multi"
     }
   ]
