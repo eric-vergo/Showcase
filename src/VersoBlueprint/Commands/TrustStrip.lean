@@ -88,7 +88,7 @@ register_option verso.blueprint.trust.requireAuditClean : Bool := {
 
 register_option verso.blueprint.trust.comparatorLiveProject : String := {
   defValue := ""
-  descr := "Project id for comparator.live (the Lean FRO's experimental in-browser statement comparator), e.g. \"mathlib-stable\". When set — and when the challenge and solution sources are both available — the comparator page adds a permalink that re-runs the exact claim/solution pair in the browser. Links only: nothing is fetched at build time and the offline guarantee is untouched. Empty disables the link."
+  descr := "Project id for comparator.live (the Lean FRO's experimental in-browser statement comparator), e.g. \"mathlib-stable\". When set — and when the challenge and solution sources are both available — the comparator page adds a permalink that opens the exact claim/solution pair in the browser for inspection (it does not re-run the verdict: the solution's import of the project library is not available there). Links only: nothing is fetched at build time and the offline guarantee is untouched. Empty disables the link."
 }
 
 /-- Comparator verdict extracted from the comparator-status artifact.
@@ -170,9 +170,9 @@ structure TrustComparator where
   /-- The solution module named in the comparator's config JSON (`solution_module`),
   cross-checked the same way. -/
   solutionModule : String := ""
-  /-- Permalink that re-runs this exact claim/solution pair on comparator.live, built
-  from `verso.blueprint.trust.comparatorLiveProject` plus the two sources. Empty ⇒ not
-  configured, or a source was unavailable. -/
+  /-- Permalink that opens this exact claim/solution pair on comparator.live for
+  inspection, built from `verso.blueprint.trust.comparatorLiveProject` plus the two
+  sources. Empty ⇒ not configured, or a source was unavailable. -/
   comparatorLiveUrl : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
@@ -275,7 +275,7 @@ open Verso.Output.Html in
 /-- Tokenize a (pretty-printed) JSON string into themed token spans. Result is the
 inner markup to wrap in `<code class="hl lean">`. -/
 def highlightJsonHtml (src : String) : Output.Html := Id.run do
-  let cs := src.data.toArray
+  let cs := src.toList.toArray
   let n := cs.size
   let mut out : Array Output.Html := #[]
   let mut plain : String := ""

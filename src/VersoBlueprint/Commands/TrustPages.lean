@@ -308,7 +308,7 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
       let liveLink : Option Output.Html :=
         if cmp.comparatorLiveUrl.isEmpty then Option.none
         else Option.some
-          (trustOutLink cmp.comparatorLiveUrl "Check this exact claim/solution pair on comparator.live")
+          (trustOutLink cmp.comparatorLiveUrl "Inspect this claim on comparator.live")
       let linkItems := ([ghLink, pgLink, liveLink].filterMap id)
       let linksRow : Output.Html :=
         match linkItems with
@@ -316,14 +316,20 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
         | first :: rest =>
           let joined := rest.foldl (init := first) fun acc x => .seq #[acc, {{ " · " }}, x]
           {{ <p class="bp_trust_links">{{joined}}</p> }}
+      -- The comparator.live link is an *inspection* link, not a second verdict: it
+      -- pre-fills both sources, but the solution imports the project's own library,
+      -- which the in-browser environment does not carry. Say so, so nobody reads a
+      -- failed in-browser run as a failed proof.
       let liveNote : Output.Html :=
         if cmp.comparatorLiveUrl.isEmpty then .empty
         else {{
           <p class="bp_trust_note">
-            "comparator.live is experimental infrastructure run by the Lean FRO. It re-runs the "
-            "comparison in your browser against its own toolchain and Mathlib, which are not the "
-            "revisions this project pins — treat it as a convenient second opinion, not as this "
-            "project's verdict."
+            "comparator.live is experimental infrastructure run by the Lean FRO. The link "
+            "pre-fills this exact challenge and solution in a live Lean and Mathlib "
+            "environment, so both sources can be read and edited in the browser. It does not "
+            "re-run the verdict: the solution imports this project's library, which "
+            "comparator.live does not provide, so the pair check there stops at that import. "
+            "Full verification is the CI run linked above and the local steps below."
           </p> }}
       trustSection "The claim"
         (.seq #[linksRow,
