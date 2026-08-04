@@ -155,10 +155,13 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     if cmp.permittedAxioms.isEmpty then .empty
     else {{ <div><dt>"Permitted axioms"</dt><dd>{{inlineCodeList cmp.permittedAxioms}}</dd></div> }}
   let toolRow : Output.Html :=
+    -- "Checked with" is a statement about the linked run, so nanoda appears only when
+    -- the run recorded that it replayed. A `nanoda_ref` in a status artifact that
+    -- never says the replay happened pins a revision, not a second check.
     let refs :=
       (if cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolSha}"]) ++
       (if cmp.toolRef.isEmpty || !cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolRef}"]) ++
-      (if cmp.nanodaRef.isEmpty then [] else [s!"nanoda {cmp.nanodaRef}"]) ++
+      (if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then [s!"nanoda {cmp.nanodaRef}"] else []) ++
       (if cmp.landrunRef.isEmpty then [] else [s!"landrun {cmp.landrunRef}"])
     match refs with
     | [] => .empty
@@ -193,12 +196,13 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
   let tier2 : Option Output.Html :=
     match ciUrl? with
     | some u =>
-      -- With the independent nanoda replay enabled, name both kernels here.
+      -- What the *linked run* did, from its own record. The current configuration's
+      -- `enable_nanoda` describes the next run and says nothing about this one.
       let replayNote :=
-        if cmp.enableNanoda then
+        if cmp.replayedWithNanoda then
           " — the exact run that produced this verdict, Lean-kernel and nanoda replays included."
         else
-          " — the exact run that produced this verdict, kernel replay included."
+          " — the exact run that produced this verdict, Lean-kernel replay included."
       some {{
         <li>
           {{trustOutLink u "The CI verification record"}}
@@ -235,27 +239,37 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
         " and will build whatever is on nanoda's default branch — not necessarily the \
          revision CI used. Check the CI run's log for the exact revision."
       </p> }}
+  -- Sandbox coverage is claimed only for the step the run record covers. Elaborating
+  -- Lean is arbitrary code execution, so *when* the solution was first elaborated is the
+  -- security-relevant question, and a status artifact recording a landrun revision does
+  -- not answer it: a pipeline that prebuilds the solution to warm its cache elaborates it
+  -- before the confined replay begins. Until the run record distinguishes the two, say
+  -- exactly that rather than implying end-to-end confinement.
   let landrunNote : Output.Html :=
     if cmp.landrunRef.isEmpty then
       {{
         <p class="bp_trust_note">
-          "CI runs the solution inside a "
+          "This verdict's record names no "
           {{trustOutLink "https://landlock.io/" "Landlock"}}
-          " sandbox; the commands above do not install that sandbox, and on macOS or in a "
-          "plain development shell there is no Landlock at all. The local run is therefore a "
-          "kernel check without the sandbox, which is weaker than what CI performed."
+          " sandbox, so nothing here says the solution was confined when CI elaborated or "
+          "replayed it. The local commands above install no sandbox either, and on macOS or "
+          "in a plain development shell there is no Landlock at all."
         </p> }}
     else
       {{
         <p class="bp_trust_note">
-          "CI additionally confines the solution in a "
+          "CI ran the comparator replay under "
           {{trustOutLink "https://landlock.io/" "Landlock"}}
-          " sandbox (landrun " <code>{{.text true cmp.landrunRef}}</code>
-          "). To match it on Linux, install landrun at that revision first — "
+          " (landrun " <code>{{.text true cmp.landrunRef}}</code>
+          "). That confinement covers the replay step, and elaborating Lean is arbitrary "
+          "code execution: if the project's CI builds the solution before invoking the "
+          "comparator — a common arrangement, since it lets the sandboxed build reuse the "
+          "cache — the solution's first elaboration happened outside the sandbox. The run "
+          "record does not distinguish the two orders, so read the sandbox as covering the "
+          "replay only. To match it locally on Linux, install landrun at that revision — "
           <code>{{.text true (landrunInstallCommand cmp.landrunRef)}}</code>
-          " — and re-run under it. Without that step, and always on macOS, the local run is "
-          "a kernel check without the "
-          "sandbox: weaker than what CI performed."
+          " — and re-run under it; without that step, and always on macOS, the local run is "
+          "a kernel check with no sandbox at all."
         </p> }}
   let shell : Output.Html :=
     {{ <pre class="bp_trust_code bp_trust_code_shell">{{.text true (String.intercalate "\n" (reproCommands cmp))}}</pre> }}
@@ -270,12 +284,95 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
   trustSection "Reproduce it yourself"
     {{ <ol class="bp_trust_repro">{{.seq items.toArray}}</ol> }}
 
+/-- Render a list of artifact names as prose ("the claim, the solution and the
+configuration"). Empty ⇒ `""`. -/
+private def andList : List String → String
+  | [] => ""
+  | [a] => a
+  | [a, b] => s!"{a} and {b}"
+  | a :: rest => s!"{a}, {andList rest}"
+
+/--
+What ties the source shown on this page to the verdict above it: recorded digests, or
+nothing but a filename.
+
+The distinction is the whole point. A digest recorded by the verifying run and re-checked
+here against the displayed bytes rules out substitution; a matching name and path shape do
+not, because names are identifiers rather than content. The page states which of the two
+it has, per artifact, and never describes the second as if it were the first.
+-/
+private def contentBindingNote (cmp : TrustComparator) : Output.Html :=
+  let bound := cmp.contentBound
+  let unbound := cmp.contentUnbound
+  if bound.isEmpty && unbound.isEmpty then .empty
+  else
+    let boundSentence : Output.Html :=
+      if bound.isEmpty then .empty
+      else
+        {{ {{.text true
+              s!"This build hashed the bytes it displays for {andList bound} and required \
+                 them to equal the SHA-256 digests the verifying run recorded. A \
+                 disagreement fails the build, so what you are reading is byte-for-byte \
+                 what was checked."}} }}
+    let unboundSentence : Output.Html :=
+      if unbound.isEmpty then .empty
+      else
+        let pronoun := if unbound.length == 1 then "it is" else "they are"
+        {{ {{.text true
+              s!" This verdict's record carries no digest for {andList unbound}, so {pronoun} \
+                 tied to it by file name and path shape only — identifiers, not contents. \
+                 A same-named file stating something else would be displayed here without \
+                 tripping any check. Follow the repository links above to read the source at \
+                 the pinned commit."}} }}
+    {{ <p class="bp_trust_note">{{.seq #[boundSentence, unboundSentence]}}</p> }}
+
+/--
+What the linked run recorded about the independent kernel replay, and whether the
+comparator configuration has changed since.
+
+Never derived from `enable_nanoda`: that field says what the *next* run will do.
+-/
+private def nanodaEvidenceNote (cmp : TrustComparator) : Output.Html :=
+  let unrecorded : Output.Html :=
+    if cmp.nanodaReplayRecorded then .empty
+    else if cmp.enableNanoda then
+      {{ <p class="bp_trust_note">
+           "The comparator configuration in this repository enables an independent nanoda "
+           "kernel replay, but this verdict's record predates the field that says whether the "
+           "run performed one. Nothing here claims a second kernel checked this verdict; the "
+           "next run will record it."
+         </p> }}
+    else .empty
+  let drift : Output.Html :=
+    match cmp.nanodaConfigDrift? with
+    | some true =>
+      {{ <p class="bp_trust_note">
+           "The comparator configuration has changed since this verdict: it now enables an "
+           "independent nanoda kernel replay, and the linked run recorded that it performed "
+           "none. The reproduce commands below describe the current configuration, not the "
+           "run above."
+         </p> }}
+    | some false =>
+      {{ <p class="bp_trust_note">
+           "The comparator configuration has changed since this verdict: the linked run "
+           "recorded an independent nanoda kernel replay, and the configuration no longer "
+           "enables one. The reproduce commands below describe the current configuration, "
+           "not the run above."
+         </p> }}
+    | none => .empty
+  .seq #[unrecorded, drift]
+
 /-- Body of the claim-first `comparator/` page. A verdict header, the challenge statement
 ("the claim"), a plain account of what the comparator does and does not check, the human step
 the reader must still perform, a three-tier "reproduce it yourself" section, then the Solution
 source and the comparator configuration. Each section probes-and-degrades to nothing when its
-data is absent. -/
-private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
+data is absent.
+
+Public so tests can render the page's markup from a `TrustComparator` directly: the
+run-evidence and content-binding rules this body enforces are the point of the page,
+and asserting them through a generated site would test the `ExtraStep` plumbing
+instead. -/
+def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
   -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool refs).
   let verdict := comparatorVerdictHeader cmp ciUrl? theoremLikeTotal
@@ -334,25 +431,32 @@ private def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
       trustSection "The claim"
         (.seq #[linksRow,
           trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource,
+          contentBindingNote cmp,
           liveNote])
   -- 3. What this page certifies (static prose).
+  --    The second-kernel clause is *run evidence* (`nanoda_replay`), not configuration:
+  --    an author who switches `enable_nanoda` on must not thereby make a past verdict
+  --    claim a replay it never had.
   let kernelClause : Output.Html :=
-    if cmp.enableNanoda then
-      {{ "Lean kernel — and, independently, the nanoda kernel, a separate reimplementation of "
-         "Lean's type checker — to confirm that the solution proves exactly the challenge "
-         "statements, using only the permitted axioms listed above." }}
+    if cmp.replayedWithNanoda then
+      {{ "Lean kernel — and, in the run that produced this verdict, independently the nanoda "
+         "kernel, a separate reimplementation of Lean's type checker — to confirm that the "
+         "solution proves exactly the challenge statements, using only the permitted axioms "
+         "listed above." }}
     else
       {{ "Lean kernel to confirm that the solution proves exactly the challenge statements, using "
          "only the permitted axioms listed above." }}
   let certifiesSection : Output.Html :=
     trustSection "What this page certifies"
-      {{
-        <p class="bp_trust_prose">
-          "The statement comparator is an independent checking tool maintained by the Lean "
-          "project. It elaborates the challenge and the solution in separate environments, so the "
-          "solution cannot weaken or restate the claims it is measured against, and then asks the "
-          {{kernelClause}}
-        </p> }}
+      (.seq #[
+        {{
+          <p class="bp_trust_prose">
+            "The statement comparator is an independent checking tool maintained by the Lean "
+            "project. It elaborates the challenge and the solution in separate environments, so the "
+            "solution cannot weaken or restate the claims it is measured against, and then asks the "
+            {{kernelClause}}
+          </p> }},
+        nanodaEvidenceNote cmp])
   -- 4. What you must still check yourself (the one non-automatable step).
   let reproducedClause : Output.Html :=
     if cmp.challengeSource.isEmpty then .empty else {{ " (reproduced in full above)" }}
