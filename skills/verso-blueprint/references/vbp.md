@@ -8,7 +8,7 @@ Run `lake exe vbp --help` for complete local CLI usage. The main command forms a
 
 ```bash
 lake exe vbp discover
-lake exe vbp build [--output <dir>] [--pdf] [--verbose] [--serve] [--port <n>]
+lake exe vbp build [--output <dir>] [--serve] [--port <n>]
 lake exe vbp query [--site <dir>] <selector>
 lake exe vbp check [--site <dir>]
 ```
@@ -37,9 +37,11 @@ Defaults:
 - `build` writes `_out/site`.
 - `query` and `check` read `_out/site`.
 - Pass `--output <dir>` only to choose where `build` writes generated output.
-- Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX.
-- Pass `--verbose` to show Blueprint generation phase progress while building.
 - Pass `--site <dir>` to `query` or `check` only when reading a non-default site.
+- `build` has no other options. Any other argument is rejected with
+  `unknown build option '<arg>'` before the build starts. In particular this
+  fork emits HTML only: it does not carry upstream's TeX/PDF export, so there is
+  no `--pdf` or `--pdf-engine`.
 
 ## Build And Serve
 
@@ -52,18 +54,12 @@ file with Lake, then runs the generator through Lean's interpreter:
 ```bash
 lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output <output>
+lake env lean --run <GeneratorMain>.lean --output <output>
 ```
 
 The explicit `:olean` facet is important for Mathlib consumers: Lake's default
 `leanArts` facet also emits C and can otherwise trigger an unintended native
 dependency rebuild.
-
-`build --verbose` passes `--verbose` through to the generator run, enabling Blueprint generation phase progress after the Lake package build completes.
-Pass `--pdf` to build `_out/site/pdf/main.pdf` from the generated TeX output.
-`--pdf-engine <cmd>` and `--pdf-runs <n>` are forwarded to the generator when
-the local project's `vbp` binary supports them; run `lake exe vbp --help` for the
-exact local flag surface.
 
 `build --serve` builds once, then serves `<output>/html-multi` with a local static server and keeps running. Without `--port`, it tries port `8000` and falls back to an available port. With `--serve --port <n>`, it fails if the requested port is unavailable. `--port` is accepted only with `--serve`. The command prints the actual preview URL.
 
@@ -113,10 +109,10 @@ For older projects, inspect the generator entry point, then use:
 ```bash
 lake build +<BlueprintLibrary>:olean
 lake lean <GeneratorMain>.lean
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --output _out/site
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-manifest
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --dump-html-cache
-lake lean <GeneratorMain>.lean -- --run <GeneratorMain>.lean --help
+lake env lean --run <GeneratorMain>.lean --output _out/site
+lake env lean --run <GeneratorMain>.lean --dump-manifest
+lake env lean --run <GeneratorMain>.lean --dump-html-cache
+lake env lean --run <GeneratorMain>.lean --help
 ```
 
 The manifest/cache files are implementation details for normal agent work; use them directly only when `vbp query` is unavailable or when debugging `vbp` itself.

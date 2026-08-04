@@ -131,14 +131,15 @@ scripts/lean-low-priority lake test
 ./scripts/validate-test-blueprints.sh --skip-generate
 ```
 
-PDF changes can add the optional real-engine smoke check:
-
-```bash
-./scripts/validate-test-blueprints.sh --run-real-pdf-smoke
-```
-
-The smoke check builds `project_template` with `--pdf`, verifies
-`pdf/main.pdf`, and skips itself when `lualatex` is not installed.
+> **Known broken (inherited from upstream).** `vbp build` in this fork accepts
+> only `--output`, `--serve`, and `--port`; TeX/PDF export is not carried over.
+> Every remaining PDF path in the maintainer tooling therefore passes a flag the
+> CLI rejects and cannot succeed: `scripts/blueprint_test_blueprints.py`'s
+> `--run-real-pdf-smoke`, `scripts/generate-reference-blueprints.sh --pdf` (used
+> by `.github/workflows/reference-blueprints.yml`), and the `publish_pdf` deploy
+> matrix entries. Do not follow PDF instructions from upstream documentation
+> against this fork; the sections below describe what that inherited tooling
+> attempts, not a working capability.
 
 Use browser pytest directly only when the patch changes browser runtime or
 interaction behavior:

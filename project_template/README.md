@@ -99,14 +99,9 @@ lake exe vbp build
 then runs the generator through Lake's Lean wrapper without relying on a
 separate Lake executable target.
 
-To build a PDF locally, run:
-
-```bash
-lake exe vbp build --pdf
-```
-
-This writes `_out/site/pdf/main.pdf` and requires a `lualatex`-compatible
-command on `PATH`.
+`vbp build` accepts `--output <dir>`, `--serve`, and `--port <n>`, and rejects
+anything else. The site is HTML only — this fork does not carry upstream's
+TeX/PDF export, so there is no local PDF build.
 
 ## GitHub Pages
 
