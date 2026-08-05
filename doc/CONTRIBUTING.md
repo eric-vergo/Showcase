@@ -109,9 +109,12 @@ Do those upstream write actions only when they are explicitly requested.
   reason. New-release branch-start PRs instead use the machine-checked
   `release-line bootstrap` status for every resulting required line.
 - Exemptions are limited to changes whose files are all documentation or
-  repository metadata. Source, scripts, tests, templates, package
-  configuration, and runtime assets require paired backports so maintenance
-  lines remain structurally aligned for future cherry-picks.
+  repository metadata. The release-specific reference catalog at
+  `tests/harness/projects.json` is metadata: moving a project to its intended
+  current release must not recreate that target on older release branches.
+  Source, scripts, other tests, templates, package configuration, and runtime
+  assets require paired backports so maintenance lines remain structurally
+  aligned for future cherry-picks.
 - `release-line bootstrap` is not a general exemption. CI accepts it only when
   every resulting required line uses that status and the PR demonstrably
   advances the Lean toolchain and default-development branch. The previous
