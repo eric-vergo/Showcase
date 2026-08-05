@@ -8,7 +8,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.blueprint_harness_backports import backport_exemption_violations
+from scripts.blueprint_harness_backports import (
+    RELEASE_LINE_BOOTSTRAP_STATUS,
+    backport_exemption_violations,
+)
 from scripts.blueprint_harness_branches import (
     BranchPolicyReleaseTarget,
     CHECKOUT_ROLE_CHOICES,
@@ -19,6 +22,7 @@ from scripts.blueprint_harness_branches import (
     default_dev_branch,
     checkout_is_backport_only,
     current_branch_name,
+    dedupe_release_branches,
     is_ancestor,
     load_branch_policy,
     local_release_ref,
@@ -81,7 +85,6 @@ PUBLIC_PR_SCOPED_TITLE_RE = re.compile(
     r"^(" + "|".join(re.escape(title_type) for title_type in PUBLIC_PR_TITLE_TYPES) + r")\([^)]*\):"
 )
 PULL_REQUEST_TEMPLATE_BACKPORT_LINE_RE = re.compile(r"^Backport\s+[^\s:]+\s*:\s*.+$")
-RELEASE_LINE_BOOTSTRAP_STATUS = "release-line bootstrap"
 
 
 def sync_root_worktree_lake(layout) -> None:
@@ -480,17 +483,6 @@ def command_bump_toolchain(args: argparse.Namespace) -> int:
     print(f"project_manifest={manifest_path}")
     print(f"validated={str(not args.skip_validation).lower()}")
     return 0
-
-
-def dedupe_release_branches(branches: list[str] | tuple[str, ...]) -> tuple[str, ...]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for branch in branches:
-        normalized = release_branch_from_lean_ref(branch)
-        if normalized not in seen:
-            result.append(normalized)
-            seen.add(normalized)
-    return tuple(result)
 
 
 def write_json(path: Path, data: object) -> None:

@@ -26,9 +26,9 @@ This repository keeps local parallel work simple:
   default-dev slug with a release marker in front of it.
   Examples:
   - default-dev branch: `fix/backport-discipline`
-  - paired `v4.31.0` backport branch: `fix/backport-v431-backport-discipline`
+  - paired `v4.32.0` backport branch: `fix/backport-v432-backport-discipline`
   - default-dev docs branch: `docs/manual-cleanup`
-  - paired `v4.31.0` docs backport branch: `docs/backport-v431-manual-cleanup`
+  - paired `v4.32.0` docs backport branch: `docs/backport-v432-manual-cleanup`
 
 Prefer short, descriptive slugs over opaque branch names.
 
@@ -107,16 +107,17 @@ Do those upstream write actions only when they are explicitly requested.
 - Non-draft PRs targeting the default-development branch must replace each
   `pending` entry with a paired backport PR number or an explicit exemption
   reason. New-release branch-start PRs instead use the machine-checked
-  `release-line bootstrap` status for every required line.
+  `release-line bootstrap` status for every resulting required line.
 - Exemptions are limited to changes whose files are all documentation or
   repository metadata. Source, scripts, tests, templates, package
   configuration, and runtime assets require paired backports so maintenance
   lines remain structurally aligned for future cherry-picks.
 - `release-line bootstrap` is not a general exemption. CI accepts it only when
-  every required line uses that status and the PR demonstrably advances the
-  Lean toolchain, default-development branch, and inherited backport sequence
-  from its base commit. Generate it with
-  `python3 -m scripts.blueprint_harness prepare-pr --release-line-bootstrap`.
+  every resulting required line uses that status and the PR demonstrably
+  advances the Lean toolchain and default-development branch. The previous
+  default and the newest inherited maintenance lines must remain unchanged;
+  the oldest contiguous suffix may retire in the same transition. Generate it
+  with `python3 -m scripts.blueprint_harness prepare-pr --release-line-bootstrap`.
 - `release-line retirement` is likewise machine-checked rather than exempt.
   CI accepts it only when the default Lean line stays fixed, the oldest
   contiguous suffix of required backports is removed, and every remaining
@@ -146,8 +147,9 @@ Do those upstream write actions only when they are explicitly requested.
   - use `python3 -m scripts.blueprint_harness prepare-backports` only when you
     need to refresh just the backport plan lines in an existing PR body
   - once it is ready for review, open the paired backport PRs
-  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.31.0 --main-pr <pr>` to scaffold one paired backport PR branch name, title, and body
-  - apply the scaffolded release label, for example `backport-v4.31.0`, to the
+  - use `python3 -m scripts.blueprint_harness prepare-backport-pr v4.32.0 --main-pr <pr>`
+    to scaffold one paired backport PR branch name, title, and body
+  - apply the scaffolded release label, for example `backport-v4.32.0`, to the
     paired backport PR
   - when several releases are required, use `python3 -m scripts.blueprint_harness prepare-backport-pr --all-required --main-pr <pr>` to emit one scaffold block per release, then let the agent apply the `git cherry-pick -x` series and resolve conflicts in each backport worktree
   - replace each `Backport ...: pending` line with `Backport ...: #<pr>`, or
@@ -161,9 +163,9 @@ Do those upstream write actions only when they are explicitly requested.
 - Record the pairing in the PR body using plain lines like:
 
 ```text
-Backport v4.31.0: pending
-Backport v4.31.0: #122
-Backport v4.31.0: exempt: docs-only change
+Backport v4.32.0: pending
+Backport v4.32.0: #122
+Backport v4.32.0: exempt: docs-only change
 ```
 
 See the repository PR template for the preferred structure.
