@@ -1,6 +1,6 @@
 # UPC-0018 Deferred Manual Block Term Elaboration
 
-Status: close-candidate
+Status: resolved
 Kind: performance
 Priority: high
 Origin: upstream-verso
@@ -14,11 +14,10 @@ Related cards: UPC-0017
 
 ## Summary
 
-Blueprint should reuse the elaborated directive-body work already performed for
+Blueprint now reuses the elaborated directive-body work already performed for
 preview evaluation instead of embedding the same body syntax in a deferred block
-term that Lean elaborates again when the document closes. A Blueprint-local
-representation prototype now demonstrates that reuse without requiring a Verso
-queue contract.
+term that Lean elaborates again when the document closes. The Blueprint-local
+representation requires no Verso queue contract.
 
 ## Impact
 
@@ -34,7 +33,7 @@ removed directive bodies only from the final deferred terms saved 7.40s of
 directive term elaboration. This is an upper bound for reuse, not an acceptable
 implementation.
 
-A behavior-preserving Blueprint prototype now retains each accepted directive's
+A behavior-preserving Blueprint implementation retains each accepted directive's
 elaborated body in an internal compiled array definition, evaluates that same
 definition for preview data, and refers to it during final document assembly.
 In a bracketed candidate/baseline/candidate comparison, mean candidate user CPU
@@ -45,12 +44,10 @@ threshold.
 
 ## Roadmap Decision
 
-Land the validated retained-body implementation as a Blueprint-local patch. It
-uses existing Lean elaborator facilities and does not require a Verso
-deferred-queue change, so this upstream card is now a `close-candidate`. Resolve
-it once the local implementation lands. Reopen upstream design only if later
-evidence demonstrates a general queue contract that cannot be expressed at the
-Blueprint directive boundary.
+Resolved by the retained-body implementation in Blueprint. It uses existing
+Lean elaborator facilities and does not require a Verso deferred-queue change.
+Reopen upstream design only if later evidence demonstrates a general queue
+contract that cannot be expressed at the Blueprint directive boundary.
 
 ## Reproduction Status
 
@@ -60,7 +57,7 @@ project with Lean `v4.33.0-rc1`. Dependency compilation, native executable
 generation, traversal, and HTML rendering were excluded. Prefixes ended only at
 complete top-level block boundaries and all elaborated successfully.
 
-The behavior-preserving prototype was then measured on Blueprint base
+The behavior-preserving implementation was then measured on Blueprint base
 `1ff5697c`, Carleson revision `15f3cc5552342b78a399043c88f581168dabfd1a`, and
 the same pinned Lean `v4.33.0-rc1` reference environment. Package regression
 tests used the current `v4.33.0-rc2` development toolchain.
@@ -97,7 +94,7 @@ but would not reduce whole-module time.
 
 This card owns the now-resolved ownership question around reuse of Blueprint
 directive-body elaboration between preview evaluation and final document
-construction. The prototype demonstrates a Blueprint-local boundary and no
+construction. The implementation demonstrates a Blueprint-local boundary and no
 current Verso queue requirement. UPC-0017 owns external-declaration signature
 conversion during incremental directive elaboration. Syntax assembly,
 reconstruction JSON, the outer `VersoDoc` definition, `saveRefsInEnv`, math
@@ -154,6 +151,25 @@ peak RSS was 314,322 KiB (5.7%) lower, and the `.olean` was 1,400,336 bytes
 (3.3%) smaller. Both candidate `.olean` files were byte-identical, with SHA-256
 `01cef9777771525e06a75cb717821d48019fa99c3e2677206a525eea989e7e0b`.
 
+A matched structured-profiler comparison isolated the finalization effect:
+
+| Structured trace | Complete traced span | Final block | Final share | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline | 236.17s | 67.69s | 28.7% | 6,062,788 KiB |
+| Candidate | 237.76s | 53.02s | 22.3% | 5,499,224 KiB |
+| Difference | +1.58s | **-14.67s** | -6.4 points | **-563,564 KiB** |
+
+The 21.7% final-block reduction came from the expected elaborator leaves:
+application arguments fell by 8.96s and `let` terms by 6.07s, while unrelated
+final-command residual time remained stable.
+
+Compiling only the affected owner-module translation unit checked the native
+artifact consequence without rebuilding 8,306 cached Mathlib C files and 117
+Carleson C files. Generated C grew by 366,379 bytes (1.6%) and the object file
+by 222,208 bytes (1.2%) because the implementation adds one retained definition
+per accepted directive. Loadable object sections nevertheless fell by 18,921
+bytes (0.15%), including 21,473 fewer bytes of executable text.
+
 The complete candidate Carleson site passed `vbp check` with 531 manifest and
 531 HTML-cache entries. Baseline and candidate trees contained the same 176
 files; their raw differences reduced to the live timestamp, Lean per-run
@@ -172,7 +188,5 @@ the durable summary.
 
 ## Current Workaround
 
-A Blueprint-local implementation is ready for a separate landing PR. Until it
-lands, released Blueprint versions retain evaluated preview values but not
-reusable elaborated body references, so owner modules still pay the second
-elaboration. No upstream Verso change is required by the validated design.
+None. Blueprint retains reusable elaborated body references locally, and no
+upstream Verso change is required by the validated design.
