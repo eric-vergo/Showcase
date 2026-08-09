@@ -4,7 +4,7 @@ Status: open
 Kind: performance
 Priority: high
 Origin: upstream-verso
-Last reviewed: 2026-07-16
+Last reviewed: 2026-08-09
 Owner: none
 Issue: none linked
 PR: none linked

@@ -1,6 +1,6 @@
 # Blueprint Roadmap Cards
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-08-09
 
 This directory tracks maintainer planning cards for scoped implementation and
 upstream follow-up work. Cards are not end-user setup docs, option references,
@@ -13,27 +13,52 @@ or release notes.
 - This file owns the short, maturity-grouped index of upstream asks that should
   eventually move into `verso`, Lake, Lean, or a related upstream package.
 - [`cards/`](./cards/) owns actionable card details: status, evidence,
-  workaround, and the local code or docs that can be removed after the work
+  workaround, and any local code or docs that can be removed after the work
   lands.
 - [`TEMPLATE.md`](./TEMPLATE.md) is the starting point for new cards.
+
+## Verso Performance Collaboration Plan
+
+The performance cards use FLT, Carleson, and Noperthedron as representative
+downstream workloads for a coordinated upstream program. The cards contain the
+quantitative source of truth; this index records sequencing and ownership.
+The post-#391 FLT rebaseline is supporting measurement for UPC-0015 and
+UPC-0016 rather than a separate upstream ask.
+
+| Phase | Cards | Proposed collaboration |
+| --- | --- | --- |
+| Ready for focused upstream patches | [`UPC-0008`](./cards/UPC-0008-highlighted-docstring-performance/README.md), [`UPC-0015`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md), [`UPC-0016`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Review small behavior-preserving changes, attach current-head measurements, and land independently where useful. |
+| Needs Verso/SubVerso design | [`UPC-0017`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md) | Agree which highlighted-signature facts are layout-independent and how token identities remain canonical before implementing cache sharing. |
+| Needs joint scaling attribution | [`UPC-0018`](./cards/UPC-0018-large-manual-document-assembly-scaling/README.md) | Measure valid document prefixes and identify the responsible representation or elaboration boundary before proposing an API. |
+
+Before publishing new headline percentages, rerun the representative workload
+on current Verso and Blueprint heads. Preserve raw order-balanced runs, require
+semantic or byte-level output validation, and confirm that the sampled hotspot
+moves as predicted. For native-generator work, treat wall time, sampled
+profiles, and hardware counters as noisy evidence, with counters used only as
+secondary work-reduction evidence. For elaboration work, use Lean's structured
+profiler and non-overlapping phase timers instead of native-runtime counters.
 
 ## Card Prefixes
 
 - `BPC`: Blueprint-local cards for repository-owned cleanup, release, UX,
   documentation, or validation work.
 - `UPC`: upstream platform cards for `verso`, Lake, Lean, `verso-slides`, or
-  related upstream behavior that would let Blueprint delete local workaround
-  code.
+  related upstream behavior that improves Blueprint's upstream foundation or
+  lets Blueprint delete local workaround code.
 
 ## Validated Upstream Asks
 
-These cards have a current local pressure point and a specific workaround or
-removal target.
+These cards have a current local pressure point, enough evidence to act, and a
+specific upstream target. They record a workaround or removal target whenever
+one exists.
 
 | Area | Card | Origin | Priority |
 | --- | --- | --- | --- |
 | Manual pipeline | [`UPC-0001 Private Xref Domain Export`](./cards/UPC-0001-private-xref-domain-export/README.md) | Verso | high |
 | Manual pipeline | [`UPC-0002 Manual HTML Extension Hooks`](./cards/UPC-0002-manual-html-extension-hooks/README.md) | Verso | high |
+| Manual emission | [`UPC-0015 Single-Owner Compact Xref Emission`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md) | Verso | high |
+| HTML serialization | [`UPC-0016 One-Pass Manual HTML Escaping`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Verso | high |
 | Manual layout | [`UPC-0003 Wide Content Page Mode`](./cards/UPC-0003-wide-content-page-mode/README.md) | Verso | medium |
 | Browser assets | [`UPC-0004 Structured Runtime Assets`](./cards/UPC-0004-structured-runtime-assets/README.md) | Verso | high |
 | Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-verso-slides-pipeline-hooks/README.md) | verso-slides | medium |
@@ -52,6 +77,8 @@ work.
 - [`UPC-0009 Highlighted Hover Robustness`](./cards/UPC-0009-highlighted-hover-robustness/README.md)
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
+- [`UPC-0017 Layout-Independent Signature Highlighting Cache`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md)
+- [`UPC-0018 Large Manual Document Assembly Scaling`](./cards/UPC-0018-large-manual-document-assembly-scaling/README.md)
 
 ## Resolved Cards
 

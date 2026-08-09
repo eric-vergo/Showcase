@@ -10,7 +10,7 @@ Issue: none linked
 PR: none linked
 Upstream timing: as soon as possible
 Removal target: `PreviewManifest.blueprintMain`
-Related cards: UPC-0001
+Related cards: UPC-0001, UPC-0015
 
 ## Summary
 
@@ -46,6 +46,9 @@ This card owns traversal/emission lifecycle extension points and removal of the
 copied dispatcher. [`UPC-0001`](../UPC-0001-private-xref-domain-export/README.md)
 owns which domains are public and the desired upstream xref API; this hook may
 carry that policy, but does not define it.
+[`UPC-0015`](../UPC-0015-single-owner-compact-xref-emission/README.md) owns how
+often xref data is serialized and which semantics-preserving serializer is
+used.
 
 ## Expected Behavior
 
