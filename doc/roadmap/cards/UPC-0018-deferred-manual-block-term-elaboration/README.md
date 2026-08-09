@@ -112,8 +112,8 @@ this card.
   generated output remain equivalent.
 - The resulting `.olean` is reproducible and the complete owner module still
   elaborates successfully.
-- Peak RSS, `.olean` size, and `.olean` serialization time are compared with the
-  same warmed baseline, and any regression is reported and justified.
+- Peak RSS and `.olean` size are compared with the same warmed baseline, and any
+  regression is reported and justified.
 - Acceptance is based on reduced complete owner-module time, not only moving
   work away from `finishDoc`.
 - No upstream API is proposed unless later evidence demonstrates a requirement
