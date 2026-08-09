@@ -125,12 +125,13 @@ The counters were multiplexed at about 83% coverage and scaled by `perf`.
 Focused public-API guards, `lake build Tests.Html`, the full Verso `lake test`,
 and direct `vbp check` with 586/586 manifest and cache entries all passed.
 Baseline and candidate FLT sites were byte-identical except for the live
-compiled timestamp. The preserved current experiment record is
-`flt-html-escape-current-002`.
+compiled timestamp. The local experiment record id is
+`flt-html-escape-current-002`; its raw `_out/` bundle is not tracked repository
+content, so the upstream PR must attach a fresh current-head comparison.
 
 ## Current Workaround
 
 No downstream workaround can remove this generic serializer cost. The accepted
-prototype is preserved in a detached dependency checkout and must be
+prototype and patch are retained only in local profiling state and must be
 reconstructed in a clean upstream Verso worktree rather than published from the
 reproducibility checkout.

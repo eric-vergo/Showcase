@@ -90,6 +90,9 @@ declaration-name caches across unrelated references are outside this card.
 Absolute wall time varied substantially with host load; the within-run order
 reversal is the useful causal evidence. The naive prototype is not
 behavior-preserving and is evidence for co-design, not a landing candidate.
+The raw Carleson profiling bundle is maintainer-local and untracked; this table
+is its durable summary. A future implementation must publish a fresh
+current-head comparison together with serialized-data and browser validation.
 
 ## Current Workaround
 

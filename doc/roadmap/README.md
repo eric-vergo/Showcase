@@ -41,6 +41,11 @@ profiles, and hardware counters as noisy evidence, with counters used only as
 secondary work-reduction evidence. For elaboration work, use Lean's structured
 profiler and non-overlapping phase timers instead of native-runtime counters.
 
+The historical raw bundles named by these cards are maintainer-local profiling
+artifacts under ignored `_out/` directories, not repository content. The cards
+preserve their reviewable summaries and identities; any upstream implementation
+PR must rerun the workload on current heads and attach or link its raw evidence.
+
 ## Measured Queue Boundaries
 
 - Residual `String.posOfImpl` is the measured signature of UPC-0015's duplicate

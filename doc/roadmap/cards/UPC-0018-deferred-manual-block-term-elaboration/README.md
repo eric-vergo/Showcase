@@ -41,7 +41,8 @@ elaborated references alongside Blueprint's preview values. The final directive
 term should refer to that retained representation instead of re-elaborating its
 body syntax. Keep this card `candidate` until the prototype preserves document
 reconstruction hygiene, diagnostics and source information, generated output,
-and `.olean` reproducibility. Escalate to a Verso API proposal only if the
+and `.olean` reproducibility without an unjustified peak-memory, artifact-size,
+or serialization-time regression. Escalate to a Verso API proposal only if the
 behavior-preserving prototype requires a general deferred-queue contract.
 
 ## Reproduction Status
@@ -92,6 +93,8 @@ this card.
   generated output remain equivalent.
 - The resulting `.olean` is reproducible and the complete owner module still
   elaborates successfully.
+- Peak RSS, `.olean` size, and `.olean` serialization time are compared with the
+  same warmed baseline, and any regression is reported and justified.
 - Acceptance is based on reduced complete owner-module time, not only moving
   work away from `finishDoc`.
 - Any upstream API is the smallest contract demonstrated by the Blueprint
@@ -121,6 +124,10 @@ The separate source-attribution run partitioned deferred term elaboration:
 Absolute workstation wall times varied with host load. The useful evidence is
 the within-run phase partition, valid-prefix curve, source distribution, and
 controlled body-elision delta rather than a cross-run elapsed-time comparison.
+The raw Carleson profiling bundle and exploratory report are maintainer-local
+and untracked; the tables above are the durable summary. A behavior-preserving
+prototype must publish a fresh current-head comparison, including its memory
+and `.olean` artifact tradeoffs.
 
 ## Current Workaround
 

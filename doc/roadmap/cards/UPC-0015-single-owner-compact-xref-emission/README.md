@@ -114,9 +114,11 @@ Two order-balanced counter comparisons measured the changes independently:
 | Remove duplicate emission | 26.433B | 22.258B | -15.80% | 6.827B | 5.711B | -16.35% |
 | Use compact serialization | 22.257B | 18.623B | -16.33% | 5.674B | 4.916B | -13.37% |
 
-The preserved historical experiment records are `flt-html-next-017` and
-`flt-xref-compact-018`. A current-head rerun should attach exact repository,
-binary, input, and raw-run identities to the upstream PR.
+The local historical experiment record ids are `flt-html-next-017` and
+`flt-xref-compact-018`. Their raw `_out/` bundles are not tracked repository
+content; this card is the durable quantitative summary. A current-head rerun
+must attach exact repository, binary, input, and raw-run identities to the
+upstream PR.
 
 The timing-neutral current profile contained 2,844 samples with no loss and
 attributed 470,478,209 of approximately 5,894,099,057 sampled user cycles to
