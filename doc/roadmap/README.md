@@ -23,13 +23,15 @@ The performance cards use FLT, Carleson, and Noperthedron as representative
 downstream workloads for a coordinated upstream program. The cards contain the
 quantitative source of truth; this index records sequencing and ownership.
 The post-#391 FLT rebaseline is supporting measurement for UPC-0015 and
-UPC-0016 rather than a separate upstream ask.
+UPC-0016 rather than a separate upstream ask. The completed Carleson prefix and
+source-attribution studies similarly refine UPC-0018 rather than creating a new
+general document-assembly card.
 
 | Phase | Cards | Proposed collaboration |
 | --- | --- | --- |
 | Ready for focused upstream patches | [`UPC-0008`](./cards/UPC-0008-highlighted-docstring-performance/README.md), [`UPC-0015`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md), [`UPC-0016`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Review small behavior-preserving changes, attach current-head measurements, and land independently where useful. |
 | Needs Verso/SubVerso design | [`UPC-0017`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md) | Agree which highlighted-signature facts are layout-independent and how token identities remain canonical before implementing cache sharing. |
-| Needs joint scaling attribution | [`UPC-0018`](./cards/UPC-0018-large-manual-document-assembly-scaling/README.md) | Measure valid document prefixes and identify the responsible representation or elaboration boundary before proposing an API. |
+| Needs Blueprint/Verso representation prototype | [`UPC-0018`](./cards/UPC-0018-deferred-manual-block-term-elaboration/README.md) | Reuse preview-elaborated directive bodies in a Blueprint prototype, then propose only the minimal deferred-queue contract that the behavior-preserving implementation proves necessary. |
 
 Before publishing new headline percentages, rerun the representative workload
 on current Verso and Blueprint heads. Preserve raw order-balanced runs, require
@@ -38,6 +40,22 @@ moves as predicted. For native-generator work, treat wall time, sampled
 profiles, and hardware counters as noisy evidence, with counters used only as
 secondary work-reduction evidence. For elaboration work, use Lean's structured
 profiler and non-overlapping phase timers instead of native-runtime counters.
+
+## Measured Queue Boundaries
+
+- Residual `String.posOfImpl` is the measured signature of UPC-0015's duplicate
+  pretty-printed xref path, not a separate substring-search optimization.
+- Generic fragment-array and string-accumulator HTML builders were tied with or
+  slower than the existing serializer on representative Carleson render trees.
+  They are rejected; UPC-0016's narrower one-pass escaping change remains
+  queued.
+- Compact-writer substitutions at either owner of `-verso-docs.json` were too
+  small or slower. Revisit docs serialization only as a single-owner design
+  that removes the intermediate write/read/full-rewrite path.
+- After the ready xref and escaping patches are combined, rerun the complete
+  diagnostics-off native generator before selecting another target. Aggregate
+  `lean_string_push` and JSON-rendering symbols require phase and caller
+  attribution first; Porter stemming and token insertion remain lower priority.
 
 ## Card Prefixes
 
@@ -58,7 +76,7 @@ one exists.
 | Manual pipeline | [`UPC-0001 Private Xref Domain Export`](./cards/UPC-0001-private-xref-domain-export/README.md) | Verso | high |
 | Manual pipeline | [`UPC-0002 Manual HTML Extension Hooks`](./cards/UPC-0002-manual-html-extension-hooks/README.md) | Verso | high |
 | Manual emission | [`UPC-0015 Single-Owner Compact Xref Emission`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md) | Verso | high |
-| HTML serialization | [`UPC-0016 One-Pass Manual HTML Escaping`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Verso | high |
+| HTML serialization | [`UPC-0016 One-Pass HTML Escaping`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Verso | high |
 | Manual layout | [`UPC-0003 Wide Content Page Mode`](./cards/UPC-0003-wide-content-page-mode/README.md) | Verso | medium |
 | Browser assets | [`UPC-0004 Structured Runtime Assets`](./cards/UPC-0004-structured-runtime-assets/README.md) | Verso | high |
 | Slides pipeline | [`UPC-0006 Verso Slides Pipeline Hooks`](./cards/UPC-0006-verso-slides-pipeline-hooks/README.md) | verso-slides | medium |
@@ -78,7 +96,7 @@ work.
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
 - [`UPC-0017 Layout-Independent Signature Highlighting Cache`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md)
-- [`UPC-0018 Large Manual Document Assembly Scaling`](./cards/UPC-0018-large-manual-document-assembly-scaling/README.md)
+- [`UPC-0018 Deferred Manual Block Term Elaboration`](./cards/UPC-0018-deferred-manual-block-term-elaboration/README.md)
 
 ## Resolved Cards
 

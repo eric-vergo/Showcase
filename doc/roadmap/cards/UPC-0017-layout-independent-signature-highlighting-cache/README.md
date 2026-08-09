@@ -10,7 +10,7 @@ Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: duplicate layout-independent classification during external declaration rendering
-Related cards: UPC-0014, UPC-0018
+Related cards: UPC-0014, UPC-0016, UPC-0018
 
 ## Summary
 
@@ -65,9 +65,10 @@ example from `_uniq.3599` to `_uniq.3597`.
 
 This card owns reuse between the two layouts of one declaration signature.
 UPC-0014 owns portable hover-fragment transfer after highlighted rendering.
-UPC-0018 owns final large-document assembly. Persistent cross-run caches,
-browser startup, and declaration-name caches across unrelated references are
-outside this card.
+UPC-0016 owns generic HTML escaping in the later serialization path, and
+UPC-0018 owns reuse of Blueprint directive-body elaboration during final
+document construction. Persistent cross-run caches, browser startup, and
+declaration-name caches across unrelated references are outside this card.
 
 ## Expected Behavior
 
