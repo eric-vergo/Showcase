@@ -25,13 +25,15 @@ quantitative source of truth; this index records sequencing and ownership.
 The post-#391 FLT rebaseline is supporting measurement for UPC-0015 and
 UPC-0016 rather than a separate upstream ask. The completed Carleson prefix and
 source-attribution studies similarly refine UPC-0018 rather than creating a new
-general document-assembly card.
+general document-assembly card. A subsequent behavior-preserving Blueprint
+prototype satisfied UPC-0018's acceptance criteria without requiring a Verso
+deferred-queue contract.
 
 | Phase | Cards | Proposed collaboration |
 | --- | --- | --- |
 | Ready for focused upstream patches | [`UPC-0008`](./cards/UPC-0008-highlighted-docstring-performance/README.md), [`UPC-0015`](./cards/UPC-0015-single-owner-compact-xref-emission/README.md), [`UPC-0016`](./cards/UPC-0016-one-pass-manual-html-escaping/README.md) | Review small behavior-preserving changes, attach current-head measurements, and land independently where useful. |
 | Needs Verso/SubVerso design | [`UPC-0017`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md) | Agree which highlighted-signature facts are layout-independent and how token identities remain canonical before implementing cache sharing. |
-| Needs Blueprint/Verso representation prototype | [`UPC-0018`](./cards/UPC-0018-deferred-manual-block-term-elaboration/README.md) | Reuse preview-elaborated directive bodies in a Blueprint prototype, then propose only the minimal deferred-queue contract that the behavior-preserving implementation proves necessary. |
+| Blueprint-local patch ready | [`UPC-0018`](./cards/UPC-0018-deferred-manual-block-term-elaboration/README.md) | Land retained directive bodies in Blueprint, then resolve the upstream candidate; reopen upstream design only if later evidence demonstrates a general deferred-queue requirement. |
 
 Before publishing new headline percentages, rerun the representative workload
 on current Verso and Blueprint heads. Preserve raw order-balanced runs, require
@@ -101,6 +103,12 @@ work.
 - [`UPC-0012 Lake Update Package Overrides`](./cards/UPC-0012-lake-update-package-overrides/README.md)
 - [`UPC-0013 Bibliography Formatting Boundary`](./cards/UPC-0013-bibliography-formatting-boundary/README.md)
 - [`UPC-0017 Layout-Independent Signature Highlighting Cache`](./cards/UPC-0017-layout-independent-signature-highlighting-cache/README.md)
+
+## Close Candidates
+
+These cards have enough evidence to close as upstream asks once their named
+local landing or final verification step is complete.
+
 - [`UPC-0018 Deferred Manual Block Term Elaboration`](./cards/UPC-0018-deferred-manual-block-term-elaboration/README.md)
 
 ## Resolved Cards
@@ -120,7 +128,9 @@ work.
    code.
 7. Use `open` only for a validated pressure point with enough evidence to act.
    Use `candidate` for an ownership question, historical-only repro, or proposed
-   behavior that still needs a concrete failure case.
+   behavior that still needs a concrete failure case. Use `close-candidate`
+   when evidence rejects upstream action but a named local landing or final
+   verification remains before resolution.
 8. Merge cards when the same upstream change removes the same workaround. Keep
    related cards split when either change can land and be removed independently,
    and record that boundary in both cards.

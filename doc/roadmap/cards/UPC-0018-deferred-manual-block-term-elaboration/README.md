@@ -1,6 +1,6 @@
 # UPC-0018 Deferred Manual Block Term Elaboration
 
-Status: candidate
+Status: close-candidate
 Kind: performance
 Priority: high
 Origin: upstream-verso
@@ -16,9 +16,9 @@ Related cards: UPC-0017
 
 Blueprint should reuse the elaborated directive-body work already performed for
 preview evaluation instead of embedding the same body syntax in a deferred block
-term that Lean elaborates again when the document closes. Start with a
-Blueprint-local representation prototype; propose a Verso queue contract only
-if that prototype demonstrates an upstream boundary.
+term that Lean elaborates again when the document closes. A Blueprint-local
+representation prototype now demonstrates that reuse without requiring a Verso
+queue contract.
 
 ## Impact
 
@@ -34,16 +34,23 @@ removed directive bodies only from the final deferred terms saved 7.40s of
 directive term elaboration. This is an upper bound for reuse, not an acceptable
 implementation.
 
+A behavior-preserving Blueprint prototype now retains each accepted directive's
+elaborated body in an internal compiled array definition, evaluates that same
+definition for preview data, and refers to it during final document assembly.
+In a bracketed candidate/baseline/candidate comparison, mean candidate user CPU
+was 92.66s versus 139.60s for the baseline. Mean wall was 84.43s versus 122.82s,
+but the two candidate wall times differed by 24s under changing host load, so
+the elapsed percentage is supporting evidence rather than a regression
+threshold.
+
 ## Roadmap Decision
 
-Prototype retention of reusable private block definitions or equivalent
-elaborated references alongside Blueprint's preview values. The final directive
-term should refer to that retained representation instead of re-elaborating its
-body syntax. Keep this card `candidate` until the prototype preserves document
-reconstruction hygiene, diagnostics and source information, generated output,
-and `.olean` reproducibility without an unjustified peak-memory, artifact-size,
-or serialization-time regression. Escalate to a Verso API proposal only if the
-behavior-preserving prototype requires a general deferred-queue contract.
+Land the validated retained-body implementation as a Blueprint-local patch. It
+uses existing Lean elaborator facilities and does not require a Verso
+deferred-queue change, so this upstream card is now a `close-candidate`. Resolve
+it once the local implementation lands. Reopen upstream design only if later
+evidence demonstrates a general queue contract that cannot be expressed at the
+Blueprint directive boundary.
 
 ## Reproduction Status
 
@@ -52,6 +59,11 @@ Reproduced by directly elaborating warm, valid prefixes of
 project with Lean `v4.33.0-rc1`. Dependency compilation, native executable
 generation, traversal, and HTML rendering were excluded. Prefixes ended only at
 complete top-level block boundaries and all elaborated successfully.
+
+The behavior-preserving prototype was then measured on Blueprint base
+`1ff5697c`, Carleson revision `15f3cc5552342b78a399043c88f581168dabfd1a`, and
+the same pinned Lean `v4.33.0-rc1` reference environment. Package regression
+tests used the current `v4.33.0-rc2` development toolchain.
 
 ## Preliminary Analysis
 
@@ -68,6 +80,12 @@ The duplicated Blueprint path is concrete:
 4. The returned document-block syntax embeds the same body terms.
 5. Final document assembly elaborates those deferred terms again.
 
+The retained-body implementation replaces steps 2--5 at accepted Blueprint
+directives: it elaborates the body array once, adds and compiles a fresh internal
+definition, evaluates that definition for preview state, and returns syntax
+that references the same definition in the final `Block.other` wrapper. The
+general Verso deferred-block representation remains unchanged.
+
 The prefix study rejects the earlier giant-generated-term hypothesis.
 `FinishedPart.toSyntax` took at most 2.2ms, reconstruction JSON less than
 0.2ms, and the outer generated definition 0.36s at full size. The suspected
@@ -77,10 +95,11 @@ but would not reduce whole-module time.
 
 ## Scope Boundary
 
-This card owns reuse of Blueprint directive-body elaboration between preview
-evaluation and final document construction, plus any minimal Verso queue
-contract proven necessary by that work. UPC-0017 owns external-declaration
-signature conversion during incremental directive elaboration. Syntax assembly,
+This card owns the now-resolved ownership question around reuse of Blueprint
+directive-body elaboration between preview evaluation and final document
+construction. The prototype demonstrates a Blueprint-local boundary and no
+current Verso queue requirement. UPC-0017 owns external-declaration signature
+conversion during incremental directive elaboration. Syntax assembly,
 reconstruction JSON, the outer `VersoDoc` definition, `saveRefsInEnv`, math
 lint, native generator runtime, and HTML rendering are measured non-targets for
 this card.
@@ -97,8 +116,8 @@ this card.
   same warmed baseline, and any regression is reported and justified.
 - Acceptance is based on reduced complete owner-module time, not only moving
   work away from `finishDoc`.
-- Any upstream API is the smallest contract demonstrated by the Blueprint
-  prototype.
+- No upstream API is proposed unless later evidence demonstrates a requirement
+  outside Blueprint's directive boundary.
 
 ## Evidence
 
@@ -121,16 +140,39 @@ The separate source-attribution run partitioned deferred term elaboration:
 | TeX provenance block | 502 | 0.713s | 5.2% |
 | `theorem` directive | 11 | 0.474s | 3.4% |
 
+The implementation comparison bracketed the baseline with two candidate runs:
+
+| Variant | Wall | User CPU | System CPU | Peak RSS | `.olean` bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Candidate 1 | 72.43s | 79.19s | 2.80s | 5,163,944 KiB | 41,129,256 |
+| Baseline | 122.82s | 139.60s | 4.57s | 5,478,516 KiB | 42,529,592 |
+| Candidate 2 | 96.43s | 106.13s | 3.64s | 5,164,444 KiB | 41,129,256 |
+| Candidate mean | 84.43s | 92.66s | 3.22s | 5,164,194 KiB | 41,129,256 |
+
+Relative to the bracketed baseline, mean candidate user CPU was 33.6% lower,
+peak RSS was 314,322 KiB (5.7%) lower, and the `.olean` was 1,400,336 bytes
+(3.3%) smaller. Both candidate `.olean` files were byte-identical, with SHA-256
+`01cef9777771525e06a75cb717821d48019fa99c3e2677206a525eea989e7e0b`.
+
+The complete candidate Carleson site passed `vbp check` with 531 manifest and
+531 HTML-cache entries. Baseline and candidate trees contained the same 176
+files; their raw differences reduced to the live timestamp, Lean per-run
+`_uniq` identifiers in declaration markup, and reversed order for two otherwise
+identical independent find-page scripts. A focused elaborator regression
+asserts that an accepted Blueprint directive body is elaborated exactly once,
+and the full 446-job Lean package test suite passes.
+
 Absolute workstation wall times varied with host load. The useful evidence is
 the within-run phase partition, valid-prefix curve, source distribution, and
-controlled body-elision delta rather than a cross-run elapsed-time comparison.
-The raw Carleson profiling bundle and exploratory report are maintainer-local
-and untracked; the tables above are the durable summary. A behavior-preserving
-prototype must publish a fresh current-head comparison, including its memory
-and `.olean` artifact tradeoffs.
+controlled body-elision delta. The implementation's user CPU, memory, artifact
+size, reproducibility, and semantic output validation support landing, while
+its wall-time percentage remains explicitly non-normative. The raw Carleson
+profiling bundle remains maintainer-local and untracked; the tables above are
+the durable summary.
 
 ## Current Workaround
 
-There is no behavior-preserving workaround. Blueprint retains the evaluated
-preview values but not reusable elaborated body references, so the final
-document term pays the second elaboration on every owner-module rebuild.
+A Blueprint-local implementation is ready for a separate landing PR. Until it
+lands, released Blueprint versions retain evaluated preview values but not
+reusable elaborated body references, so owner modules still pay the second
+elaboration. No upstream Verso change is required by the validated design.
