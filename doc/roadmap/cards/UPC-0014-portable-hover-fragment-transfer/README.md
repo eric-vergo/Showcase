@@ -10,7 +10,7 @@ Issue: none linked
 PR: none linked
 Upstream timing: none
 Removal target: `ExternalDeclRenderedHtml` marker/rewrite machinery and `renderedHtmlWithHoverTable`
-Related cards: none
+Related cards: UPC-0017
 
 ## Summary
 
@@ -52,7 +52,9 @@ destination dedup table and substitutes the returned ids into the fragment.
 This card owns server-side transfer of highlighted hover payloads between
 rendering contexts. It does not own highlighted-code startup performance or DOM
 robustness (UPC-0008 and UPC-0009), nor static browser asset declaration
-(UPC-0004); those changes can land and be removed independently.
+(UPC-0004). [`UPC-0017`](../UPC-0017-layout-independent-signature-highlighting-cache/README.md)
+owns reuse while constructing the highlighted signature before fragment
+transfer; these changes can land and be removed independently.
 
 ## Expected Behavior
 

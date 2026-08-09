@@ -10,7 +10,7 @@ Issue: https://github.com/leanprover/verso/issues/840
 PR: none linked
 Upstream timing: as soon as possible
 Removal target: `PreviewManifest.buildPublicXrefJson` and `emitPublicXref`
-Related cards: UPC-0002
+Related cards: UPC-0002, UPC-0015
 
 ## Summary
 
@@ -46,14 +46,15 @@ both `xref.json` and the find page consistently.
 This card owns the policy for choosing public domains and the xref payload that
 implements it. [`UPC-0002`](../UPC-0002-manual-html-extension-hooks/README.md)
 owns the Manual pipeline hooks that would let Blueprint stop copying the
-top-level dispatcher; either upstream change is useful without the other.
+top-level dispatcher. [`UPC-0015`](../UPC-0015-single-owner-compact-xref-emission/README.md)
+owns serialization count and strategy; all three upstream changes are useful
+independently.
 
 ## Expected Behavior
 
 Extensions can declare whether traversal domains are public xref data or
 private traversal storage. The same decision controls both `xref.json` and the
-find page. Verso can also choose whether to emit compressed or minified xref
-payloads.
+find page.
 
 ## Evidence
 
