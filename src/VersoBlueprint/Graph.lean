@@ -1933,7 +1933,8 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
     (groupTitles : Lean.NameMap String)
     (previewKeyForLabel : Name → String := PreviewCache.statementKey)
     (groupShortTitles : Lean.NameMap String := {})
-    (groupTooltips : Lean.NameMap String := {}) :
+    (groupTooltips : Lean.NameMap String := {})
+    (maxFlatVariantNodes : Nat := 0) :
     Array GraphRenderVariant :=
   let previewKeyByNodeId (graph : Graph String) : Array (String × String) :=
     graph.map fun node =>
@@ -1957,67 +1958,84 @@ def mkGraphVariants (graph : Graph String) (options : GraphOptions)
       (reducedDot, some (graphToDot g options gt gtt))
     else
       (reducedDot, none)
-  let essential := essentialGraph graph
-  let (fullDot, fullDotFull?) := dotPair graph resolveGroupDisplay resolveGroupTooltip
-  let fullVariant : GraphRenderVariant := {
-    key := "full"
-    label := "Full Graph"
-    dot := fullDot
-    dotFull := fullDotFull?
-    options
-    selectOnNodeId := #[]
-    hoverOnNodeId := #[]
-    previewKeyByNodeId := previewKeyByNodeId graph
-  }
-  let (essentialDot, essentialDotFull?) := dotPair essential resolveGroupDisplay resolveGroupTooltip
-  let essentialVariant : GraphRenderVariant := {
-    key := essentialVariantKey
-    label := "Essential dependencies"
-    dot := essentialDot
-    dotFull := essentialDotFull?
-    options
-    selectOnNodeId := #[]
-    hoverOnNodeId := #[]
-    previewKeyByNodeId := previewKeyByNodeId essential
-  }
   let parentChildren := graphParentChildren graph
   let parents :=
     parentChildren.toArray
       |>.filter (fun (_, children) => children.size > 1)
       |>.map (·.1)
       |>.qsort (fun a b => groupTitle groupTitles a < groupTitle groupTitles b)
-  if parents.isEmpty then
-    #[fullVariant, essentialVariant]
-  else
-    let parentVariantRefs := parents.map (fun parent => (graphNodeSvgId parent, parentVariantKey parent))
-    let (groupDot, groupDotFull?) :=
-      dotPair (mkParentOverviewGraph graph parents groupTitles groupShortTitles)
-        (fun _ => none) (fun _ => none)
-    let groupVariant : GraphRenderVariant := {
-      key := groupVariantKey
-      label := "Group View"
-      dot := groupDot
-      dotFull := groupDotFull?
-      options
-      selectOnNodeId := parentVariantRefs
-      hoverOnNodeId := parentVariantRefs
-      previewKeyByNodeId := #[]
-    }
-    let parentVariants := parents.map fun parent =>
-      let parentSubgraph := subgraphForParent graph parent
-      let title := groupTitle groupTitles parent
-      let (parentDot, parentDotFull?) := dotPair parentSubgraph resolveGroupDisplay resolveGroupTooltip
-      {
-        key := parentVariantKey parent
-        label := title
-        dot := parentDot
-        dotFull := parentDotFull?
+  -- Group View (parent overview) + one drill-down subgraph per parent. Built only
+  -- when the graph has group parents; the overview itself is small (one node per
+  -- group) and each drill-down is a single group's subgraph, so none of this
+  -- touches the whole-graph reduction.
+  let groupAndParentVariants : Array GraphRenderVariant :=
+    if parents.isEmpty then #[]
+    else
+      let parentVariantRefs := parents.map (fun parent => (graphNodeSvgId parent, parentVariantKey parent))
+      let (groupDot, groupDotFull?) :=
+        dotPair (mkParentOverviewGraph graph parents groupTitles groupShortTitles)
+          (fun _ => none) (fun _ => none)
+      let groupVariant : GraphRenderVariant := {
+        key := groupVariantKey
+        label := "Group View"
+        dot := groupDot
+        dotFull := groupDotFull?
         options
-        selectOnNodeId := #[]
-        hoverOnNodeId := #[]
-        previewKeyByNodeId := previewKeyByNodeId parentSubgraph
+        selectOnNodeId := parentVariantRefs
+        hoverOnNodeId := parentVariantRefs
+        previewKeyByNodeId := #[]
       }
-    #[fullVariant, essentialVariant, groupVariant] ++ parentVariants
+      let parentVariants := parents.map fun parent =>
+        let parentSubgraph := subgraphForParent graph parent
+        let title := groupTitle groupTitles parent
+        let (parentDot, parentDotFull?) := dotPair parentSubgraph resolveGroupDisplay resolveGroupTooltip
+        {
+          key := parentVariantKey parent
+          label := title
+          dot := parentDot
+          dotFull := parentDotFull?
+          options
+          selectOnNodeId := #[]
+          hoverOnNodeId := #[]
+          previewKeyByNodeId := previewKeyByNodeId parentSubgraph
+        }
+      #[groupVariant] ++ parentVariants
+  -- Scale cap (b): above the flat-variant node cap, skip the two whole-graph
+  -- variants (each transitively-reduces + lays out EVERY node — the peak-memory
+  -- step) and lead with the group decomposition, so Group View becomes the default
+  -- selected variant (`graph.mjs` picks `variants[0]` when there is no `full`
+  -- variant). The cap only takes effect when there are group parents to fall back
+  -- to; without them there is no cheaper view to offer, so the flat variants stand.
+  if maxFlatVariantNodes > 0 && graph.size > maxFlatVariantNodes && !parents.isEmpty then
+    groupAndParentVariants
+  else
+    let essential := essentialGraph graph
+    let (fullDot, fullDotFull?) := dotPair graph resolveGroupDisplay resolveGroupTooltip
+    let fullVariant : GraphRenderVariant := {
+      key := "full"
+      label := "Full Graph"
+      dot := fullDot
+      dotFull := fullDotFull?
+      options
+      selectOnNodeId := #[]
+      hoverOnNodeId := #[]
+      previewKeyByNodeId := previewKeyByNodeId graph
+    }
+    let (essentialDot, essentialDotFull?) := dotPair essential resolveGroupDisplay resolveGroupTooltip
+    let essentialVariant : GraphRenderVariant := {
+      key := essentialVariantKey
+      label := "Essential dependencies"
+      dot := essentialDot
+      dotFull := essentialDotFull?
+      options
+      selectOnNodeId := #[]
+      hoverOnNodeId := #[]
+      previewKeyByNodeId := previewKeyByNodeId essential
+    }
+    if parents.isEmpty then
+      #[fullVariant, essentialVariant]
+    else
+      #[fullVariant, essentialVariant] ++ groupAndParentVariants
 
 /--
 Forward adjacency (dependency → dependents) derived from `GraphData.edges`.
@@ -2061,6 +2079,39 @@ def GraphData.descendants (data : GraphData) (label : Name) : Lean.NameSet :=
   reachableClosure data.forwardAdj (data.forwardAdj.getD label #[]).toList {}
 
 /--
+The radius-`k` neighborhood of `label` over both dependency directions
+(ancestors and descendants), including `label` itself.
+
+`radius = 0` returns the full ancestor ∪ self ∪ descendant closure (the
+pre-cap behavior). Otherwise a breadth-first expansion runs `radius` rounds from
+`label`, following the forward (descendant) and reverse (ancestor) adjacencies
+together, so the result is every declaration within `radius` dependency hops. At
+large scale this bounds a headline declaration's page graph to a legible
+neighborhood instead of most of the library; a neighborhood whose full closure
+already lies within `radius` is returned unchanged.
+-/
+def GraphData.boundedNeighborhood (data : GraphData) (label : Name) (radius : Nat) :
+    Lean.NameSet :=
+  if radius == 0 then
+    let base := (data.ancestors label).insert label
+    (data.descendants label).toList.foldl (·.insert ·) base
+  else Id.run do
+    let fwd := data.forwardAdj
+    let rev := data.reverseAdj
+    let mut visited : Lean.NameSet := ({} : Lean.NameSet).insert label
+    let mut frontier : Array Name := #[label]
+    for _ in [0:radius] do
+      let mut next : Array Name := #[]
+      for n in frontier do
+        for m in (fwd.getD n #[]) ++ (rev.getD n #[]) do
+          if !visited.contains m then
+            visited := visited.insert m
+            next := next.push m
+      if next.isEmpty then break
+      frontier := next
+    return visited
+
+/--
 Restrict graph data to the given label set.
 
 Mirrors `subgraphForParent`: nodes are filtered to the set, edges are kept only
@@ -2074,8 +2125,11 @@ def GraphData.restrictTo (data : GraphData) (labels : Lean.NameSet) : GraphData 
     groups := data.groups.map (fun group =>
       { group with children := group.children.filter (fun child => labels.contains child) }) }
 
-/-- Build the bundled renderer's DOT variants from finalized public graph data. -/
-def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array GraphRenderVariant :=
+/-- Build the bundled renderer's DOT variants from finalized public graph data.
+`maxFlatVariantNodes` (0 ⇒ unlimited) caps the whole-graph variants — see
+`mkGraphVariants`. -/
+def GraphData.renderVariants (data : GraphData) (options : GraphOptions)
+    (maxFlatVariantNodes : Nat := 0) : Array GraphRenderVariant :=
   let previewKeyForLabel label :=
     match data.nodes.find? (fun node => node.label == label) with
     | some node => node.previewKey
@@ -2083,5 +2137,6 @@ def GraphData.renderVariants (data : GraphData) (options : GraphOptions) : Array
   mkGraphVariants data.toGraph options data.groupTitleMap previewKeyForLabel
     (groupShortTitles := data.groupDisplayTitleMap)
     (groupTooltips := data.groupClusterTooltipMap)
+    (maxFlatVariantNodes := maxFlatVariantNodes)
 
 end Informal.Graph

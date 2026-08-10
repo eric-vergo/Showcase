@@ -60,6 +60,16 @@ register_option verso.blueprint.graph.defaultPreviewPlacement : String := {
   descr := "Default preview panel placement for `blueprint_graph` when `(previewPlacement := ...)` is omitted (`docked` or `anchored`)"
 }
 
+register_option verso.blueprint.graph.maxFlatVariantNodes : Nat := {
+  defValue := 1500
+  descr := "Node-count cap above which the whole-graph `Full Graph` and `Essential dependencies` variants are NOT generated (their transitive reduction + single DOT layout over every node is the peak-memory step at large scale). Above the cap — and only when the graph has group parents to fall back to — the render variants lead with `Group View` (the parent overview) plus one per-parent drill-down, and Group View is the default selected variant. Below the cap (or when 0, meaning unlimited) behavior is unchanged. A graph without group parents is unaffected: there is nothing to fall back to, so the flat variants are still produced."
+}
+
+/-- The configured `verso.blueprint.graph.maxFlatVariantNodes` (0 ⇒ unlimited). -/
+def configuredMaxFlatVariantNodes (opts : Lean.Options) : Nat :=
+  opts.get verso.blueprint.graph.maxFlatVariantNodes.name
+    verso.blueprint.graph.maxFlatVariantNodes.defValue
+
 structure GraphBlockData where
   semanticGraphData : Informal.Graph.GraphData := {}
   /-- Render-only graph data for this block: the full project-declaration graph
@@ -85,6 +95,18 @@ structure GraphBlockData where
   names. `none` when unset (no shortening anywhere). -/
   declNamePrefix? : Option String := none
   options : GraphOptions := {}
+  /-- Node-count cap captured at elaboration from
+  `verso.blueprint.graph.maxFlatVariantNodes`: above it the whole-graph `Full`/
+  `Essential` variants are skipped in favour of a group-overview-first variant set
+  (see `mkGraphVariants`). `0` ⇒ unlimited. The field default is `0` so block data
+  serialized before this field decodes to the old (unlimited) behavior. -/
+  maxFlatVariantNodes : Nat := 0
+  /-- Radius (dependency hops) of the localized node/decl-page graphs, captured at
+  elaboration from `verso.blueprint.nodePage.localGraphRadius` and carried to the
+  generation-time page emitters via the traversal store. `0` ⇒ unlimited (full
+  closure); the field default is `0` so block data serialized before this field
+  decodes to the pre-cap behavior. -/
+  localGraphRadius : Nat := 0
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
 deriving Inhabited, FromJson, ToJson, Quote
@@ -667,6 +689,8 @@ block_extension Block.graph (graphData : GraphBlockData) where
             match graphData.declBodiesJson? with
             | some json => Informal.TraversalIndex.DeclRegistry.saveBodies state json
             | Option.none => state
+          let state :=
+            Informal.TraversalIndex.DeclRegistry.saveLocalGraphRadius state graphData.localGraphRadius
           match graphData.declNamePrefix? with
           | some pfx => Informal.TraversalIndex.DeclRegistry.savePrefix state pfx
           | Option.none => state
@@ -690,6 +714,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
       let renderData := graphData.renderGraphData?.getD graphData.semanticGraphData
       let publicGraphData := Informal.GraphApi.finalDataForBlock s id renderData
       let graphVariants := publicGraphData.renderVariants graphData.options
+        (maxFlatVariantNodes := graphData.maxFlatVariantNodes)
       let graphHtmlAttrs := s.htmlId id
       let idBase : String :=
         match graphHtmlAttrs.findSome? fun
@@ -971,11 +996,17 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let declNamePrefix? :=
     let pfx := Informal.DeclRegistry.configuredNamePrefix (← Lean.getOptions)
     if pfx.isEmpty then none else some pfx
+  -- Scale cap (b): captured here (where `Lean.Options` exist) and honored at render
+  -- time in `mkGraphVariants` against the render-time node count.
+  let maxFlatVariantNodes := configuredMaxFlatVariantNodes (← Lean.getOptions)
+  -- Local-graph radius (d): captured here, carried through block data + the traversal
+  -- store to the generation-time node/decl-page emitters.
+  let localGraphRadius := Informal.DeclRegistry.configuredLocalGraphRadius (← Lean.getOptions)
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
     { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?, declNamePrefix?,
-      options, previewMode, previewPlacement }
+      options, maxFlatVariantNodes, localGraphRadius, previewMode, previewPlacement }
   let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos

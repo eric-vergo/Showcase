@@ -216,7 +216,7 @@ descendants over the registry graph; quietly absent for private declarations
 and single-node neighborhoods — the same section structure as node pages). -/
 private def renderDeclPageBody (master : Informal.Graph.GraphData)
     (bodies : Std.HashMap String Body)
-    (bookTitle : String) (e : Entry) (slug : String) :
+    (bookTitle : String) (e : Entry) (slug : String) (localGraphRadius : Nat) :
     Output.Html :=
   let short := displayShort e
   let card := Informal.NodeCard.render (declCardParts bodies e slug) {}
@@ -224,10 +224,9 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
     if e.isPrivate then .empty
     else
       let nm := e.name.toName
-      let descendantSet := master.descendants nm
-      let labelSet : Lean.NameSet :=
-        let base := (master.ancestors nm).insert nm
-        descendantSet.toList.foldl (·.insert ·) base
+      -- Radius-k neighborhood (both directions), bounded by
+      -- `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ full closure).
+      let labelSet : Lean.NameSet := master.boundedNeighborhood nm localGraphRadius
       let sub := master.restrictTo labelSet
       if sub.nodes.size ≤ 1 then .empty
       else
@@ -340,6 +339,7 @@ def emitBlueprintDeclPages : ExtraStep :=
               | .ok bs => bs.bodies.foldl (fun m b => m.insert b.name b) {}
           let entries := registry.decls
           let master := registryGraph entries
+          let localGraphRadius := (Informal.TraversalIndex.DeclRegistry.localGraphRadius? state).getD 0
           let mut usedSlugs : Std.HashSet String := {}
           let mut searchRecords : Array Json := #[]
           for e in entries do
@@ -351,7 +351,7 @@ def emitBlueprintDeclPages : ExtraStep :=
                 s!"Showcase decl pages: slug collision for {e.name} (slug {slug}); " ++
                 "decl page may overwrite another declaration's page"
             usedSlugs := usedSlugs.insert slug
-            let body := renderDeclPageBody master bodies text.titleString e slug
+            let body := renderDeclPageBody master bodies text.titleString e slug localGraphRadius
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               (Informal.NodeRoute.declPagePath e.name) (displayShort e) body
             searchRecords := searchRecords.push (declSearchRecord e registry.namePrefix)

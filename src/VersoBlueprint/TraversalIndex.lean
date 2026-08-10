@@ -648,6 +648,17 @@ def namePrefix? (state : TraverseState) : Option String := do
   let obj ← state.getDomainObject? domainName "namePrefix"
   obj.data.getStr?.toOption
 
+/-- Stash the configured `verso.blueprint.nodePage.localGraphRadius` (captured at
+elaboration) for the generation-time node/decl-page graph emitters. -/
+def saveLocalGraphRadius (state : TraverseState) (radius : Nat) : TraverseState :=
+  saveObjectData state domainName "localGraphRadius" (toJson radius)
+
+/-- The configured local-graph radius, if a `blueprint_graph` block stored one
+(`0` ⇒ unlimited / full closure). -/
+def localGraphRadius? (state : TraverseState) : Option Nat := do
+  let obj ← state.getDomainObject? domainName "localGraphRadius"
+  obj.data.getNat?.toOption
+
 end DeclRegistry
 
 namespace TrustData

@@ -208,11 +208,11 @@ private def renderNodePageBody
   let nodeCard :=
     Informal.PreviewManifest.BlockRender.renderTwoColumnCard {} entry stmtContent proof?
       { declNamePrefix := namePrefix }
-  -- Localized dependency graph: this node ∪ all ancestors ∪ all descendants.
-  let descendantSet := master.descendants entry.label
-  let labelSet : Lean.NameSet :=
-    let base := (master.ancestors entry.label).insert entry.label
-    descendantSet.toList.foldl (·.insert ·) base
+  -- Localized dependency graph: the radius-k neighborhood of this node (both
+  -- directions), bounded by `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ full
+  -- ancestor ∪ self ∪ descendant closure — the pre-cap behavior).
+  let localGraphRadius := (Informal.TraversalIndex.DeclRegistry.localGraphRadius? state).getD 0
+  let labelSet : Lean.NameSet := master.boundedNeighborhood entry.label localGraphRadius
   let sub := master.restrictTo labelSet
   let slug := Informal.NodeRoute.nodePageSlug entry.label
   let localVariant : Informal.Graph.GraphRenderVariant := {

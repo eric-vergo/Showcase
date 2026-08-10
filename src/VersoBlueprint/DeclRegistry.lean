@@ -66,6 +66,27 @@ register_option verso.blueprint.declNamePrefix : String := {
 def configuredNamePrefix (opts : Lean.Options) : String :=
   opts.get verso.blueprint.declNamePrefix.name verso.blueprint.declNamePrefix.defValue
 
+register_option verso.blueprint.declRegistry.fullElabMaxDecls : Nat := {
+  defValue := 1500
+  descr := "Declaration-count cap above which the registry SKIPS the per-entry full (statement + proof) re-elaboration from source — the dominant time/memory cost at large scale. Above the cap the cheaper source paths still run: signatures re-elaborate to the `signature` (≈) tier and proof bodies fall back to syntactic (`syntactic`, ≈) highlighting, both honestly marked on the page rather than the re-elaborated (`reelab`, ⟲) tier. `0` ⇒ unlimited (never skip). Below the cap behavior is unchanged."
+}
+
+/-- The configured `verso.blueprint.declRegistry.fullElabMaxDecls` (0 ⇒ unlimited). -/
+def configuredFullElabMaxDecls (opts : Lean.Options) : Nat :=
+  opts.get verso.blueprint.declRegistry.fullElabMaxDecls.name
+    verso.blueprint.declRegistry.fullElabMaxDecls.defValue
+
+register_option verso.blueprint.nodePage.localGraphRadius : Nat := {
+  defValue := 2
+  descr := "Radius (in dependency hops) of the localized dependency graph drawn on each node/decl page. The page graph is the radius-k neighborhood of the focus declaration in both directions (ancestors and descendants), not the full transitive closure — at large scale a headline declaration's full ancestor closure is most of the library, which is both slow to render and useless to read. `0` ⇒ unlimited (the full closure, the pre-cap behavior). Neighborhoods whose full closure already lies within the radius render identically."
+}
+
+/-- The configured `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ unlimited, i.e.
+the full ancestor ∪ self ∪ descendant closure). -/
+def configuredLocalGraphRadius (opts : Lean.Options) : Nat :=
+  opts.get verso.blueprint.nodePage.localGraphRadius.name
+    verso.blueprint.nodePage.localGraphRadius.defValue
+
 -- The subject-module machinery (`verso.blueprint.subjectModuleRoots`) lives in
 -- `ExternalRefSnapshot`, which needs it for dependency source resolution and which
 -- this module imports; re-exported here, where its main consumers are.
@@ -546,12 +567,19 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
   let namePrefix := configuredNamePrefix (← getOptions)
+  let fullElabMaxDecls := configuredFullElabMaxDecls (← getOptions)
   let roots ← projectModuleRoots
   if roots.isEmpty then
     return ({}, {})
   -- The registry tracks every project declaration, `private` helpers included (the
   -- all-decls graph keeps them out to stay readable — see `enumerateProjectDecls`).
   let decls ← enumerateProjectDecls roots (includePrivate := true)
+  -- Scale cap (c): above `fullElabMaxDecls` the per-entry full (statement + proof)
+  -- re-elaboration from source — ~one real elaboration per theorem/def, the dominant
+  -- time/memory cost — is skipped. The signature then re-elaborates on the cheaper
+  -- signature-only path (`signature` tier) and the proof body falls back to syntactic
+  -- highlighting (`syntactic` tier), both honestly marked. `0` ⇒ never skip.
+  let skipFullElab := fullElabMaxDecls > 0 && decls.size > fullElabMaxDecls
   let projectDeclSet : NameSet := decls.foldl (init := {}) fun acc (n, _, _) => acc.insert n
   let leanNameLabels := st.leanNameLabels
   -- Pass 1 (pure): forward const-level deps per declaration + the reverse index.
@@ -623,7 +651,8 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     -- path), so no declaration is double-elaborated.
     let fullDecl? : Option (SubVerso.Highlighting.Highlighted ×
         Option SubVerso.Highlighting.Highlighted) ←
-      match content?, ranges? with
+      if skipFullElab then pure none
+      else match content?, ranges? with
       | some content, some ranges =>
         if Informal.isFullReelabCandidate ci then
           fullDeclAttempts := fullDeclAttempts + 1
@@ -696,7 +725,11 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     match bodyText? with
     | some src => bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
     | none => pure ()
-  if fullDeclAttempts > 0 then
+  if skipFullElab then
+    logInfo s!"declaration registry: {decls.size} decls exceeds \
+      verso.blueprint.declRegistry.fullElabMaxDecls={fullElabMaxDecls}; skipped per-entry \
+      full re-elaboration (signatures on the signature tier, proof bodies syntactic)"
+  else if fullDeclAttempts > 0 then
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
   return (
     { schemaVersion := 2, namePrefix, declCount := entries.size, decls := entries },
