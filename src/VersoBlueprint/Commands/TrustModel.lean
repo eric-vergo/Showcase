@@ -120,7 +120,7 @@ private def notCheckedBadge : Output.Html :=
 /-! ### Section 1 — what this build actually checked -/
 
 private def machineCheckedSection (data : TrustModelData) (trust? : Option TrustData)
-    (checks : Informal.GraphChecks.Results) : Output.Html :=
+    (checks : Informal.GraphChecks.Results) (autoDepsActive : Bool) : Output.Html :=
   let audit? := trust?.bind (·.audit?)
   let cmp? := trust?.bind (·.comparator)
   -- Kernel / toolchain.
@@ -201,12 +201,18 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
         else if checks.acyclic.ok then
           trustBadgeHtml s!"{checks.connected.componentCount} components" "warn"
         else trustBadgeHtml "cyclic" "error"
+      let edgeProvenance :=
+        if autoDepsActive then
+          " The *edges themselves* are machine-derived from the Lean terms — the project's \
+            const-level dependency graph — with any hand-authored `uses` edges merged in; \
+            see below."
+        else
+          " The *edges themselves* are author-asserted — see below."
       checkRow "Dependency-graph structure" verdict
-        s!"The authored `uses` graph ({checks.acyclic.nodeCount} nodes, \
+        (s!"The authored `uses` graph ({checks.acyclic.nodeCount} nodes, \
            {checks.acyclic.edgeCount} {if checks.acyclic.edgeCount == 1 then "edge" else "edges"}) \
            was gated before this site was written: no \
-           dependency cycle, no unresolvable `uses` label. The *edges themselves* are \
-           author-asserted — see below."
+           dependency cycle, no unresolvable `uses` label." ++ edgeProvenance)
   -- Comparator.
   let comparatorRow :=
     match cmp? with
@@ -266,7 +272,33 @@ private def tierLegendRow (glyph label explanation : String) : Output.Html :=
     </tr>
   }}
 
-private def notMachineCheckedSection (trust? : Option TrustData) : Output.Html :=
+private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool) :
+    Output.Html :=
+  -- CX-033: the edge-provenance subsection tells the truth for this build's graph
+  -- mode. With autoDeps (`includeAllDecls`) the rendered edges are machine-derived
+  -- from the Lean terms, so the "author's mental model" caveat does not apply; only
+  -- the hand-authored case gets the author-asserted wording.
+  let edgeSubtitle : String :=
+    if autoDepsActive then "Machine-derived dependency edges" else "Authored dependency edges"
+  let edgeProse : Output.Html :=
+    if autoDepsActive then
+      prose
+        "The dependency graph's edges are derived from the Lean terms: for each declaration \
+         they come from the constants it actually mentions (statement and proof), read from the \
+         elaborated environment during this build, with any hand-authored `uses` edges merged \
+         in and winning on conflict. So the graph is a faithful picture of the code's \
+         term-level dependency structure rather than the author's assertion. The one caveat is \
+         that a term-level dependency is not the same as a mathematical one: the Lean proof may \
+         reach a fact by a different route than the informal argument, so read the graph as the \
+         code's dependencies, not the narrative's."
+    else
+      prose
+        "The dependency graph's edges are declared by the author with `uses`, not derived from \
+         the Lean terms. The build gates their structure (no cycles, no dangling labels) and \
+         compares them against the constants each declaration actually mentions, reporting \
+         divergence as a build warning — but an edge that exists only in the author's mind, or a \
+         real dependency the author did not draw, is a presentation defect the gates do not \
+         reject."
   let edgeNote : Output.Html :=
     match trust?.bind (·.edgeAudit?) with
     | Option.none => .empty
@@ -295,14 +327,8 @@ private def notMachineCheckedSection (trust? : Option TrustData) : Output.Html :
       "If the Lean statement is a faithful rendering of the informal one, then the machine \
        checks above tell you the theorem is proved. If it is not, they tell you nothing you \
        care about. Reading the formal statement is the step that cannot be delegated.",
-    {{ <h3 class="bp_trustmodel_subtitle">"Authored dependency edges"</h3> }},
-    prose
-      "The dependency graph's edges are declared by the author with `uses`, not derived from \
-       the Lean terms. The build gates their structure (no cycles, no dangling labels) and \
-       compares them against the constants each declaration actually mentions, reporting \
-       divergence as a build warning — but an edge that exists only in the author's mind, or a \
-       real dependency the author did not draw, is a presentation defect the gates do not \
-       reject.",
+    {{ <h3 class="bp_trustmodel_subtitle">{{.text true edgeSubtitle}}</h3> }},
+    edgeProse,
     edgeNote,
     {{ <h3 class="bp_trustmodel_subtitle">"How the Lean code on this page was rendered"</h3> }},
     prose
@@ -526,6 +552,14 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
     (Informal.TraversalIndex.TrustData.raw? st).bind fun j =>
       (fromJson? (α := TrustData) j).toOption
   let checks := Informal.GraphChecks.run (Informal.GraphApi.masterGraph st)
+  -- CX-033: the all-declarations registry is written only when
+  -- `verso.blueprint.graph.includeAllDecls` is on, which is exactly the mode where
+  -- the rendered dependency graph's edges are machine-derived from the Lean
+  -- const-level dependencies (autoDeps) rather than hand-authored `uses`. Its
+  -- presence in the traversal store is a faithful signal that the graph the reader
+  -- sees is machine-derived, so the provenance wording must not call it
+  -- "author-asserted".
+  let autoDepsActive := (Informal.TraversalIndex.DeclRegistry.raw? st).isSome
   {{
     <div class="bp_trustmodel">
       <p class="bp_trustmodel_lead">
@@ -533,8 +567,8 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
          machine and some of it was asserted by a person, and the two look alike on the page. \
          This is the separation."
       </p>
-      {{machineCheckedSection data trust? checks}}
-      {{notMachineCheckedSection trust?}}
+      {{machineCheckedSection data trust? checks autoDepsActive}}
+      {{notMachineCheckedSection trust? autoDepsActive}}
       {{trustingSection data trust?}}
       {{independenceSection}}
       {{currencySection trust?}}
