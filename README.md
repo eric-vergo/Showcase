@@ -48,8 +48,8 @@ Lean FRO, LLC and contributors including Emilio J. Gallego Arias and David Thran
 Christiansen) keep their original copyright and author(s), with the fork's
 contributors appended where the fork modified them. Fork-original files (created
 here, with no upstream counterpart) are `Copyright (c) 2026 Eric Vergo`, authored
-by Eric Vergo with AI assistance from Anthropic's Claude models — Claude Fable 5,
-Claude Opus 4.8, and Claude Opus 5, per the git commit trailers, the record of
+by Eric Vergo with AI assistance from Anthropic's Claude models — Claude Fable 5
+and Claude Opus 4.8, per the git commit trailers, the record of
 which model did what. See [`NOTICE`](./NOTICE) for the full layered story;
 `scripts/check-header-provenance.sh` guards against fork-original files silently
 reacquiring the upstream header template.

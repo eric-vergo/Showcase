@@ -27,7 +27,7 @@ The fork work in this repository is by Eric Vergo, with AI assistance from
 Anthropic's Claude models under Eric's direction. Per the git commit trailers —
 the honest record of which model did what — the contributing models are:
 
-    Claude Fable 5, Claude Opus 4.8, Claude Opus 5
+    Claude Fable 5, Claude Opus 4.8
 
 Files created in this fork with no upstream counterpart ("fork-original" files)
 carry a "Copyright (c) 2026 Eric Vergo" notice and list Eric Vergo together with
