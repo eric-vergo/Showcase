@@ -111,7 +111,7 @@ or is part of Blueprint's generated slide runtime.
 | Regular generated Manual page | `-verso-data/blueprint-page-runtime.mjs` | Creates one renderer with `createPreview()`, starts inline previews, relation panels, graphs, and descriptor-bound template previews. | Nothing extra; `withBlueprintAssets` installs this module. |
 | Generated Blueprint slide deck | `-verso-data/blueprint-slide-runtime.mjs` | Creates one renderer with `createPreview()`, starts inline previews, relation panels, graphs, and slide-node hydration. | Nothing extra; `slidesMainWithBlueprintPreviews` installs this module. |
 | Custom browser page, dashboard, audit view, or slide adapter | `-verso-data/api/preview.mjs` | Manifest/cache loading, preview lookup, rendered-fragment insertion, canonical node loading, math rendering, and hydration. | `createPreview()`, then `resolvePreview`, `renderPreviewInto`, `renderCanonicalPreviewInto`, `renderNode`, or `hydrate`. |
-| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, status readers, source-document lookup, source-metadata resolution, and graph-data loading without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadSourceDocuments`, `resolveSourceMetadata`, `loadHtmlCache`, `loadGraphs`, or single-entry readers. |
+| Data-only browser or Node-like client | `-verso-data/api/data.mjs` | Manifest/cache URL helpers, loading, and status readers without DOM rendering. | `createPreviewData()`, `loadManifest`, `loadHtmlCache`, or single-entry readers. |
 | Graph data or graph rendering | `-verso-data/api/graph.mjs` | Graph JSON discovery, manifest graph loading, graph-block construction, lazy graph runtime loading, and graph initialization. | `loadGraphs`, `getGraphData`, `getGraphVariants`, `renderGraphData(host, graph, { previewUtils })`, or `renderGraphs(root, { previewUtils })`. |
 | Blueprint-owned panels in generated pages | Renderer bundled helpers | Panel slots, content updates, trigger lifetime, dismissal, repositioning, diagnostics, and shared preview lookup. | Feature scripts use `createPreviewSurface`, `renderPreviewIntoSurface`, or `resolvePreviewHtml`; custom clients should not import these helpers directly. |
 | Summary and code-summary previews | Lean-emitted template descriptors plus `preview-runtime-template.mjs` | Selector configuration and binding for preview templates. | Emit descriptor attributes from Lean; no feature-specific startup script is needed. |
@@ -139,8 +139,8 @@ Generated Blueprint sites write reusable data under `-verso-data/`:
 - `api/graph.mjs` exposes graph-data helpers for ordinary browser `import`
   usage, plus graph-block rendering helpers for pages that carry generated
   graph markup.
-- `api/data.mjs` exposes manifest/cache/key/URL helpers and source-metadata
-  resolution for clients that do not need to render DOM previews.
+- `api/data.mjs` exposes manifest/cache/key/URL helpers for clients that do not
+  need to render DOM previews.
 - `api/preview.mjs` exposes the preview/render API for ordinary browser
   `import` usage.
 
@@ -206,38 +206,19 @@ source ref, while Lean-code preview entries can aggregate refs from multiple
 sourced Blueprint nodes that share the same rendered Lean preview.
 
 Generated browser APIs expose the same split. Data-only clients should use
-`api/data.mjs` when they only need manifest facts: `loadManifestEntry`,
-`loadGroup`, `loadGroups`, `loadSourceDocument`, `loadSourceDocuments`, and
-`resolveSourceMetadata` do not import DOM rendering code. Render-capable clients
-should use `api/preview.mjs`
-when they also need `resolvePreview`, `renderNode`, canonical node loading, or
-hydration. Both entrypoints reuse the cached manifest load; resolving source
-metadata does not fetch a second JSON file.
-
-Clients can call `resolveSourceMetadata(source)` from either entrypoint when
-they want the source refs attached to a preview joined with declared
-source-document metadata. The `source` argument can be a preview key, a manifest
-entry, or a result returned by `resolvePreview`, `resolveCanonicalPreview`, or
-`renderNode`:
-
-```javascript
-const key = api.statementPreviewKey("Chapter2:Problem2.11.6");
-const sourceMetadata = await api.resolveSourceMetadata(key);
-if (sourceMetadata.ok) console.log(sourceMetadata.sources[0].document?.title);
-```
-
-`api/data.mjs` exposes `resolveSourceMetadata` both as an isolated
-`createPreviewData()` instance method and as a module-level named export. Use
-the instance method when a client supplies a custom `fetchJson`; the module-level
-export is convenient for ordinary generated-site scripts that use the default
-loader.
+`api/data.mjs` when they only need manifest facts: `loadManifest`,
+`loadManifestEntry`, and the cache/key/URL helpers do not import DOM rendering
+code. Render-capable clients should use `api/preview.mjs` when they also need
+`resolvePreview`, `renderNode`, canonical node loading, or hydration. Both
+entrypoints reuse the cached manifest load. Source refs and declared source
+documents are plain manifest fields (`entry.sources`, top-level
+`sourceDocuments`), so a client that wants a preview's provenance reads them off
+the loaded manifest entry directly — no separate fetch.
 
 Generated Blueprint node shells render a compact source chip and lightweight
-source preview from this same manifest data. The API itself returns structured
-metadata only: richer PDF page viewers and crop overlays remain Blueprint/Verso
-interface work rather than browser API policy. Returned file paths and
-PDF/image/text coordinates are metadata; `resolveSourceMetadata` does not fetch
-those assets or decide how a richer source review interface should look.
+source preview from this same manifest data. The returned file paths and
+PDF/image/text coordinates are metadata only: richer PDF page viewers and crop
+overlays remain Blueprint/Verso interface work rather than browser API policy.
 
 ```json
 {
@@ -368,10 +349,10 @@ top-level `groups` array. Each group stores its traversal-ordered statement
 members once. Group labels are unique, each member label belongs to at most one
 group, and participating manifest entries must agree with the catalog on group
 ownership and `parentTitle`. Both `vbp check` and the browser manifest loader
-reject incomplete or inconsistent joins. Browser clients can join these records
-with `loadGroup(entry.parent)` or enumerate them with `loadGroups()`; Lean
-clients can use `PreviewManifest.File.groupForEntry?` when they need the current
-entry filtered out of the member list.
+reject incomplete or inconsistent joins. Browser clients join these records by
+reading the manifest's top-level `groups` array against each entry's `parent`;
+Lean clients can use `PreviewManifest.File.groupForEntry?` when they need the
+current entry filtered out of the member list.
 
 Relation entries in `uses`, `usedBy`, and top-level `groups[*].entries` carry
 their own `previewKey` field. That field is either a non-empty key that resolves
@@ -806,7 +787,6 @@ const data = createPreviewData({ fetchJson });
 
 const manifest = await data.loadManifest();
 const entry = await data.loadManifestEntry(data.previewKey("addition_right_identity", "statement"));
-const sourceMetadata = await data.resolveSourceMetadata(entry);
 const graphs = await loadManifestGraphs(data.manifestUrl(), { fetchJson });
 ```
 
@@ -881,8 +861,8 @@ At a high level, the public generated browser modules are:
 
 | Module | Purpose |
 | --- | --- |
-| `api/data.mjs` | Data-only clients: generated-data URLs, manifest/cache loading, semantic label/declaration resolution, source-metadata resolution, status readers, and preview-key helpers. |
-| `api/preview.mjs` | Render-capable clients: data helpers, semantic label/declaration resolution, preview resolution, fragment insertion, canonical node rendering, label-based `renderNode`, and hydration. |
+| `api/data.mjs` | Data-only clients: generated-data URLs, manifest/cache loading, status readers, and preview-key helpers. |
+| `api/preview.mjs` | Render-capable clients: data helpers, preview resolution, fragment insertion, canonical node rendering, label-based `renderNode`, and hydration. |
 | `api/graph.mjs` | Graph clients: finalized graph loading, embedded graph-block data access, manifest-data graph rendering, and graph-block rendering with an explicit preview renderer. |
 
 Only the files listed in this table are public generated-site browser API
@@ -897,35 +877,6 @@ generated from JSDoc and published on GitHub Pages at
 CI also uploads the same generated HTML as an artifact named `js-api-docs` for
 PR-local inspection.
 Locally, run `npm run docs` and open `_out/jsdoc-api/index.html`.
-
-ESM clients can use the same semantic resolvers after importing the generated
-preview module:
-
-```javascript
-import { resolveDeclaration, resolveLabel } from "./api/preview.mjs";
-
-const label = await resolveLabel("addition_right_identity", { facet: "statement" });
-const declaration = await resolveDeclaration("Nat.add");
-
-if (label.ok && label.sourceLocation.ok) {
-  console.log(label.href, label.sourceLocation.location.path);
-}
-if (declaration.ok && declaration.sourceLocation.ok) {
-  console.log(declaration.href, declaration.sourceLocation.location.path);
-}
-```
-
-Data-only clients can import the same resolvers from `api/data.mjs` when they
-do not need DOM rendering or hydration:
-
-```javascript
-import { resolveLabel } from "./api/data.mjs";
-
-const result = await resolveLabel("addition_right_identity");
-if (result.ok) {
-  console.log(result.key, result.sourceLocation);
-}
-```
 
 ## Browser Runtime API
 
@@ -1041,50 +992,6 @@ if (result.ok) {
   row.appendChild(body);
   const inserted = await api.renderPreviewInto(body, result.key);
   if (inserted.ok) document.querySelector("#audit-previews").appendChild(row);
-}
-```
-
-Use `resolveLabel` when the client starts from a Blueprint block label rather
-than a manifest key. It resolves only block entries, defaults to the statement
-facet, and returns both the generated-page `href` and the manifest
-`sourceLocation` result:
-
-```javascript
-import { createPreview } from "../-verso-data/api/preview.mjs";
-
-const api = createPreview();
-const result = await api.resolveLabel("addition_right_identity", { facet: "statement" });
-if (result.ok) {
-  console.log(result.href);
-  if (result.sourceLocation.ok) {
-    console.log(result.sourceLocation.location.path);
-  } else {
-    console.warn(result.sourceLocation.error);
-  }
-}
-```
-
-Use `resolveDeclaration` when the client starts from a Lean declaration name and
-needs a declaration-keyed preview entry. It resolves external/declaration-keyed
-manifest entries and returns both the generated Blueprint occurrence `href` and
-the manifest `sourceLocation` result. Inline-code previews are keyed by the
-inline Blueprint code label; clients that start from an inline block should read
-that block entry's `leanCodePreviewKeys` or call `resolvePreview` with the
-explicit preview key. The `href` points to the generated Blueprint preview
-occurrence; the `sourceLocation` points to the Lean source definition:
-
-```javascript
-import { createPreview } from "../-verso-data/api/preview.mjs";
-
-const api = createPreview();
-const result = await api.resolveDeclaration("Nat.add");
-if (result.ok) {
-  console.log(result.href);
-  if (result.sourceLocation.ok) {
-    console.log(result.sourceLocation.location.path);
-  } else {
-    console.warn(result.sourceLocation.error);
-  }
 }
 ```
 
@@ -1214,21 +1121,24 @@ signature and type reference.
 | `api.loadManifest(options)` / `api.loadHtmlCache(options)` | Load the generated `Map` values keyed by preview key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
 | `api.readManifestStatus()` / `api.readHtmlCacheStatus()` | Inspect diagnostics such as `idle`, `loading`, `ready`, and `error`. |
 | `api.loadManifestEntry(key, options)` / `api.loadHtmlCacheEntry(key, options)` | Read one generated entry by key. `options.fetchJson` can override the renderer's default JSON loader for that call. |
-| `api.loadGroups(options)` / `api.loadGroup(label, options)` | Read the shared group catalog or one group by its label. Manifest entries join to this catalog through `entry.parent`. |
-| `api.loadSourceDocuments(options)` / `api.loadSourceDocument(id, options)` | Read declared source-document metadata from the manifest, either as the full list or by source-document id. |
 | `api.dataApiModuleUrl()` | Resolve the generated ESM data API module URL for dynamic imports from custom clients. |
 | `api.previewApiModuleUrl()` | Resolve the generated ESM preview/render API module URL for dynamic imports from custom clients. |
-| `api.graphApiModuleUrl()` | Resolve the generated ESM graph API module URL for dynamic imports from custom clients. Use this instead of hard-coding a relative `-verso-data/api/graph.mjs` path when code may run from `html-multi/`, `html-single/`, slides, or embedded contexts. |
 | `api.previewKey(label, facet)` / `api.statementPreviewKey(label)` | Build normalized preview keys for custom render targets. |
-| `api.resolveLabel(label, options)` | Resolve a Blueprint block label and optional `{ facet }`, returning `{ ok, label, facet, key, reason, manifestEntry, href, sourceLocation }`. |
-| `api.resolveDeclaration(declName, options)` | Resolve a declaration-keyed Lean preview entry from a Lean declaration name, returning `{ ok, declaration, key, reason, manifestEntry, href, sourceLocation }`. Inline code previews are keyed by their inline Blueprint code label and should be loaded through the explicit key in `leanCodePreviewKeys`. |
 | `api.resolvePreview(key, options)` | Resolve manifest data and a rendered body fragment together, returning `{ ok, key, reason, manifestEntry, htmlCacheEntry, html, diagnosticHtml }`. |
 | `api.renderPreviewInto(element, key, options)` | Write the rendered body fragment or diagnostic HTML into `element`, then hydrate nested previews and math. Render options may set `hydrators`, `inheritPageHydrators`, `templateBinder`, `hydrate: false`, or `renderMath: false`. |
 | `api.resolveCanonicalPreview(key, options)` | Resolve the same data as `resolvePreview`, then load the generated page named by `manifestEntry.href` and return `canonicalHtml` plus `canonicalSourceHref` for the real Blueprint node wrapper. |
 | `api.renderCanonicalPreviewInto(element, key, options)` | Write the canonical Blueprint node wrapper or diagnostic HTML into `element`, then hydrate nested previews and math. It accepts the same hydration options as `renderPreviewInto`. |
 | `api.renderNode(element, request, options)` | Render by label as a generated Blueprint node: native content uses the canonical generated shell, and external markup uses the same shell with a call-scoped TeX/Markdown body renderer from `request.externalMarkup` or `request.preferredExternalMarkup`. It accepts the same hydration options as `renderPreviewInto`. |
-| `api.resolveSourceMetadata(source, options)` | Resolve source provenance for a preview key, manifest entry, or render result. It joins `entry.sources` with declared source documents and returns `{ ok, key, manifestEntry, sources }`. |
 | `api.hydrate(element, options)` | Hydrate custom wrappers that inserted cached rendered fragments themselves. It accepts the same hydration options as `renderPreviewInto`. |
+
+The graph module's URL resolver, `graphApiModuleUrl()`, is a named export of
+`api/graph.mjs` (not a method on the render API object); use it to resolve the
+generated `-verso-data/api/graph.mjs` URL for dynamic imports instead of
+hard-coding a relative path when code may run from `html-multi/`, `html-single/`,
+slides, or embedded contexts. Group records and declared source documents are
+plain manifest fields — read the manifest's top-level `groups` and
+`sourceDocuments` arrays and each entry's `parent`/`sources` off the loaded
+manifest rather than through a dedicated method.
 
 ## Preview Result Shapes
 
@@ -1236,29 +1146,19 @@ Preview/render helpers resolve to plain objects with an `ok` boolean and the
 normalized preview `key`. Successful render results include semantic manifest
 data and the rendered HTML used by the operation. Failed render results include
 a `reason` and `diagnosticHtml` suitable for insertion into the page.
-`resolveSourceMetadata` is data-only: it returns source metadata and failure
-reasons, but no rendered HTML. It also does not load source PDFs, extracted
-text, or page images; callers use the returned paths and spans in the source UI
-they own.
 
 | Helper | Success shape | Failure shape |
 | --- | --- | --- |
-| `resolveLabel(label, options)` | `{ ok: true, label, facet, key, manifestEntry, href, sourceLocation }` | `{ ok: false, label, facet, key, reason, manifestEntry, href, sourceLocation }` |
-| `resolveDeclaration(declName)` | `{ ok: true, declaration, key, manifestEntry, href, sourceLocation }` | `{ ok: false, declaration, key, reason, manifestEntry, href, sourceLocation }` |
 | `resolvePreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html }` | `{ ok: false, key, reason, diagnosticHtml }` |
 | `renderPreviewInto(element, key, options)` | The `resolvePreview` success shape after writing `html` into `element` and hydrating it. | The `resolvePreview` failure shape after writing `diagnosticHtml` into `element`. |
 | `resolveCanonicalPreview(key)` | `{ ok: true, key, manifestEntry, htmlCacheEntry, html, canonicalHtml, canonicalSourceHref }` | `{ ok: false, key, reason, diagnosticHtml }` |
 | `renderCanonicalPreviewInto(element, key, options)` | The `resolveCanonicalPreview` success shape after writing `canonicalHtml` into `element` and hydrating it. | The `resolveCanonicalPreview` failure shape after writing `diagnosticHtml` into `element`. |
 | `renderNode(element, request, options)` | Native-preview success shape with `renderMode: "native"` and `canonicalHtml`, or external-markup success shape with `renderMode: "external-markup"`, `externalMarkup`, and `canonicalHtml`. | `{ ok: false, key, reason, manifestEntry?, externalMarkup?, nativePreview?, diagnosticHtml }` after writing diagnostics unless `options.diagnostics === false`. |
-| `resolveSourceMetadata(source)` | `{ ok: true, key, manifestEntry, sources }`, where each source has `{ sourceRef, documentId, document, spans }`. | `{ ok: false, key, reason, manifestEntry?, sources: [] }`. |
 
 The most common failure `reason` values are:
 
 - `missing-key`
 - `missing-label`
-- `label-entry-missing`
-- `missing-declaration`
-- `declaration-entry-missing`
 - `manifest-entry-missing`
 - `html-cache-entry-missing`
 - `semantic-preview-body-missing`
@@ -1271,7 +1171,6 @@ The most common failure `reason` values are:
 - `external-markup-render-failed`
 - `external-markup-node-shell-missing`
 - `external-markup-node-shell-load-failed`
-- `source-missing`
 
 `semantic-preview-body-missing` means the manifest entry exists and the HTML
 cache is loaded, but the entry is semantic-only in this artifact set and has no
@@ -1297,9 +1196,8 @@ slide asset and does not expose the general render API; custom preview clients
 should use the public render API table above unless a slide-specific hook is
 explicitly documented there.
 
-For semantic queries, use `resolveLabel`, `resolveDeclaration` for
-declaration-keyed previews, or use the manifest entry returned by
-`resolvePreview` or `loadManifestEntry`. Do not parse inserted or cached
+For semantic facts, read the manifest entry returned by `resolvePreview` or
+`loadManifestEntry`. Do not parse inserted or cached
 fragments to rediscover labels, source locations, dependencies, group
 membership, Lean-code associations, or status metadata. The cached fragment is
 presentation: it may display those facts, but the manifest
@@ -1338,7 +1236,6 @@ The current private source chunks are:
 | `preview-runtime-base.mjs` | Small shared helpers, template collection, HTML escaping, and debug hooks. |
 | `preview-runtime-data.mjs` | Manifest/cache loading, status readers, and store lookups. |
 | `preview-runtime-render.mjs` | Manifest/cache joins, rendered-fragment insertion, diagnostics, and canonical generated-node fetching. |
-| `preview-runtime-source-metadata.mjs` | Source-provenance lookup and source-document joins for structured metadata. |
 | `preview-runtime-hydration.mjs` | Math rendering, fragment hydration, and feature hydrator dispatch. |
 | `preview-runtime-lifecycle.mjs` | Trigger, dismissal, popover, resize/scroll, and keep-open lifetimes. |
 | `preview-runtime-surface.mjs` | Preview panel slots, behavior state, content updates, panel creation, and diagnostic message markup. |

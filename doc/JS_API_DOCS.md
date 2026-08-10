@@ -43,23 +43,14 @@ await preview.renderNode(document.querySelector("#target"), {
   }
 });
 
-// Resolve the semantic entry when the client starts from a Blueprint label or
-// Lean declaration name. `sourceLocation` is the manifest lookup result used
-// for jump-to-label or jump-to-declaration UI.
-const statement = await preview.resolveLabel("Chapter2:Problem2.11.6");
-const declaration = await preview.resolveDeclaration("Nat.add");
-if (statement.ok && statement.sourceLocation.ok) {
-  console.log(statement.href, statement.sourceLocation.location.path);
+// Resolve a rendered preview by manifest/cache key. `resolvePreview` returns the
+// semantic manifest entry alongside the rendered fragment; read labels, hrefs,
+// dependencies, group membership, and source refs off `result.manifestEntry`.
+const key = preview.previewKey("Chapter2:Problem2.11.6", "statement");
+const result = await preview.resolvePreview(key);
+if (result.ok) {
+  console.log(result.manifestEntry.href, result.manifestEntry.sources);
 }
-if (declaration.ok && declaration.sourceLocation.ok) {
-  console.log(declaration.href, declaration.sourceLocation.location.path);
-}
-
-// Resolve source metadata when provenance from a declared external source
-// document is available in the manifest. Rendering the source preview is owned
-// by the caller or by Blueprint-generated UI.
-const sourceMetadata = await preview.resolveSourceMetadata(statement);
-console.log(sourceMetadata.sources);
 ```
 
 Use the data API when your code owns all UI and only needs structured generated
@@ -67,11 +58,7 @@ data:
 
 ```js
 // Import the data-only API when no DOM rendering is needed.
-import {
-  createPreviewData,
-  resolveLabel,
-  resolveSourceMetadata
-} from "./-verso-data/api/data.mjs";
+import { createPreviewData } from "./-verso-data/api/data.mjs";
 
 // Create an isolated data loader for this client.
 const data = createPreviewData();
@@ -79,16 +66,17 @@ const data = createPreviewData();
 // Load semantic manifest data and build the same preview key Blueprint uses.
 const manifest = await data.loadManifest();
 const entry = manifest.get(data.statementPreviewKey("Chapter2:Problem2.11.6"));
-const group = entry?.parent ? await data.loadGroup(entry.parent) : null;
-const labelResult = await resolveLabel("Chapter2:Problem2.11.6");
-const sourceMetadata = await data.resolveSourceMetadata(entry);
-const sameSourceMetadata = await resolveSourceMetadata(entry);
+
+// Group records and source documents are plain manifest fields: join the
+// manifest's top-level `groups`/`sourceDocuments` arrays against the entry's
+// `parent`/`sources` refs.
+const group = entry?.parent
+  ? manifest.groups?.find((g) => g.label === entry.parent)
+  : null;
 
 if (entry) {
-  console.log(entry.href, entry.label, entry.facet, sourceMetadata.sources[0]?.document?.title);
+  console.log(entry.href, entry.label, entry.facet, entry.sources);
   console.log(group?.title, group?.entries.length);
-  console.log(labelResult.sourceLocation);
-  console.log(sameSourceMetadata.sources[0]?.document?.title);
 }
 ```
 
@@ -124,13 +112,11 @@ beside the public browser entrypoints in `-verso-data/` are private
 implementation chunks for generated pages, Slides, and those entrypoints.
 
 - [preview API](module-blueprint-preview-api.html): render Blueprint nodes,
-  hydrate generated fragments, resolve canonical generated-node shells, resolve
-  labels/declarations and source metadata for previews, and provide call-scoped
-  external-markup fallback renderers.
+  hydrate generated fragments, resolve canonical generated-node shells, and
+  provide call-scoped external-markup fallback renderers.
 - [data API](module-blueprint-data-api.html): load generated manifests,
-  rendered-fragment caches, label/declaration locations, source metadata,
-  preview keys, and generated-data URLs without installing browser-global
-  render hooks.
+  rendered-fragment caches, preview keys, and generated-data URLs without
+  installing browser-global render hooks.
 - [graph API](module-blueprint-graph-api.html): read graph data embedded in
   generated graph pages, load graph records from a manifest, render manifest
   graph data, or render generated graph blocks with an explicit preview
@@ -145,8 +131,8 @@ document Blueprint's private runtime chunks directly.
 
 | Path | Use | Avoid |
 | --- | --- | --- |
-| `api/preview.mjs` | Custom browser views that render previews or canonical nodes, resolve label/declaration source locations, resolve source metadata for previews, provide external-markup fallbacks, or hydrate already-inserted fragments. | Reading `window.VersoBlueprint` or importing `Commands/*.mjs`. |
-| `api/data.mjs` | Audit tools, dashboards, migration checks, and Node-like clients that only need generated JSON data, label/declaration source locations, or source metadata. | Parsing rendered HTML to rediscover labels, graph topology, status, source provenance, or dependencies. |
+| `api/preview.mjs` | Custom browser views that render previews or canonical nodes, provide external-markup fallbacks, or hydrate already-inserted fragments. | Reading `window.VersoBlueprint` or importing `Commands/*.mjs`. |
+| `api/data.mjs` | Audit tools, dashboards, migration checks, and Node-like clients that only need generated JSON data. | Parsing rendered HTML to rediscover labels, graph topology, status, source provenance, or dependencies. |
 | `api/graph.mjs` | Graph dashboards and custom pages that read or render finalized graph records. | Calling graph render helpers without an explicit `previewUtils` renderer. |
 | `blueprint-page-runtime.mjs` | Regular generated Manual pages; it starts Blueprint's bundled feature scripts for you. | Custom clients that need isolated loaders, custom fetchers, or independent render options. |
 
@@ -167,10 +153,6 @@ the cached fragment or canonical generated node through `api/preview.mjs`.
   unavailable.
 - `BlueprintPreviewApi`: the render-capable API returned by `createPreview`;
   it combines manifest/cache helpers with preview-specific render methods.
-- `BlueprintResolveLabelResult` and `BlueprintResolveDeclarationResult`: typed
-  success or diagnostic results returned by semantic resolver helpers. On
-  success, `sourceLocation` identifies the authored Blueprint label/facet or
-  Lean declaration location.
 - `BlueprintRenderNodeResult`: typed success or diagnostic result returned by
   `renderNode`.
 
