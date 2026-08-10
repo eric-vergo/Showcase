@@ -313,18 +313,20 @@ def query (args : List String) : IO UInt32 := do
       IO.eprintln err
       pure 2
   | .ok opts =>
-      match VersoBlueprint.Vbp.parseQueryPlan opts.rest with
-      | .error err =>
-          IO.eprintln err
-          pure 2
-      | .ok none =>
+      match opts.rest with
+      | ["selectors"] =>
           printJson VersoBlueprint.Vbp.querySelectorsJson
           pure 0
-      | .ok (some plan) =>
+      | _ =>
           try
-            let manifest ← VersoBlueprint.Vbp.readManifestForQuery opts.site plan
-            printJson (plan.run manifest)
-            pure 0
+            let manifest ← VersoBlueprint.Vbp.readManifestForSite opts.site
+            match VersoBlueprint.Vbp.queryJson manifest opts.rest with
+            | .ok json =>
+                printJson json
+                pure 0
+            | .error err =>
+                IO.eprintln err
+                pure 2
           catch err =>
             IO.eprintln err.toString
             pure 1
@@ -336,9 +338,9 @@ def check (args : List String) : IO UInt32 := do
       pure 2
   | .ok opts =>
       try
-        let data ← VersoBlueprint.Vbp.readPersistedGeneratedData opts.site
-        let errors := VersoBlueprint.Vbp.checkGeneratedData data
-        printJson (VersoBlueprint.Vbp.checkJsonFromErrors data errors)
+        let data ← VersoBlueprint.Vbp.readGeneratedData opts.site
+        let errors := VersoBlueprint.Vbp.checkGeneratedData data.manifest data.htmlCache
+        printJson (VersoBlueprint.Vbp.checkJsonFromErrors data.manifest data.htmlCache errors)
         if errors.isEmpty then pure 0 else pure 1
       catch err =>
         IO.eprintln err.toString

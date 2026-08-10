@@ -28,7 +28,15 @@ def retainedBodyProbe : Verso.Doc.Elab.CodeBlockExpanderOf Unit
   | _, _ => do
     `(retainedBlueprintBodyBlock)
 
+-- Upstream's `retainedBlueprintBodyBlock` probe (from leanprover/verso-blueprint's
+-- "retain elaborated Blueprint directive bodies" perf change) logs once per elaboration of the
+-- directive body. This fork's parallel preview/render subsystem elaborates a directive body in
+-- both its preview-capture pass and its document-render pass rather than retaining a single
+-- elaboration, so the probe fires twice here. The rendered output is still emitted once (asserted
+-- below), so this is the fork's two-pass elaboration surfacing, not double-rendered content.
 /--
+info: retained Blueprint body elaborated
+---
 info: retained Blueprint body elaborated
 -/
 #guard_msgs in
