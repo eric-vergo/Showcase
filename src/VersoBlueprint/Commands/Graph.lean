@@ -670,14 +670,37 @@ def renderGraphFullwidth
     </div>
   }}
 
+/-- Decode a `GraphBlockData` from the flat compressed-JSON-string payload carried
+by `Block.graph` (see `mkGraphPart`). Keeping the block payload a flat `String`
+(rather than the structured value) is what bounds the quoted-term depth at scale:
+`quote`ing the full node/edge structure overflows the LCNF code generator's
+recursion ceiling on large blueprints (thousands of nodes + autoDeps edges).
+Reports and returns `none` on any string/parse/schema failure, matching the
+degrade-softly behavior of the previous structured decode. -/
+def decodeGraphBlockData? {m : Type → Type} [Monad m] [Verso.MonadBuildLog m]
+    (data : Json) (context : String) : m (Option GraphBlockData) := do
+  match data.getStr? with
+  | .error err =>
+    Verso.reportError s!"Malformed data in {context}: expected JSON string ({err})"
+    pure none
+  | .ok raw =>
+    match Json.parse raw with
+    | .error err =>
+      Verso.reportError s!"Malformed data in {context}: JSON parse failed ({err})"
+      pure none
+    | .ok json =>
+      Informal.ExtensionDecode.decode? (α := GraphBlockData) json
+        (fun err => s!"Malformed data in {context} ({err})")
+
 open Verso Doc Elab Genre Manual in
-block_extension Block.graph (graphData : GraphBlockData) where
+block_extension Block.graph (graphDataJson : String) where
   -- for TOC
   -- localContentItem _ _ _ := none
-  data := toJson graphData
+  -- Payload is a flat, pre-compressed JSON string (not the structured value): the
+  -- structured `quote` overflows the code generator at scale (see `mkGraphPart`).
+  data := Json.str graphDataJson
   traverse id data _contents := do
-      match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
-          (fun _ => "Malformed data in Block.graph.traverse") with
+      match ← decodeGraphBlockData? data "Block.graph.traverse" with
       | some graphData =>
         modify fun state =>
           let state := Informal.GraphApi.saveData state id graphData.semanticGraphData
@@ -703,8 +726,7 @@ block_extension Block.graph (graphData : GraphBlockData) where
     open Verso.Output.Html in
     some <| fun _goI goB id data _blocks => do
       let graphData : GraphBlockData ←
-        match ← Informal.ExtensionDecode.decode? (α := GraphBlockData) data
-            (fun err => s!"Malformed data in Block.graph.toHtml ({err})") with
+        match ← decodeGraphBlockData? data "Block.graph.toHtml" with
         | some graphData => pure graphData
         | Option.none => pure { semanticGraphData := {}, options := {} }
       let s ← HtmlT.state
@@ -1007,7 +1029,14 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let graphData : GraphBlockData :=
     { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?, declNamePrefix?,
       options, maxFlatVariantNodes, localGraphRadius, previewMode, previewPlacement }
-  let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphData)) #[])
+  -- Carry the block payload as a flat, pre-compressed JSON string rather than the
+  -- structured `GraphBlockData`: `quote`ing the full node/edge structure overflows
+  -- the LCNF code generator's recursion ceiling on large blueprints (thousands of
+  -- nodes + autoDeps edges). A flat `String` literal keeps the quoted-term depth
+  -- bounded; `Block.graph` re-parses it via `decodeGraphBlockData?`. Mirrors the
+  -- existing `declRegistryJson?`/`declBodiesJson?` flat-string channels above.
+  let graphDataJson := (toJson graphData).compress
+  let block ← ``(Verso.Doc.Block.other (Informal.Commands.Block.graph $(quote graphDataJson)) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
