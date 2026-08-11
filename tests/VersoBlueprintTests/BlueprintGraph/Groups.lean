@@ -131,4 +131,49 @@ def groupedVariants : Array Informal.Graph.GraphRenderVariant :=
     group.children.contains `ga_stmt &&
     group.children.contains `ga_proof
 
+/-! ## Scale cap (b): `maxFlatVariantNodes` skips the whole-graph variants above the cap. -/
+
+-- Forced-low cap (1 < 4 nodes): the two whole-graph variants (`full`/`essential`) are
+-- NOT generated, and the group overview leads so it becomes the default selected variant
+-- (`graph.mjs` picks `variants[0]` when there is no `full` variant). The grouped fixture
+-- has two group parents to fall back to.
+/-- info: (true, "group") -/
+#guard_msgs in
+#eval
+  let capped := Informal.Graph.mkGraphVariants groupedGraphInput
+    { direction := .TB, pack := true } groupedGraphTitleMap
+    (maxFlatVariantNodes := 1)
+  (capped.all (fun v => v.key != "full" && v.key != Informal.Graph.essentialVariantKey),
+   (capped[0]?.map (·.key)).getD "")
+
+-- Below the cap (default 0 = unlimited) the flat variants are still present and lead.
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  (groupedVariants.any (·.key == "full"),
+   groupedVariants.any (·.key == Informal.Graph.essentialVariantKey))
+
+/-! ## (d) `boundedNeighborhood`: radius-k neighborhood vs the full closure. -/
+
+def chainNeighborhoodData : Informal.Graph.GraphData :=
+  {
+    nodes := #[]
+    edges := #[
+      { source := `n_a, target := `n_b },
+      { source := `n_b, target := `n_c },
+      { source := `n_c, target := `n_d }]
+    groups := #[]
+  }
+
+-- Radius 1 from `n_b` reaches only its immediate neighbors in both directions
+-- (`n_a`, `n_c`), not `n_d`; radius 0 returns the full ancestor ∪ self ∪ descendant
+-- closure (all four).
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  let r1 := chainNeighborhoodData.boundedNeighborhood `n_b 1
+  let r0 := chainNeighborhoodData.boundedNeighborhood `n_b 0
+  (r1.contains `n_a && r1.contains `n_b && r1.contains `n_c && !r1.contains `n_d,
+   r0.contains `n_a && r0.contains `n_b && r0.contains `n_c && r0.contains `n_d)
+
 end Verso.VersoBlueprintTests.BlueprintGraph.Groups
