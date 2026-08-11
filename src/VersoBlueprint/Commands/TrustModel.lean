@@ -214,8 +214,25 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
            was gated before this site was written: no \
            dependency cycle, no unresolvable `uses` label." ++ edgeProvenance)
   -- Comparator.
+  let comparators := (trust?.map (·.comparators)).getD []
   let comparatorRow :=
-    match cmp? with
+    if !comparators.isEmpty then
+      -- Multi-config trust surface: aggregate across the configured topics.
+      let m := comparators.length
+      let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+      let verifiedCount := (comparators.filter (·.comparator.status == "verified")).length
+      let verdict :=
+        if verifiedCount == m then
+          trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success"
+        else trustBadgeHtml s!"{verifiedCount}/{m} configs" "warn"
+      checkRow "Independent statement comparator" verdict
+        s!"A CI run reported that each solution proves exactly its named challenge \
+           statement(s), across {m} comparator {if m == 1 then "config" else "configs"} \
+           ({k} certified {if k == 1 then "theorem" else "theorems"} in total). This page reads \
+           those runs' artifacts back; it does not re-run the checks. Scope is the named \
+           theorems only — everything else here is built and audited but not \
+           comparator-certified."
+    else match cmp? with
     | Option.none =>
       checkRow "Independent statement comparator" notCheckedBadge
         "This project configures no statement comparator, so no theorem here has been \

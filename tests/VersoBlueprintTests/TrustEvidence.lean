@@ -274,4 +274,46 @@ private def comparatorHtml (cmp : TrustComparator) : String :=
     challengeSha256 := Informal.Sha256.hexOfString fixtureComparator.challengeSource }
   (cmp.contentBound, cmp.contentUnbound)
 
+/-! ## Multi-config trust surface: N topics render N panels plus an aggregate -/
+
+private def mcTopic (name : String) (thms : List String) : ComparatorTopic :=
+  { name, comparator := { fixtureComparator with theoremNames := thms } }
+
+private def mcAxiomDecl : AxiomAuditDecl :=
+  { name := "Zeta23.PairCeiling.bound", axioms := ["propext", "Classical.choice"] }
+
+private def mcAxiomTopic : AxiomAuditTopic :=
+  { name := "PairCeiling axioms", decls := [mcAxiomDecl] }
+
+private def multiConfigHtml : String :=
+  (comparatorsPageBody
+    [mcTopic "Main statements" ["Zeta23.thmA", "Zeta23.thmB"],
+     mcTopic "Multiplicity" ["Zeta23.thmC"],
+     mcTopic "XiPrime zeros" ["Zeta23.xiDeriv"]]
+    [mcAxiomTopic]
+    (some "https://ci.example/run/1") (some 20) none).asString
+
+-- Three comparator topics render three titled panels; the config-less axiom-audit topic
+-- renders a fourth; and the header aggregates the certified theorems (2 + 1 + 1 = 4) of 20
+-- across 3 comparator configs.
+/-- info: (3, true, true, true) -/
+#guard_msgs in
+#eval
+  (countSubstr multiConfigHtml "bp_trust_topic_title",
+   hasSubstr multiConfigHtml "4 independently comparator-certified theorems of 20",
+   hasSubstr multiConfigHtml "across 3 comparator configs",
+   hasSubstr multiConfigHtml "PairCeiling axioms" &&
+     hasSubstr multiConfigHtml "Zeta23.PairCeiling.bound")
+
+/-! ## Scale cap (c): the degraded rendering tiers render their honest glyphs -/
+
+-- When the registry skips full re-elaboration above `fullElabMaxDecls`, signatures fall to
+-- the `signature` tier and proof bodies to `syntactic`; both must render a visible marker so
+-- the page shows the code was not re-elaborated (never a silent downgrade).
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  (hasSubstr (Informal.NodeCard.tierMarker (some "signature")).asString "bp_tier_marker",
+   hasSubstr (Informal.NodeCard.tierMarker (some "syntactic")).asString "bp_tier_marker")
+
 end Verso.VersoBlueprintTests.TrustEvidence

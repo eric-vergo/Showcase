@@ -62,6 +62,11 @@ register_option verso.blueprint.trust.comparatorConfig : String := {
   descr := "Path (relative to the build CWD) to the comparator's configuration JSON; its contents are embedded verbatim (pretty-printed) on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
 }
 
+register_option verso.blueprint.trust.comparatorTopics : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to a JSON manifest listing MULTIPLE comparator topics, each rendered as its own first-class certified panel on the comparator page (the multi-config trust surface). Schema: {\"topics\": [ {\"name\", \"kind\"?, \"status\", \"config\"?, \"challenge\"?, \"solution\"? }, … ]}. A topic with kind \"comparator\" (the default) names its own status/config/Challenge/Solution paths (same semantics as the single-pair options); a topic with kind \"axiom-audit\" names a set of declarations ({\"decls\": [\"Ns.foo\", …]}) and certifies only their kernel-audited axiom closure (no Challenge/Solution pair). The single-pair options keep working and are independent of this — a consumer uses one scheme or the other. Empty disables."
+}
+
 register_option verso.blueprint.trust.challengeFile : String := {
   defValue := ""
   descr := "Path (relative to the build CWD) to the comparator's Challenge Lean file; its contents are embedded verbatim on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
@@ -205,6 +210,35 @@ structure TrustComparator where
   comparatorLiveUrl : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
+/-- A named comparator topic: a display name plus its verdict. The multi-config
+trust surface (`verso.blueprint.trust.comparatorTopics`) carries a list of these,
+each rendered as a first-class certified panel reusing the single-panel body. -/
+structure ComparatorTopic where
+  name : String := ""
+  comparator : TrustComparator := {}
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- One declaration's kernel-audited axiom closure, for a config-less
+axiom-audit topic (`Lean.collectAxioms`, the same closure `#print axioms`
+reports). -/
+structure AxiomAuditDecl where
+  name : String := ""
+  axioms : List String := []
+  /-- Whether `sorryAx` is in the transitive closure (an incomplete proof). -/
+  sorried : Bool := false
+  /-- Axioms beyond {propext, Classical.choice, Quot.sound}. -/
+  nonstandard : List String := []
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- A config-less axiom-audit topic: a named set of declarations, each with its
+kernel-audited axiom closure. Unlike a comparator topic it has no
+Challenge/Solution pair — it certifies only "these declarations use exactly these
+axioms" (e.g. a `#print axioms`-only bound). -/
+structure AxiomAuditTopic where
+  name : String := ""
+  decls : List AxiomAuditDecl := []
+deriving Inhabited, FromJson, ToJson, Quote
+
 /-- Trust-strip payload: only fields present in the configured artifacts are set.
 The `formalization.yaml`-derived scalars (`sorryCount` / `axioms` / `reviewStatus`)
 are captured for downstream use; the strip and comparator page draw on `comparator`,
@@ -214,6 +248,17 @@ structure TrustData where
   axioms : List String := []
   reviewStatus : String := ""
   comparator : Option TrustComparator := none
+  /-- The multi-config comparator topics, from
+  `verso.blueprint.trust.comparatorTopics`. Empty ⇒ the consumer uses the
+  single-pair options (`comparator` above) or no comparator at all. When
+  non-empty the comparator page renders one certified panel per topic and the
+  strip/trust-model aggregate across them. -/
+  comparators : List ComparatorTopic := []
+  /-- Config-less axiom-audit topics, from `verso.blueprint.trust.comparatorTopics`
+  (topics with `kind: "axiom-audit"`). Each renders a panel certifying the
+  kernel-audited axiom closure of a named declaration set, with no
+  Challenge/Solution pair. -/
+  axiomAuditTopics : List AxiomAuditTopic := []
   /-- Whether a disconnected `uses` graph fails the build (item 1). Default `true`;
   a deliberately multi-topic blueprint sets `verso.blueprint.trust.requireConnected`
   false, and the connectivity check is then reported for information without gating. -/
@@ -520,59 +565,67 @@ private def absOptionPath (workspaceRoot : System.FilePath) (p : String) : Syste
   if fp.isAbsolute then fp else workspaceRoot / p
 
 open Informal in
-/-- Fill in the comparator-source enrichment: syntax-highlighted config/Challenge/
-Solution blocks and their source links (GitHub blob at the pinned commit +
-Lean-playground). Runs in `CoreM` (environment + git available at elaboration); every
-enrichment degrades to empty rather than failing. -/
+/-- Highlight one comparator's config/Challenge/Solution blocks and resolve its
+source links, given the file paths behind them (relative to the build CWD).
+Shared by the single-pair path and each multi-config topic. Runs in `CoreM`
+(environment + git available at elaboration); every enrichment degrades to empty
+rather than failing. -/
+def enrichComparatorSources (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (cmp0 : TrustComparator) (chalPath solPath cfgPath : String) : Lean.CoreM TrustComparator := do
+  let mut cmp := cmp0
+  if !cmp.configJson.isEmpty then
+    cmp := { cmp with configHtml := (highlightJsonHtml cmp.configJson).asString }
+  if !cmp.challengeSource.isEmpty then
+    if let some html ← Informal.highlightModuleSourceHtml? cmp.challengeSource then
+      cmp := { cmp with challengeHtml := html }
+  if !cmp.solutionSource.isEmpty then
+    if let some html ← Informal.highlightModuleSourceHtml? cmp.solutionSource then
+      cmp := { cmp with solutionHtml := html }
+  -- Blob URLs at the pinned commit, via the shared source-link builder (auto GitHub
+  -- when the file is in a checkout with a GitHub `origin`; degrades to none).
+  if !chalPath.isEmpty then
+    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+        (some (absOptionPath workspaceRoot chalPath)) none then
+      cmp := { cmp with githubChallengeUrl := blob }
+      if let some raw := blobToRawGitHubUrl? blob then
+        cmp := { cmp with
+          playgroundUrl :=
+            s!"https://live.lean-lang.org/#project={playgroundMathlibProjectId}&url={System.Uri.escapeUri raw}" }
+  if !solPath.isEmpty then
+    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+        (some (absOptionPath workspaceRoot solPath)) none then
+      cmp := { cmp with githubSolutionUrl := blob }
+  if !cfgPath.isEmpty then
+    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+        (some (absOptionPath workspaceRoot cfgPath)) none then
+      cmp := { cmp with githubConfigUrl := blob }
+  -- Project repo URL for the tier-3 "clone the project" step: the repository of the first
+  -- blob we managed to resolve. Degrades to empty when no GitHub remote is available.
+  if let some blob := [cmp.githubChallengeUrl, cmp.githubSolutionUrl, cmp.githubConfigUrl].find?
+      (fun u => !u.isEmpty) then
+    if let some repo := blobToRepoUrl? blob then
+      cmp := { cmp with repoUrl := repo }
+  -- Config arg path for the tier-3 run line: prefer the status JSON's own `config` (already
+  -- parsed by `ofJson`); otherwise recover it from the config blob's repo-root path.
+  if cmp.configArgPath.isEmpty && !cmp.githubConfigUrl.isEmpty then
+    if let some rel := blobToRepoRelPath? cmp.githubConfigUrl then
+      cmp := { cmp with configArgPath := rel }
+  return cmp
+
 def enrichTrustData (opts : Lean.Options) (trust : TrustData) : Lean.CoreM TrustData := do
   let workspaceRoot ← Informal.workspaceRoot
   let mut trust := trust
-  -- Comparator: highlight the config/Challenge blocks and resolve the source links.
+  -- Single-pair comparator: highlight the config/Challenge blocks and resolve the
+  -- source links from the option paths. (Multi-config topics are enriched at build
+  -- time in `elabComparatorTopics?`, which knows each topic's own paths.)
   if let some cmp := trust.comparator then
-    let mut cmp := cmp
-    if !cmp.configJson.isEmpty then
-      cmp := { cmp with configHtml := (highlightJsonHtml cmp.configJson).asString }
-    if !cmp.challengeSource.isEmpty then
-      if let some html ← Informal.highlightModuleSourceHtml? cmp.challengeSource then
-        cmp := { cmp with challengeHtml := html }
-    if !cmp.solutionSource.isEmpty then
-      if let some html ← Informal.highlightModuleSourceHtml? cmp.solutionSource then
-        cmp := { cmp with solutionHtml := html }
-    -- Blob URLs at the pinned commit, via the shared source-link builder (auto GitHub
-    -- when the file is in a checkout with a GitHub `origin`; degrades to none).
     let chalPath := opts.get verso.blueprint.trust.challengeFile.name
       verso.blueprint.trust.challengeFile.defValue
     let solPath := opts.get verso.blueprint.trust.solutionFile.name
       verso.blueprint.trust.solutionFile.defValue
     let cfgPath := opts.get verso.blueprint.trust.comparatorConfig.name
       verso.blueprint.trust.comparatorConfig.defValue
-    if !chalPath.isEmpty then
-      if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
-          (some (absOptionPath workspaceRoot chalPath)) none then
-        cmp := { cmp with githubChallengeUrl := blob }
-        if let some raw := blobToRawGitHubUrl? blob then
-          cmp := { cmp with
-            playgroundUrl :=
-              s!"https://live.lean-lang.org/#project={playgroundMathlibProjectId}&url={System.Uri.escapeUri raw}" }
-    if !solPath.isEmpty then
-      if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
-          (some (absOptionPath workspaceRoot solPath)) none then
-        cmp := { cmp with githubSolutionUrl := blob }
-    if !cfgPath.isEmpty then
-      if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
-          (some (absOptionPath workspaceRoot cfgPath)) none then
-        cmp := { cmp with githubConfigUrl := blob }
-    -- Project repo URL for the tier-3 "clone the project" step: the repository of the first
-    -- blob we managed to resolve. Degrades to empty when no GitHub remote is available.
-    if let some blob := [cmp.githubChallengeUrl, cmp.githubSolutionUrl, cmp.githubConfigUrl].find?
-        (fun u => !u.isEmpty) then
-      if let some repo := blobToRepoUrl? blob then
-        cmp := { cmp with repoUrl := repo }
-    -- Config arg path for the tier-3 run line: prefer the status JSON's own `config` (already
-    -- parsed by `ofJson`); otherwise recover it from the config blob's repo-root path.
-    if cmp.configArgPath.isEmpty && !cmp.githubConfigUrl.isEmpty then
-      if let some rel := blobToRepoRelPath? cmp.githubConfigUrl then
-        cmp := { cmp with configArgPath := rel }
+    let cmp ← enrichComparatorSources opts workspaceRoot cmp chalPath solPath cfgPath
     trust := { trust with comparator := some cmp }
   return trust
 
@@ -646,6 +699,36 @@ def trustScopeHtml (cmp? : Option TrustComparator) (theoremLikeTotal : Option Na
         | Option.some n => s!"certifies {k} {noun} of {n}"
         | Option.none => s!"certifies {k} named {noun}"
       {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
+
+/-- Aggregate scope line for the multi-config trust surface: total certified
+theorems across all comparator topics, out of the site's theorem-like total, and
+how many comparator configs did the certifying. -/
+def trustAggregateScopeHtml (comparators : List ComparatorTopic)
+    (theoremLikeTotal : Option Nat) : Output.Html :=
+  if comparators.isEmpty then .empty
+  else
+    let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+    let m := comparators.length
+    let noun := if k == 1 then "theorem" else "theorems"
+    let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
+    let text :=
+      match theoremLikeTotal with
+      | Option.some n => s!"certifies {k} {noun} of {n} across {m} {cfgNoun}"
+      | Option.none => s!"certifies {k} named {noun} across {m} {cfgNoun}"
+    {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
+
+/-- The multi-config comparator badge: how many of the M configs are verified,
+linking to the comparator page. -/
+def trustAggregateComparatorBadge (comparators : List ComparatorTopic) : Output.Html :=
+  let m := comparators.length
+  let cfgNoun := if m == 1 then "config" else "configs"
+  let verified := (comparators.filter (·.comparator.status == "verified")).length
+  if verified == m then
+    trustBadgeHtml s!"comparator: {m} {cfgNoun} verified" "success"
+      (href? := Option.some Informal.NodeRoute.comparatorHref)
+  else
+    trustBadgeHtml s!"comparator: {verified}/{m} {cfgNoun} verified" "warn"
+      (href? := Option.some Informal.NodeRoute.comparatorHref)
 
 /-- Badges for the structural `uses`-graph gates the build already ran. The gate itself
 lives in `Informal.GraphGate` (pre-emission); these badges report its verdict, which
@@ -727,7 +810,9 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
     Output.Html :=
   let badges : Array Output.Html := Id.run do
     let mut out : Array Output.Html := #[]
-    if let some cmp := trust.comparator then
+    if !trust.comparators.isEmpty then
+      out := out.push (trustAggregateComparatorBadge trust.comparators)
+    else if let some cmp := trust.comparator then
       out := out.push (trustComparatorBadge cmp)
     if let some auditBadge := trustAuditBadge? trust.audit? then
       out := out.push auditBadge
@@ -758,7 +843,8 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
       <section class="bp_trust_strip" "aria-label"="Trust signals">
         <span class="bp_trust_strip_label">"Trust"</span>
         <div class="bp_summary_badge_row">{{badges}}</div>
-        {{trustScopeHtml trust.comparator theoremLikeTotal}}
+        {{if trust.comparators.isEmpty then trustScopeHtml trust.comparator theoremLikeTotal
+          else trustAggregateScopeHtml trust.comparators theoremLikeTotal}}
       </section>
     }}
 
@@ -1005,8 +1091,134 @@ private def readSourceWithDigest (path : String) : IO (String × String) := do
 
 open Verso Doc Elab in
 /--
+Attach the config / Challenge / Solution source (with digests, cross-checks, and
+the comparator.live permalink) to a comparator verdict already parsed from its
+status artifact. Shared by the single-pair path and each multi-config topic so
+the honesty guarantees are identical: content digests are checked against what
+the verifying run recorded (hard error on disagreement), the run record's
+internal completeness is checked, status↔config identifier agreement is
+diagnosed, and — like the single-pair path — the Challenge FAILS CLOSED (a
+configured-but-missing/empty challenge is an error, since a verdict without the
+statement it certifies is unreadable). `statusPath` is used only for error text.
+-/
+def attachComparatorSources (cmp0 : TrustComparator)
+    (statusPath cfgPath chalPath solPath liveProject : String) :
+    PartElabM TrustComparator := do
+  let mut cmp := cmp0
+  let mut configJson? : Option Json := Option.none
+  if !cfgPath.isEmpty then
+    if (← System.FilePath.pathExists cfgPath) then
+      let (digest, raw) ← readSourceWithDigest cfgPath
+      cmp := { cmp with configDigest := digest }
+      match Json.parse raw with
+      | .ok j =>
+        configJson? := Option.some j
+        cmp := { cmp with
+          configJson := j.pretty
+          enableNanoda := (j.getObjValAs? Bool "enable_nanoda").toOption.getD false }
+      | .error _ =>
+        cmp := { cmp with configJson := raw }
+  if !chalPath.isEmpty then
+    unless ← System.FilePath.pathExists chalPath do
+      throwError "comparator challenge file names a missing file (resolved against the build \
+        directory): {chalPath}. The comparator page must not publish a verdict without the \
+        statement it certifies."
+    let (digest, src) ← readSourceWithDigest chalPath
+    if src.trimAscii.toString.isEmpty then
+      throwError "comparator challenge file names an empty file: {chalPath}. The comparator page \
+        must not publish a verdict without the statement it certifies."
+    cmp := { cmp with challengeSource := src, challengeDigest := digest }
+  if !solPath.isEmpty then
+    if (← System.FilePath.pathExists solPath) then
+      let (digest, src) ← readSourceWithDigest solPath
+      cmp := { cmp with solutionSource := src, solutionDigest := digest }
+  liftM (checkComparatorDigests cmp statusPath)
+  liftM (checkComparatorRunProvenance cmp statusPath)
+  if let some cfgJson := configJson? then
+    liftM (crossCheckComparator cmp cfgJson statusPath cfgPath chalPath solPath)
+  if !liveProject.isEmpty && !cmp.challengeSource.isEmpty && !cmp.solutionSource.isEmpty then
+    cmp := { cmp with
+      comparatorLiveUrl := comparatorLivePermalink liveProject cmp.challengeSource cmp.solutionSource }
+  return cmp
+
+open Verso Doc Elab in
+/--
+Build the multi-config comparator + axiom-audit topics from the JSON manifest
+named by `verso.blueprint.trust.comparatorTopics` (`""` ⇒ none). A missing or
+unparsable manifest, or a topic missing its `status` (comparator) / `decls`
+(axiom-audit), is a build error: a configured multi-config surface must not
+vanish silently. Paths inside the manifest resolve against the build CWD, like
+the single-pair options. Reads `verso.blueprint.trust.comparatorLiveProject` for
+the per-topic comparator.live permalink.
+-/
+def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTopic) := do
+  let opts ← Lean.getOptions
+  let path := opts.get verso.blueprint.trust.comparatorTopics.name
+    verso.blueprint.trust.comparatorTopics.defValue
+  if path.isEmpty then return ([], [])
+  unless ← System.FilePath.pathExists path do
+    throwError "option 'verso.blueprint.trust.comparatorTopics' names a missing file (resolved \
+      against the build directory): {path}"
+  let doc ← match Json.parse (← IO.FS.readFile path) with
+    | .error err => throwError "could not parse {path}: {err}"
+    | .ok j => pure j
+  let topics := (doc.getObjVal? "topics").toOption.getD Json.null
+  let arr := topics.getArr?.toOption.getD #[]
+  let liveProject := opts.get verso.blueprint.trust.comparatorLiveProject.name
+    verso.blueprint.trust.comparatorLiveProject.defValue
+  let str? (j : Json) (k : String) : String := (j.getObjValAs? String k).toOption.getD ""
+  let workspaceRoot ← liftM Informal.workspaceRoot
+  let mut comparators : List ComparatorTopic := []
+  let mut axiomTopics : List AxiomAuditTopic := []
+  for t in arr do
+    let name := str? t "name"
+    let kind := let k := str? t "kind"; if k.isEmpty then "comparator" else k
+    match kind with
+    | "axiom-audit" =>
+      let declNames := (t.getObjValAs? (List String) "decls").toOption.getD []
+      if declNames.isEmpty then
+        throwError "comparator topic '{name}' in {path} has kind \"axiom-audit\" but names no \
+          declarations (\"decls\": [...])."
+      let mut decls : List AxiomAuditDecl := []
+      for dn in declNames do
+        match ← liftM (Informal.AxiomAudit.declAxioms? dn.toName) with
+        | Option.some d =>
+          let entry : AxiomAuditDecl := {
+            name := d.name
+            axioms := d.axioms.toList
+            sorried := d.sorried
+            nonstandard := d.nonstandard.toList
+          }
+          decls := decls ++ [entry]
+        | Option.none =>
+          throwError "comparator topic '{name}' in {path}: declaration '{dn}' is not in the \
+            environment this site was generated from, so its axiom closure cannot be audited."
+      let topicEntry : AxiomAuditTopic := { name, decls }
+      axiomTopics := axiomTopics ++ [topicEntry]
+    | _ =>
+      let statusPath := str? t "status"
+      if statusPath.isEmpty then
+        throwError "comparator topic '{name}' in {path} names no status artifact (\"status\": …)."
+      unless ← System.FilePath.pathExists statusPath do
+        throwError "comparator topic '{name}' in {path} names a missing status file (resolved \
+          against the build directory): {statusPath}"
+      let cmp0 ← match Json.parse (← IO.FS.readFile statusPath) with
+        | .error err => throwError "could not parse {statusPath} (topic '{name}'): {err}"
+        | .ok j => pure (TrustComparator.ofJson j)
+      let cfgPath := str? t "config"
+      let chalPath := str? t "challenge"
+      let solPath := str? t "solution"
+      let cmp ← attachComparatorSources cmp0 statusPath cfgPath chalPath solPath liveProject
+      -- Same source enrichment (highlighting + links) as the single-pair path.
+      let cmp ← liftM (enrichComparatorSources opts workspaceRoot cmp chalPath solPath cfgPath)
+      let topicEntry : ComparatorTopic := { name, comparator := cmp }
+      comparators := comparators ++ [topicEntry]
+  return (comparators, axiomTopics)
+
+open Verso Doc Elab in
+/--
 Read the artifacts named by the `verso.blueprint.trust.*` options into a
-`TrustData` payload. `none` when both options are unset; a build error when a
+`TrustData` payload. `none` when all options are unset; a build error when a
 set option names a missing or unparsable file. Reads happen at elaboration
 time; relative paths resolve against the build CWD (the consumer package root).
 -/
@@ -1018,7 +1230,10 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   let cmpPath : String :=
     opts.get verso.blueprint.trust.comparatorStatus.name
       verso.blueprint.trust.comparatorStatus.defValue
-  if yamlPath.isEmpty && cmpPath.isEmpty then
+  let topicsPath : String :=
+    opts.get verso.blueprint.trust.comparatorTopics.name
+      verso.blueprint.trust.comparatorTopics.defValue
+  if yamlPath.isEmpty && cmpPath.isEmpty && topicsPath.isEmpty then
     return Option.none
   let mut trust : TrustData := {}
   if !yamlPath.isEmpty then
@@ -1048,62 +1263,17 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     let solPath : String :=
       opts.get verso.blueprint.trust.solutionFile.name
         verso.blueprint.trust.solutionFile.defValue
-    let mut cmp := cmp
-    let mut configJson? : Option Json := Option.none
-    if !cfgPath.isEmpty then
-      if (← System.FilePath.pathExists cfgPath) then
-        -- The digest is over the file's bytes — the thing CI hashed. The block below it
-        -- is pretty-printed *from* those bytes, so binding the bytes binds the display.
-        let (digest, raw) ← readSourceWithDigest cfgPath
-        cmp := { cmp with configDigest := digest }
-        -- Pretty-print when it parses as JSON; fall back to the raw file text. The parsed
-        -- config also carries `enable_nanoda`, which governs the reproduce instructions
-        -- and what a *future* run will do — never what the linked past run did.
-        match Json.parse raw with
-        | .ok j =>
-          configJson? := Option.some j
-          cmp := { cmp with
-            configJson := j.pretty
-            enableNanoda := (j.getObjValAs? Bool "enable_nanoda").toOption.getD false }
-        | .error _ =>
-          cmp := { cmp with configJson := raw }
-    -- The claim FAILS CLOSED. Unlike the config and solution blocks, the challenge
-    -- statement is what the verdict is *about*: publishing a verdict without it leaves
-    -- the reader nothing to audit. A configured-but-unreadable challenge file is
-    -- therefore an error, not a silently dropped section. (An unconfigured one renders
-    -- an explicit notice on the page — see `TrustPages.comparatorBody`.)
-    if !chalPath.isEmpty then
-      unless ← System.FilePath.pathExists chalPath do
-        throwError "option 'verso.blueprint.trust.challengeFile' names a missing file \
-          (resolved against the build directory): {chalPath}. The comparator page must not \
-          publish a verdict without the statement it certifies."
-      let (digest, src) ← readSourceWithDigest chalPath
-      if src.trimAscii.toString.isEmpty then
-        throwError "option 'verso.blueprint.trust.challengeFile' names an empty file: \
-          {chalPath}. The comparator page must not publish a verdict without the statement \
-          it certifies."
-      cmp := { cmp with challengeSource := src, challengeDigest := digest }
-    if !solPath.isEmpty then
-      if (← System.FilePath.pathExists solPath) then
-        let (digest, src) ← readSourceWithDigest solPath
-        cmp := { cmp with solutionSource := src, solutionDigest := digest }
-    -- Content binding: the displayed bytes against the digests the verifying run
-    -- recorded. Hard error on disagreement; see `checkComparatorDigests`.
-    liftM (checkComparatorDigests cmp cmpPath)
-    -- Internal completeness of the run record (a claimed replay names its kernel).
-    liftM (checkComparatorRunProvenance cmp cmpPath)
-    -- Status ↔ config agreement (identifier-level diagnostics). See `crossCheckComparator`.
-    if let some cfgJson := configJson? then
-      liftM (crossCheckComparator cmp cfgJson cmpPath cfgPath chalPath solPath)
-    -- comparator.live permalink (links only; nothing is fetched at build time).
     let liveProject : String :=
       opts.get verso.blueprint.trust.comparatorLiveProject.name
         verso.blueprint.trust.comparatorLiveProject.defValue
-    if !liveProject.isEmpty && !cmp.challengeSource.isEmpty && !cmp.solutionSource.isEmpty then
-      cmp := { cmp with
-        comparatorLiveUrl :=
-          comparatorLivePermalink liveProject cmp.challengeSource cmp.solutionSource }
+    -- Config/Challenge/Solution embedding + digests + cross-checks + live permalink,
+    -- via the shared helper (identical honesty logic for the multi-config topics).
+    let cmp ← attachComparatorSources cmp cmpPath cfgPath chalPath solPath liveProject
     trust := { trust with comparator := Option.some cmp }
+  -- Multi-config comparator + axiom-audit topics, independent of the single-pair
+  -- options above (a consumer uses one scheme or the other).
+  let (comparators, axiomAuditTopics) ← elabComparatorTopics?
+  trust := { trust with comparators, axiomAuditTopics }
   -- Layer on the comparator-source enrichment (syntax highlighting + source links).
   -- Runs in `CoreM`; degrades to empty fields, never a build error.
   trust := (← liftM (enrichTrustData opts trust))

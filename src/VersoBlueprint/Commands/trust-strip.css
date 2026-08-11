@@ -229,3 +229,61 @@ a.bp_summary_badge:focus-visible {
   text-decoration: underline;
   text-underline-offset: 0.14em;
 }
+
+/* Multi-config trust surface: an aggregate header, then one titled panel per
+   comparator topic, then any config-less axiom-audit panels. Reuses the
+   single-panel section chrome; only the per-topic frame and the axiom table are
+   new. All colors are shared, already-themed --bp-* tokens (light + dark). */
+.bp_trust_multi_header {
+  margin-top: var(--bp-space-4);
+}
+
+.bp_trust_topic {
+  margin-top: var(--bp-space-6);
+  padding-top: var(--bp-space-4);
+  border-top: 1px solid var(--bp-color-border-soft);
+}
+
+.bp_trust_topic_title {
+  margin: 0 0 var(--bp-space-2);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--bp-color-text-strong);
+}
+
+/* Axiom-audit panel: a two-column declaration / axiom-closure table. */
+.bp_trust_table_wrap {
+  overflow-x: auto;
+  margin-top: var(--bp-space-3);
+}
+
+.bp_trust_axiom_table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--bp-fs-caption);
+}
+
+.bp_trust_axiom_table th,
+.bp_trust_axiom_table td {
+  text-align: left;
+  padding: var(--bp-space-1) var(--bp-space-3);
+  border-bottom: 1px solid var(--bp-color-border-soft);
+  vertical-align: top;
+}
+
+.bp_trust_axiom_table th {
+  font-weight: 600;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_axiom_ok {
+  color: var(--bp-color-accent-success);
+}
+
+.bp_trust_axiom_warn {
+  color: var(--bp-color-accent-warning);
+}
+
+.bp_trust_axiom_bad {
+  color: var(--bp-color-accent-danger);
+}

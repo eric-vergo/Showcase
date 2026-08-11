@@ -372,7 +372,7 @@ Public so tests can render the page's markup from a `TrustComparator` directly: 
 run-evidence and content-binding rules this body enforces are the point of the page,
 and asserting them through a generated site would test the `ExtraStep` plumbing
 instead. -/
-def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
+def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
   -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool refs).
   let verdict := comparatorVerdictHeader cmp ciUrl? theoremLikeTotal
@@ -505,8 +505,110 @@ def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
                <summary>"Show comparator configuration"</summary>
                {{trustCodeBlock "bp_trust_code_json" cmp.configHtml cmp.configJson}}
              </details> }}])
+  .seq #[verdict, claimSection, certifiesSection, checkSection, reproSection, solutionSection, configSection]
+
+/-- The single-comparator page: the panel body inside the page shell. -/
+def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
   trustPageShell "Statement comparator" ""
-    (.seq #[verdict, claimSection, certifiesSection, checkSection, reproSection, solutionSection, configSection])
+    (comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref?)
+
+/-! ## Multi-config trust surface -/
+
+/-- One config-less axiom-audit panel: a named declaration set, each declaration
+with its kernel-audited axiom closure and a per-set verdict. Certifies only "these
+declarations use exactly these axioms" — no Challenge/Solution pair. -/
+def axiomAuditPanel (topic : AxiomAuditTopic) : Output.Html :=
+  let anySorry := topic.decls.any (·.sorried)
+  let anyNonstandard := topic.decls.any (fun d => !d.nonstandard.isEmpty)
+  let n := topic.decls.length
+  let declNoun := if n == 1 then "declaration" else "declarations"
+  let verdict :=
+    if anySorry then
+      trustBadgeHtml s!"{(topic.decls.filter (·.sorried)).length} incomplete" "error"
+    else if anyNonstandard then
+      trustBadgeHtml s!"{(topic.decls.filter (fun d => !d.nonstandard.isEmpty)).length} nonstandard" "warn"
+    else
+      trustBadgeHtml s!"{n} clean" "success"
+  let intro :=
+    if anySorry then
+      s!"`Lean.collectAxioms` over {n} {declNoun} found `sorryAx` in at least one transitive \
+         closure: those proofs are incomplete."
+    else if anyNonstandard then
+      s!"`Lean.collectAxioms` over {n} {declNoun}: no `sorryAx`, but at least one depends on an \
+         axiom beyond propext, Classical.choice, and Quot.sound."
+    else
+      s!"`Lean.collectAxioms` over {n} {declNoun}: no `sorryAx` anywhere in any transitive \
+         closure, and no axiom beyond propext, Classical.choice, and Quot.sound."
+  let rows : Array Output.Html := (topic.decls.map fun d =>
+    let axiomList := if d.axioms.isEmpty then "(none)" else ", ".intercalate d.axioms
+    let cellClass :=
+      if d.sorried then "bp_trust_axiom_bad"
+      else if !d.nonstandard.isEmpty then "bp_trust_axiom_warn"
+      else "bp_trust_axiom_ok"
+    {{
+      <tr>
+        <td><code>{{.text true d.name}}</code></td>
+        <td class={{cellClass}}>{{.text true axiomList}}</td>
+      </tr>
+    }}).toArray
+  trustSection topic.name
+    (.seq #[
+      {{ <p class="bp_trust_verdict_row">{{verdict}}</p> }},
+      {{ <p class="bp_trust_prose">{{Informal.NodeCard.withCodeSpans intro}}</p> }},
+      {{
+        <div class="bp_trust_table_wrap">
+          <table class="bp_trust_axiom_table">
+            <thead><tr><th>"Declaration"</th><th>"Axiom closure"</th></tr></thead>
+            <tbody>{{.seq rows}}</tbody>
+          </table>
+        </div>
+      }}])
+
+/-- The multi-config comparator page: an aggregate verdict header, then one
+first-class certified panel per comparator topic (reusing the single-panel body)
+plus one panel per config-less axiom-audit topic. `comparatorBody`'s honesty
+rules apply per panel; the header aggregates across them. -/
+def comparatorsPageBody (comparators : List ComparatorTopic)
+    (axiomTopics : List AxiomAuditTopic) (ciUrl? : Option String)
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
+  let m := comparators.length
+  let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
+  let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+  let thmNoun := if k == 1 then "theorem" else "theorems"
+  let scopeText :=
+    match theoremLikeTotal with
+    | some n => s!"This site presents {k} independently comparator-certified {thmNoun} of {n} \
+        theorem-like statements, across {m} {cfgNoun}."
+    | none => s!"This site presents {k} independently comparator-certified {thmNoun}, across \
+        {m} {cfgNoun}."
+  let axiomNote :=
+    if axiomTopics.isEmpty then Output.Html.empty
+    else
+      let a := axiomTopics.length
+      let setNoun := if a == 1 then "declaration set" else "declaration sets"
+      {{ <p class="bp_trust_prose">{{.text true
+        s!"Below the comparator panels, {a} additional {setNoun} carry a kernel axiom audit \
+           ({(axiomTopics.map (·.decls.length)).foldl (· + ·) 0} declarations) with no \
+           Challenge/Solution pair — each certifies only its declarations' axiom closure."}}
+      </p> }}
+  let header : Output.Html :=
+    {{
+      <section class="bp_trust_section bp_trust_multi_header">
+        <p class="bp_trust_prose">{{.text true scopeText}}</p>
+        {{axiomNote}}
+      </section>
+    }}
+  let comparatorPanels : Array Output.Html := (comparators.map fun topic =>
+    {{
+      <section class="bp_trust_topic">
+        <h2 class="bp_trust_topic_title">{{.text true topic.name}}</h2>
+        {{comparatorPanelInner topic.comparator ciUrl? theoremLikeTotal trustModelHref?}}
+      </section>
+    }}).toArray
+  let axiomPanels : Array Output.Html := (axiomTopics.map axiomAuditPanel).toArray
+  trustPageShell "Statement comparator" ""
+    (.seq (#[header] ++ comparatorPanels ++ axiomPanels))
 
 /-! ## Emission -/
 
@@ -542,20 +644,33 @@ def emitBlueprintComparatorPage : ExtraStep :=
           "Showcase comparator page: the cached trust payload could not be decoded; \
            skipping comparator/index.html."
       | some _, some trust =>
-        match trust.comparator with
-        | none => pure ()
-        | some cmp =>
-          let ciUrl? : Option String :=
-            if cmp.runUrl.isEmpty then trust.ciRunUrl else some cmp.runUrl
-          -- "k of N": N counts every theorem-like node the site presents (theorems,
-          -- lemmas, propositions, corollaries) — the population the certified set is
-          -- a subset of.
-          let theoremLikeTotal :=
-            (Informal.TraversalIndex.Summary.cachedSummary? state).map fun s =>
-              s.theorems + s.lemmas + s.propositions + s.corollaries
-          let trustModelHref? := Informal.TraversalIndex.TrustModelPage.href? state
+        -- "k of N": N counts every theorem-like node the site presents (theorems,
+        -- lemmas, propositions, corollaries) — the population the certified set is
+        -- a subset of.
+        let theoremLikeTotal :=
+          (Informal.TraversalIndex.Summary.cachedSummary? state).map fun s =>
+            s.theorems + s.lemmas + s.propositions + s.corollaries
+        let trustModelHref? := Informal.TraversalIndex.TrustModelPage.href? state
+        -- The CI-run link for a topic prefers that topic's own status `run_url`,
+        -- falling back to the shared `ciRunUrl` option.
+        let ciFor (cmp : TrustComparator) : Option String :=
+          if cmp.runUrl.isEmpty then trust.ciRunUrl else some cmp.runUrl
+        let body? : Option Output.Html :=
+          if !trust.comparators.isEmpty || !trust.axiomAuditTopics.isEmpty then
+            -- Multi-config trust surface: one certified panel per topic + aggregate.
+            -- The per-topic CI link falls back to the first topic's run_url.
+            let ciUrl? :=
+              (trust.comparators.head?.map (fun t => ciFor t.comparator)).getD trust.ciRunUrl
+            some (comparatorsPageBody trust.comparators trust.axiomAuditTopics ciUrl?
+              theoremLikeTotal trustModelHref?)
+          else match trust.comparator with
+            | Option.none => Option.none
+            | Option.some cmp =>
+              Option.some (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref?)
+        match body? with
+        | Option.none => pure ()
+        | Option.some body =>
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            Informal.NodeRoute.comparatorPath "Statement comparator"
-            (comparatorBody cmp ciUrl? theoremLikeTotal trustModelHref?)
+            Informal.NodeRoute.comparatorPath "Statement comparator" body
 
 end Informal.Commands
