@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Emilio J. Gallego Arias, Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code)
 -/
 
+import Std.Data.HashMap
+import Std.Data.HashSet
 import VersoBlueprint.Graph
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Lib.PreviewSource
@@ -166,18 +168,28 @@ empty graph is the honest result when nothing was rendered, and every generated
 Blueprint renders at least one graph block in practice — so this fallback is
 effectively unreachable.
 -/
-def masterGraph (state : TraverseState) : Informal.Graph.GraphData :=
-  (cachedData state).foldl (init := ({} : Informal.Graph.GraphData)) fun acc data =>
-    let acc := data.nodes.foldl (init := acc) fun acc node =>
-      if acc.nodes.any (·.label == node.label) then acc
-      else { acc with nodes := acc.nodes.push node }
-    let acc := data.edges.foldl (init := acc) fun acc edge =>
-      if acc.edges.any (fun e => e.source == edge.source && e.target == edge.target) then acc
-      else { acc with edges := acc.edges.push edge }
-    data.groups.foldl (init := acc) fun acc group =>
-      match acc.groups.findIdx? (fun g => g.label == group.label) with
+def masterGraph (state : TraverseState) : Informal.Graph.GraphData := Id.run do
+  -- Accumulator arrays still preserve first-occurrence order; the hash structures
+  -- replace the previous linear `Array.any`/`findIdx?` dedup scans with `O(1)`
+  -- membership tests, keeping the merged output byte-identical.
+  let mut acc : Informal.Graph.GraphData := {}
+  let mut seenNodes : Std.HashSet Name := {}
+  let mut seenEdges : Std.HashSet (Name × Name) := {}
+  let mut groupIdx : Std.HashMap Name Nat := {}
+  for data in cachedData state do
+    for node in data.nodes do
+      if !seenNodes.contains node.label then
+        seenNodes := seenNodes.insert node.label
+        acc := { acc with nodes := acc.nodes.push node }
+    for edge in data.edges do
+      let edgeKey := (edge.source, edge.target)
+      if !seenEdges.contains edgeKey then
+        seenEdges := seenEdges.insert edgeKey
+        acc := { acc with edges := acc.edges.push edge }
+    for group in data.groups do
+      match groupIdx.get? group.label with
       | some i =>
-        { acc with
+        acc := { acc with
           groups := acc.groups.modify i fun existing =>
             { existing with
               children := group.children.foldl (init := existing.children) fun ch c =>
@@ -185,6 +197,9 @@ def masterGraph (state : TraverseState) : Informal.Graph.GraphData :=
               declared := existing.declared || group.declared
               title := if existing.title.isEmpty then group.title else existing.title
               shortTitle := if existing.shortTitle.isEmpty then group.shortTitle else existing.shortTitle } }
-      | none => { acc with groups := acc.groups.push group }
+      | none =>
+        groupIdx := groupIdx.insert group.label acc.groups.size
+        acc := { acc with groups := acc.groups.push group }
+  return acc
 
 end Informal.GraphApi

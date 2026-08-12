@@ -1855,11 +1855,66 @@ private def relatedAxes (source : Informal.BlockData) (target : Name) : Array Re
     if source.statementDeps.contains target then #[.statement] else #[]
   if source.proofDeps.contains target then axes.push .proof else axes
 
+/--
+Precomputed relation indexes over the traversal's stored informal blocks.
+
+`blockEntryOfTraversalPreview` runs once per stored block, so the per-entry
+relation lookups must not rescan the whole store each time. This bundles a single
+`collectStoredBlocks` pass with three derived indexes, mirroring the
+`RelationContext` pattern in `Informal/Block/RelatedPanel.lean`:
+
+* `byLabel` — label → block, replacing per-dependency `blockInfo?` re-decodes in
+  `buildUsesRelations`/`relatedEntryForLabel` with `O(1)` lookups;
+* `usedBy` — target label → the sources depending on it, paired with the relation
+  axes, so `buildUsedByRelations` is a lookup instead of an `O(n)` scan;
+* `children` — parent label → its statement-kind children, for `buildGroupRelation?`.
+
+Both derived indexes are built by iterating `storedBlocks` in traversal order and
+appending, so each per-key array preserves the exact source order the previous
+linear `filterMap` scans produced.
+-/
+private structure RelationIndex where
+  byLabel : Std.HashMap Name Informal.BlockData
+  usedBy : Std.HashMap Name (Array (Informal.BlockData × Array RelationAxis))
+  children : Std.HashMap Name (Array Informal.BlockData)
+
+/-- Build every relation index from a single `collectStoredBlocks` pass. -/
+private def RelationIndex.ofState (state : TraverseState) : RelationIndex := Id.run do
+  let storedBlocks := Informal.collectStoredBlocks state
+  let mut byLabel : Std.HashMap Name Informal.BlockData := {}
+  let mut usedBy : Std.HashMap Name (Array (Informal.BlockData × Array RelationAxis)) := {}
+  let mut children : Std.HashMap Name (Array Informal.BlockData) := {}
+  for source in storedBlocks do
+    let sourceLabel : Name := source.label
+    -- Keep the first stored occurrence for each label (labels are unique in the
+    -- node store; the guard makes the first-wins semantics explicit).
+    if !byLabel.contains sourceLabel then
+      byLabel := byLabel.insert sourceLabel source
+    -- Statement-kind children grouped by parent, in traversal order.
+    match source.parent, source.kind with
+    | some parent, .statement _ =>
+      children := children.insert (parent : Name) (((children.get? (parent : Name)).getD #[]).push source)
+    | _, _ => pure ()
+    -- Reverse dependency edges: record each distinct target this source uses
+    -- (skipping self-references) under that target, in traversal order, so a
+    -- target's bucket matches the order the previous `buildUsedByRelations` scan
+    -- produced.
+    let targets := (source.statementDeps ++ source.proofDeps).foldl
+      (init := (#[] : Array Name)) fun acc label =>
+        let label : Name := label
+        if acc.contains label then acc else acc.push label
+    for target in targets do
+      if target != sourceLabel then
+        let axes := relatedAxes source target
+        usedBy := usedBy.insert target (((usedBy.get? target).getD #[]).push (source, axes))
+  return { byLabel, usedBy, children }
+
 private def relatedEntryForLabel
     (state : TraverseState)
+    (byLabel : Std.HashMap Name Informal.BlockData)
     (label : Name)
     (axes : Array RelationAxis := #[]) : RelatedEntry :=
-  let blockData? := blockInfo? state label
+  let blockData? := byLabel.get? label
   {
     label
     title := blockTitle state label .statement blockData?
@@ -1882,30 +1937,24 @@ private def relatedEntryForBlock
 
 private def buildUsesRelations
     (state : TraverseState)
+    (byLabel : Std.HashMap Name Informal.BlockData)
     (blockData : Informal.BlockData) : Array RelatedEntry :=
   let labels := (blockData.statementDeps ++ blockData.proofDeps).foldl
     (fun acc label => if acc.contains label then acc else acc.push label)
     #[]
   labels.map fun label =>
-    relatedEntryForLabel state label (relatedAxes blockData label)
+    relatedEntryForLabel state byLabel label (relatedAxes blockData label)
 
 private def buildUsedByRelations
     (state : TraverseState)
-    (storedBlocks : Array Informal.BlockData)
+    (usedByIndex : Std.HashMap Name (Array (Informal.BlockData × Array RelationAxis)))
     (blockData : Informal.BlockData) : Array RelatedEntry :=
-  storedBlocks.filterMap fun source =>
-    if source.label == blockData.label then
-      none
-    else
-      let axes := relatedAxes source blockData.label
-      if axes.isEmpty then
-        none
-      else
-        some <| relatedEntryForBlock state source axes
+  ((usedByIndex.get? blockData.label).getD #[]).map fun (source, axes) =>
+    relatedEntryForBlock state source axes
 
 private def buildGroupRelation?
     (state : TraverseState)
-    (storedBlocks : Array Informal.BlockData)
+    (childrenIndex : Std.HashMap Name (Array Informal.BlockData))
     (blockData : Informal.BlockData) : Option GroupRelation := do
   let parent ← blockData.parent
   let groupData? := Informal.TraversalIndex.Groups.data? state parent
@@ -1915,15 +1964,11 @@ private def buildGroupRelation?
       let header := groupData.header.trimAscii.toString
       if header.isEmpty then parent.toString else header
     | none => parent.toString
-  let entries := storedBlocks.filterMap fun source =>
+  let entries := ((childrenIndex.get? (parent : Name)).getD #[]).filterMap fun source =>
     if source.label == blockData.label then
       none
-    else if source.parent == some parent then
-      match source.kind with
-      | .statement _ => some <| relatedEntryForBlock state source
-      | .proof => none
     else
-      none
+      some <| relatedEntryForBlock state source
   some {
     label := parent
     title
@@ -1933,12 +1978,12 @@ private def buildGroupRelation?
 
 def blockEntryOfTraversalPreview
     (state : TraverseState)
-    (preview : PreviewCache.Entry) : Entry :=
+    (preview : PreviewCache.Entry)
+    (idx : RelationIndex := RelationIndex.ofState state) : Entry :=
   let blockData? := blockInfo? state preview.label
   let key := PreviewCache.key preview.label preview.facet
   let headingParts? := blockHeadingParts? state preview.label preview.facet blockData?
   let codeData := blockCodeData? state preview.label preview blockData?
-  let storedBlocks := Informal.collectStoredBlocks state
   {
     key
     targetKind := .block
@@ -1956,9 +2001,9 @@ def blockEntryOfTraversalPreview
     leanCodePreviewKeys := blockLeanCodePreviewKeys state preview.label preview
     codeData
     externalMarkup := externalMarkupArray state preview.label
-    uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-    usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-    group := blockData?.bind (buildGroupRelation? state storedBlocks)
+    uses := blockData?.map (buildUsesRelations state idx.byLabel ·) |>.getD #[]
+    usedBy := blockData?.map (buildUsedByRelations state idx.usedBy ·) |>.getD #[]
+    group := blockData?.bind (buildGroupRelation? state idx.children)
     ownerDisplayName := blockData?.bind (·.ownerDisplayName)
     tags := blockData?.map (·.tags) |>.getD #[]
     priority := blockData?.bind (·.priority)
@@ -1979,6 +2024,9 @@ private def buildTraversalEntries
   let mut entries := #[]
   let mut htmlEntries := #[]
   let mut hoverState := hoverState
+  -- Build the relation indexes once; `blockEntryOfTraversalPreview` runs once per
+  -- stored block below and would otherwise rescan the whole store each time.
+  let idx := RelationIndex.ofState state
   for decoded in Informal.PreviewSource.traversalStoredEntries state do
     match decoded with
     | .error err =>
@@ -1993,21 +2041,26 @@ private def buildTraversalEntries
       let html := rendered.html.asString
       if html.trimAscii.isEmpty then
         continue
-      let manifestEntry := blockEntryOfTraversalPreview state entry
+      let manifestEntry := blockEntryOfTraversalPreview state entry idx
       entries := entries.push manifestEntry
       htmlEntries := htmlEntries.push { key := stored.key, html }
   pure (entries, htmlEntries, hoverState)
 
-private def hasPreviewBackedBlockEntry (entries : Array Entry) (label : Name) : Bool :=
-  entries.any fun entry =>
-    entry.targetKind == .block && entry.label == label
+private def hasPreviewBackedBlockEntry (previewBackedLabels : Std.HashSet Name) (label : Name) : Bool :=
+  previewBackedLabels.contains label
 
 private def buildExternalMarkupEntries
     (logError : String → IO Unit)
     (state : TraverseState)
     (previewBackedEntries : Array Entry) : IO (Array Entry) := do
   let mut entries := #[]
-  let storedBlocks := Informal.collectStoredBlocks state
+  let idx := RelationIndex.ofState state
+  -- Preview-backed block labels, so the per-entry existence check below is an
+  -- `O(1)` lookup rather than a scan of every previously built block entry.
+  let previewBackedLabels : Std.HashSet Name :=
+    previewBackedEntries.foldl
+      (fun seen entry => if entry.targetKind == .block then seen.insert entry.label else seen)
+      {}
   for decoded in Informal.TraversalIndex.ExternalMarkup.entries state do
     match decoded with
     | .error err =>
@@ -2016,7 +2069,7 @@ private def buildExternalMarkupEntries
       let data := stored.data
       if data.markup.isEmpty then
         continue
-      if hasPreviewBackedBlockEntry previewBackedEntries data.label then
+      if hasPreviewBackedBlockEntry previewBackedLabels data.label then
         continue
       let blockData? := blockInfo? state data.label
       let headingParts? := blockHeadingParts? state data.label .statement blockData?
@@ -2035,9 +2088,9 @@ private def buildExternalMarkupEntries
         statementUses := blockData?.map (·.statementUses) |>.getD #[]
         proofUses := blockData?.map (·.proofUses) |>.getD #[]
         externalMarkup := data.markup.toArray
-        uses := blockData?.map (buildUsesRelations state ·) |>.getD #[]
-        usedBy := blockData?.map (buildUsedByRelations state storedBlocks ·) |>.getD #[]
-        group := blockData?.bind (buildGroupRelation? state storedBlocks)
+        uses := blockData?.map (buildUsesRelations state idx.byLabel ·) |>.getD #[]
+        usedBy := blockData?.map (buildUsedByRelations state idx.usedBy ·) |>.getD #[]
+        group := blockData?.bind (buildGroupRelation? state idx.children)
         ownerDisplayName := blockData?.bind (·.ownerDisplayName)
         tags := blockData?.map (·.tags) |>.getD #[]
         priority := blockData?.bind (·.priority)
