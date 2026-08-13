@@ -587,8 +587,9 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
     else
       let a := axiomTopics.length
       let setNoun := if a == 1 then "declaration set" else "declaration sets"
+      let setVerb := if a == 1 then "carries" else "carry"
       {{ <p class="bp_trust_prose">{{.text true
-        s!"Below the comparator panels, {a} additional {setNoun} carry a kernel axiom audit \
+        s!"Below the comparator panels, {a} additional {setNoun} {setVerb} a kernel axiom audit \
            ({(axiomTopics.map (·.decls.length)).foldl (· + ·) 0} declarations) with no \
            Challenge/Solution pair — each certifies only its declarations' axiom closure."}}
       </p> }}
