@@ -41,13 +41,20 @@ def stripNameEscapes (s : String) : String :=
     if c == '«' || c == '»' || c == '‹' || c == '›' then acc else acc.push c
 
 /--
-Transliterate Greek letters to their ASCII names (`χ` → `chi`, `α` → `alpha`, …)
-*before* sluggifying, so identifiers built from Greek letters — e.g. the Dirichlet
-character `χ` in `A362583.χ_natCast_eq_ite` — get a readable slug
-(`A362583___chi_natCast_eq_ite`) instead of the run of underscores the catch-all
-`sluggify` emits for a non-ASCII code point. Any letter outside the table is left
-untouched for `sluggify` to handle. Pure/deterministic; distinct names stay distinct
-(and the emitter's `usedSlugs` guard catches the vanishingly rare collision).
+Transliterate Greek letters to their ASCII names (`χ` → `chi`, `α` → `alpha`, …),
+and likewise the Unicode identifier characters that `sluggify`'s catch-all would
+otherwise collapse to a fixed `___` run — subscript/superscript digits
+(`x₁` → `x1`), blackboard-bold letters (`ℝ` → `R`), and the Greek variant symbols
+(`ϱ` → `rho`, `ϑ` → `theta`, `ϕ` → `phi`, `ℓ` → `l`) — *before* sluggifying, so
+identifiers built from these code points get a readable, **distinct** slug instead
+of the run of underscores the catch-all emits for every non-ASCII code point.
+
+This is what keeps theorem families like `Zeta23.thmA₁`/`thmA₂`/`thmA₃`, which the
+raw slugger would all map to `___thmA___`, on separate node pages at scale. Any
+character outside the table is left untouched for `sluggify` to handle. Mapping
+subscripts/superscripts to plain digits is distinct-preserving in practice: no
+Lean name pairs `x₁` with `x1`, and the emitter's `usedSlugs` guard still warns on
+any residual collision. Pure/deterministic; distinct names stay distinct.
 -/
 def transliterateGreek (s : String) : String :=
   s.foldl (init := "") fun acc c =>
@@ -69,6 +76,22 @@ def transliterateGreek (s : String) : String :=
     | 'Π' => acc ++ "Pi"      | 'Ρ' => acc ++ "Rho"     | 'Σ' => acc ++ "Sigma"
     | 'Τ' => acc ++ "Tau"     | 'Υ' => acc ++ "Upsilon" | 'Φ' => acc ++ "Phi"
     | 'Χ' => acc ++ "Chi"     | 'Ψ' => acc ++ "Psi"     | 'Ω' => acc ++ "Omega"
+    -- Subscript digits (U+2080…U+2089) → plain ASCII digit.
+    | '₀' => acc ++ "0"       | '₁' => acc ++ "1"       | '₂' => acc ++ "2"
+    | '₃' => acc ++ "3"       | '₄' => acc ++ "4"       | '₅' => acc ++ "5"
+    | '₆' => acc ++ "6"       | '₇' => acc ++ "7"       | '₈' => acc ++ "8"
+    | '₉' => acc ++ "9"
+    -- Superscript digits (¹²³ = U+00B9/00B2/00B3; ⁰⁴…⁹ = U+2070/2074…2079) → plain ASCII digit.
+    | '⁰' => acc ++ "0"       | '¹' => acc ++ "1"       | '²' => acc ++ "2"
+    | '³' => acc ++ "3"       | '⁴' => acc ++ "4"       | '⁵' => acc ++ "5"
+    | '⁶' => acc ++ "6"       | '⁷' => acc ++ "7"       | '⁸' => acc ++ "8"
+    | '⁹' => acc ++ "9"
+    -- Blackboard-bold letters → plain capital.
+    | 'ℝ' => acc ++ "R"       | 'ℕ' => acc ++ "N"       | 'ℤ' => acc ++ "Z"
+    | 'ℚ' => acc ++ "Q"       | 'ℂ' => acc ++ "C"       | '𝔽' => acc ++ "F"
+    -- Greek variant symbols and script small l → readable name.
+    | 'ϱ' => acc ++ "rho"     | 'ϑ' => acc ++ "theta"   | 'ϕ' => acc ++ "phi"
+    | 'ℓ' => acc ++ "l"
     | _   => acc.push c
 
 /--
