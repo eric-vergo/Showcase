@@ -18,7 +18,7 @@ open Lake DSL
 -- project_template/README.md, "Local development against a sibling Showcase checkout"), or run
 -- scripts/check_project_template_local_override.py, which applies that override in a scratch
 -- copy without touching the committed template. Do not commit the path override.
-require VersoBlueprint from git "https://github.com/eric-vergo/Showcase.git"@"c5ec9c2fd2fc134bb7fee2e1d06473c776f4c079"
+require VersoBlueprint from git "https://github.com/eric-vergo/Showcase.git"@"0c463f2d5c96286f8861feda6a3d21637c5d9268"
 
 package ProjectTemplate where
   precompileModules := false
