@@ -35,7 +35,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "1dd54f2bbde10023b7c4f403f04a242cdf8aa16f",
+   "rev": "ab17caddb9820258e6f58d97e22e756717c48a8f",
    "name": "verso",
    "manifestFile": "lake-manifest.json",
    "inputRev": "blueprint",
