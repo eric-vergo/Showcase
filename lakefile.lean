@@ -10,7 +10,7 @@ require verso from git "https://github.com/eric-vergo/verso.git"@"blueprint"
 -- Root-level require so it wins over verso's transitive subverso pin and all manifests stay
 -- consistent; points at the same eric-vergo/subverso `blueprint` branch verso itself requires.
 require subverso from git "https://github.com/eric-vergo/subverso.git"@"blueprint"
-require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.33.0-rc2"
+require «verso-slides» from git "https://github.com/leanprover/verso-slides"@"v4.33.0"
 require proofwidgets from git "https://github.com/leanprover-community/ProofWidgets4"@"v0.0.104"
 
 package VersoBlueprint where
