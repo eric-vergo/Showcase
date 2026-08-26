@@ -6,15 +6,18 @@ Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code
 
 import VersoBlueprint.FormalizationYaml
 import VersoBlueprint.Commands.TrustStrip
+import VersoBlueprint.Commands.Formalization
 
 /-!
-Tests for the `formalization.yaml` subset parser (`Informal.FormalizationYaml`)
-and the dashboard trust-strip HTML builders (`Informal.Commands.trust*`).
+Tests for the `formalization.yaml` subset parser (`Informal.FormalizationYaml`), the
+structural subset check derived from the v0.4 schema, the v0.4 rendering, and the dashboard
+trust-strip HTML builders (`Informal.Commands.trust*`).
 -/
 
 namespace Verso.VersoBlueprintTests.BlueprintFormalization
 
 open Lean
+open Verso Genre Manual
 open Informal
 open Informal.Commands
 
@@ -1238,5 +1241,274 @@ option documents. -/
   !hasSubstr (rows[0]!).detail "second-kernel assurance" &&
   -- And the toolchain that ran is simply not recorded there, so no row claims otherwise.
   !((rows.map (·.tool)).contains "lean4")
+
+/-! ### The v0.4 subset check
+
+A hand-written check of the shape the v0.4 schema states, run only when
+`verso.blueprint.trust.validateFormalizationYaml` is on. What it is *not* is a general
+validator, and the tests below pin both halves of that: the required fields, types,
+enumerations, minimums and the two `repository` conditionals are checked; formats, lengths
+and the freeform `alignment` block are not.
+-/
+
+private def yamlV04 := r##"version: "v0.4"
+
+project:
+  name: "A362583 Irrationality"
+  description: "The prime race constant is irrational."
+  authors: ["Eric Vergo"]
+  responsible_maintainers: ["Eric Vergo"]
+  license: "Apache-2.0"
+
+repository:
+  role: "substantive-development"
+
+sources:
+  - title: "A362583 Irrationality — original proof"
+    authors: ["Eric Vergo"]
+    id: "https://example.org/proof"
+    type: "original-proof"
+    location: "§2"
+    relationship: "formalizes"
+    author_endorsement: "n/a"
+    note: "Self-authored."
+    contributors:
+      - name: "A Referee"
+        role: "editor"
+        link: "https://example.org/referee"
+
+related_formalizations:
+  - id: "https://example.org/other"
+    relationship: "independent"
+    note: "Parallel work."
+
+classification:
+  arxiv: ["math.NT"]
+  msc2020: ["11J72", "11N13"]
+
+automation:
+  methods:
+    - method: "agent"
+      models: ["claude-fable-5"]
+      framework: "Claude Code"
+      cost:
+        wall_time: "~1 day"
+
+status:
+  sorry_count: 0
+  axioms: ["propext"]
+
+review:
+  status: "self-assessed"
+"##
+
+private def yamlBroken := r##"version: "v0.4"
+
+project:
+  authors: []
+  license: ""
+
+sources: []
+
+automation:
+  methods:
+    - method: "wizardry"
+
+review:
+  reviewers: ["x"]
+"##
+
+private def yamlBadTypes := r##"version: "v0.4"
+
+project:
+  name: "X"
+  authors: ["Eric Vergo"]
+  license: "Apache-2.0"
+
+sources:
+  - title: "A source"
+    relationship: "sideways"
+    author_endorsement: "maybe"
+    contributors:
+      - name: "Someone"
+
+automation:
+  methods:
+    - method: "agent"
+
+status:
+  sorry_count: -1
+
+review:
+  status: "self-assessed"
+"##
+
+private def validationOf (src : String) : Array String :=
+  FormalizationYaml.validate (parsed! src)
+
+-- A complete v0.4 document, and the v0.3 document from the parser tests above, both pass:
+-- the v0.4-only keys are optional in the check exactly as they are in the schema.
+/-- info: (0, 0) -/
+#guard_msgs in
+#eval ((validationOf yamlV04).size, (validationOf yamlRealWorld).size)
+
+-- Required fields, array minimums and enumerations, all reported at once rather than one
+-- build at a time.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let vs := String.intercalate "\n" (validationOf yamlBroken).toList
+  (validationOf yamlBroken).size == 6 &&
+  hasSubstr vs "project.name is required" &&
+  hasSubstr vs "project.authors must list at least 1 entry" &&
+  hasSubstr vs "project.license must not be empty" &&
+  hasSubstr vs "sources must list at least 1 entry" &&
+  hasSubstr vs "automation.methods[0].method must be one of" &&
+  hasSubstr vs "review.status is required"
+
+-- Types and enumerations inside the nested records, with the path that names them.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let vs := String.intercalate "\n" (validationOf yamlBadTypes).toList
+  hasSubstr vs "sources[0].relationship must be one of" &&
+  hasSubstr vs "sources[0].author_endorsement must be one of" &&
+  hasSubstr vs "sources[0].contributors[0].role is required" &&
+  hasSubstr vs "status.sorry_count must be a non-negative integer"
+
+-- The schema's two `repository` conditionals, which a shape check has to encode by hand.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let wrapper := validationOf (yamlV04.replace "  role: \"substantive-development\""
+    "  role: \"thin-wrapper\"")
+  let both := validationOf (yamlV04.replace "  role: \"substantive-development\""
+    "  role: \"substantive-development\"\n  substantive_formalization:\n    id: \"https://example.org/x\"")
+  hasSubstr (String.intercalate "\n" wrapper.toList)
+    "repository.substantive_formalization is required when repository.role is thin-wrapper" &&
+  hasSubstr (String.intercalate "\n" both.toList)
+    "must be absent when repository.role is substantive-development"
+
+-- An empty value is the parser's reading of a blank field, and reads as absent — which for
+-- a required field is "required", not "empty".
+/-- info: true -/
+#guard_msgs in
+#eval
+  let blank := validationOf "project:\n  name:\n  authors: [\"E\"]\n  license: \"X\"\nsources:\n  - title: \"T\"\nautomation:\n  methods:\n    - method: \"manual\"\nreview:\n  status: \"unchecked\"\n"
+  blank == #["project.name is required"]
+
+/-! The gate: off by default, and when on a violation stops the build with every problem
+named and the check described as what it is. -/
+
+private def checkOutcome (act : CoreM Unit) : CoreM String := do
+  try
+    act
+    return "ok"
+  catch e => return (← e.toMessageData.toString)
+
+/-- info: true -/
+#guard_msgs in
+#eval show CoreM Bool from do
+  let off := Lean.Options.empty
+  let on := off.setBool verso.blueprint.trust.validateFormalizationYaml.name true
+  let broken := parsed! yamlBroken
+  let quiet ← checkOutcome (checkFormalizationYaml off "f.yaml" broken)
+  let loud ← checkOutcome (checkFormalizationYaml on "f.yaml" broken)
+  let clean ← checkOutcome (checkFormalizationYaml on "f.yaml" (parsed! yamlV04))
+  -- Unset ⇒ nothing is checked and nothing is claimed. Set ⇒ every violation, and the
+  -- sentence saying how much of the standard this check covers.
+  return quiet == "ok" && clean == "ok" &&
+    hasSubstr loud "does not satisfy the formalization.yaml v0.4 standard (6 problems)" &&
+    hasSubstr loud "project.name is required" &&
+    hasSubstr loud "a subset check derived from the v0.4 JSON Schema, not a general validator"
+
+/-! ### v0.4 rendering
+
+Additive: a v0.3 document renders what it always did, and the v0.4 blocks appear only for
+documents that carry them.
+-/
+
+private def emptyState : TraverseState := TraverseState.initialize default
+
+private def renderedV04 (validated : Bool := false) : String :=
+  (renderFormalization emptyState (parsed! yamlV04) validated).asString
+
+private def renderedV03 : String :=
+  (renderFormalization emptyState (parsed! yamlRealWorld)).asString
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := renderedV04
+  -- Contributors: name, role, and a link when the entry carries one. Names and links only
+  -- — this page renders no avatars.
+  hasSubstr html "Contributors" && hasSubstr html "A Referee" && hasSubstr html "(editor)" &&
+  hasSubstr html "href=\"https://example.org/referee\"" &&
+  !hasSubstr html "avatar" && !hasSubstr html "<img" && !hasSubstr html "<svg" &&
+  -- Classification chips: arXiv categories link to their listing, MSC codes are text.
+  hasSubstr html "Classification" &&
+  hasSubstr html "href=\"https://arxiv.org/list/math.NT/recent\"" &&
+  hasSubstr html "11J72" && hasSubstr html "11N13" &&
+  !hasSubstr html "href=\"https://arxiv.org/list/11J72/recent\"" &&
+  -- The per-source v0.4 fields.
+  hasSubstr html "Relationship" && hasSubstr html "formalizes" &&
+  hasSubstr html "Location" && hasSubstr html "Author endorsement" &&
+  -- The v0.4 project and repository blocks.
+  hasSubstr html "Responsible maintainers" &&
+  hasSubstr html "The prime race constant is irrational." &&
+  hasSubstr html "Related formalizations"
+
+-- A v0.3 document is untouched by all of it: none of the v0.4 blocks appear, and the rows
+-- it always had still do.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := renderedV03
+  !hasSubstr html "Classification" && !hasSubstr html "Contributors" &&
+  !hasSubstr html "Related formalizations" && !hasSubstr html "Repository" &&
+  !hasSubstr html "Relationship" && !hasSubstr html "Author endorsement" &&
+  !hasSubstr html "Responsible maintainers" &&
+  !hasSubstr html "subset check derived" &&
+  !hasSubstr html "bp_formalization_warning" &&
+  hasSubstr html "Author contacted" &&
+  hasSubstr html "A362583 Irrationality" &&
+  hasSubstr html "Alignment"
+
+-- The gate's own provenance line: rendered when the gate ran, absent when it did not, and
+-- the only difference between the two pages.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let off := renderedV04
+  let on := renderedV04 (validated := true)
+  !hasSubstr off "Checked at build time" &&
+  hasSubstr on "Checked at build time against a subset check derived from the v0.4 JSON Schema, \
+    not a general validator." &&
+  countSubstr on "bp_formalization_note" == countSubstr off "bp_formalization_note" + 1 &&
+  countSubstr on "bp_formalization_section" == countSubstr off "bp_formalization_section"
+
+-- The one thing a v0.4 document cannot omit and still say anything. A v0.3 document with no
+-- sources gets no v0.4 warning, because v0.3 did not require one.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let broken := (renderFormalization emptyState (parsed! yamlBroken)).asString
+  let v03 := (renderFormalization emptyState
+    (parsed! "version: \"v0.3\"\nproject:\n  name: \"X\"\n")).asString
+  hasSubstr broken "bp_formalization_warning" &&
+  hasSubstr broken "requires at least one entry under" &&
+  !hasSubstr v03 "bp_formalization_warning"
+
+-- The two Phase-4 cosmetic findings: the badge under a "Review" heading no longer says
+-- "review", and a fields container with no rows in it is not emitted.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let v03 := renderedV03
+  let v04 := renderedV04
+  !hasSubstr v03 ">review: agent-reviewed<" &&
+  hasSubstr v03 ">agent-reviewed<" &&
+  !hasSubstr v04 "<div class=\"bp_formalization_fields\"></div>" &&
+  !hasSubstr v03 "<div class=\"bp_formalization_fields\"></div>"
 
 end Verso.VersoBlueprintTests.BlueprintFormalization

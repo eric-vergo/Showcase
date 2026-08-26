@@ -1,0 +1,5 @@
+{
+  "challenge_module": "Challenge",
+  "theorem_names": ["RegistryFixture.mul_comm_claim"],
+  "permitted_axioms": ["propext", "Classical.choice", "Quot.sound"]
+}

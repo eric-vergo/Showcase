@@ -18,7 +18,7 @@ import VersoBlueprint.TraversalIndex
 
 /-!
 `blueprint_formalization` — a standalone "Formalization Metadata" page rendered
-from a project's `formalization.yaml` (v0.3 standard,
+from a project's `formalization.yaml` (v0.3 and v0.4 standards,
 https://github.com/mathlib-initiative/formalization.yaml).
 
 Usage: `{blueprint_formalization "relative/path/to/formalization.yaml"}`.
@@ -44,9 +44,15 @@ open Verso.Output.Html
 Block payload for `Block.formalization`: the parsed `formalization.yaml`
 document as compressed JSON text (`Json` itself has no `Quote` instance, so the
 part command quotes the serialized form).
+
+`validated` records whether the build that produced this payload ran the structural gate
+(`verso.blueprint.trust.validateFormalizationYaml`). The page says so when it did — a
+reader has no other way to tell a document that was checked from one that merely parsed —
+and says nothing at all when it did not, which is the honest reading of an unset option.
 -/
 structure FormalizationData where
   jsonText : String := "null"
+  validated : Bool := false
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The parsed document carried by the payload. -/
@@ -137,9 +143,33 @@ private def linkOrText (v : String) : Output.Html :=
   else
     .text true v
 
+/-- A link with text of its own, for entries whose identifier and label differ; plain text
+when the target is not an http(s) URL, so a `doi:` or a citation string cannot become a
+broken link. -/
+private def linkedText (href text : String) : Output.Html :=
+  if href.startsWith "http://" || href.startsWith "https://" then
+    {{ <a href={{href}}>{{.text true text}}</a> }}
+  else
+    .text true text
+
 private def badgeRow (badges : Array Output.Html) : Output.Html :=
   if badges.isEmpty then .empty
   else {{ <div class="bp_summary_badge_row bp_formalization_badges">{{badges}}</div> }}
+
+/-- Badge chips inside a field value, where a `<div>` badge row would not be valid markup.
+The chips are inline (`trustBadgeHtml` renders a `<span>`, or an `<a>` when it links). -/
+private def chipRow (chips : Array Output.Html) : Output.Html :=
+  .seq (chips.toList.intersperse {{ " " }}).toArray
+
+/-- A field row rendered only when it has chips to show. -/
+private def chipFieldRow (label : String) (chips : Array Output.Html) : Output.Html :=
+  if chips.isEmpty then .empty else fieldRow label (chipRow chips)
+
+/-- A `bp_formalization_fields` block, omitted entirely when every row in it is empty.
+An empty fields container is a visible gap on the page with nothing in it. -/
+private def fieldsBlock (rows : Array Output.Html) : Output.Html :=
+  if rows.all (·.asString.isEmpty) then .empty
+  else {{ <div class="bp_formalization_fields">{{rows}}</div> }}
 
 private def sectionHtml (title : String) (body : Array Output.Html) : Output.Html :=
   {{
@@ -198,13 +228,56 @@ private def projectSection (doc : Json) : Output.Html :=
   match objVal? doc "project" with
   | Option.none => .empty
   | Option.some p =>
-    sectionHtml "Project" #[{{
-      <div class="bp_formalization_fields">
-        {{textFieldRow "Name" (strField? p "name")}}
-        {{textFieldRow "Authors" (joined? (strArrField p "authors"))}}
-        {{textFieldRow "License" (strField? p "license")}}
-      </div>
-    }}]
+    sectionHtml "Project" #[
+      fieldsBlock #[
+        textFieldRow "Name" (strField? p "name"),
+        textFieldRow "Authors" (joined? (strArrField p "authors")),
+        -- v0.4: who is answerable for the repository, which is not always who wrote it.
+        textFieldRow "Responsible maintainers" (joined? (strArrField p "responsible_maintainers")),
+        textFieldRow "License" (strField? p "license")
+      ],
+      proseParagraph (strField? p "description")
+    ]
+
+/--
+The v0.4 `repository` block: whether this repository is the substantive development or a
+thin wrapper around one pinned elsewhere. Omitted when the file says nothing, which the
+standard reads as "this repository is the substantive development".
+-/
+private def repositorySection (doc : Json) : Output.Html :=
+  match objVal? doc "repository" with
+  | Option.none => .empty
+  | Option.some r =>
+    let substantive := (objVal? r "substantive_formalization").getD Json.null
+    let idRow :=
+      match strField? substantive "id" with
+      | Option.some id => fieldRow "Substantive formalization" (linkOrText id)
+      | Option.none => .empty
+    let body := fieldsBlock #[
+      textFieldRow "Role" (strField? r "role"),
+      idRow,
+      codeFieldRow "Revision" (strField? substantive "revision")
+    ]
+    if body.asString.isEmpty then .empty else sectionHtml "Repository" #[body]
+
+/-- One source's contributors: name, role, and a link when the entry carries one. Names and
+links only — this page renders no avatars. -/
+private def contributorsRow (src : Json) : Output.Html :=
+  let cs := arrField src "contributors"
+  if cs.isEmpty then .empty
+  else
+    let parts := cs.toList.map fun c =>
+      let name := (strField? c "name").getD "Unnamed contributor"
+      let role := strField? c "role"
+      let link? := (strField? c "link").orElse fun _ => strField? c "url"
+      let nameHtml : Output.Html :=
+        match link? with
+        | Option.some u => linkedText u name
+        | Option.none => .text true name
+      match role with
+      | Option.some r => Output.Html.seq #[nameHtml, Output.Html.text true s!" ({r})"]
+      | Option.none => nameHtml
+    fieldRow "Contributors" (.seq (parts.intersperse {{ ", " }}).toArray)
 
 private def sourcesSection (doc : Json) : Output.Html :=
   let srcs := arrField doc "sources"
@@ -220,17 +293,71 @@ private def sourcesSection (doc : Json) : Output.Html :=
           <div class="bp_formalization_item_title">
             {{.text true ((strField? s "title").getD "Untitled source")}}
           </div>
-          <div class="bp_formalization_fields">
-            {{textFieldRow "Authors" (joined? (strArrField s "authors"))}}
-            {{idRow}}
-            {{textFieldRow "Type" (strField? s "type")}}
-            {{textFieldRow "License" (strField? s "license")}}
-            {{textFieldRow "Author contacted" (strField? s "author_contacted")}}
-            {{textFieldRow "Prior work" (strField? s "prior_work")}}
-          </div>
+          {{fieldsBlock #[
+            textFieldRow "Authors" (joined? (strArrField s "authors")),
+            -- v0.4: non-author credit for this source (editor, problem-proposer, …).
+            contributorsRow s,
+            idRow,
+            textFieldRow "Type" (strField? s "type"),
+            -- v0.4: where in the source, how this project relates to it, and the source
+            -- authors' own involvement.
+            textFieldRow "Location" (strField? s "location"),
+            textFieldRow "Relationship" (strField? s "relationship"),
+            textFieldRow "Author endorsement" (strField? s "author_endorsement"),
+            textFieldRow "License" (strField? s "license"),
+            textFieldRow "Author contacted" (strField? s "author_contacted"),
+            textFieldRow "Prior work" (strField? s "prior_work"),
+            proseFieldRow "Note" (strField? s "note")
+          ]}}
         </li>
       }}
     sectionHtml "Sources" #[{{ <ul class="bp_formalization_list">{{items}}</ul> }}]
+
+/-- The v0.4 `related_formalizations` block: prior or parallel work on the same result. -/
+private def relatedSection (doc : Json) : Output.Html :=
+  let related := arrField doc "related_formalizations"
+  if related.isEmpty then .empty
+  else
+    let items := related.map fun r =>
+      {{
+        <li class="bp_formalization_item">
+          <div class="bp_formalization_item_title">
+            {{linkOrText ((strField? r "id").getD "Unidentified formalization")}}
+          </div>
+          {{fieldsBlock #[
+            textFieldRow "Relationship" (strField? r "relationship"),
+            proseFieldRow "Note" (strField? r "note")
+          ]}}
+        </li>
+      }}
+    sectionHtml "Related formalizations" #[{{ <ul class="bp_formalization_list">{{items}}</ul> }}]
+
+/--
+The v0.4 `classification` block: the areas of mathematics the project declares the result
+belongs to, as neutral chips. arXiv categories link to the category's listing; MSC2020
+codes are text, since the classification has no canonical per-code page to send a reader
+to. Neither is a claim about the work — this is what the project filed under.
+-/
+private def classificationSection (doc : Json) : Output.Html :=
+  match objVal? doc "classification" with
+  | Option.none => .empty
+  | Option.some c =>
+    let arxiv := strArrField c "arxiv"
+    let msc := strArrField c "msc2020"
+    if arxiv.isEmpty && msc.isEmpty then .empty
+    else
+      let arxivChips := arxiv.map fun cat =>
+        trustBadgeHtml cat ""
+          (Option.some s!"arXiv category {cat}")
+          (Option.some s!"https://arxiv.org/list/{cat}/recent")
+      let mscChips := msc.map fun code =>
+        trustBadgeHtml code "" (Option.some s!"MSC2020 subject class {code}")
+      sectionHtml "Classification" #[
+        fieldsBlock #[
+          chipFieldRow "arXiv" arxivChips,
+          chipFieldRow "MSC2020" mscChips
+        ]
+      ]
 
 /-! Plain (non-linking) status badges for the formalization-metadata page. They mirror
 the `formalization.yaml`-declared sorry/axiom/review figures; unlike the former trust
@@ -254,9 +381,10 @@ private def axiomsBadge (axioms : List String) : Output.Html :=
       trustBadgeHtml s!"axioms: {axioms.length} ({nonstandard.length} nonstandard)" "warn"
         (Option.some title)
 
-/-- A review-status badge. -/
+/-- A review-status badge. The label is the status alone: the badge sits directly under a
+"Review" heading, and "review: self-assessed" there says "review" twice. -/
 private def reviewBadge (status : String) : Output.Html :=
-  trustBadgeHtml s!"review: {status}"
+  trustBadgeHtml status "" (Option.some s!"Review status declared in formalization.yaml: {status}")
 
 private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Lean.Name))
     (doc : Json) : Output.Html :=
@@ -295,11 +423,11 @@ private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Le
           <div class="bp_formalization_item_title">
             {{declLinkHtml st declMap ((strField? r "declaration").getD "")}}
           </div>
-          <div class="bp_formalization_fields">
-            {{codeFieldRow "File" (strField? r "file")}}
-            {{codeFieldRow "Comparator config" (strField? r "comparator_config")}}
-            {{litDepsRow}}
-          </div>
+          {{fieldsBlock #[
+            codeFieldRow "File" (strField? r "file"),
+            codeFieldRow "Comparator config" (strField? r "comparator_config"),
+            litDepsRow
+          ]}}
           {{badgeRow rBadges}}
         </li>
       }}
@@ -337,12 +465,11 @@ private def automationSection (doc : Json) : Output.Html :=
     let methods : Array Output.Html :=
       if methodItems.isEmpty then #[]
       else #[{{ <ul class="bp_formalization_list">{{methodItems}}</ul> }}]
-    let footer : Output.Html := {{
-      <div class="bp_formalization_fields">
-        {{textFieldRow "Total spend" (strField? a "spend_usd")}}
-        {{proseFieldRow "Notes" (strField? a "notes")}}
-      </div>
-    }}
+    let footer : Output.Html :=
+      fieldsBlock #[
+        textFieldRow "Total spend" (strField? a "spend_usd"),
+        proseFieldRow "Notes" (strField? a "notes")
+      ]
     sectionHtml "Automation" (methods.push footer)
 
 private def fidelitySection (doc : Json) : Output.Html :=
@@ -367,7 +494,7 @@ private def reviewSection (doc : Json) : Output.Html :=
       | Option.none => .empty
     sectionHtml "Review" #[
       statusBadge,
-      {{ <div class="bp_formalization_fields">{{reviewers}}</div> }},
+      fieldsBlock #[reviewers],
       proseParagraph (strField? r "notes")
     ]
 
@@ -404,7 +531,7 @@ private def alignmentSection (st : TraverseState) (declMap : Lean.NameMap (Array
         </div>
       }}
     sectionHtml "Alignment" #[
-      {{ <div class="bp_formalization_fields">{{codeFieldRow "Namespace" (strField? al "namespace")}}</div> }},
+      fieldsBlock #[codeFieldRow "Namespace" (strField? al "namespace")],
       table
     ]
 
@@ -413,8 +540,46 @@ private def acknowledgementsSection (doc : Json) : Output.Html :=
   | Option.none => .empty
   | Option.some ack => sectionHtml "Acknowledgements" #[proseParagraph (Option.some ack)]
 
+/-- Whether the document declares the v0.4 standard, whose `sources` list is required. -/
+private def declaresV04 (doc : Json) : Bool :=
+  match strField? doc "version" with
+  | Option.some v =>
+    let v := (Informal.FormalizationYaml.trim v).toLower
+    v == "v0.4" || v == "0.4" || v.startsWith "v0.4." || v.startsWith "0.4."
+  | Option.none => false
+
+/--
+The one thing a v0.4 document cannot omit and still say anything: what was formalized.
+
+Rendered rather than silently dropped, because an empty `Sources` section looks exactly
+like a project whose sources this page failed to render. Under
+`verso.blueprint.trust.validateFormalizationYaml` the same absence is a build error.
+-/
+private def sourcesWarning (doc : Json) : Output.Html :=
+  if !declaresV04 doc || !(arrField doc "sources").isEmpty then .empty
+  else {{
+    <p class="bp_formalization_warning">
+      "This file declares the v0.4 standard, which requires at least one entry under "
+      <code>"sources"</code>
+      " — what was formalized, including an original-proof entry where the formalization is "
+      "itself where the theorem is first presented. None is recorded, so nothing below says "
+      "what this project formalizes."
+    </p>
+  }}
+
+/-- What the build checked, said where the reader can see it. Rendered only when the gate
+actually ran: silence about a document nobody checked is the honest state. -/
+private def validationNote (validated : Bool) : Output.Html :=
+  if !validated then .empty
+  else {{
+    <p class="bp_formalization_note">
+      {{.text true s!"Checked at build time against {Informal.FormalizationYaml.validationProvenance}."}}
+    </p>
+  }}
+
 /-- Render the whole formalization-metadata document. -/
-def renderFormalization (st : TraverseState) (doc : Json) : Output.Html :=
+def renderFormalization (st : TraverseState) (doc : Json) (validated : Bool := false) :
+    Output.Html :=
   let declMap := Informal.NodeRoute.declNodeLabels st
   let versionSuffix :=
     match strField? doc "version" with
@@ -427,8 +592,13 @@ def renderFormalization (st : TraverseState) (doc : Json) : Output.Html :=
         <a href={{formalizationStandardUrl}}>"formalization.yaml"</a>
         {{.text true versionSuffix}}
       </p>
+      {{validationNote validated}}
+      {{sourcesWarning doc}}
       {{projectSection doc}}
+      {{repositorySection doc}}
       {{sourcesSection doc}}
+      {{relatedSection doc}}
+      {{classificationSection doc}}
       {{statusSection st declMap doc}}
       {{automationSection doc}}
       {{fidelitySection doc}}
@@ -455,7 +625,7 @@ block_extension Block.formalization (data : FormalizationData) where
           (fun err => s!"Malformed data in Block.formalization.toHtml ({err})")
         | pure .empty
       let st ← HtmlT.state
-      pure (renderFormalization st data.doc)
+      pure (renderFormalization st data.doc data.validated)
   extraCss := formalizationAssetBundle.css
   extraJs := formalizationAssetBundle.js
 
@@ -475,7 +645,8 @@ def mkFormalizationPart (stx : Syntax) (endPos : String.Pos.Raw) (data : Formali
   let expandedTitle ← #[titleInlines].mapM (elabInline ·)
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   let block ← ``(Verso.Doc.Block.other
-    (Informal.Commands.Block.formalization (FormalizationData.mk $(quote data.jsonText))) #[])
+    (Informal.Commands.Block.formalization
+      (FormalizationData.mk $(quote data.jsonText) $(quote data.validated))) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
@@ -492,11 +663,17 @@ public meta def blueprintFormalizationCmd : PartCommand
     match Informal.FormalizationYaml.parse (← IO.FS.readFile path) with
     | .error err => throwErrorAt cfg.path "blueprint_formalization: {path}: {err}"
     | .ok json =>
-      if verso.blueprint.debug.commands.get (← Lean.getOptions) then
+      let opts ← Lean.getOptions
+      -- The structural gate, where the page that renders the document reads it. Off by
+      -- default; when on, a violation stops the build rather than being rendered.
+      checkFormalizationYaml opts path json
+      let validated := opts.get verso.blueprint.trust.validateFormalizationYaml.name
+        verso.blueprint.trust.validateFormalizationYaml.defValue
+      if verso.blueprint.debug.commands.get opts then
         logInfo m!"Blueprint formalization metadata from {path}"
       let endPos := stx.getTailPos?.get!
       closePartsUntil 1 endPos
-      addPart (← mkFormalizationPart stx endPos { jsonText := json.compress })
+      addPart (← mkFormalizationPart stx endPos { jsonText := json.compress, validated })
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
 end Informal.Commands

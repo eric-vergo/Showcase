@@ -1,0 +1,53 @@
+{
+  "schema_version": 3,
+  "id": "PALOMAR-2026-08-03-000003",
+  "first_registered_on": "2026-08-03",
+  "registered_at": "2026-08-03T09:15:00Z",
+  "version": 1,
+  "status": "registered",
+  "title": "An earlier challenge from the same repository",
+  "abstract": "A registered formalization record.",
+  "authors": [
+    {
+      "name": "Eric Vergo"
+    }
+  ],
+  "classification": {
+    "arxiv": [
+      "math.NT"
+    ],
+    "msc2020": [
+      "11J72"
+    ]
+  },
+  "source": {
+    "repository": "eric-vergo/OEIS-A362583-Irrationality",
+    "repository_url": "https://github.com/eric-vergo/OEIS-A362583-Irrationality",
+    "commit": "c3d4e5f60718293a4b5c6d7e8f90123456789ab1",
+    "tree_url": "https://github.com/eric-vergo/OEIS-A362583-Irrationality/tree/c3d4e5f60718293a4b5c6d7e8f90123456789ab1",
+    "license": {
+      "path": "LICENSE",
+      "sha256": "9c14be7205da3f68e1b0947c53da682f10cbe947355a2d6018fbc4a930e7715d",
+      "declared_identifier": "Apache-2.0",
+      "detected_identifier": "Apache-2.0"
+    }
+  },
+  "formalization": {
+    "lean_toolchain": "leanprover/lean4:v4.33.1",
+    "theorem_names": [
+      "Challenge.irrational_rho"
+    ],
+    "permitted_axioms": [
+      "propext",
+      "Quot.sound",
+      "Classical.choice"
+    ]
+  },
+  "verification": {
+    "challenge_sha256": "9c14be7205da3f68e1b0947c53da682f10cbe947355a2d6018fbc4a930e7715d",
+    "solution_sha256": "9c14be7205da3f68e1b0947c53da682f10cbe947355a2d6018fbc4a930e7715d",
+    "verified_at": "2026-08-03T09:12:00Z",
+    "workflow_url": "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/1",
+    "repository": "PalomarRegistry/PalomarSubmission"
+  }
+}

@@ -25,6 +25,7 @@ import VersoBlueprint.KernelAdvisories
 import VersoBlueprint.StatementClosure
 import VersoBlueprint.JunkValues
 import VersoBlueprint.CaveatsRender
+import VersoBlueprint.Palomar
 
 /-!
 Dashboard trust strip.
@@ -57,6 +58,26 @@ open Verso.Output.Html
 register_option verso.blueprint.trust.formalizationYaml : String := {
   defValue := ""
   descr := "Path (relative to the build CWD) to the project's formalization.yaml; feeds the dashboard trust strip. Empty disables."
+}
+
+register_option verso.blueprint.trust.validateFormalizationYaml : Bool := {
+  defValue := false
+  descr := "Whether to check the project's formalization.yaml before rendering it. Off by default. What runs is a subset check derived from the v0.4 JSON Schema, not a general validator: it establishes the required fields, types, enumerations and array minimums the standard states, and leaves formats, string lengths, uniqueness and the deliberately freeform `alignment` block alone — run `check-jsonschema` against the published schema for the rest. Every violation is reported at once, and any violation fails the build: a metadata page is a set of claims about a project, and one rendered from a document this build could not read is a set of claims nobody checked. A v0.3 document passes when its required fields are present; the v0.4-only keys are optional in the check exactly as they are in the schema."
+}
+
+register_option verso.blueprint.trust.palomarEntryUrl : String := {
+  defValue := ""
+  descr := "A Palomar registry permalink the site's author pastes in. Rendered as an explicitly UNVERIFIED link — never a badge, and never as \"registered in\" anything: nothing about it is checked, and a URL is not evidence that the record behind it is about this project, still less about the claim on the page. To bind a registration to a claim, configure 'verso.blueprint.trust.palomarBundle', which matches on the record's own challenge digest. Empty disables."
+}
+
+register_option verso.blueprint.trust.palomarBundle : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to cached Palomar registry data: either a directory holding the registry's recent.json together with the entries/<id>-v<version>.json records it names, or a single immutable entry JSON. Those canonical records are the only identity evidence this fork matches on — they carry the repository, the revision and `verification.challenge_sha256`, none of which the registry's XML feed does. Set-but-missing, or a root document this build cannot read, is a build error. A single record that a projection row names and this build cannot read is counted and named on the page instead of failing the build (a bundle from a live registry legitimately holds records written to a schema this build has no rules for), and can never match. Empty disables."
+}
+
+register_option verso.blueprint.trust.palomarProbe : Bool := {
+  defValue := false
+  descr := "Whether the site build may fetch Palomar records from the registry's data host (via curl) rather than reading a cached bundle. Off by default and ALWAYS soft: no curl, no network, or an unreadable document degrades to 'verso.blueprint.trust.palomarBundle' when one is configured and to no registry surface otherwise. A probe never fails a build and is never required for one. What it fetches is the same canonical records a cached bundle holds, bounded to the projection rows naming this project's repository. The published site fetches nothing: the records are read at build time and baked into the page."
 }
 
 register_option verso.blueprint.trust.comparatorStatus : String := {
@@ -259,18 +280,55 @@ structure VerifierCurrency where
   advisories : Array VerifierAdvisory := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- A registry entry recording this project's claim elsewhere. Reserved for the
-registry surface; nothing populates it yet. -/
+/--
+A registry record this build matched, and what it matched on.
+
+Everything here is copied from one canonical Palomar record (`Informal.Palomar.Entry`);
+nothing is derived, and in particular no URL to the record itself is invented, because the
+registry's data host publishes records under paths this fork has no business guessing.
+
+`matchBasis` is the whole of what the surface may claim. `repo+digest` and `digest` bind the
+record to the claim on the page: the record's immutable challenge digest is the digest of
+the statement shown, and the verifying run recorded that digest too. `digest-unbound` and
+`repo-only` do not: they are provenance about the project, and every surface that renders
+them says so in as many words.
+-/
 structure RegistryEntry where
-  url : String := ""
+  /-- The registry identifier, `PALOMAR-YYYY-MM-DD-NNNNNN`. -/
+  id : String := ""
+  /-- Which version of the record; registrations are append-only and versioned. -/
+  version : Nat := 0
   title : String := ""
+  /-- The record's `registered_at`. -/
   recordedAt : String := ""
+  /-- `owner/repo`, as the record states it. -/
+  sourceRepo : String := ""
   repoUrl : String := ""
+  /-- The revision the registration is of. -/
+  sourceCommit : String := ""
+  /-- Commit-pinned tree URL of the registered project directory. -/
+  treeUrl : String := ""
+  /-- The record's `verification.challenge_sha256` — the field a claim-level match binds on. -/
   challengeSha256 : String := ""
-  /-- What the entry is bound to: `unbound`, `repo`, `digest`, or `repo+digest`. A
-  repo-only match is project-level provenance, not a claim-level one. -/
+  /-- When the registry's own verification ran. -/
+  verifiedAt : String := ""
+  /-- The registry's submission workflow run. -/
+  workflowUrl : String := ""
+  /-- `repo+digest`, `digest` (claim-level), `digest-unbound`, `repo-only` (project-level). -/
   matchBasis : String := ""
+  /-- What this build matched against and where it came from, for the card's provenance
+  line. -/
+  provenance : String := ""
+  /-- The file or URL this record's bytes were read from. -/
+  recordOrigin : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
+
+/-- Whether a match binds the record to the claim on the page, rather than to the project. -/
+def RegistryEntry.isClaimLevel (e : RegistryEntry) : Bool :=
+  Informal.Palomar.claimLevelBases.contains e.matchBasis
+
+/-- `id`-`v`-`version`, the way the registry names one record. -/
+def RegistryEntry.label (e : RegistryEntry) : String := s!"{e.id}-v{e.version}"
 
 /--
 What one run recorded about one external checker it invoked.
@@ -505,8 +563,10 @@ structure TrustComparator where
   elaboration from the recorded revisions. Empty ⇒ the record named no verifier build to
   assess (which is itself said in prose, never rendered as a clean bill). -/
   currency : Array VerifierCurrency := #[]
-  /-- A registry entry recording this claim elsewhere. Reserved; `none` ⇒ none
-  configured or none matched. -/
+  /-- A registry record bound to *this claim*: its immutable challenge digest is the digest
+  of the statement this panel displays, and the verifying run recorded that digest as well.
+  `none` ⇒ nothing configured, or nothing matched, or what matched was weaker than that and
+  is reported at project level instead. -/
   registryEntry? : Option RegistryEntry := none
 deriving Inhabited, FromJson, ToJson, Quote
 
@@ -583,10 +643,17 @@ structure TrustData where
   (`verso.blueprint.trust.requireAuditClean`), carried so the trust-model page can
   state which contract this project is under. -/
   requireAuditClean : Bool := false
-  /-- A registry entry recording this *project* (matched by repository alone, so it is
-  project-level provenance and not bound to any one claim). Reserved; `none` ⇒ none
-  configured or none matched. -/
+  /-- A registry record about this *project* rather than about any one claim: matched by
+  repository alone, or by a digest the verifying run never recorded. `none` ⇒ nothing
+  configured, nothing matched, or a claim-level match was found and says more.
+  -/
   registryEntry? : Option RegistryEntry := none
+  /-- A registry permalink the site's author supplied
+  (`verso.blueprint.trust.palomarEntryUrl`). Carried apart from `registryEntry?` because it
+  is not evidence of anything: nothing checked that the record behind it exists, describes
+  this project, or concerns the claim on the page, and the surface that renders it says so
+  rather than styling it as a verdict. Empty ⇒ none supplied. -/
+  registryLink : String := ""
   /-- When the kernel-advisory table this build assessed verifier currency against was
   last revised by hand. Carried on the payload rather than only on the currency rows,
   because the self-aging clause is exactly what a page with *no* assessable verifier
@@ -1770,6 +1837,57 @@ def trustAuditBadge? (audit? : Option Informal.AxiomAudit.Summary) : Option Outp
           s!"`Lean.collectAxioms` over {audit.checked} declarations: no `sorryAx`, no axioms \
              beyond propext, Classical.choice, and Quot.sound.")
 
+/-! ### Registry records
+
+A registration is provenance: somebody submitted a repository at a revision, and a registry
+recorded that it did. The strip carries it only where the record is bound to a claim the
+page presents — the record's challenge digest is the digest of a statement this site
+displays, and the verifying run recorded that digest too. A repository match, or a digest
+the verdict never recorded, has a card on the comparator page and no badge: a badge in the
+trust row would read as a verdict about this site, which is exactly what a registration
+is not.
+-/
+
+/-- The claim-level registry matches on this payload, across both comparator schemes.
+
+The basis is re-checked here rather than trusted: `attachRegistry` attaches only bound
+records to a comparator, and the badge is the one surface where being wrong about that
+would read as a verdict. -/
+def TrustData.claimRegistryEntries (t : TrustData) : List RegistryEntry :=
+  ((t.comparator.bind (·.registryEntry?)).toList
+    ++ t.comparators.filterMap (·.comparator.registryEntry?)).filter RegistryEntry.isClaimLevel
+
+/-- The project's repository, as the verifying run recorded it or as this checkout says.
+Empty ⇒ this build cannot name its own repository, which is not the same as a mismatch. -/
+def TrustData.projectRepoIdentity (t : TrustData) : String :=
+  let ofCmp := fun (c : TrustComparator) =>
+    if !c.repository.isEmpty then c.repository else c.repoUrl
+  let candidates := (t.comparator.map ofCmp).toList ++ t.comparators.map (fun t => ofCmp t.comparator)
+  (candidates.find? (fun s => !s.isEmpty)).getD ""
+
+/-- The registry badge, for claim-bound records only.
+
+Neutral tier deliberately: `success` is what this site's own CI verifying something looks
+like, and a registration is a record somebody else kept. -/
+def trustRegistryBadge? (t : TrustData) : Option Output.Html :=
+  match t.claimRegistryEntries with
+  | [] => Option.none
+  | [e] =>
+    Option.some <|
+      trustBadgeHtml "registry: Palomar entry" ""
+        (Option.some
+          s!"{e.label} records the challenge this verdict certifies (match basis: \
+             {e.matchBasis}). {Informal.Palomar.honestyNote}")
+        (Option.some Informal.NodeRoute.comparatorHref)
+  | entries =>
+    Option.some <|
+      trustBadgeHtml s!"registry: {entries.length} Palomar entries" ""
+        (Option.some
+          s!"{entries.length} of this page's claims are recorded in the Palomar registry, \
+             each matched on the challenge digest the verdict certifies. \
+             {Informal.Palomar.honestyNote}")
+        (Option.some Informal.NodeRoute.comparatorHref)
+
 /--
 The rendered strip: a labeled badge row.
 
@@ -1800,6 +1918,8 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
     if let some auditBadge := trustAuditBadge? trust.audit? then
       out := out.push auditBadge
     out := out ++ trustGraphBadges checks?
+    if let some registryBadge := trustRegistryBadge? trust then
+      out := out.push registryBadge
     return out
   if badges.isEmpty then
     .empty
@@ -2652,6 +2772,137 @@ def elabKernelAdvisories : PartElabM Informal.KernelAdvisories.Table := do
       description for the full shape."
   | .ok table => return table
 
+/-! ### Registry records (Palomar)
+
+Three options, one of which is evidence. `palomarBundle` names canonical records — the only
+documents that carry a repository, a revision and a challenge digest — and is therefore the
+only input a match may read. `palomarProbe` may fetch the same records over the network and
+is always soft. `palomarEntryUrl` is a link the author pasted in and is never matched
+against anything at all; it rides the payload so the page can render it, labelled, as what
+it is.
+-/
+
+open Verso Doc Elab in
+/--
+The registry records this build will match against.
+
+The cached bundle is validated first whatever the probe does: a configured input that is
+broken has to say so on the build where the network happened to answer too. A probe that
+comes back with records replaces the cache for this build; one that comes back empty — no
+curl, no network, no rows naming this repository — leaves the cache in place, so switching
+the probe on cannot silently *remove* a surface a cached bundle was producing.
+-/
+def elabPalomarBundle? (repo : String) : PartElabM (Option Informal.Palomar.Bundle) := do
+  let opts ← Lean.getOptions
+  let bundlePath := opts.get verso.blueprint.trust.palomarBundle.name
+    verso.blueprint.trust.palomarBundle.defValue
+  let probeOn := opts.get verso.blueprint.trust.palomarProbe.name
+    verso.blueprint.trust.palomarProbe.defValue
+  let cached? ←
+    if bundlePath.isEmpty then pure Option.none
+    else match ← liftM (Informal.Palomar.loadBundle bundlePath) with
+      | .error err => throwError "option 'verso.blueprint.trust.palomarBundle' {err}"
+      | .ok b => pure (Option.some b)
+  unless probeOn do return cached?
+  match ← liftM (Informal.Palomar.probe repo) with
+  | Option.some b => return if b.entries.isEmpty then cached? else Option.some b
+  | Option.none => return cached?
+
+open Verso Doc Elab in
+/--
+Match the configured registry records against the claims this page presents.
+
+The rules are `Informal.Palomar.matchEntry?`'s; what is decided here is where a match is
+allowed to appear. A claim-level match — the record's digest is the digest of a displayed
+statement, and the verifying run recorded that digest — attaches to that claim's panel and
+earns a strip badge. Anything weaker attaches to the page, once, and only when no claim was
+bound: a record about the project, printed under a claim that a stronger record already
+identifies, adds ambiguity rather than provenance.
+-/
+def attachRegistry (trust : TrustData) : PartElabM TrustData := do
+  let opts ← Lean.getOptions
+  let link := opts.get verso.blueprint.trust.palomarEntryUrl.name
+    verso.blueprint.trust.palomarEntryUrl.defValue
+  let bundlePath := opts.get verso.blueprint.trust.palomarBundle.name
+    verso.blueprint.trust.palomarBundle.defValue
+  let probeOn := opts.get verso.blueprint.trust.palomarProbe.name
+    verso.blueprint.trust.palomarProbe.defValue
+  if link.isEmpty && bundlePath.isEmpty && !probeOn then return trust
+  let trust := { trust with registryLink := link }
+  let some bundle ← elabPalomarBundle? trust.projectRepoIdentity | return trust
+  let entryOf (m : Informal.Palomar.Match) : RegistryEntry :=
+    let e := m.entry
+    { id := e.id
+      version := e.version
+      title := e.title
+      recordedAt := e.registeredAt
+      sourceRepo := e.sourceRepository
+      repoUrl := e.sourceRepositoryUrl
+      sourceCommit := e.sourceCommit
+      treeUrl := e.sourceTreeUrl
+      challengeSha256 := e.challengeSha256
+      verifiedAt := e.verifiedAt
+      workflowUrl := e.workflowUrl
+      matchBasis := m.basis
+      provenance := bundle.provenance
+      recordOrigin := e.origin }
+  -- What this site knows about one claim: the digest of the statement it displays, whether
+  -- the verifying run recorded that digest, and the repository the run named.
+  let claimOf (cmp : TrustComparator) : Informal.Palomar.ClaimIdentity :=
+    let recorded := Informal.Sha256.normalizeDigest cmp.challengeSha256
+    let displayed := Informal.Sha256.normalizeDigest cmp.challengeDigest
+    { displayedDigest := cmp.challengeDigest
+      digestStatusBound := !recorded.isEmpty && !displayed.isEmpty && recorded == displayed
+      repo := if !cmp.repository.isEmpty then cmp.repository else cmp.repoUrl }
+  let matchOf (cmp : TrustComparator) : Option Informal.Palomar.Match :=
+    Informal.Palomar.selectMatch? (claimOf cmp) bundle.entries
+  let claimEntry? (cmp : TrustComparator) : Option RegistryEntry := do
+    let m ← matchOf cmp
+    if m.claimLevel then some (entryOf m) else none
+  let trust := { trust with
+    comparator := trust.comparator.map fun cmp => { cmp with registryEntry? := claimEntry? cmp }
+    comparators := trust.comparators.map fun t =>
+      { t with comparator := { t.comparator with registryEntry? := claimEntry? t.comparator } } }
+  if !trust.claimRegistryEntries.isEmpty then return trust
+  -- Nothing was bound to a claim. The weaker readings, in the order they are worth
+  -- anything: a record whose digest is the displayed bytes' under a verdict that recorded
+  -- no digest, then a record that registers this repository.
+  let unbound : List Informal.Palomar.Match :=
+    ((trust.comparator.bind matchOf).toList ++ trust.comparators.filterMap (matchOf ·.comparator))
+  let projectMatch? :=
+    match unbound.find? (fun m => m.basis == "digest-unbound") with
+    | Option.some m => Option.some m
+    | Option.none =>
+      Informal.Palomar.selectMatch? { repo := trust.projectRepoIdentity } bundle.entries
+  return { trust with registryEntry? := projectMatch?.map entryOf }
+
+/--
+The `formalization.yaml` gate, where every reader of the file runs it.
+
+Off by default, and when off nothing about the document is checked and nothing about it is
+claimed. When on, every violation the subset check finds is reported at once and the build
+stops: the alternative is a metadata page that presents a document this build could not
+read as though it had been read.
+
+Generic in the monad so the trust payload's reader and the metadata page's command share
+one implementation, and a document cannot pass one gate and fail the other.
+-/
+def checkFormalizationYaml [Monad m] [Lean.MonadError m] (opts : Lean.Options) (path : String)
+    (doc : Json) : m Unit := do
+  unless opts.get verso.blueprint.trust.validateFormalizationYaml.name
+      verso.blueprint.trust.validateFormalizationYaml.defValue do
+    return
+  let violations := Informal.FormalizationYaml.validate doc
+  unless violations.isEmpty do
+    let n := violations.size
+    throwError "{path} does not satisfy the formalization.yaml v0.4 standard \
+      ({n} problem{if n == 1 then "" else "s"}):\n\
+      {String.intercalate "\n" ((violations.map (fun v => s!"  - {v}")).toList)}\n\
+      This is {Informal.FormalizationYaml.validationProvenance}: it checks the required \
+      fields, types, enumerations and array minimums the standard states, and nothing about \
+      formats, lengths, or the deliberately freeform `alignment` block. Fix the document, or \
+      unset 'verso.blueprint.trust.validateFormalizationYaml'."
+
 open Verso Doc Elab in
 /--
 Read the artifacts named by the `verso.blueprint.trust.*` options into a
@@ -2677,6 +2928,20 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   let _ ← elabCaveatTable?
   let characterizations? ← elabCharacterizations?
   if yamlPath.isEmpty && cmpPath.isEmpty && topicsPath.isEmpty then
+    -- A configured registry surface with no comparator has nowhere to appear: the strip
+    -- carries claim-bound records and the comparator page carries the cards, and neither
+    -- exists without a verdict. Say so rather than reading the options and doing nothing.
+    let registryConfigured :=
+      !(opts.get verso.blueprint.trust.palomarEntryUrl.name
+          verso.blueprint.trust.palomarEntryUrl.defValue).isEmpty
+        || !(opts.get verso.blueprint.trust.palomarBundle.name
+          verso.blueprint.trust.palomarBundle.defValue).isEmpty
+        || opts.get verso.blueprint.trust.palomarProbe.name
+          verso.blueprint.trust.palomarProbe.defValue
+    if registryConfigured then
+      logWarning "the Palomar registry options are set, but this document configures no \
+        comparator verdict. A registration is rendered beside the claim it records, so with \
+        no comparator there is no strip badge and no comparator page for it to appear on."
     return Option.none
   let mut trust : TrustData := {}
   if !yamlPath.isEmpty then
@@ -2685,6 +2950,7 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     match Informal.FormalizationYaml.parse (← IO.FS.readFile yamlPath) with
     | .error err => throwError "could not parse {yamlPath}: {err}"
     | .ok doc =>
+      checkFormalizationYaml opts yamlPath doc
       trust := TrustData.ofFormalizationJson doc
   if !cmpPath.isEmpty then
     if !(← System.FilePath.pathExists cmpPath) then
@@ -2744,6 +3010,9 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   trust := { trust with requireConnected, requireAuditClean, ciRunUrl }
   -- The consumer's own characterizations, which the caveat surface renders as theirs.
   trust := { trust with characterizations? }
+  -- Registry records last: matching reads the challenge digests and repository identity the
+  -- steps above established, and a record can only be bound to a claim that is finished.
+  trust ← attachRegistry trust
   return Option.some trust
 
 open Verso Doc Elab in
@@ -2764,6 +3033,8 @@ def elabFormalizationDoc? : PartElabM (Option Json) := do
       (resolved against the build directory): {yamlPath}"
   match Informal.FormalizationYaml.parse (← IO.FS.readFile yamlPath) with
   | .error err => throwError "could not parse {yamlPath}: {err}"
-  | .ok doc => return Option.some doc
+  | .ok doc =>
+    checkFormalizationYaml (← Lean.getOptions) yamlPath doc
+    return Option.some doc
 
 end Informal.Commands

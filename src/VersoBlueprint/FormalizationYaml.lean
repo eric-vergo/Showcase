@@ -348,6 +348,269 @@ private partial def parseListItems (lines : Array (Nat × String)) (i : Nat) (in
 
 end
 
+/-! ## A structural subset check derived from the v0.4 schema
+
+Not a validator. `check-jsonschema` against the published schema is the validator, and a
+project that wants one runs it in CI; this is a hand-written check of the *shape* of the
+fields the v0.4 standard requires and constrains, written so a site build can refuse to
+render a document it cannot read honestly.
+
+Two consequences of "subset", both deliberate:
+
+- It checks what the schema states as required fields, types, enumerations and array
+  minimums. It does not check formats, string lengths, uniqueness, or `alignment`, which the
+  standard leaves freeform on purpose.
+- Extra keys are fine everywhere, because the schema is open. A v0.3 document passes when
+  its required fields are there; its `author_contacted` and `prior_work` keys are simply not
+  the check's business.
+
+Every surface that reports having run this says exactly what it is: a subset check derived
+from the v0.4 JSON Schema, not a general validator.
+-/
+
+/-- The sentence every surface prints about what this check is. -/
+def validationProvenance : String :=
+  "a subset check derived from the v0.4 JSON Schema, not a general validator"
+
+/-- Present and not the parser's reading of an empty value. -/
+private def present (j : Json) (key : String) : Bool :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null => false
+  | _ => true
+
+private def strCheck (path : String) (j : Json) (key : String) (required : Bool := false) :
+    Array String :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null =>
+    if required then #[s!"{path}{key} is required"] else #[]
+  | Option.some (Json.str s) =>
+    if (trim s).isEmpty then #[s!"{path}{key} must not be empty"] else #[]
+  | Option.some _ => #[s!"{path}{key} must be a string"]
+
+/-- A `string | number` field, which the schema uses for costs. -/
+private def scalarCheck (path : String) (j : Json) (key : String) : Array String :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null => #[]
+  | Option.some (Json.str _) | Option.some (Json.num _) => #[]
+  | Option.some _ => #[s!"{path}{key} must be a string or a number"]
+
+private def natCheck (path : String) (j : Json) (key : String) : Array String :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null => #[]
+  | Option.some (Json.num _) =>
+    match (j.getObjValAs? Nat key).toOption with
+    | Option.some _ => #[]
+    | Option.none => #[s!"{path}{key} must be a non-negative integer"]
+  | Option.some _ => #[s!"{path}{key} must be a non-negative integer"]
+
+/-- The schema's enumerations all admit `""` as "not stated". -/
+private def enumCheck (path : String) (j : Json) (key : String) (allowed : List String)
+    (required : Bool := false) : Array String :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null =>
+    if required then #[s!"{path}{key} is required"] else #[]
+  | Option.some (Json.str s) =>
+    if s.isEmpty && !required then #[]
+    else if allowed.contains s then #[]
+    else #[s!"{path}{key} must be one of {String.intercalate ", " allowed} (found '{s}')"]
+  | Option.some _ => #[s!"{path}{key} must be a string"]
+
+/-- An array of non-empty strings, optionally required and optionally non-empty itself. -/
+private def strArrayCheck (path : String) (j : Json) (key : String) (required : Bool := false)
+    (minItems : Nat := 0) : Array String := Id.run do
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null =>
+    return if required then #[s!"{path}{key} is required"] else #[]
+  | Option.some (Json.arr items) =>
+    let mut out : Array String := #[]
+    if items.size < minItems then
+      out := out.push s!"{path}{key} must list at least {minItems} entr\
+        {if minItems == 1 then "y" else "ies"}"
+    for (item, i) in items.zipIdx do
+      match item with
+      | Json.str s =>
+        if (trim s).isEmpty then out := out.push s!"{path}{key}[{i}] must not be empty"
+      | _ => out := out.push s!"{path}{key}[{i}] must be a string"
+    return out
+  | Option.some _ => return #[s!"{path}{key} must be a list"]
+
+/-- Items of an array-of-objects field, with the shape violations of the field itself. -/
+private def objArray (path : String) (j : Json) (key : String) (required : Bool := false)
+    (minItems : Nat := 0) : Array Json × Array String := Id.run do
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null =>
+    return (#[], if required then #[s!"{path}{key} is required"] else #[])
+  | Option.some (Json.arr items) =>
+    let mut out : Array String := #[]
+    let mut objs : Array Json := #[]
+    if items.size < minItems then
+      out := out.push s!"{path}{key} must list at least {minItems} entr\
+        {if minItems == 1 then "y" else "ies"}"
+    for (item, i) in items.zipIdx do
+      match item with
+      | Json.obj _ => objs := objs.push item
+      | _ => out := out.push s!"{path}{key}[{i}] must be a mapping"
+    return (objs, out)
+  | Option.some _ => return (#[], #[s!"{path}{key} must be a list"])
+
+/-- A required sub-mapping: the object when it is one, plus the violation when it is not. -/
+private def objField (path : String) (j : Json) (key : String) (required : Bool := false) :
+    Option Json × Array String :=
+  match (j.getObjVal? key).toOption with
+  | Option.none | Option.some Json.null =>
+    (Option.none, if required then #[s!"{path}{key} is required"] else #[])
+  | Option.some (v@(Json.obj _)) => (Option.some v, #[])
+  | Option.some _ => (Option.none, #[s!"{path}{key} must be a mapping"])
+
+private def sourceRelationships : List String :=
+  ["formalizes", "adapts", "independently-proves", "background", "other"]
+
+private def sourceEndorsements : List String :=
+  ["participated", "endorsed", "no-response", "not-contacted", "declined", "n/a", "other"]
+
+private def relatedRelationships : List String :=
+  ["builds-on", "adapts", "independent", "supersedes", "other"]
+
+private def automationMethods : List String :=
+  ["manual", "copilot", "agent", "autonomous", "other"]
+
+private def repositoryRoles : List String := ["substantive-development", "thin-wrapper"]
+
+/--
+Structural violations of the v0.4 subset, in document order. Empty ⇒ nothing this check
+knows how to look for is wrong.
+
+Deliberately total and pure: it reports everything it finds rather than stopping at the
+first problem, so one build tells a consumer everything they have to fix.
+-/
+def validate (doc : Json) : Array String := Id.run do
+  match doc with
+  | Json.obj _ => pure ()
+  | _ => return #["the document is not a mapping"]
+  let mut out : Array String := #[]
+  out := out ++ strCheck "" doc "version"
+  -- project
+  let (project?, projectErrs) := objField "" doc "project" (required := true)
+  out := out ++ projectErrs
+  if let Option.some project := project? then
+    out := out ++ strCheck "project." project "name" (required := true)
+    out := out ++ strCheck "project." project "description"
+    out := out ++ strArrayCheck "project." project "authors" (required := true) (minItems := 1)
+    out := out ++ strArrayCheck "project." project "responsible_maintainers"
+    out := out ++ strCheck "project." project "license" (required := true)
+  -- repository (optional, with the schema's two conditionals)
+  let (repository?, repositoryErrs) := objField "" doc "repository"
+  out := out ++ repositoryErrs
+  if let Option.some repository := repository? then
+    out := out ++ enumCheck "repository." repository "role" repositoryRoles
+    let (substantive?, substantiveErrs) := objField "repository." repository "substantive_formalization"
+    out := out ++ substantiveErrs
+    if let Option.some substantive := substantive? then
+      out := out ++ strCheck "repository.substantive_formalization." substantive "id"
+        (required := true)
+      out := out ++ strCheck "repository.substantive_formalization." substantive "revision"
+    let role := ((repository.getObjValAs? String "role").toOption).getD ""
+    if role == "thin-wrapper" && !present repository "substantive_formalization" then
+      out := out.push "repository.substantive_formalization is required when \
+        repository.role is thin-wrapper"
+    if role == "substantive-development" && present repository "substantive_formalization" then
+      out := out.push "repository.substantive_formalization must be absent when \
+        repository.role is substantive-development"
+  -- sources
+  let (sources, sourceErrs) := objArray "" doc "sources" (required := true) (minItems := 1)
+  out := out ++ sourceErrs
+  for (src, i) in sources.zipIdx do
+    let p := s!"sources[{i}]."
+    out := out ++ strCheck p src "title" (required := true)
+    out := out ++ strArrayCheck p src "authors"
+    out := out ++ strCheck p src "id"
+    out := out ++ strCheck p src "type"
+    out := out ++ strCheck p src "location"
+    out := out ++ strCheck p src "note"
+    out := out ++ strCheck p src "license"
+    out := out ++ enumCheck p src "relationship" sourceRelationships
+    out := out ++ enumCheck p src "author_endorsement" sourceEndorsements
+    let (contributors, contributorErrs) := objArray p src "contributors"
+    out := out ++ contributorErrs
+    for (c, k) in contributors.zipIdx do
+      let cp := s!"{p}contributors[{k}]."
+      out := out ++ strCheck cp c "name" (required := true)
+      out := out ++ strCheck cp c "role" (required := true)
+  -- related_formalizations
+  let (related, relatedErrs) := objArray "" doc "related_formalizations"
+  out := out ++ relatedErrs
+  for (r, i) in related.zipIdx do
+    let p := s!"related_formalizations[{i}]."
+    out := out ++ strCheck p r "id" (required := true)
+    out := out ++ enumCheck p r "relationship" relatedRelationships
+    out := out ++ strCheck p r "note"
+  -- classification
+  let (classification?, classificationErrs) := objField "" doc "classification"
+  out := out ++ classificationErrs
+  if let Option.some classification := classification? then
+    out := out ++ strArrayCheck "classification." classification "arxiv"
+    out := out ++ strArrayCheck "classification." classification "msc2020"
+  -- automation
+  let (automation?, automationErrs) := objField "" doc "automation" (required := true)
+  out := out ++ automationErrs
+  if let Option.some automation := automation? then
+    let (methods, methodErrs) := objArray "automation." automation "methods"
+      (required := true) (minItems := 1)
+    out := out ++ methodErrs
+    for (m, i) in methods.zipIdx do
+      let p := s!"automation.methods[{i}]."
+      out := out ++ enumCheck p m "method" automationMethods (required := true)
+      out := out ++ strArrayCheck p m "models"
+      out := out ++ strCheck p m "framework"
+      out := out ++ strCheck p m "tool_setup"
+      out := out ++ strCheck p m "prompting_notes"
+      let (cost?, costErrs) := objField p m "cost"
+      out := out ++ costErrs
+      if let Option.some cost := cost? then
+        out := out ++ scalarCheck s!"{p}cost." cost "wall_time"
+        out := out ++ scalarCheck s!"{p}cost." cost "spend_usd"
+        out := out ++ scalarCheck s!"{p}cost." cost "hardware"
+    out := out ++ scalarCheck "automation." automation "spend_usd"
+    out := out ++ strCheck "automation." automation "notes"
+  -- status
+  let (status?, statusErrs) := objField "" doc "status"
+  out := out ++ statusErrs
+  if let Option.some status := status? then
+    out := out ++ strCheck "status." status "scope"
+    out := out ++ natCheck "status." status "sorry_count"
+    out := out ++ natCheck "status." status "sorry_in_definitions"
+    out := out ++ strArrayCheck "status." status "axioms"
+    let (results, resultErrs) := objArray "status." status "main_results"
+    out := out ++ resultErrs
+    for (r, i) in results.zipIdx do
+      let p := s!"status.main_results[{i}]."
+      out := out ++ strCheck p r "declaration"
+      out := out ++ strCheck p r "file"
+      out := out ++ natCheck p r "sorry_count"
+      out := out ++ strArrayCheck p r "axioms"
+      out := out ++ strCheck p r "comparator_config"
+      let (deps, depErrs) := objArray p r "literature_dependencies"
+      out := out ++ depErrs
+      for (d, k) in deps.zipIdx do
+        let dp := s!"{p}literature_dependencies[{k}]."
+        out := out ++ strCheck dp d "statement"
+        out := out ++ strCheck dp d "source"
+  -- fidelity
+  let (fidelity?, fidelityErrs) := objField "" doc "fidelity"
+  out := out ++ fidelityErrs
+  if let Option.some fidelity := fidelity? then
+    out := out ++ strCheck "fidelity." fidelity "divergences"
+  -- review
+  let (review?, reviewErrs) := objField "" doc "review" (required := true)
+  out := out ++ reviewErrs
+  if let Option.some review := review? then
+    out := out ++ strCheck "review." review "status" (required := true)
+    out := out ++ strArrayCheck "review." review "reviewers"
+    out := out ++ strCheck "review." review "notes"
+  -- `alignment` is freeform by design and is not checked.
+  out := out ++ strCheck "" doc "acknowledgements"
+  return out
+
 /-- Parse a `formalization.yaml`-subset document into `Lean.Json`. -/
 def parse (input : String) : Except String Json := do
   let mut lines : Array (Nat × String) := #[]

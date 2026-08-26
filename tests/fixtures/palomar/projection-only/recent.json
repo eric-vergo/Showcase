@@ -1,0 +1,320 @@
+{
+  "schema_version": 2,
+  "entries": [
+    {
+      "id": "PALOMAR-2026-08-01-000001",
+      "version": 1,
+      "status": "registered",
+      "title": "Irrationality of the prime race constant",
+      "path": "entries/PALOMAR-2026-08-01-000001-v1.json",
+      "abstract": "A registered formalization record.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "eric-vergo/OEIS-A362583-Irrationality",
+        "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "eric-vergo/OEIS-A362583-Irrationality",
+            "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-01T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-02-000002",
+      "version": 1,
+      "status": "registered",
+      "title": "A record naming a different repository",
+      "path": "entries/PALOMAR-2026-08-02-000002-v1.json",
+      "abstract": "A registered formalization record.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "attacker/not-this-project",
+        "commit": "b2c3d4e5f60718293a4b5c6d7e8f90123456789a",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "attacker/not-this-project",
+            "commit": "b2c3d4e5f60718293a4b5c6d7e8f90123456789a",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-02T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-03-000003",
+      "version": 1,
+      "status": "registered",
+      "title": "An earlier challenge from the same repository",
+      "path": "entries/PALOMAR-2026-08-03-000003-v1.json",
+      "abstract": "A registered formalization record.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "eric-vergo/OEIS-A362583-Irrationality",
+        "commit": "c3d4e5f60718293a4b5c6d7e8f90123456789ab1",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "eric-vergo/OEIS-A362583-Irrationality",
+            "commit": "c3d4e5f60718293a4b5c6d7e8f90123456789ab1",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-03T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-04-000004",
+      "version": 1,
+      "status": "registered",
+      "title": "https://github.com/eric-vergo/OEIS-A362583-Irrationality 3f7a1c9b2d5e08461fa93c7b0d2e6584a1cc93f70b5d28e64a3f19c7d05b8e42",
+      "path": "entries/PALOMAR-2026-08-04-000004-v1.json",
+      "abstract": "Registers https://github.com/eric-vergo/OEIS-A362583-Irrationality at challenge 3f7a1c9b2d5e08461fa93c7b0d2e6584a1cc93f70b5d28e64a3f19c7d05b8e42.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "attacker/not-this-project",
+        "commit": "d4e5f60718293a4b5c6d7e8f90123456789ab1c2",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "attacker/not-this-project",
+            "commit": "d4e5f60718293a4b5c6d7e8f90123456789ab1c2",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-04T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-05-000005",
+      "version": 1,
+      "status": "registered",
+      "title": "A record not in this bundle",
+      "path": "entries/PALOMAR-2026-08-05-000005-v1.json",
+      "abstract": "Its entry file was never cached.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "eric-vergo/OEIS-A362583-Irrationality",
+        "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "eric-vergo/OEIS-A362583-Irrationality",
+            "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-05T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-06-000006",
+      "version": 1,
+      "status": "registered",
+      "title": "A record from a future schema",
+      "path": "entries/PALOMAR-2026-08-06-000006-v1.json",
+      "abstract": "A registered formalization record.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "Challenge.irrational_rho"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "eric-vergo/OEIS-A362583-Irrationality",
+        "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "eric-vergo/OEIS-A362583-Irrationality",
+            "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-06T09:15:00Z",
+      "versions": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-07-000007",
+      "version": 1,
+      "status": "registered",
+      "title": "Commutativity of multiplication on Nat",
+      "path": "entries/PALOMAR-2026-08-07-000007-v1.json",
+      "abstract": "The registry fixture bound to the claim fixture's challenge bytes.",
+      "authors": [
+        {
+          "name": "Eric Vergo"
+        }
+      ],
+      "classification": {
+        "arxiv": [
+          "math.NT"
+        ],
+        "msc2020": [
+          "11J72"
+        ]
+      },
+      "formalization": {
+        "theorem_names": [
+          "RegistryFixture.mul_comm_claim"
+        ]
+      },
+      "trust": {
+        "level": "high"
+      },
+      "source": {
+        "repository": "eric-vergo/OEIS-A362583-Irrationality",
+        "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+        "project_path": null
+      },
+      "preservation": {
+        "repositories": [
+          {
+            "source_repository": "eric-vergo/OEIS-A362583-Irrationality",
+            "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            "fork_repository": "PalomarArchive/x"
+          }
+        ]
+      },
+      "published_at": "2026-08-07T09:15:00Z",
+      "versions": 1
+    }
+  ]
+}

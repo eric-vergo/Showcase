@@ -116,3 +116,16 @@ main section:has(.bp_formalization) {
   color: var(--bp-color-text-faint);
   font-size: var(--bp-fs-caption);
 }
+
+/* A required part of the standard that this document does not carry. Amber rather than
+   red: the file is readable, and what is missing is the project's to supply. Token-only,
+   so both themes follow the accent. */
+.bp_formalization_warning {
+  margin: var(--bp-space-3) 0;
+  padding: var(--bp-space-2) var(--bp-space-3);
+  border-inline-start: 2px solid var(--bp-color-accent-warning);
+  border-radius: var(--bp-radius-sm);
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-small);
+}

@@ -82,7 +82,13 @@ The fork's feature program, layered over upstream's genre:
   contradict-check the project's own `formalization.yaml` and fail the build when they
   disagree. Structural `uses`-graph gates (acyclicity, unresolved labels, optional
   connectivity) run *between traversal and emission*, so a failing gate leaves no site
-  on disk. Configured through `verso.blueprint.trust.*` / `declNamePrefix` /
+  on disk. An optional structural check of the project's `formalization.yaml` — a subset
+  check derived from the v0.4 JSON Schema, not a general validator — fails the build on
+  a document the page could not render honestly. **Registry records** (Palomar) are
+  matched from cached canonical entries and bind to a claim only through the challenge
+  digest the verifying run recorded: a repository match, or an author-pasted permalink,
+  renders as project-level provenance and an explicitly unverified link, never as a
+  badge. Configured through `verso.blueprint.trust.*` / `declNamePrefix` /
   `graph.includeAllDecls` / `math.lint` / `externalCode.strictResolve` lakefile
   options.
 - **Verbatim-source signatures & marked rendering tiers.** Node signatures are the

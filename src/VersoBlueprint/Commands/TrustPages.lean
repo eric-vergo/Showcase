@@ -623,6 +623,101 @@ private def nanodaEvidenceNote (cmp : TrustComparator) : Output.Html :=
     | none => .empty
   .seq #[unrecorded, drift]
 
+/-! ## Registry records
+
+A registration is a record that a repository at a revision was submitted somewhere and
+accepted. What this page adds to it is the one thing a reader cannot check by following the
+link: whether the record is about the claim on this page. That question has exactly one
+answer this fork will give — the record's immutable challenge digest is the digest of the
+displayed statement, and the verifying run recorded that digest too — and every weaker
+relation is rendered as what it is, in prose, under a match basis printed as data.
+-/
+
+/-- What one match establishes, in the register the rest of the page uses. -/
+private def registryMatchSentence (e : RegistryEntry) : String :=
+  match e.matchBasis with
+  | "repo+digest" =>
+    s!"Palomar entry {e.label} records this claim: the digest of the statement above is the \
+       challenge digest the registry verified, the verifying run recorded that digest too, \
+       and the repository the record names is this project's."
+  | "digest" =>
+    s!"Palomar entry {e.label} records this claim: the digest of the statement above is the \
+       challenge digest the registry verified, and the verifying run recorded that digest \
+       too. This site could not compare repositories with the record, so the digest is the \
+       whole of the binding."
+  | "digest-unbound" =>
+    s!"Palomar entry {e.label} records a challenge whose digest is the digest of the bytes \
+       shown on this page — but this verdict records no digest of its own, so the \
+       registration is not bound to the claim shown here. Read it as provenance about the \
+       project."
+  | _ =>
+    s!"Palomar entry {e.label} registers this repository. It is not bound to the claim shown \
+       here: the repository name is all this site and the record had in common to compare."
+
+/-- One registry record, as a card: what matched, on what, and where the record came from. -/
+def registryCardHtml (e : RegistryEntry) : Output.Html :=
+  let row (label : String) (value : Output.Html) : Output.Html :=
+    {{ <div><dt>{{.text true label}}</dt><dd>{{value}}</dd></div> }}
+  let titleRow : Output.Html :=
+    if e.title.isEmpty then .empty
+    else row "Title" {{ {{.text true e.title}} }}
+  let registeredRow : Output.Html :=
+    if e.recordedAt.isEmpty then .empty
+    else row "Registered" {{ <time datetime={{e.recordedAt}}>{{.text true (isoDateOnly e.recordedAt)}}</time> }}
+  let sourceText : Output.Html :=
+    {{ <code>{{.text true e.sourceRepo}}</code> " at " <code>{{.text true e.sourceCommit}}</code> }}
+  let sourceRow : Output.Html :=
+    if e.sourceRepo.isEmpty then .empty
+    else if e.treeUrl.isEmpty then row "Registered source" sourceText
+    else row "Registered source" {{ <a href={{e.treeUrl}}>{{sourceText}}</a> }}
+  let digestRow : Output.Html :=
+    if e.challengeSha256.isEmpty then .empty
+    else row "Challenge digest" {{ <code>{{.text true e.challengeSha256}}</code> }}
+  let basisRow := row "Match basis" {{ <code>{{.text true e.matchBasis}}</code> }}
+  let verifiedRow : Output.Html :=
+    if e.workflowUrl.isEmpty then .empty
+    else row "Registry verification" (trustOutLink e.workflowUrl
+      (if e.verifiedAt.isEmpty then "Registry workflow run"
+       else s!"Registry workflow run, {isoDateOnly e.verifiedAt}"))
+  let provenance : Output.Html :=
+    if e.provenance.isEmpty then .empty
+    else {{ <p class="bp_trust_note">{{.text true s!"Matched against {e.provenance}."}}</p> }}
+  {{
+    <div class="bp_trust_registry" "data-bp-registry-basis"={{e.matchBasis}}>
+      <p class="bp_trust_prose">{{.text true (registryMatchSentence e)}}</p>
+      <dl class="bp_trust_verdict_meta">
+        {{.seq #[titleRow, registeredRow, sourceRow, digestRow, basisRow, verifiedRow]}}
+      </dl>
+      <p class="bp_trust_note">{{.text true Informal.Palomar.honestyNote}}</p>
+      {{provenance}}
+    </div>
+  }}
+
+/-- The author-supplied permalink, rendered as a link and labelled as unchecked.
+
+Not a badge and not a card: nothing about this URL was verified, so it gets the plainest
+markup on the page. -/
+def registryLinkHtml (url : String) : Output.Html :=
+  {{
+    <p class="bp_trust_registry_link" "data-bp-registry-basis"="consumer-link">
+      {{.text true (Informal.Palomar.consumerLinkNote ++ ": ")}}
+      <a href={{url}} rel="nofollow">{{.text true url}}</a>
+    </p>
+  }}
+
+/-- The registry section, or nothing at all.
+
+Nothing at all is the ordinary case: a configured bundle that matched nothing renders no
+section, because a bounded projection of a registry that does not mention this project is
+not evidence that the registry does not. -/
+def registrySection? (entry? : Option RegistryEntry) (link : String := "") : Output.Html :=
+  match entry?, link.isEmpty with
+  | Option.none, true => .empty
+  | Option.none, false => trustSection "Registry link" (registryLinkHtml link)
+  | Option.some e, true => trustSection "Registry record" (registryCardHtml e)
+  | Option.some e, false =>
+    trustSection "Registry record" (.seq #[registryCardHtml e, registryLinkHtml link])
+
 /-- Body of the claim-first `comparator/` page. A verdict header, the challenge statement
 ("the claim"), a plain account of what the comparator does and does not check, the human step
 the reader must still perform, a three-tier "reproduce it yourself" section, then the Solution
@@ -802,8 +897,11 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
       if r.status.isEmpty then .empty
       else trustSection Informal.CaveatsRender.sectionTitle
         {{ <div class="bp_caveats">{{Informal.CaveatsRender.body r}}</div> }}
+  -- The registration, when one is bound to *this* claim. Last: it is provenance about the
+  -- record, and everything above it is the check itself.
+  let registryPanel := registrySection? cmp.registryEntry?
   .seq #[verdict, kernelSection, claimSection, closureSection, caveatsSection, certifiesSection,
-    checkSection, reproSection, solutionSection, configSection]
+    checkSection, reproSection, solutionSection, configSection, registryPanel]
 
 /--
 The consumer's characterization sidecar, as one page-level section.
@@ -828,12 +926,14 @@ def characterizationsSection (cs? : Option Informal.JunkValues.Characterizations
 def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
     (closureCtx : StatementClosurePanel.Context := {})
-    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none) :
+    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none)
+    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "") :
     Output.Html :=
   trustPageShell "Statement comparator" ""
     (.seq #[
       comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref? closureCtx,
-      characterizationsSection characterizations? closureCtx])
+      characterizationsSection characterizations? closureCtx,
+      registrySection? projectRegistry? registryLink])
 
 /-! ## Multi-config trust surface -/
 
@@ -902,7 +1002,8 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
     (axiomTopics : List AxiomAuditTopic) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
     (closureCtx : StatementClosurePanel.Context := {})
-    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none) :
+    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none)
+    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "") :
     Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
@@ -978,7 +1079,8 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
   let axiomPanels : Array Output.Html := (axiomTopics.map axiomAuditPanel).toArray
   trustPageShell "Statement comparator" ""
     (.seq (#[header] ++ comparatorPanels ++ axiomPanels
-      ++ #[characterizationsSection characterizations? closureCtx]))
+      ++ #[characterizationsSection characterizations? closureCtx,
+        registrySection? projectRegistry? registryLink]))
 
 /-! ## Emission -/
 
@@ -1059,13 +1161,14 @@ def emitBlueprintComparatorPage : ExtraStep :=
             let ciUrl? :=
               (trust.comparators.head?.map (fun t => ciFor t.comparator)).getD trust.ciRunUrl
             some (comparatorsPageBody trust.comparators trust.axiomAuditTopics ciUrl?
-              theoremLikeTotal trustModelHref? closureCtx trust.characterizations?)
+              theoremLikeTotal trustModelHref? closureCtx trust.characterizations?
+              trust.registryEntry? trust.registryLink)
           else match trust.comparator with
             | Option.none => Option.none
             | Option.some cmp =>
               Option.some
                 (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref? closureCtx
-                  trust.characterizations?)
+                  trust.characterizations? trust.registryEntry? trust.registryLink)
         match body? with
         | Option.none => pure ()
         | Option.some body =>
