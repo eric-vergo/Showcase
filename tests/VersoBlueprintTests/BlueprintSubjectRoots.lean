@@ -116,7 +116,7 @@ private def check (ok : Bool) (what : String) : CoreM Unit :=
 #guard_msgs(drop info, drop warning) in
 set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 #eval show CoreM Unit from do
-  let (registry, bodies) ← buildDeclRegistry
+  let (registry, bodies, _inputs) ← buildDeclRegistry
   check (registry.declCount > 0) "registry is empty"
   check (registry.decls.size == registry.declCount) "declCount disagrees with decls"
   check (registry.decls.all fun e => e.moduleName == "SubVerso.Module")
@@ -133,6 +133,31 @@ set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
       | none => false)
     s!"an entry is missing a source link into the dependency's own repository (first: {(registry.decls[0]?).map (·.sourceHref?)}, path {(registry.decls[0]?).map (·.sourcePath)})"
   check (!bodies.bodies.isEmpty) "no proof/value bodies were captured"
+
+-- With no caveat-table override configured, the registry build read nothing outside
+-- Lake's own inputs, so it records nothing: the bundled table ships in this fork's
+-- source and moves with a Lean module (CX-062).
+#guard_msgs(drop info, drop warning) in
+set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
+#eval show CoreM Unit from do
+  let (_, _, inputs) ← buildDeclRegistry
+  check inputs.isEmpty "the registry recorded an input with no override configured"
+
+-- With one configured, the registry records the path and the digest of the bytes its
+-- caveat scan was run against. That record is what `Informal.TrustFreshness` re-reads
+-- before emission, and it is the whole reason a warm rebuild cannot republish the
+-- previous table's verdicts.
+#guard_msgs(drop info, drop warning) in
+set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
+set_option verso.blueprint.trust.junkValueTable "tests/fixtures/caveats/table-override.json" in
+#eval show CoreM Unit from do
+  let (_, _, inputs) ← buildDeclRegistry
+  check (inputs.size == 1) s!"expected one recorded input, got {inputs.size}"
+  let some i := inputs[0]? | check false "no input record"
+  check (i.role == Informal.TrustInputs.roleCaveatTable) s!"wrong role: {i.role}"
+  check (i.path == "tests/fixtures/caveats/table-override.json") s!"wrong path: {i.path}"
+  check (i.sha256 == (← Informal.TrustInputs.digestOfFile i.path))
+    "the recorded digest is not the file's"
 
 /-! ## The pinned checkout wins over a same-named neighbour -/
 

@@ -311,6 +311,169 @@ def pendingInputs : IO (Array Informal.TrustInputs.Tagged) := do
   return findings.size == 1 && findings[0]!.kind == "unreadable" &&
     hasSubstr stop missingSolution && hasSubstr stop "cannot be read now"
 
+/-! ## The two F2 side inputs (CX-062, CX-067)
+
+Both findings replay the same warm A→B shape on a different file: edit only the junk-value
+table override, or only the characterization sidecar, rebuild, and the byte-identical
+`.olean` republishes the previous table's behaviour sentences, version and digest — or the
+previous sidecar's statements — under the current revision.
+
+Both files are read at elaboration by `elabTrustData?`, and both are on this ledger, so the
+question those findings raise is answered by the gate above rather than by a mechanism of
+their own. That is asserted here rather than assumed: the payload has to carry the two
+paths with the digests of the bytes read, and a stale digest on either has to stop the
+build naming that file and not the others.
+
+The `.olean` is the payload, so the two-build shape is driven from the payload side — the
+same idiom as every other case in this module, and for the same reason.
+-/
+
+private def tableOverride : String := "tests/fixtures/caveats/table-override.json"
+private def sidecar : String := "tests/fixtures/caveats/characterizations.json"
+
+set_option verso.blueprint.trust.junkValueTable "tests/fixtures/caveats/table-override.json" in
+set_option verso.blueprint.trust.characterizations "tests/fixtures/caveats/characterizations.json" in
+#docs (Manual) sideInputDoc "Trust Freshness Side Inputs" :=
+:::::::
+:::theorem "trust.sideinputs.anchor" (lean := "Nat.add_comm")
+Addition on the naturals commutes.
+:::
+
+{blueprint_dashboard}
+:::::::
+
+/-- The input records the capture above produced, the two F2 files included. -/
+def sideInputs : IO (Array Informal.TrustInputs.Tagged) := do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% sideInputDoc
+  return Informal.TrustFreshness.cachedInputs st
+
+-- Cold A: six records, the two new ones with the paths the options named and the digests
+-- of the bytes elaboration read.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← sideInputs
+  let has := fun (role path : String) =>
+    inputs.any fun (topic, i) =>
+      topic.isEmpty && i.role == role && i.path == path && i.sha256.length == 64
+  let matchesDisk ← do
+    let mut ok := true
+    for (_, i) in inputs do
+      unless (← Informal.TrustInputs.digestOfFile i.path) == i.sha256 do ok := false
+    pure ok
+  return inputs.size == 6 && matchesDisk &&
+    has Informal.TrustInputs.roleCaveatTable tableOverride &&
+    has Informal.TrustInputs.roleCharacterizations sidecar
+
+-- Warm B on the junk table alone: the gate stops, names the table, and does not implicate
+-- the sidecar or the four comparator artifacts.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← sideInputs
+  let stale := staleOn inputs Informal.TrustInputs.roleCaveatTable
+  let findings ← Informal.TrustInputs.recheck stale
+  let stop ← stopFor stale
+  return findings.size == 1 && findings[0]!.changed &&
+    hasSubstr stop tableOverride && hasSubstr stop "caveat table" &&
+    !hasSubstr stop sidecar &&
+    !hasSubstr stop "tests/fixtures/trust/comparator-status.json"
+
+-- Warm B on the characterization sidecar alone: same, the other way round.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← sideInputs
+  let stale := staleOn inputs Informal.TrustInputs.roleCharacterizations
+  let findings ← Informal.TrustInputs.recheck stale
+  let stop ← stopFor stale
+  return findings.size == 1 && findings[0]!.changed &&
+    hasSubstr stop sidecar && hasSubstr stop "characterization sidecar" &&
+    !hasSubstr stop tableOverride
+
+-- And the whole gate, on the real files: unmodified, it says nothing.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% sideInputDoc
+  Informal.TrustFreshness.run .multi st
+  let findings ← Informal.TrustInputs.recheck (Informal.TrustFreshness.cachedInputs st)
+  return findings.isEmpty
+
+/-! ## The declaration registry's own ledger (CX-062)
+
+The comparator-side half above is only half of the junk table's reach. The registry-side
+caveat scan is built by `blueprint_graph`, quoted into *that* block's `.olean`, and
+published on every declaration page — and a consumer with no comparator has no trust
+payload for the table to ride at all. So the registry records what it read in its own
+traversal-store key, and the gate re-reads that too.
+
+Driven from the state side, like the CX-076 case above: the store key is the payload.
+-/
+
+private def registryLedger (digest : String) : String :=
+  (toJson #[({ role := Informal.TrustInputs.roleCaveatTable, path := tableOverride
+               sha256 := digest } : Informal.TrustInputs.Input)]).compress
+
+-- A fresh ledger is silent, and a stale one stops with the registry's own message: the
+-- `blueprint_graph` block, the scan it captured, and the file that decided it.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% freshnessDoc
+  let current ← Informal.TrustInputs.digestOfFile tableOverride
+  let fresh := Informal.TraversalIndex.DeclRegistry.saveInputs st (registryLedger current)
+  let stale := Informal.TraversalIndex.DeclRegistry.saveInputs st
+    (registryLedger (String.ofList (List.replicate 64 'a')))
+  Informal.TrustFreshness.run .multi fresh
+  let stopped ← try
+      Informal.TrustFreshness.run .multi stale
+      pure ""
+    catch e => pure (toString e)
+  return (Informal.TrustFreshness.registryInputs fresh).size == 1 &&
+    (Informal.TrustFreshness.registryInputs st).isEmpty &&
+    hasSubstr stopped "declaration-registry evidence check FAILED" &&
+    hasSubstr stopped tableOverride &&
+    hasSubstr stopped "caveat table" &&
+    hasSubstr stopped "blueprint_graph" &&
+    -- and it does not send the reader to the comparator's block
+    !hasSubstr stopped "blueprint_dashboard"
+
+-- The case the trust payload cannot cover: a consumer with a registry and no comparator at
+-- all. The registry ledger is checked on its own, so the stale scan still stops the build.
+#docs (Manual) noTrustDoc "No Trust Payload" :=
+:::::::
+:::theorem "trust.notrust.anchor" (lean := "Nat.add_comm")
+Addition on the naturals commutes.
+:::
+:::::::
+
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, bare) ← renderManualDocHtmlAndState extension_impls% noTrustDoc
+  let stale := Informal.TraversalIndex.DeclRegistry.saveInputs bare
+    (registryLedger (String.ofList (List.replicate 64 'a')))
+  let stopped ← try
+      Informal.TrustFreshness.run .multi stale
+      pure ""
+    catch e => pure (toString e)
+  return (Informal.TrustFreshness.cachedPayload? stale).isNone &&
+    hasSubstr stopped "declaration-registry evidence check FAILED" &&
+    hasSubstr stopped tableOverride
+
+-- A ledger this build cannot read is nothing to check, not an exception.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, bare) ← renderManualDocHtmlAndState extension_impls% noTrustDoc
+  let junk := Informal.TraversalIndex.DeclRegistry.saveInputs bare "not json"
+  let empty := Informal.TraversalIndex.DeclRegistry.saveInputs bare "[]"
+  Informal.TrustFreshness.run .multi junk
+  Informal.TrustFreshness.run .multi empty
+  return (Informal.TrustFreshness.registryInputs junk).isEmpty &&
+    (Informal.TrustFreshness.registryInputs empty).isEmpty
+
 /-! ## Reading the records back out of a serialized payload
 
 The gate runs below the rendering layer and walks the payload as JSON, so the walk is

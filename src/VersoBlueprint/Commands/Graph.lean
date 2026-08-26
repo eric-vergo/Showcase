@@ -89,6 +89,12 @@ structure GraphBlockData where
   emitter (`DeclPage`) only — it is never written into the public data dir, so
   the heavy bodies can't balloon `decl-registry.json`. -/
   declBodiesJson? : Option String := none
+  /-- The non-Lean files the registry build read, as a compressed JSON array of
+  `Informal.TrustInputs.Input` records — at present the caveat-table override, whose
+  bytes decide the per-entry caveat scan. Stashed in the traversal state for
+  `Informal.TrustFreshness` to re-read before emission; never part of the public
+  `decl-registry.json`. `none` ⇒ nothing outside Lake's own inputs was read (CX-062). -/
+  declRegistryInputsJson? : Option String := none
   /-- The configured `verso.blueprint.declNamePrefix`, captured at elaboration
   time (where `Lean.Options` exist) and stashed in the traversal state so the
   render-time card paths and generation-time page emitters can shorten display
@@ -713,6 +719,10 @@ block_extension Block.graph (graphDataJson : String) where
             | some json => Informal.TraversalIndex.DeclRegistry.saveBodies state json
             | Option.none => state
           let state :=
+            match graphData.declRegistryInputsJson? with
+            | some json => Informal.TraversalIndex.DeclRegistry.saveInputs state json
+            | Option.none => state
+          let state :=
             Informal.TraversalIndex.DeclRegistry.saveLocalGraphRadius state graphData.localGraphRadius
           match graphData.declNamePrefix? with
           | some pfx => Informal.TraversalIndex.DeclRegistry.savePrefix state pfx
@@ -1006,13 +1016,14 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   -- serialized here at elaboration time (env available). The registry is emitted
   -- as `-verso-data/decl-registry.json` at generation time; the bodies stay in
   -- the traversal store for the decl-page emitter only.
-  let (declRegistryJson?, declBodiesJson?) ← do
+  let (declRegistryJson?, declBodiesJson?, declRegistryInputsJson?) ← do
     if verso.blueprint.graph.includeAllDecls.get (← Lean.getOptions) then
-      let (registry, bodies) ← Informal.DeclRegistry.buildDeclRegistry
-      if registry.decls.isEmpty then pure (none, none)
-      else pure (some (toJson registry).compress, some (toJson bodies).compress)
+      let (registry, bodies, inputs) ← Informal.DeclRegistry.buildDeclRegistry
+      if registry.decls.isEmpty then pure (none, none, none)
+      else pure (some (toJson registry).compress, some (toJson bodies).compress,
+        if inputs.isEmpty then none else some (toJson inputs).compress)
     else
-      pure (none, none)
+      pure (none, none, none)
   -- The short-name prefix rides the same block-data channel (captured here, where
   -- `Lean.Options` exist) but is independent of `includeAllDecls`.
   let declNamePrefix? :=
@@ -1027,7 +1038,8 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
-    { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?, declNamePrefix?,
+    { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?,
+      declRegistryInputsJson?, declNamePrefix?,
       options, maxFlatVariantNodes, localGraphRadius, previewMode, previewPlacement }
   -- Carry the block payload as a flat, pre-compressed JSON string rather than the
   -- structured `GraphBlockData`: `quote`ing the full node/edge structure overflows

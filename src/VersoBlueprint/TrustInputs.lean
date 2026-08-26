@@ -313,8 +313,12 @@ def recheck (inputs : Array Tagged) : IO (Array Finding) := do
 
 Assembled by intercalation rather than as one interpolated literal, because the leading
 indentation is load-bearing (it is what makes a list of files scannable in a CI log) and a
-string gap eats exactly that. -/
-private def findingLine (f : Finding) : String :=
+string gap eats exactly that.
+
+Public because there is more than one ledger: the trust payload's and the declaration
+registry's (CX-062). They stop with different prose about different surfaces, and they
+must name a file the same way. -/
+def findingLine (f : Finding) : String :=
   let topicNote := if f.topic.isEmpty then "" else s!" [topic: {f.topic}]"
   let (was, now) :=
     if f.kind == "appeared" then

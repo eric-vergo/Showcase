@@ -612,7 +612,7 @@ namespace DeclRegistry
 def spec : StoreSpec := {
   name := `VersoBlueprint.TraversalIndex.DeclRegistry
   kind := .accumulator
-  key := "one of the fixed keys \"registry\" / \"bodies\" / \"namePrefix\""
+  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\""
   value := "compressed registry JSON, compressed internal proof/value-bodies JSON, or the configured decl-name prefix string"
   summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names."
 }
@@ -636,6 +636,21 @@ def saveBodies (state : TraverseState) (json : String) : TraverseState :=
 /-- Read back the compressed internal proof/value-bodies JSON, if stored. -/
 def bodiesRaw? (state : TraverseState) : Option String := do
   let obj ← state.getDomainObject? domainName "bodies"
+  obj.data.getStr?.toOption
+
+/-- Stash the non-Lean files the registry build read, as a compressed JSON array of
+`Informal.TrustInputs.Input` records.
+
+Internal-only, like the bodies: the freshness gate re-reads them before emission, and the
+public `decl-registry.json` stays what it was. The registry's caveat scan is captured at
+elaboration from a file Lake does not track, so without this a warm rebuild republishes the
+previous scan under the previous table's version and digest (CX-062). -/
+def saveInputs (state : TraverseState) (json : String) : TraverseState :=
+  saveObjectData state domainName "inputs" (Json.str json)
+
+/-- Read back the registry's recorded inputs, if a `blueprint_graph` block stored any. -/
+def inputs? (state : TraverseState) : Option String := do
+  let obj ← state.getDomainObject? domainName "inputs"
   obj.data.getStr?.toOption
 
 /-- Stash the configured `verso.blueprint.declNamePrefix` (captured at elaboration

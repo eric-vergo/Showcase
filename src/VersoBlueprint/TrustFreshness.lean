@@ -97,6 +97,13 @@ consumer a dependency edge that is not there:
   trace — a build that fails the gate and cannot be fixed by rebuilding. Binary hashing
   keeps the two mechanisms looking at the same bytes.
 
+Every file a `verso.blueprint.trust.*` option names belongs in that list, not only the four
+above: a `junkValueTable` override decides the caveat scan's verdicts and a
+`characterizations` sidecar decides what the page says the project has proved about its own
+definitions, and both are read at elaboration like everything else. The junk table is read
+twice — once for the trust payload, once by the declaration registry — so its edge covers
+both surfaces (see the registry ledger below).
+
 Granularity is the library, not the module: every module in that `lean_lib` re-elaborates
 when one of the files changes. For a small `Contents` library that is the right trade; for
 a large one, isolate the module carrying the `blueprint_dashboard` block into its own
@@ -257,6 +264,67 @@ def claimBackingStopMessage (violations : Array ClaimBacking) : String :=
      unrecorded record establishes. To keep it bound to the claim, cache the record and \
      configure 'verso.blueprint.trust.palomarBundle'."
 
+/-! ## The declaration registry's own ledger (CX-062)
+
+The caveat scan runs twice from one table, and only one of the two rode the trust payload's
+ledger. The registry-side scan is built by `blueprint_graph` in `CoreM`, quoted into that
+block's `.olean`, and decoded again at generation time like everything else — so editing
+only the override leaves the previous scan's behaviour sentences, table version and digest
+on every declaration page a warm rebuild publishes. A consumer with no comparator has no
+trust payload for the table to ride at all.
+
+The registry therefore records what it read, in its own traversal-store key rather than in
+the public `decl-registry.json`, and this gate re-reads it in the same pass. Same
+`recheck`, same states, same file lines: only the prose differs, because the surfaces that
+would be republished are different ones.
+-/
+
+/-- The input records the traversal-cached declaration registry carries. Empty when no
+registry was built, or when the registry build read nothing outside Lake's own inputs. -/
+def registryInputs (state : TraverseState) : Array Informal.TrustInputs.Tagged :=
+  match Informal.TraversalIndex.DeclRegistry.inputs? state with
+  | none => #[]
+  | some raw =>
+    match Json.parse raw with
+    | .error _ => #[]
+    | .ok j =>
+      match j.getArr? with
+      | .error _ => #[]
+      | .ok items =>
+        items.filterMap fun it =>
+          match fromJson? (α := Informal.TrustInputs.Input) it with
+          | .ok input => if input.path.isEmpty then none else some ("", input)
+          | .error _ => none
+
+/--
+The registry's stop message: which file moved, what it decided, and how to make the build
+read it again.
+
+Deliberately not `Informal.TrustInputs.stopMessage`: that one names the comparator surfaces
+and the `blueprint_dashboard` block, and pointing a reader at the wrong block is how a
+correct gate gets a reputation for being wrong.
+-/
+def registryStopMessage (findings : Array Informal.TrustInputs.Finding)
+    (cwd : System.FilePath) : String :=
+  let n := findings.size
+  let noun := if n == 1 then "file" else "files"
+  let lines := String.intercalate "\n" (findings.map Informal.TrustInputs.findingLine).toList
+  s!"Showcase declaration-registry evidence check FAILED (stale capture): {n} {noun} the \
+     registry was built from {if n == 1 then "is" else "are"} not what it says — different \
+     bytes, gone, or there when this build recorded nothing at that path.\n\n\
+     {lines}\n\n\
+     The registry's per-declaration caveat scan is captured when the module carrying the \
+     `blueprint_graph` block elaborates: which symbols matched, what each one does at the \
+     edge, and the version and digest of the table that was consulted. That table is not a \
+     Lean module, so changing it invalidates nothing Lake tracks, and this build was about \
+     to publish the previous scan under the current revision — the previous table's \
+     verdicts, named with the previous table's digest, on every declaration page.\n\n\
+     Re-elaborate the module carrying the `blueprint_graph` block so the scan is run \
+     against the file above, then regenerate. `lake build <lib> -R` forces it; declaring \
+     the file as a Lake input file in the consumer's lakefile makes ordinary builds do it \
+     (see this module's docs).\n\n\
+     Paths resolve against the build directory: {cwd}"
+
 /--
 Stop the build if the trust payload cannot be published as it stands.
 
@@ -270,6 +338,9 @@ Two checks, both before the caller emits anything, both throwing `IO.userError`:
 Runs in both output modes: the strip and the trust-model page render in single-page output
 too, so a stale capture is just as publishable there.
 
+A third check runs beside them and independently of the payload: the declaration registry's
+own ledger, which is where the *other* caveat scan's table override is recorded (CX-062).
+
 Silent when there is nothing to check — no payload, or a payload from a fork build that
 recorded no inputs and carries no claim-level registry entry. A missing input record is not
 evidence of freshness, but neither is it grounds to stop a build that never claimed any:
@@ -277,15 +348,22 @@ the failure mode the first check guards is a *stale* capture, and a payload with
 has nothing to be stale against.
 -/
 def run (_mode : Mode) (state : TraverseState) : IO Unit := do
-  let some payload := cachedPayload? state | return ()
-  let violations := claimBackingViolations payload
-  unless violations.isEmpty do
-    throw <| IO.userError (claimBackingStopMessage violations)
-  let inputs := Informal.TrustInputs.ofPayload payload
-  if inputs.isEmpty then return ()
-  let findings ← Informal.TrustInputs.recheck inputs
-  unless findings.isEmpty do
-    throw <| IO.userError (Informal.TrustInputs.stopMessage findings (← IO.currentDir))
+  if let some payload := cachedPayload? state then
+    let violations := claimBackingViolations payload
+    unless violations.isEmpty do
+      throw <| IO.userError (claimBackingStopMessage violations)
+    let inputs := Informal.TrustInputs.ofPayload payload
+    unless inputs.isEmpty do
+      let findings ← Informal.TrustInputs.recheck inputs
+      unless findings.isEmpty do
+        throw <| IO.userError (Informal.TrustInputs.stopMessage findings (← IO.currentDir))
+  -- The registry's own ledger, checked whether or not a trust payload exists: a consumer
+  -- with no comparator still publishes the caveat scan on every declaration page (CX-062).
+  let regInputs := registryInputs state
+  unless regInputs.isEmpty do
+    let findings ← Informal.TrustInputs.recheck regInputs
+    unless findings.isEmpty do
+      throw <| IO.userError (registryStopMessage findings (← IO.currentDir))
 
 /-! ## Machine-readable provenance -/
 

@@ -16,6 +16,7 @@ import VersoBlueprint.ExternalDeclRender
 import VersoBlueprint.NodeCard
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.JunkValues
+import VersoBlueprint.TrustInputs
 
 /-!
 # Declaration registry
@@ -670,7 +671,7 @@ and slices every declaration's `:= …` body out of the cached content, with siz
 caps (`rawBodyCap`/`highlightBodyCap`) so a pathological body can never balloon
 the store.
 -/
-def buildDeclRegistry : CoreM (Registry × Bodies) := do
+def buildDeclRegistry : CoreM (Registry × Bodies × Array Informal.TrustInputs.Input) := do
   let env ← getEnv
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
@@ -678,17 +679,19 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let fullElabMaxDecls := configuredFullElabMaxDecls (← getOptions)
   let roots ← projectModuleRoots
   if roots.isEmpty then
-    return ({}, {})
+    return ({}, {}, #[])
   -- The caveat table, read once for the whole registry. A configured override that is
   -- unusable is a build error here as it is on the trust path: the two surfaces answer to
   -- one switch and one table, and a registry that silently fell back to the bundled table
   -- would name a version the consumer did not configure.
-  let caveatIndex? : Option Informal.JunkValues.Index ←
-    if Informal.JunkValues.caveatsEnabled (← getOptions) then
-      let path := Informal.JunkValues.tableOverridePath (← getOptions)
-      match ← Informal.JunkValues.loadTableWithOverride path with
+  let caveatsOn := Informal.JunkValues.caveatsEnabled (← getOptions)
+  let opts ← getOptions
+  let caveatPath := if caveatsOn then Informal.JunkValues.tableOverridePath opts else ""
+  let caveatTable? : Option Informal.JunkValues.Table ←
+    if caveatsOn then
+      match ← Informal.JunkValues.loadTableWithOverride caveatPath with
       | .error err =>
-        if path.isEmpty then
+        if caveatPath.isEmpty then
           throwError "the caveat table this fork ships is unusable: {err}"
         else
           throwError "option 'verso.blueprint.trust.junkValueTable' {err}"
@@ -696,12 +699,26 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
         -- A configured override whose keys name nothing here is a broken configuration,
         -- not a table that found nothing (CX-060).
         if let some override := override? then
-          if let some reason := Informal.JunkValues.overrideUnusableReason? env path override then
+          if let some reason :=
+              Informal.JunkValues.overrideUnusableReason? env caveatPath override then
             throwError "option 'verso.blueprint.trust.junkValueTable' {reason}"
-        -- Resolved against the environment this scan runs in, so a key that could not have
-        -- matched is reported as such rather than as silence.
-        pure (some (t.indexIn env))
+        pure (some t)
     else pure none
+  -- Resolved against the environment this scan runs in, so a key that could not have
+  -- matched is reported as such rather than as silence.
+  let caveatIndex? : Option Informal.JunkValues.Index := caveatTable?.map (·.indexIn env)
+  -- What this registry build read that Lake does not track. The caveat-table override is
+  -- the only such file, and it is why this record exists: the per-entry scan below is
+  -- quoted into the `blueprint_graph` block's `.olean`, so editing only the override
+  -- leaves the previous scan — its behaviour sentences, its table version and digest —
+  -- for a warm rebuild to republish (CX-062). `Informal.TrustFreshness` re-reads these
+  -- before anything is written. Probed after the load, so a missing file is still the
+  -- loader's own build error rather than an IO exception.
+  let mut registryInputs : Array Informal.TrustInputs.Input := #[]
+  if caveatTable?.isSome then
+    if let some i ←
+        Informal.TrustInputs.Input.probe? Informal.TrustInputs.roleCaveatTable caveatPath then
+      registryInputs := registryInputs.push i
   -- The registry tracks every project declaration, `private` helpers included (the
   -- all-decls graph keeps them out to stay readable — see `enumerateProjectDecls`).
   let decls ← enumerateProjectDecls roots (includePrivate := true)
@@ -864,6 +881,7 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
   return (
     { schemaVersion := 3, namePrefix, declCount := entries.size, decls := entries },
-    { bodies })
+    { bodies },
+    registryInputs)
 
 end Informal.DeclRegistry
