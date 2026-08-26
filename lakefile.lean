@@ -39,9 +39,25 @@ lean_exe «showcase-gen» where
   srcDir := "src"
   supportInterpreter := true
 
+-- Statement-closure tool. Elaborates a comparator challenge chain in a FRESH
+-- environment (`importModules` of exactly the chain's declared imports, no subject
+-- library and no Verso) and prints the closure of the certified statements as JSON.
+-- Like `showcase-gen` it resolves modules at runtime through LEAN_PATH, so it is run
+-- from the consumer's Lake workspace:
+--   lake env statement-closure job.json
+@[default_target]
+lean_exe «statement-closure» where
+  root := `VersoBlueprint.StatementClosureMain
+  srcDir := "src"
+  supportInterpreter := true
+
 @[default_target, test_driver]
 lean_lib VersoBlueprintTests where
   srcDir := "tests"
+  -- The statement-closure integration test invokes the real binary, so the suite depends
+  -- on it. A test that silently skipped when the tool is absent would pass on exactly the
+  -- tree where the tool is broken.
+  needs := #[`@/«statement-closure»:exe]
   roots := #[
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
@@ -76,6 +92,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintSubjectRoots,
     `VersoBlueprintTests.Sha256,
     `VersoBlueprintTests.ShowcaseGen,
+    `VersoBlueprintTests.StatementClosureFixture,
+    `VersoBlueprintTests.StatementClosure,
     `VersoBlueprintTests.TrustEvidence,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,
