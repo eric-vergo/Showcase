@@ -58,9 +58,13 @@ def blueprintMainWithFeatures
         :: Informal.ExtraPages.emitBlueprintMathlibCandidatesPage
         :: Informal.DeclIndex.emitBlueprintDeclIndexPages
         :: Informal.DeclPage.emitBlueprintDeclPages
-        -- The structural `uses`-graph gate is NOT an `ExtraStep`: it runs between
-        -- traversal and emission inside `emitBlueprintHtml` (`Informal.GraphGate`),
-        -- so a failing gate leaves no rendered site behind.
+        -- Neither the structural `uses`-graph gate nor the comparator-evidence
+        -- freshness gate is an `ExtraStep`: both run between traversal and emission
+        -- inside `emitBlueprintHtml` (`Informal.GraphGate`, `Informal.TrustFreshness`),
+        -- so a failing gate leaves no rendered site behind. What *is* a step is the
+        -- provenance record the gate's inputs are published as, for a CI gate to
+        -- re-check against the working tree.
+        :: Informal.TrustFreshness.emitTrustProvenance
         :: Informal.Commands.emitBlueprintComparatorPage
         :: extraSteps)
 

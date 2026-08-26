@@ -21,6 +21,7 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Sha256
+import VersoBlueprint.TrustInputs
 import VersoBlueprint.KernelAdvisories
 import VersoBlueprint.StatementClosure
 import VersoBlueprint.JunkValues
@@ -240,6 +241,16 @@ deriving instance Quote for Informal.JunkValues.OptionOverride
 deriving instance Quote for Informal.JunkValues.ScanReport
 deriving instance Quote for Informal.JunkValues.Characterization
 deriving instance Quote for Informal.JunkValues.Characterizations
+
+/-! ### The input record
+
+`Informal.TrustInputs.Input` is defined below the rendering layer, for the same reason the
+caveat payload is: the freshness gate that consumes it (`Informal.TrustFreshness`) runs
+between traversal and emission and has no business importing this module. Its `Quote`
+instance is derived here, where the deriving handler is in scope.
+-/
+
+deriving instance Quote for Informal.TrustInputs.Input
 
 /-- One advisory as it bore on one recorded verifier revision, ready to render. -/
 structure VerifierAdvisory where
@@ -598,6 +609,17 @@ structure TrustComparator where
   `none` ⇒ nothing configured, or nothing matched, or what matched was weaker than that and
   is reported at project level instead. -/
   registryEntry? : Option RegistryEntry := none
+  /-- The non-Lean files THIS elaboration read to build this verdict — status artifact,
+  configuration, Challenge, Solution, and each challenge-chain file the closure tool hashed
+  — as revision-free paths plus the SHA-256 of the bytes read.
+
+  Not the run's digests (`challengeSha256` and friends): those bind the display to the
+  *verifying run*, and are unaffected by any of this. These bind the display to the *build*,
+  which nothing did before. Lake tracks no read of these files, so a warm rebuild would
+  otherwise decode this whole record — verdict, statement, digests, links — and publish it
+  under a newer revision, internally consistent and out of date (CX-075). The gate that
+  re-reads them before emission is `Informal.TrustFreshness`. -/
+  inputs : Array Informal.TrustInputs.Input := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- A named comparator topic: a display name plus its verdict. The multi-config
@@ -698,6 +720,14 @@ structure TrustData where
   Project-level rather than per-claim, which is what a sidecar of declarations is. `none` ⇒
   none configured. -/
   characterizations? : Option Informal.JunkValues.Characterizations := none
+  /-- The project-level non-Lean files this elaboration read: `formalization.yaml`, the
+  topic manifest, the kernel-advisory and caveat-table overrides, the characterization
+  sidecar, and the Palomar records a cached bundle supplied. Per-verdict files live on
+  `TrustComparator.inputs`.
+
+  Same purpose and same gate: every one of these shapes the comparator page or the strip,
+  every one is read at elaboration, and Lake tracks none of them. -/
+  inputs : Array Informal.TrustInputs.Input := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
@@ -2130,20 +2160,23 @@ Neither kind is re-verification: nothing here re-runs the comparator.
 
 **Both run at elaboration, so Lake caches their verdict with the module's `.olean`.**
 Editing only a comparator source file changes no Lean input, so an *incremental* rebuild
-can reuse a stale success; a cold build — CI, or any build after the document module
-itself changes — always re-checks. The binding is therefore a property of the build that
-produced a site from scratch, which is the build that publishes it. (Verified: a
-substituted challenge file is accepted by a warm rebuild and rejected as soon as the
-module re-elaborates.)
+reuses the whole capture — the verdict, the statement, these checks' success, the blob
+links — and would publish it under the newer revision, internally consistent and out of
+date (CX-075). That is no longer merely documented: every file read here is recorded on
+the payload with its path and digest (`TrustComparator.inputs` / `TrustData.inputs`), and
+`Informal.TrustFreshness` re-reads them between traversal and emission and stops the build
+if any has moved. Cold builds remain the publishing path; a warm one that would have
+served a stale capture now fails instead of shipping.
 
-The same applies to every other file this module reads at elaboration, which is now: the
-comparator status artifact, its config, the Challenge and Solution sources, the kernel
-advisory override, the challenge-chain files the closure tool hashes, the **junk-value
-table override** (`verso.blueprint.trust.junkValueTable`) and the **characterization
-sidecar** (`verso.blueprint.trust.characterizations`). Editing any of them without
-touching a Lean input leaves the previous contents in the `.olean` — including the table
-version and digest the caveat surface prints, which would then name a table this build did
-not read. Cold builds remain the publishing path.
+The recorded set is every non-Lean file this module reads: the comparator status artifact,
+its config, the Challenge and Solution sources, the topic manifest and each topic's own
+four files, the challenge-chain files the closure tool hashes, `formalization.yaml`, the
+kernel-advisory override, the **junk-value table override**
+(`verso.blueprint.trust.junkValueTable`), the **characterization sidecar**
+(`verso.blueprint.trust.characterizations`), and the Palomar records a cached bundle
+supplies. Records the `verso.blueprint.trust.palomarProbe` option fetched over the network
+are the one exception, because there is no file to re-read; the probe is soft by
+construction and no match may rest on it alone.
 -/
 
 /--
@@ -2348,19 +2381,14 @@ def comparatorLivePermalink (project challenge solution : String) : String :=
     ++ "&challenge=" ++ System.Uri.escapeUri challenge
     ++ "&code=" ++ System.Uri.escapeUri solution
 
-/--
-Read a file once as bytes, returning its SHA-256 digest and its decoded text.
+/-- Read a file once as bytes: its SHA-256 and its decoded text. See
+`Informal.TrustInputs.readWithDigest` for why the two come from one read. -/
+private def readSourceWithDigest (path : String) : IO (String × String) :=
+  Informal.TrustInputs.readWithDigest path
 
-One read, one digest: hashing the same bytes that become the displayed text is what
-makes the digest a statement about what the page shows, rather than about a second read
-that could differ from it.
--/
-private def readSourceWithDigest (path : String) : IO (String × String) := do
-  let bytes ← IO.FS.readBinFile path
-  match String.fromUTF8? bytes with
-  | Option.some decoded => pure (Informal.Sha256.hex bytes, decoded)
-  | Option.none =>
-    throw <| IO.userError s!"{path} is not valid UTF-8, so it cannot be displayed verbatim."
+/-- Record one input on a verdict, from the digest the read that produced it computed. -/
+private def withInput (cmp : TrustComparator) (role path digest : String) : TrustComparator :=
+  { cmp with inputs := cmp.inputs.push (Informal.TrustInputs.Input.ofDigest role path digest) }
 
 open Verso Doc Elab in
 /--
@@ -2372,17 +2400,28 @@ the verifying run recorded (hard error on disagreement), the run record's
 internal completeness is checked, status↔config identifier agreement is
 diagnosed, and — like the single-pair path — the Challenge FAILS CLOSED (a
 configured-but-missing/empty challenge is an error, since a verdict without the
-statement it certifies is unreadable). `statusPath` is used only for error text.
+statement it certifies is unreadable).
+
+`statusPath` and `statusDigest` are the artifact this verdict was parsed from: the
+path names it in error text, and the digest is what the freshness gate compares the
+file against before this capture is published (`TrustComparator.inputs`). The status
+artifact is the one input this function does not read for itself — the caller parsed
+it — so the digest is passed in rather than recomputed from a second read.
 -/
 def attachComparatorSources (cmp0 : TrustComparator)
-    (statusPath cfgPath chalPath solPath liveProject : String) :
+    (statusPath statusDigest cfgPath chalPath solPath liveProject : String) :
     PartElabM TrustComparator := do
   let mut cmp := cmp0
+  -- Every read below records what it read, in the order it read it: the stop message a
+  -- stale capture produces lists the files a reader would go looking for, in that order.
+  unless statusPath.isEmpty || statusDigest.isEmpty do
+    cmp := withInput cmp Informal.TrustInputs.roleStatus statusPath statusDigest
   let mut configJson? : Option Json := Option.none
   if !cfgPath.isEmpty then
     if (← System.FilePath.pathExists cfgPath) then
       let (digest, raw) ← readSourceWithDigest cfgPath
       cmp := { cmp with configDigest := digest }
+      cmp := withInput cmp Informal.TrustInputs.roleConfig cfgPath digest
       match Json.parse raw with
       | .ok j =>
         configJson? := Option.some j
@@ -2404,10 +2443,12 @@ def attachComparatorSources (cmp0 : TrustComparator)
       throwError "comparator challenge file names an empty file: {chalPath}. The comparator page \
         must not publish a verdict without the statement it certifies."
     cmp := { cmp with challengeSource := src, challengeDigest := digest }
+    cmp := withInput cmp Informal.TrustInputs.roleChallenge chalPath digest
   if !solPath.isEmpty then
     if (← System.FilePath.pathExists solPath) then
       let (digest, src) ← readSourceWithDigest solPath
       cmp := { cmp with solutionSource := src, solutionDigest := digest }
+      cmp := withInput cmp Informal.TrustInputs.roleSolution solPath digest
   -- Self-consistency of the record first: a contradictory record has no reading, so
   -- nothing downstream should get the chance to pick one.
   liftM (checkComparatorEncodings cmp statusPath)
@@ -2699,6 +2740,30 @@ def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : S
     entries
   }, scan?)
 
+/--
+Record the challenge-chain files a closure hashed as payload inputs.
+
+The digests are the *tool's*, from its own read of each file — the only digests that
+exist for the chain, since the fork hands the paths to a subprocess rather than reading
+them. The paths are the ones it was given (the manifest's `challenge_deps` plus the
+primary Challenge), so they are relative and revision-free like every other input.
+
+The primary Challenge is in the chain and was already recorded from this build's own
+read, so paths already present are skipped: two records of one file would double the
+work and, if the two reads ever disagreed, report a conflict the chain binding
+(`StatementClosure.bindChain`) already reports better.
+-/
+private def withChainInputs (cmp : TrustComparator) (chainFiles : Array (String × String)) :
+    TrustComparator := Id.run do
+  let mut inputs := cmp.inputs
+  for (path, digest) in chainFiles do
+    if path.isEmpty || digest.isEmpty then continue
+    let key := normalizePathForCompare path
+    if inputs.any (fun i => normalizePathForCompare i.path == key) then continue
+    inputs := inputs.push
+      (Informal.TrustInputs.Input.ofDigest Informal.TrustInputs.roleChain path digest)
+  return { cmp with inputs }
+
 open Verso Doc Elab in
 /--
 Compute one claim's statement closure and record it, bound or not.
@@ -2726,7 +2791,7 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
   let table? ← elabCaveatTable?
   let record (c : StatementClosure) (scan? : Option Informal.JunkValues.ScanReport) :
       TrustComparator :=
-    { cmp with closure? := some c, caveats? := scan? }
+    withChainInputs { cmp with closure? := some c, caveats? := scan? } c.chainFiles
   -- The bottom two rungs, taken together: the aligned-statement anchor when the manifest
   -- has one, and otherwise the notice that says why there is nothing. A rung with no
   -- closure has no traversal for the caveat scan to ride, so the scan is unavailable for
@@ -2795,16 +2860,26 @@ unparsable manifest, or a topic missing its `status` (comparator) / `decls`
 vanish silently. Paths inside the manifest resolve against the build CWD, like
 the single-pair options. Reads `verso.blueprint.trust.comparatorLiveProject` for
 the per-topic comparator.live permalink.
+
+Returns the manifest's own input record alongside the topics: the manifest is read at
+elaboration like everything else it names, and a manifest edited afterwards — a topic
+renamed, a path repointed, a topic removed — would otherwise replay through the same
+stale `.olean` as the files it names (CX-075).
 -/
-def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTopic) := do
+def elabComparatorTopics? :
+    PartElabM (List ComparatorTopic × List AxiomAuditTopic ×
+      Array Informal.TrustInputs.Input) := do
   let opts ← Lean.getOptions
   let path := opts.get verso.blueprint.trust.comparatorTopics.name
     verso.blueprint.trust.comparatorTopics.defValue
-  if path.isEmpty then return ([], [])
+  if path.isEmpty then return ([], [], #[])
   unless ← System.FilePath.pathExists path do
     throwError "option 'verso.blueprint.trust.comparatorTopics' names a missing file (resolved \
       against the build directory): {path}"
-  let doc ← match Json.parse (← IO.FS.readFile path) with
+  let (manifestDigest, manifestRaw) ← readSourceWithDigest path
+  let manifestInput :=
+    Informal.TrustInputs.Input.ofDigest Informal.TrustInputs.roleTopics path manifestDigest
+  let doc ← match Json.parse manifestRaw with
     | .error err => throwError "could not parse {path}: {err}"
     | .ok j => pure j
   let topics := (doc.getObjVal? "topics").toOption.getD Json.null
@@ -2847,13 +2922,15 @@ def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTo
       unless ← System.FilePath.pathExists statusPath do
         throwError "comparator topic '{name}' in {path} names a missing status file (resolved \
           against the build directory): {statusPath}"
-      let cmp0 ← match Json.parse (← IO.FS.readFile statusPath) with
+      let (statusDigest, statusRaw) ← readSourceWithDigest statusPath
+      let cmp0 ← match Json.parse statusRaw with
         | .error err => throwError "could not parse {statusPath} (topic '{name}'): {err}"
         | .ok j => pure (TrustComparator.ofJson j)
       let cfgPath := str? t "config"
       let chalPath := str? t "challenge"
       let solPath := str? t "solution"
-      let cmp ← attachComparatorSources cmp0 statusPath cfgPath chalPath solPath liveProject
+      let cmp ← attachComparatorSources cmp0 statusPath statusDigest cfgPath chalPath solPath
+        liveProject
       -- Same source enrichment (highlighting + links) as the single-pair path.
       let cmp ← liftM (enrichComparatorSources opts workspaceRoot cmp chalPath solPath cfgPath)
       -- Reserved manifest inputs: the chain files beyond the primary Challenge (in
@@ -2866,7 +2943,7 @@ def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTo
       let cmp ← attachStatementClosure cmp chalPath
       let topicEntry : ComparatorTopic := { name, comparator := cmp }
       comparators := comparators ++ [topicEntry]
-  return (comparators, axiomTopics)
+  return (comparators, axiomTopics, #[manifestInput])
 
 open Verso Doc Elab in
 /--
@@ -2877,16 +2954,22 @@ default without saying so, since the two differ exactly in what they would have 
 
 The override replaces the built-in table rather than merging into it: a merge would let
 a consumer drop an advisory by omission, which is the one edit nobody would notice.
+
+The built-in table ships in this fork's source, so it moves only when a Lean module does
+and needs no input record. A consumer override is a file Lake does not track, and comes
+back with one.
 -/
-def elabKernelAdvisories : PartElabM Informal.KernelAdvisories.Table := do
+def elabKernelAdvisories :
+    PartElabM (Informal.KernelAdvisories.Table × Array Informal.TrustInputs.Input) := do
   let opts ← Lean.getOptions
   let path := opts.get verso.blueprint.trust.kernelAdvisories.name
     verso.blueprint.trust.kernelAdvisories.defValue
-  if path.isEmpty then return Informal.KernelAdvisories.builtinTable
+  if path.isEmpty then return (Informal.KernelAdvisories.builtinTable, #[])
   unless ← System.FilePath.pathExists path do
     throwError "option 'verso.blueprint.trust.kernelAdvisories' names a missing file \
       (resolved against the build directory): {path}"
-  let j ← match Json.parse (← IO.FS.readFile path) with
+  let (digest, raw) ← readSourceWithDigest path
+  let j ← match Json.parse raw with
     | .error err => throwError "could not parse {path}: {err}"
     | .ok j => pure j
   match Informal.KernelAdvisories.Table.ofJson? j with
@@ -2895,7 +2978,9 @@ def elabKernelAdvisories : PartElabM Informal.KernelAdvisories.Table := do
       'advisoriesUpdated' (a date) and 'advisories' (an array of entries, each with \
       'tool', 'advisoryDate', 'summary', 'url' and a 'fix' object) — see the option's \
       description for the full shape."
-  | .ok table => return table
+  | .ok table =>
+    return (table,
+      #[Informal.TrustInputs.Input.ofDigest Informal.TrustInputs.roleAdvisories path digest])
 
 /-! ### Registry records (Palomar)
 
@@ -2954,6 +3039,41 @@ def elabPalomarBundle? (repo : String) : PartElabM (Option Informal.Palomar.Bund
         will not pick one."
     | .ok union => return Option.some union
 
+/--
+The registry documents this build read off disk, as input records.
+
+Every record the bundle holds, not only the one that matched: which record matches is
+decided by their bytes, so a record edited after elaboration can change the *match* as
+easily as it can change the card. A cached bundle's root document — the configured entry
+file, or the `recent.json` of a configured directory — comes back too, since it is what
+names the records at all.
+
+Probed records are outside this: they were fetched over the network during elaboration and
+there is no file to re-read. A warm rebuild does replay them, and this cannot detect it —
+which is one more reason the probe is documented as always soft, never required for a
+build, and never the input a match is allowed to rest on alone.
+-/
+private def registryInputs (bundlePath : String) (bundle : Informal.Palomar.Bundle) :
+    IO (Array Informal.TrustInputs.Input) := do
+  let mut out : Array Informal.TrustInputs.Input := #[]
+  unless bundlePath.isEmpty do
+    let fsPath : System.FilePath := bundlePath
+    let isDir ← try fsPath.isDir catch _ => pure false
+    let root := if isDir then (fsPath / "recent.json").toString else bundlePath
+    if ← System.FilePath.pathExists root then
+      if let some i ← Informal.TrustInputs.Input.probe?
+          Informal.TrustInputs.roleRegistryBundle root then
+        out := out.push i
+  for e in bundle.entries do
+    let origin := e.origin
+    if origin.isEmpty || origin.startsWith "http" then continue
+    if out.any (fun i => i.path == origin) then continue
+    unless ← System.FilePath.pathExists origin do continue
+    if let some i ← Informal.TrustInputs.Input.probe?
+        Informal.TrustInputs.roleRegistryRecord origin then
+      out := out.push i
+  return out
+
 open Verso Doc Elab in
 /--
 Match the configured registry records against the claims this page presents.
@@ -2976,6 +3096,10 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
   if link.isEmpty && bundlePath.isEmpty && !probeOn then return trust
   let trust := { trust with registryLink := link }
   let some bundle ← elabPalomarBundle? trust.projectRepoIdentity | return trust
+  -- What this build read off disk to do the matching below, recorded before any of it is
+  -- used: the match itself is a function of these bytes.
+  let trust := { trust with
+    inputs := trust.inputs ++ (← liftM (registryInputs bundlePath bundle)) }
   -- Bundle health first, and unconditionally: what this build could not read is a fact about
   -- the input, not about the outcome, so it must survive every path below — including the
   -- one where nothing matches and no card is rendered at all.
@@ -3081,8 +3205,22 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   -- which is missing or malformed fails the build whether or not this document also
   -- carries a comparator. A configured input that is never read is a configured input
   -- nobody finds out is broken.
-  let _ ← elabCaveatTable?
+  let caveatTable? ← elabCaveatTable?
   let characterizations? ← elabCharacterizations?
+  -- Project-level input records, collected in read order. Kept apart from `trust` because
+  -- the `formalization.yaml` branch below replaces the payload wholesale; merged back in
+  -- before the registry step, which appends its own.
+  let mut projectInputs : Array Informal.TrustInputs.Input := #[]
+  if caveatTable?.isSome then
+    -- The bundled table ships in this fork's source and moves with a Lean module; only a
+    -- consumer override is a file Lake does not track.
+    if let some i ← liftM (Informal.TrustInputs.Input.probe?
+        Informal.TrustInputs.roleCaveatTable (Informal.JunkValues.tableOverridePath opts)) then
+      projectInputs := projectInputs.push i
+  if let some cs := characterizations? then
+    if let some i ← liftM (Informal.TrustInputs.Input.probe?
+        Informal.TrustInputs.roleCharacterizations cs.path) then
+      projectInputs := projectInputs.push i
   if yamlPath.isEmpty && cmpPath.isEmpty && topicsPath.isEmpty then
     -- A configured registry surface with no comparator has nowhere to appear: the strip
     -- carries claim-bound records and the comparator page carries the cards, and neither
@@ -3100,10 +3238,14 @@ def elabTrustData? : PartElabM (Option TrustData) := do
         no comparator there is no strip badge and no comparator page for it to appear on."
     return Option.none
   let mut trust : TrustData := {}
+  let mut statusDigest : String := ""
   if !yamlPath.isEmpty then
     if !(← System.FilePath.pathExists yamlPath) then
       throwError "option 'verso.blueprint.trust.formalizationYaml' names a missing file (resolved against the build directory): {yamlPath}"
-    match Informal.FormalizationYaml.parse (← IO.FS.readFile yamlPath) with
+    let (digest, raw) ← readSourceWithDigest yamlPath
+    projectInputs := projectInputs.push
+      (Informal.TrustInputs.Input.ofDigest Informal.TrustInputs.roleFormalization yamlPath digest)
+    match Informal.FormalizationYaml.parse raw with
     | .error err => throwError "could not parse {yamlPath}: {err}"
     | .ok doc =>
       checkFormalizationYaml opts yamlPath doc
@@ -3111,7 +3253,9 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   if !cmpPath.isEmpty then
     if !(← System.FilePath.pathExists cmpPath) then
       throwError "option 'verso.blueprint.trust.comparatorStatus' names a missing file (resolved against the build directory): {cmpPath}"
-    match Json.parse (← IO.FS.readFile cmpPath) with
+    let (digest, raw) ← readSourceWithDigest cmpPath
+    statusDigest := digest
+    match Json.parse raw with
     | .error err => throwError "could not parse {cmpPath}: {err}"
     | .ok j => trust := { trust with comparator := Option.some (TrustComparator.ofJson j) }
   -- Embed the comparator's config JSON + Challenge/Solution Lean source verbatim on the
@@ -3133,21 +3277,24 @@ def elabTrustData? : PartElabM (Option TrustData) := do
         verso.blueprint.trust.comparatorLiveProject.defValue
     -- Config/Challenge/Solution embedding + digests + cross-checks + live permalink,
     -- via the shared helper (identical honesty logic for the multi-config topics).
-    let cmp ← attachComparatorSources cmp cmpPath cfgPath chalPath solPath liveProject
+    let cmp ← attachComparatorSources cmp cmpPath statusDigest cfgPath chalPath solPath
+      liveProject
     -- The single-pair path has no topic manifest, so its chain is the Challenge alone.
     let cmp ← attachStatementClosure cmp chalPath
     trust := { trust with comparator := Option.some cmp }
   -- Multi-config comparator + axiom-audit topics, independent of the single-pair
   -- options above (a consumer uses one scheme or the other).
-  let (comparators, axiomAuditTopics) ← elabComparatorTopics?
+  let (comparators, axiomAuditTopics, topicInputs) ← elabComparatorTopics?
   trust := { trust with comparators, axiomAuditTopics }
+  projectInputs := projectInputs ++ topicInputs
   -- Layer on the comparator-source enrichment (syntax highlighting + source links).
   -- Runs in `CoreM`; degrades to empty fields, never a build error.
   trust := (← liftM (enrichTrustData opts trust))
   -- Currency of the verifier builds each record names, against the advisory table. Pure
   -- once the table is read, and computed for every verdict on the page so the
   -- single-pair and multi-config surfaces cannot answer differently.
-  let advisories ← elabKernelAdvisories
+  let (advisories, advisoryInputs) ← elabKernelAdvisories
+  projectInputs := projectInputs ++ advisoryInputs
   trust := { trust with
     advisoriesUpdated := advisories.advisoriesUpdated
     comparator := trust.comparator.map (·.withCurrency advisories)
@@ -3166,6 +3313,10 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   trust := { trust with requireConnected, requireAuditClean, ciRunUrl }
   -- The consumer's own characterizations, which the caveat surface renders as theirs.
   trust := { trust with characterizations? }
+  -- What this elaboration read, on the payload that carries what it read it for. The
+  -- freshness gate compares these against the files before any of the above is published
+  -- (CX-075); `Informal.TrustFreshness` is where and why.
+  trust := { trust with inputs := trust.inputs ++ projectInputs }
   -- Registry records last: matching reads the challenge digests and repository identity the
   -- steps above established, and a record can only be bound to a claim that is finished.
   trust ← attachRegistry trust

@@ -46,6 +46,8 @@ import VersoBlueprint.Commands.TrustStrip
 import VersoBlueprint.Commands.TrustModel
 import VersoBlueprint.AxiomAudit
 import VersoBlueprint.GraphGate
+import VersoBlueprint.TrustInputs
+import VersoBlueprint.TrustFreshness
 import VersoBlueprint.FormalizationYaml
 import VersoBlueprint.Informal.Block.Assets
 import VersoBlueprint.Informal.Block.Config

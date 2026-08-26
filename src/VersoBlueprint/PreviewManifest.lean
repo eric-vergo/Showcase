@@ -27,6 +27,7 @@ import VersoBlueprint.PreviewCache
 import VersoBlueprint.PreviewRender
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphGate
+import VersoBlueprint.TrustFreshness
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Git
 import VersoBlueprint.RuntimeCache
@@ -2431,6 +2432,12 @@ private def emitBlueprintHtml
       -- Structural `uses`-graph gate, BEFORE anything is written: a failing gate must
       -- not leave a rendered site on disk (see `Informal.GraphGate`).
       liftM (Informal.GraphGate.run mode traverseState)
+      -- And the comparator evidence the payload was captured from, re-read before it is
+      -- published: the trust files are not Lean modules, so a warm rebuild would otherwise
+      -- serve the previous capture under this revision (`Informal.TrustFreshness`,
+      -- CX-075). Before `emit`, which renders the strip and the trust-model page, and
+      -- before the extra steps, which write the comparator page.
+      liftM (Informal.TrustFreshness.run mode traverseState)
       emitXrefsJson (cfg.destination / outDir) traverseState
       emit cfg text' traverseState
       for step in extraSteps do
@@ -2439,12 +2446,16 @@ private def emitBlueprintHtml
       let (text', traverseState) ← traverse cfg text
       let traverseState := patchBlueprintTraverseState traverseState
       liftM (Informal.GraphGate.run mode traverseState)
+      liftM (Informal.TrustFreshness.run mode traverseState)
       emitXrefsJson (cfg.destination / outDir) traverseState
       SavedState.mk text' traverseState |>.save f
   | .resumeFrom f =>
       let { text, traverseState } ← SavedState.load f
       let traverseState := patchBlueprintTraverseState traverseState
       liftM (Informal.GraphGate.run mode traverseState)
+      -- Re-checked on resume as well as on save: the point of `--delay`/`--resume` is that
+      -- time passes between them, which is exactly the window this gate exists for.
+      liftM (Informal.TrustFreshness.run mode traverseState)
       emit cfg text traverseState
       for step in extraSteps do
         step mode cfg.toConfig traverseState text

@@ -97,6 +97,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.StatementClosureRender,
     `VersoBlueprintTests.StatementClosureWiring,
     `VersoBlueprintTests.TrustEvidence,
+    `VersoBlueprintTests.TrustFreshness,
     `VersoBlueprintTests.Registry,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,
