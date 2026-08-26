@@ -352,7 +352,7 @@ no card. Present only when something *was* skipped: a bundle that read cleanly h
 report here, and says nothing.
 -/
 structure RegistryBundleReport where
-  /-- `cache` or `probe`. -/
+  /-- `cache`, `probe`, or `cache+probe`. -/
   source : String := ""
   /-- `Informal.Palomar.Bundle.provenance`: how many records were read, and from where. -/
   provenance : String := ""
@@ -2912,10 +2912,19 @@ open Verso Doc Elab in
 The registry records this build will match against.
 
 The cached bundle is validated first whatever the probe does: a configured input that is
-broken has to say so on the build where the network happened to answer too. A probe that
-comes back with records replaces the cache for this build; one that comes back empty — no
-curl, no network, no rows naming this repository — leaves the cache in place, so switching
-the probe on cannot silently *remove* a surface a cached bundle was producing.
+broken has to say so on the build where the network happened to answer too.
+
+What the probe returns is then *unioned* with the cache rather than substituted for it
+(`Informal.Palomar.Bundle.union`). The probe reads a capped recent projection filtered by
+repository, so it routinely comes back without a record the configured bundle holds; a build
+that let a non-empty probe stand in for the cache would delete a claim-level surface the
+cache proves, on the strength of what the registry happened to have listed that day. That is
+the "switching the probe on cannot silently remove a surface" clause, honoured for the case
+where the probe answered rather than only for the case where it did not.
+
+The one thing the union will not do is choose between two spellings of one record: a registry
+record is immutable, so cache and probe disagreeing under one `id`-`v`-`version` means one of
+them is not that record, and the build stops.
 -/
 def elabPalomarBundle? (repo : String) : PartElabM (Option Informal.Palomar.Bundle) := do
   let opts ← Lean.getOptions
@@ -2929,9 +2938,21 @@ def elabPalomarBundle? (repo : String) : PartElabM (Option Informal.Palomar.Bund
       | .error err => throwError "option 'verso.blueprint.trust.palomarBundle' {err}"
       | .ok b => pure (Option.some b)
   unless probeOn do return cached?
-  match ← liftM (Informal.Palomar.probe repo) with
-  | Option.some b => return if b.entries.isEmpty then cached? else Option.some b
-  | Option.none => return cached?
+  let some probed ← liftM (Informal.Palomar.probe repo) | return cached?
+  match cached? with
+  | Option.none =>
+    -- Nothing configured. A probe that read no rows at all has nothing to report, not even
+    -- about itself; one that skipped rows says so through the bundle-health surface.
+    return if probed.entries.isEmpty && probed.unresolved.isEmpty then Option.none
+      else Option.some probed
+  | Option.some cache =>
+    match Informal.Palomar.Bundle.union cache probed with
+    | .error err =>
+      throwError "the Palomar records this build read do not agree: {err}. Either the \
+        configured bundle ('verso.blueprint.trust.palomarBundle') is not the registry's \
+        bytes, or the probe fetched something that is not the record it names; this build \
+        will not pick one."
+    | .ok union => return Option.some union
 
 open Verso Doc Elab in
 /--

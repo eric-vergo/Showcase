@@ -223,6 +223,103 @@ private def bundleDir : String := "tests/fixtures/palomar/bundle"
   | .error e => return hasSubstr e "missing path"
   | .ok _ => return false
 
+/-! ## Cache and probe (§A9, CX-074)
+
+A probe reads a capped projection filtered by repository: what it returns is another, smaller
+sample of the same registry, not a better copy of the configured bundle. So its records are
+*added* to the cache's. A build that let a non-empty probe stand in for the cache would
+publish or withhold configured evidence according to what the registry happened to have
+listed that day, which is the one thing an optional network read must not decide.
+-/
+
+/-- The digest the bundle fixture's `…-000007` registers, i.e. `claim/Challenge.lean`'s. -/
+private def fixtureClaimDigest : String :=
+  "67af1753a29d3cd83d05c319e4c0a1c38475127c7cf9b4120cf1c6e519ddfd1d"
+
+/-- A claim displaying those bytes, under a verdict that recorded their digest. -/
+private def fixtureClaim : Informal.Palomar.ClaimIdentity :=
+  { displayedDigest := fixtureClaimDigest, digestStatusBound := true, repo := projRepo }
+
+private def probeUrl : String := "https://palomar-registry.example/data"
+
+/-- What `Informal.Palomar.probe` would have returned. -/
+private def probeBundle (entries : Array Informal.Palomar.Entry) : Informal.Palomar.Bundle :=
+  { source := "probe", location := probeUrl, entries }
+
+private def entryPath (label : String) : String :=
+  s!"tests/fixtures/palomar/bundle/entries/{label}.json"
+
+-- The regression: the cache holds the record bound to the displayed claim, the probe comes
+-- back with a valid record from the same repository that is *not* it, and the claim-level
+-- surface survives — alongside, not instead of, the probed record.
+/-- info: ("PALOMAR-2026-08-07-000007", "repo+digest", true, 6, true) -/
+#guard_msgs in
+#eval show IO (String × String × Bool × Nat × Bool) from do
+  match ← Informal.Palomar.loadBundle bundleDir with
+  | .error _ => return ("load-failed", "", false, 0, false)
+  | .ok cache =>
+    let probed := probeBundle #[
+      { record projRepo projUrl otherDigest (id := "PALOMAR-2026-08-08-000008") with
+        origin := s!"{probeUrl}/entries/PALOMAR-2026-08-08-000008-v1.json" }]
+    match Informal.Palomar.Bundle.union cache probed with
+    | .error _ => return ("union-failed", "", false, 0, false)
+    | .ok u =>
+      match Informal.Palomar.selectMatch? fixtureClaim u.entries with
+      | Option.some m =>
+        return (m.entry.id, m.basis, m.claimLevel, u.entries.size,
+          u.entries.any (·.id == "PALOMAR-2026-08-08-000008"))
+      | Option.none => return ("none", "", false, u.entries.size, false)
+
+-- The same record from both inputs is one record. Where the bytes were read from is not a
+-- difference between them: `id`-`v`-`version` names one immutable document.
+/-- info: (5, true) -/
+#guard_msgs in
+#eval show IO (Nat × Bool) from do
+  match ← Informal.Palomar.loadBundle bundleDir with
+  | .error _ => return (0, false)
+  | .ok cache =>
+    match ← Informal.Palomar.loadEntryFile (entryPath "PALOMAR-2026-08-03-000003-v1") with
+    | .error _ => return (0, false)
+    | .ok e =>
+      let probed := probeBundle #[{ e with origin := s!"{probeUrl}/entries/{e.label}.json" }]
+      match Informal.Palomar.Bundle.union cache probed with
+      | .error _ => return (0, false)
+      | .ok u => return (u.entries.size, u.source == "cache+probe")
+
+-- Different bytes under one record name is not a merge to settle by preferring a side: one
+-- of the two is not the record it names, and the build stops saying which and from where.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval show IO (Bool × Bool × Bool) from do
+  match ← Informal.Palomar.loadBundle bundleDir with
+  | .error _ => return (false, false, false)
+  | .ok cache =>
+    match ← Informal.Palomar.loadEntryFile (entryPath "PALOMAR-2026-08-07-000007-v1") with
+    | .error _ => return (false, false, false)
+    | .ok e =>
+      let forged :=
+        { e with challengeSha256 := otherDigest
+                 origin := s!"{probeUrl}/entries/{e.label}.json" }
+      match Informal.Palomar.Bundle.union cache (probeBundle #[forged]) with
+      | .error err =>
+        return (hasSubstr err "PALOMAR-2026-08-07-000007-v1",
+          hasSubstr err "different bytes", hasSubstr err probeUrl)
+      | .ok _ => return (false, false, false)
+
+-- The provenance line names both inputs, and still counts the rows neither could resolve.
+/-- info: true -/
+#guard_msgs in
+#eval show IO Bool from do
+  match ← Informal.Palomar.loadBundle bundleDir with
+  | .error _ => return false
+  | .ok cache =>
+    match Informal.Palomar.Bundle.union cache (probeBundle #[]) with
+    | .error _ => return false
+    | .ok u =>
+      let p := u.provenance
+      return hasSubstr p "cached bundle" && hasSubstr p probeUrl &&
+        hasSubstr p "2 further rows"
+
 /-! ## Rendering
 
 Copy is data here: what a card says is derived from the match basis, and the basis is
@@ -277,10 +374,10 @@ private def unreadRows : List UnresolvedRecord :=
      source := "cache" },
    { label := "PALOMAR-2026-08-06-000006-v1"
      reason := "schema version 4; this build reads entries of version 3"
-     source := "cache" }]
+     source := "probe" }]
 
 private def bundleReport : RegistryBundleReport :=
-  { source := "cache"
+  { source := "cache+probe"
     provenance := "5 registry records read from the cached bundle at \
       tests/fixtures/palomar/bundle; 2 further rows named a record this build could not \
       read, and they were not considered"
@@ -296,7 +393,7 @@ private def bundleReport : RegistryBundleReport :=
   hasSubstr out "PALOMAR-2026-08-05-000005-v1" &&
   hasSubstr out "PALOMAR-2026-08-06-000006-v1" &&
   hasSubstr out "is not in this bundle" &&
-  hasSubstr out "(cache)" &&
+  hasSubstr out "(cache)" && hasSubstr out "(probe)" &&
   hasSubstr out "data-bp-registry-unread=\"2\""
 
 -- (2) No selected record and the same siblings: the identities are still there, and the

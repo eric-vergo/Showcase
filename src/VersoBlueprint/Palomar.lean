@@ -303,10 +303,14 @@ because "nothing matched" and "the thing that would have matched was unreadable"
 different states.
 -/
 structure Bundle where
-  /-- `cache` (a configured bundle on disk) or `probe` (fetched during this build). -/
+  /-- `cache` (a configured bundle on disk), `probe` (fetched during this build), or
+  `cache+probe` (both, unioned by `Bundle.union`). -/
   source : String := ""
   /-- The directory, file or base URL the records came from. -/
   location : String := ""
+  /-- For a `cache+probe` bundle, the base URL the probed records came from; `location` is
+  then the configured bundle's. Empty ⇒ this bundle has a single source. -/
+  probedFrom : String := ""
   entries : Array Entry := #[]
   /-- Projection rows whose record could not be read, each with the reason. -/
   unresolved : Array Unresolved := #[]
@@ -316,6 +320,9 @@ deriving Inhabited, Repr
 def Bundle.provenance (b : Bundle) : String :=
   let what :=
     if b.source == "probe" then s!"fetched from {b.location} during this build"
+    else if b.source == "cache+probe" then
+      s!"read from the cached bundle at {b.location}, together with the records fetched from \
+         {b.probedFrom} during this build"
     else s!"read from the cached bundle at {b.location}"
   let n := b.entries.size
   let recordNoun := if n == 1 then "record" else "records"
@@ -326,6 +333,45 @@ def Bundle.provenance (b : Bundle) : String :=
       s!"; {u} further {if u == 1 then "row" else "rows"} named a record this build could not \
          read, and {if u == 1 then "it was" else "they were"} not considered"
   s!"{n} registry {recordNoun} {what}{unresolvedClause}"
+
+/-- Whether two records are the same document: every field the registry publishes, ignoring
+only where this build happened to read the bytes from. -/
+def Entry.sameRecord (a b : Entry) : Bool :=
+  { a with origin := "" } == { b with origin := "" }
+
+/--
+The records of a configured bundle and of a probe, as one set.
+
+Unioning rather than replacing is what keeps the probe soft in the direction that matters. A
+probe reads a bounded recent projection, filtered by repository and capped, so it
+legitimately comes back without a record the configured bundle holds; letting a non-empty
+probe stand in for the cache would delete evidence the build was configured with, on the
+strength of what the registry happened to have listed recently.
+
+A registry record is immutable and `id`-`v`-`version` names exactly one document, so two
+sources holding that name must hold the same bytes. Agreement deduplicates to the configured
+copy. Disagreement is not a merge to settle by preferring a side — one of the two is then not
+the record it says it is — so it fails closed, naming both origins.
+-/
+def Bundle.union (cache probe : Bundle) : Except String Bundle := Id.run do
+  let mut entries := cache.entries
+  let mut conflicts : Array String := #[]
+  for p in probe.entries do
+    match entries.find? (fun c => c.id == p.id && c.version == p.version) with
+    | some c =>
+      unless Entry.sameRecord c p do
+        conflicts := conflicts.push
+          s!"{p.label}: {c.origin} and {p.origin} hold different bytes"
+    | none => entries := entries.push p
+  unless conflicts.isEmpty do
+    return .error s!"the configured Palomar bundle and the probe disagree about a record that \
+      cannot change, so one of them is not the record it names: \
+      {String.intercalate "; " conflicts.toList}"
+  return .ok { cache with
+    source := "cache+probe"
+    probedFrom := probe.location
+    entries
+    unresolved := cache.unresolved ++ probe.unresolved }
 
 private def readFileOr (path : String) : IO (Except String String) := do
   try
@@ -535,6 +581,12 @@ Always soft, and never load-bearing: it fetches the same canonical records a cac
 holds, and every failure — no `curl`, no network, an unreadable document — degrades to the
 cached bundle or to nothing at all. A build with no network still renders; it renders
 without the registry surface, which is what "no evidence" looks like here.
+
+Soft also in the other direction, which is the direction that is easy to get wrong: what a
+probe returns is *added* to the configured records by `Bundle.union`, never substituted for
+them. This projection is capped and filtered by repository, so it comes back without records
+a cached bundle holds as a matter of course, and a build that let it stand in for the cache
+would publish or suppress configured evidence according to what the registry listed today.
 
 The projection is used to *choose* which records to fetch (rows naming this project's
 repository, capped), not to match: the record fetched is what a match reads.
