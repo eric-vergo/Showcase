@@ -13,6 +13,7 @@ from scripts.blueprint_harness_branches import (
     load_branch_policy,
 )
 from scripts.blueprint_harness_releases import (
+    lean_release_family,
     normalize_lean_release_ref,
     normalize_release_candidate_name,
     release_candidate_ref,
@@ -386,10 +387,21 @@ def load_project_catalog(manifest_path: Path) -> HarnessProjectCatalog:
 def resolve_release_target(catalog: HarnessProjectCatalog, release: str | None, package_root: Path) -> HarnessReleaseTarget:
     selected = release_branch_from_lean_ref(release) if release is not None else active_release_branch(package_root)
     target = catalog.release_target(selected)
-    if target is None:
-        known = ", ".join(sorted(entry.release_id for entry in catalog.release_targets))
-        raise ValueError(f"{package_root}: unknown release target `{selected}`; known release targets: {known}")
-    return target
+    if target is not None:
+        return target
+
+    # A release line is named for its `x.y.0` release, but a checkout may sit on a later patch
+    # release of that same line (Lean `v4.33.1` on the `v4.33.0` line). Fall back to the single
+    # declared target in the same Lean release family before reporting the ref as unknown.
+    family = lean_release_family(selected)
+    family_targets = [
+        entry for entry in catalog.release_targets if lean_release_family(entry.release_id) == family
+    ]
+    if len(family_targets) == 1:
+        return family_targets[0]
+
+    known = ", ".join(sorted(entry.release_id for entry in catalog.release_targets))
+    raise ValueError(f"{package_root}: unknown release target `{selected}`; known release targets: {known}")
 
 
 def resolve_projects_for_release(

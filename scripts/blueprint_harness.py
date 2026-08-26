@@ -55,8 +55,8 @@ from scripts.blueprint_harness_projects import (
     resolve_release_target,
 )
 from scripts.blueprint_harness_references import (
+    reference_dependency_cache_keys,
     reference_prune_plan,
-    reference_source_identities,
     sync_reference_blueprints,
 )
 from scripts.blueprint_harness_toolchains import bump_toolchain_checkout
@@ -1323,10 +1323,10 @@ def command_worktree_retire(args: argparse.Namespace) -> int:
         for candidate in git_worktrees(layout.repo_root)
         if candidate.name != name and candidate.path.exists()
     }
-    source_identities = reference_source_identities(projects)
+    active_cache_keys = reference_dependency_cache_keys(projects)
     removals = reference_prune_plan(
         active_names,
-        source_identities,
+        active_cache_keys,
         layout.reference_source_cache_root,
         layout.reference_project_root / "by-worktree",
         layout.reference_dependency_cache_root,
