@@ -1955,21 +1955,71 @@ def trustScopeHtml (cmp? : Option TrustComparator) (theoremLikeTotal : Option Na
         | Option.none => s!"{verb} {k} named {noun}"
       {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
 
-/-- Aggregate scope line for the multi-config trust surface: total certified
-theorems across all comparator topics, out of the site's theorem-like total, and
-how many comparator configs did the certifying. -/
+/-- What the topics that certified nothing actually are, in their own vocabulary rather
+than in the certified sentence's.
+
+Named once for the same reason as `TrustComparator.isSuccessVerdict`: the dashboard strip's
+aggregate scope line and the comparator page's headline describe the same set of topics, and
+they must not describe it two different ways. -/
+def uncertifiedStatusPhrase (others : List ComparatorTopic) : String :=
+  let phrases :=
+    (if others.any (·.comparator.status == "configured") then ["configured but not yet run"]
+     else []) ++
+    (if others.any (·.comparator.isReportedUpstream) then ["reported verified upstream"]
+     else []) ++
+    (if others.any (fun t => t.comparator.status != "configured" && !t.comparator.isReportedUpstream)
+     then ["recorded with another status"] else [])
+  if phrases.isEmpty then "not certified here" else String.intercalate " or " phrases
+
+/-- Aggregate scope line for the multi-config trust surface: certified theorems across the
+comparator topics, out of the site's theorem-like total, and how many comparator configs did
+the certifying.
+
+**Counts `verified` topics only**, like the badge beside it and like the comparator page's
+headline. It used to sum the theorem names of every topic whatever its status, so a dashboard
+whose configs had all merely been *configured* — or whose verdicts had been transcribed from
+another repository's records — told a reader on the site's most-read page that it certified
+that many theorems, directly beside a badge reading `0/m configs verified`. The other topics
+are still counted, in a clause that says what they are.
+
+The every-config-verified sentence is unchanged to the byte: that is every consumer that was
+telling the truth already. -/
 def trustAggregateScopeHtml (comparators : List ComparatorTopic)
     (theoremLikeTotal : Option Nat) : Output.Html :=
   if comparators.isEmpty then .empty
   else
-    let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
     let m := comparators.length
+    let verified := comparators.filter (·.comparator.isSuccessVerdict)
+    let others := comparators.filter (fun t => !t.comparator.isSuccessVerdict)
+    let v := verified.length
+    let k := (verified.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+    let j := (others.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
     let noun := if k == 1 then "theorem" else "theorems"
+    let jNoun := if j == 1 then "theorem" else "theorems"
+    let jVerb := if j == 1 then "is" else "are"
     let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
     let text :=
-      match theoremLikeTotal with
-      | Option.some n => s!"certifies {k} {noun} of {n} across {m} {cfgNoun}"
-      | Option.none => s!"certifies {k} named {noun} across {m} {cfgNoun}"
+      if others.isEmpty then
+        match theoremLikeTotal with
+        | Option.some n => s!"certifies {k} {noun} of {n} across {m} {cfgNoun}"
+        | Option.none => s!"certifies {k} named {noun} across {m} {cfgNoun}"
+      else
+        let lead :=
+          if k == 0 then
+            match theoremLikeTotal with
+            | Option.some n => s!"certifies no theorems of {n}"
+            | Option.none => "certifies no theorems"
+          else
+            match theoremLikeTotal with
+            | Option.some n => s!"certifies {k} {noun} of {n} across {v} of {m} {cfgNoun}"
+            | Option.none => s!"certifies {k} named {noun} across {v} of {m} {cfgNoun}"
+        let tail :=
+          if j == 0 then ""
+          else if k == 0 then
+            s!"; {m} {cfgNoun} name {j} {jNoun}, {uncertifiedStatusPhrase others}"
+          else
+            s!"; a further {j} {jNoun} {jVerb} {uncertifiedStatusPhrase others}"
+        lead ++ tail
     {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
 
 /-- The multi-config comparator badge: how many of the M configs are verified,

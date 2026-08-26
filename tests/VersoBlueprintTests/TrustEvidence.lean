@@ -606,6 +606,43 @@ private def mixedTopicsHtml : String :=
   hasSubstr html "Its 2 comparator configs name 3 theorems that are configured but not yet run" &&
   !hasSubstr html "3 independently comparator-certified"
 
+/-! ### The dashboard strip's aggregate line counts the same thing
+
+The page headline was fixed; the strip's scope line beside the aggregate badge was not, so
+the site's most-read page said "certifies 23 theorems" next to a badge reading
+"0/2 configs verified". Same predicate, same vocabulary, both surfaces.
+-/
+
+-- Every config verified: the sentence consumers already had, unchanged to the byte.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := (trustAggregateScopeHtml
+    [mcTopic "A" ["Zeta23.thmA", "Zeta23.thmB"], mcTopic "B" ["Zeta23.thmC"]] (some 20)).asString
+  hasSubstr html "certifies 3 theorems of 20 across 2 comparator configs"
+
+-- The zeta shape on the strip: two transcribed topics, nothing certified here.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := (trustAggregateScopeHtml
+    [mcUpstream "A" ["Zeta23.thmA"], mcUpstream "B" ["Zeta23.thmB", "Zeta23.thmC"]]
+    (some 20)).asString
+  hasSubstr html
+    "certifies no theorems of 20; 2 comparator configs name 3 theorems, reported verified upstream" &&
+  !hasSubstr html "certifies 3 theorems"
+
+-- One of three verified: the certified count, then the remainder as what it is.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := (trustAggregateScopeHtml
+    [mcTopic "A" ["Zeta23.thmA"], mcConfigured "B" ["Zeta23.thmB"],
+     mcUpstream "C" ["Zeta23.thmC"]] (some 20)).asString
+  hasSubstr html "certifies 1 theorem of 20 across 1 of 3 comparator configs" &&
+  hasSubstr html
+    "a further 2 theorems are configured but not yet run or reported verified upstream"
+
 /-! ## Verifier currency reaches the page (F3b)
 
 The fixture is the interesting case rather than a convenient one: a real-shaped legacy

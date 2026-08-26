@@ -1132,14 +1132,10 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
   let jNoun := if j == 1 then "theorem" else "theorems"
   let jVerb := if j == 1 then "is" else "are"
   -- What the uncertified topics are, in their own words rather than in the
-  -- certified sentence's.
-  let statusPhrase :=
-    let phrases :=
-      (if others.any (·.comparator.status == "configured") then ["configured but not yet run"] else []) ++
-      (if others.any (·.comparator.isReportedUpstream) then ["reported verified upstream"] else []) ++
-      (if others.any (fun t => t.comparator.status != "configured" && !t.comparator.isReportedUpstream)
-       then ["recorded with another status"] else [])
-    if phrases.isEmpty then "not certified here" else String.intercalate " or " phrases
+  -- certified sentence's.  Shared with the dashboard strip's aggregate scope line
+  -- (`uncertifiedStatusPhrase`) so the two surfaces cannot describe one set of topics
+  -- two different ways.
+  let statusPhrase := uncertifiedStatusPhrase others
   let acrossPhrase := if v == m then s!"across {m} {cfgNoun}" else s!"across {v} of {m} {cfgNoun}"
   let scopeText :=
     if k == 0 then
