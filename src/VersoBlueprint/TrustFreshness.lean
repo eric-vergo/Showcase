@@ -7,6 +7,7 @@ Authors: Eric Vergo, Claude Fable 5 (Claude Code)
 import VersoBlueprint.TrustInputs
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.RuntimeCache
+import VersoBlueprint.Palomar
 
 /-!
 # Comparator-evidence freshness gate, run *before* any HTML is written
@@ -98,6 +99,20 @@ library and put `needs` there.
 Where the edge is not declared, `lake build <lib> -R` (or touching the capturing module) is
 the reliable trigger, and this gate is what makes forgetting it loud instead of silent.
 
+## The other half: a badge with nothing behind it
+
+Re-reading the recorded inputs answers "are these still the bytes?". It cannot answer "was
+there ever a file?", and CX-076 was exactly that: with no bundle configured, a record the
+probe fetched could mint a claim-level registry badge whose bytes are deliberately excluded
+from the ledger above, so a warm rebuild kept the badge with the probe long gone and this
+gate had nothing to re-hash.
+
+The match boundary is where that is fixed (`Informal.Palomar.matchEntry?`: a probed record
+is never claim-level). `claimBackingViolations` is the backstop for a payload that says
+otherwise — one quoted into an `.olean` by an older or a patched fork — and it is checked
+here, before emission, for the same reason as the digests: a badge that cannot be
+re-established is not something to render and explain afterwards.
+
 ## The machine-readable record
 
 `emitTrustProvenance` writes the same input set, plus the revision the build stamped
@@ -112,28 +127,155 @@ namespace Informal.TrustFreshness
 open Lean
 open Verso.Genre Manual
 
+/-- The trust payload the traversal cached, as the JSON it was quoted from. `none` when
+none was stored (no `blueprint_dashboard` block, or no trust option configured). -/
+def cachedPayload? (state : TraverseState) : Option Json :=
+  Informal.TraversalIndex.TrustData.raw? state
+
 /-- The input records the traversal-cached trust payload carries. Empty when no payload was
 stored (no `blueprint_dashboard` block, or no trust option configured). -/
 def cachedInputs (state : TraverseState) : Array Informal.TrustInputs.Tagged :=
-  match Informal.TraversalIndex.TrustData.raw? state with
+  match cachedPayload? state with
   | some payload => Informal.TrustInputs.ofPayload payload
   | none => #[]
 
-/--
-Re-read every file the trust payload was elaborated from and stop the build if any of them
-has moved.
+/-! ## Claim-level registry badges, and what has to be behind one -/
 
-Throws `IO.userError` before the caller emits anything. Runs in both output modes: the
-strip and the trust-model page render in single-page output too, so a stale capture is
-just as publishable there.
+/-- A claim-level registry entry this build would render with nothing recorded behind it. -/
+structure ClaimBacking where
+  /-- `id`-`v`-`version`, as the payload names the record. -/
+  label : String := ""
+  /-- The comparator topic whose panel carries it; empty for the single-pair comparator. -/
+  topic : String := ""
+  /-- The record's `recordOrigin`: a URL where the probe fetched it, empty where the payload
+  does not say. -/
+  origin : String := ""
+  /-- `probed` (the bytes came off the network) or `unrecorded` (the payload records no
+  Palomar input at all). -/
+  kind : String := ""
+deriving Inhabited, Repr
+
+/-- The input roles whose records are Palomar bytes. -/
+private def registryRoles : List String :=
+  [Informal.TrustInputs.roleRegistryBundle, Informal.TrustInputs.roleRegistryRecord]
+
+private def registryEntryOf? (comparator : Json) : Option Json :=
+  match comparator.getObjVal? "registryEntry" with
+  | .ok (j@(.obj _)) => some j
+  | _ => none
+
+/-- The registry entries the payload's comparators carry, each with the topic that named it.
+
+The project-level `registryEntry` is deliberately not walked. It is the soft tier — no
+badge, a card that says in prose what it is not — and a record demoted to it *because* its
+bytes are unrecorded belongs there. -/
+private def comparatorRegistryEntries (payload : Json) : Array (String × Json) := Id.run do
+  let mut out : Array (String × Json) := #[]
+  if let .ok cmp := payload.getObjVal? "comparator" then
+    if let some e := registryEntryOf? cmp then out := out.push ("", e)
+  if let .ok (.arr topics) := payload.getObjVal? "comparators" then
+    for t in topics do
+      let name := (t.getObjValAs? String "name").toOption.getD ""
+      if let .ok cmp := t.getObjVal? "comparator" then
+        if let some e := registryEntryOf? cmp then out := out.push (name, e)
+  return out
+
+/--
+Claim-level registry entries on this payload that no recorded Palomar input backs.
+
+Two shapes, and they catch different bypasses. A record whose origin is a URL was fetched
+during elaboration and has no file behind it, whatever else the payload recorded — this is
+the cache-plus-probe case. A payload that records no Palomar input at all cannot back any
+claim-level entry, whatever its origin says — this is the CX-076 case, where no bundle was
+configured and the ledger is empty.
+
+An entry whose origin the payload does not state, on a payload that *did* record registry
+inputs, is left alone: it is an older capture that named its bytes less precisely, not a
+badge with nothing behind it, and stopping a build over a field's silence is how a gate
+becomes the thing consumers switch off.
+-/
+def claimBackingViolations (payload : Json) : Array ClaimBacking := Id.run do
+  let entries := comparatorRegistryEntries payload
+  if entries.isEmpty then return #[]
+  let str := fun (j : Json) (k : String) => (j.getObjValAs? String k).toOption.getD ""
+  let recorded := (Informal.TrustInputs.ofPayload payload).filter
+    fun (_, i) => registryRoles.contains i.role
+  let mut out : Array ClaimBacking := #[]
+  for (topic, entry) in entries do
+    unless Informal.Palomar.claimLevelBases.contains (str entry "matchBasis") do continue
+    let origin := str entry "recordOrigin"
+    let id := str entry "id"
+    let version := (entry.getObjValAs? Nat "version").toOption.getD 0
+    let label := if id.isEmpty then "an unnamed record" else s!"{id}-v{version}"
+    if Informal.Palomar.isProbeOrigin origin then
+      out := out.push { label, topic, origin, kind := "probed" }
+    else if recorded.isEmpty then
+      out := out.push { label, topic, origin, kind := "unrecorded" }
+  return out
+
+/-- One violation as two lines: which record, and what is missing behind it. -/
+private def backingLine (v : ClaimBacking) : String :=
+  let topicNote := if v.topic.isEmpty then "" else s!" [topic: {v.topic}]"
+  let detail :=
+    if v.kind == "probed" then
+      s!"fetched from {v.origin} while the capturing build ran; there is no file to re-read"
+    else "this payload records no Palomar input, so there are no bytes to re-read"
+  String.intercalate "\n" [s!"  {v.label}{topicNote}", s!"      {detail}"]
+
+/--
+The stop message: which badge, why it cannot be published, and how to get the binding back.
+
+Written for the same reader as `Informal.TrustInputs.stopMessage` — a CI log, no other
+context — and it says which of the two things they can do: cache the record, or accept the
+softer surface.
+-/
+def claimBackingStopMessage (violations : Array ClaimBacking) : String :=
+  let n := violations.size
+  let noun := if n == 1 then "badge" else "badges"
+  let lines := String.intercalate "\n" (violations.map backingLine).toList
+  s!"Showcase registry evidence check FAILED (unbacked claim badge): {n} claim-level Palomar \
+     {noun} on this payload {if n == 1 then "is" else "are"} not backed by a registry record \
+     this build recorded.\n\n\
+     {lines}\n\n\
+     A claim-level registration is the one registry surface that reads as being about the \
+     statement on the page: it earns a strip badge and renders inside that claim's panel. It \
+     is therefore only ever taken from a record in the configured bundle \
+     ('verso.blueprint.trust.palomarBundle'), whose bytes this build records as an input and \
+     re-reads before anything is written. A record fetched by \
+     'verso.blueprint.trust.palomarProbe' is a network response that no longer exists at \
+     generation time, so a warm rebuild would replay the badge with nothing behind it and \
+     nothing able to notice (CX-076).\n\n\
+     This payload was elaborated by a build that did not enforce that. Re-elaborate the \
+     module carrying the `blueprint_dashboard` block against this fork (`lake build <lib> \
+     -R`): the registration will render as project-level provenance, which is what an \
+     unrecorded record establishes. To keep it bound to the claim, cache the record and \
+     configure 'verso.blueprint.trust.palomarBundle'."
+
+/--
+Stop the build if the trust payload cannot be published as it stands.
+
+Two checks, both before the caller emits anything, both throwing `IO.userError`:
+
+- every file the payload was elaborated from is re-read and its digest compared, so a
+  capture that no longer matches its sources fails instead of shipping (CX-075);
+- every claim-level registry badge is required to have a recorded Palomar record behind it,
+  so a badge minted from a network response cannot survive into a warm rebuild (CX-076).
+
+Runs in both output modes: the strip and the trust-model page render in single-page output
+too, so a stale capture is just as publishable there.
 
 Silent when there is nothing to check — no payload, or a payload from a fork build that
-recorded no inputs. A missing record is not evidence of freshness, but neither is it
-grounds to stop a build that never claimed any: the failure mode this guards is a *stale*
-capture, and a payload with no inputs has nothing to be stale against.
+recorded no inputs and carries no claim-level registry entry. A missing input record is not
+evidence of freshness, but neither is it grounds to stop a build that never claimed any:
+the failure mode the first check guards is a *stale* capture, and a payload with no inputs
+has nothing to be stale against.
 -/
 def run (_mode : Mode) (state : TraverseState) : IO Unit := do
-  let inputs := cachedInputs state
+  let some payload := cachedPayload? state | return ()
+  let violations := claimBackingViolations payload
+  unless violations.isEmpty do
+    throw <| IO.userError (claimBackingStopMessage violations)
+  let inputs := Informal.TrustInputs.ofPayload payload
   if inputs.isEmpty then return ()
   let findings ← Informal.TrustInputs.recheck inputs
   unless findings.isEmpty do

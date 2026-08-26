@@ -236,6 +236,87 @@ tagged with the topic that named them, or a stop message would point at the wron
     (Informal.TrustInputs.ofPayload
       (Json.mkObj [("comparator", Json.null), ("comparators", Json.num 3)])).isEmpty
 
+/-! ## A claim badge with nothing behind it (CX-076)
+
+The finding's replay is two processes: elaborate a document while a probe answers, then
+import the warm `.olean` with the probe gone and render. The `.olean` *is* the payload, so
+the unit-equivalent is the payload — a claim-level registry entry whose bytes came off the
+network, with no Palomar record in the input ledger — met by the gate that runs between
+traversal and emission. The match boundary is what stops such a payload being written
+(`Informal.Palomar.matchEntry?`); this is the backstop for one written elsewhere.
+-/
+
+private def probeOrigin : String :=
+  "https://data.palomar-registry.org/entries/PALOMAR-2026-08-07-000007-v1.json"
+
+private def registryEntryJson (origin : String) : Json :=
+  toJson ({ id := "PALOMAR-2026-08-07-000007", version := 1
+            matchBasis := "repo+digest", recordOrigin := origin } : RegistryEntry)
+
+/-- The real capture from the document above, plus the badge a probe-only build would have
+minted: everything else is what this build actually read. -/
+def withClaimEntry (payload : Json) (origin : String) : Option Json := do
+  let cmp ← (payload.getObjVal? "comparator").toOption
+  some (payload.setObjVal! "comparator" (cmp.setObjVal! "registryEntry" (registryEntryJson origin)))
+
+-- The finding's shape: claim-level entry, probe origin, and — because no bundle was
+-- configured — no Palomar input recorded at all. The gate stops before anything is written,
+-- and names the record, the origin and both options.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% freshnessDoc
+  let some payload := Informal.TrustFreshness.cachedPayload? st | return false
+  let some doctored := withClaimEntry payload probeOrigin | return false
+  let violations := Informal.TrustFreshness.claimBackingViolations doctored
+  let stopped ← try
+      Informal.TrustFreshness.run .multi
+        (Informal.TraversalIndex.TrustData.saveData st doctored)
+      pure ""
+    catch e => pure (toString e)
+  return violations.size == 1 && violations[0]!.kind == "probed" &&
+    violations[0]!.label == "PALOMAR-2026-08-07-000007-v1" &&
+    hasSubstr stopped "unbacked claim badge" &&
+    hasSubstr stopped "PALOMAR-2026-08-07-000007-v1" &&
+    hasSubstr stopped probeOrigin &&
+    hasSubstr stopped "palomarProbe" && hasSubstr stopped "palomarBundle" &&
+    -- and it says what to do, like every other stop in this module
+    hasSubstr stopped "Re-elaborate the module"
+
+-- The other bypass: a record that names a file, on a payload that records no Palomar input.
+-- Nothing was read, so nothing can be re-read, whatever the origin field says.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% freshnessDoc
+  let some payload := Informal.TrustFreshness.cachedPayload? st | return false
+  let some doctored := withClaimEntry payload "palomar/entries/PALOMAR-2026-08-07-000007-v1.json"
+    | return false
+  let violations := Informal.TrustFreshness.claimBackingViolations doctored
+  return violations.size == 1 && violations[0]!.kind == "unrecorded" &&
+    hasSubstr (Informal.TrustFreshness.claimBackingStopMessage violations)
+      "records no Palomar input"
+
+-- Backed and silent: the same entry on a payload that did record the bundle it came from.
+-- The gate has an opinion only about badges with nothing behind them.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% freshnessDoc
+  let some payload := Informal.TrustFreshness.cachedPayload? st | return false
+  let recordPath := "tests/fixtures/palomar/bundle/entries/PALOMAR-2026-08-07-000007-v1.json"
+  let some doctored := withClaimEntry payload recordPath | return false
+  let digest ← Informal.TrustInputs.digestOfFile recordPath
+  let inputs := ((doctored.getObjVal? "inputs").toOption.bind (·.getArr?.toOption)).getD #[]
+  let doctored := doctored.setObjVal! "inputs" (Json.arr (inputs.push (toJson
+    ({ role := Informal.TrustInputs.roleRegistryRecord, path := recordPath, sha256 := digest }
+      : Informal.TrustInputs.Input))))
+  -- No violation, and the whole gate passes on the real (unmodified) files.
+  Informal.TrustFreshness.run .multi (Informal.TraversalIndex.TrustData.saveData st doctored)
+  return (Informal.TrustFreshness.claimBackingViolations doctored).isEmpty &&
+    -- the untouched capture has nothing to answer for either
+    (Informal.TrustFreshness.claimBackingViolations payload).isEmpty
+
 /-! ## The published provenance record
 
 What a CI gate re-hashes against the working tree. It has to carry the same paths and

@@ -629,12 +629,26 @@ A registration is a record that a repository at a revision was submitted somewhe
 accepted. What this page adds to it is the one thing a reader cannot check by following the
 link: whether the record is about the claim on this page. That question has exactly one
 answer this fork will give — the record's immutable challenge digest is the digest of the
-displayed statement, and the verifying run recorded that digest too — and every weaker
-relation is rendered as what it is, in prose, under a match basis printed as data.
+displayed statement, the verifying run recorded that digest too, and the record itself came
+from a configured bundle this build can re-read — and every weaker relation is rendered as
+what it is, in prose, under a match basis printed as data.
 -/
 
-/-- What one match establishes, in the register the rest of the page uses. -/
+/-- What one match establishes, in the register the rest of the page uses.
+
+The basis is not the whole of it: a record that agreed on everything a binding needs, but
+which this build read over the network, is not bound to the claim (`isClaimLevel`,
+CX-076). It gets its own sentence rather than one of the weaker bases' — saying "the
+repository name is all we had to compare" about a record whose digest agreed exactly would
+be false in the other direction. -/
 private def registryMatchSentence (e : RegistryEntry) : String :=
+  if Informal.Palomar.claimLevelBases.contains e.matchBasis && !e.isClaimLevel then
+    s!"Palomar entry {e.label} records a challenge whose digest is the digest of the \
+       statement above, under a verdict that recorded that digest — but its bytes are not \
+       among the inputs this build recorded, so nothing can re-read them to check that this \
+       is still what the registry holds. It is not bound to the claim shown here: read it \
+       as provenance about the project."
+  else
   match e.matchBasis with
   | "repo+digest" =>
     s!"Palomar entry {e.label} records this claim: the digest of the statement above is the \
@@ -682,6 +696,17 @@ def registryCardHtml (e : RegistryEntry) : Output.Html :=
   let provenance : Output.Html :=
     if e.provenance.isEmpty then .empty
     else {{ <p class="bp_trust_note">{{.text true s!"Matched against {e.provenance}."}}</p> }}
+  -- Where a record came from is ordinarily the bundle's business, not one record's — except
+  -- for a probed one, whose origin is the reason it can never be claim-level. A bundle
+  -- unioned from a cache and a probe has records of both kinds, and this is the only place
+  -- a reader can tell which is which (CX-076).
+  let networkOrigin : Output.Html :=
+    if !Informal.Palomar.isProbeOrigin e.recordOrigin then .empty
+    else
+      {{ <p class="bp_trust_note">{{.text true
+           s!"These bytes were fetched from {e.recordOrigin} while this build ran. A record \
+              read over the network is not a file this build records or can re-read, so it \
+              is never bound to a claim on this page — only to the project."}}</p> }}
   {{
     <div class="bp_trust_registry" "data-bp-registry-basis"={{e.matchBasis}}>
       <p class="bp_trust_prose">{{.text true (registryMatchSentence e)}}</p>
@@ -689,6 +714,7 @@ def registryCardHtml (e : RegistryEntry) : Output.Html :=
         {{.seq #[titleRow, registeredRow, sourceRow, digestRow, basisRow, verifiedRow]}}
       </dl>
       <p class="bp_trust_note">{{.text true Informal.Palomar.honestyNote}}</p>
+      {{networkOrigin}}
       {{provenance}}
     </div>
   }}

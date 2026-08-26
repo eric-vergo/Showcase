@@ -34,6 +34,16 @@ repository and the site knows its own, both must agree — a digest that matches
 another repository's name is not this project's registration. A repository match on its own
 is project-level provenance and says nothing about the claim on the page.
 
+**Which records may conclude it.** Only records the build can re-read. A record read from a
+configured bundle is a file with a path and a digest, recorded as an input and re-checked
+between traversal and emission (`Informal.TrustInputs`); a record the probe fetched is a
+network response that no longer exists by the time the site is written, and a warm rebuild
+replays it with nothing to compare against. So a probed record keeps whatever basis it
+earned and is **never** claim-level: it may inform the project-level card and the
+bundle-health surface, which are explicitly soft, and nothing else (CX-076). The rule lives
+in `matchEntry?`, the one place a `Match` is built, so no caller can arrive at a claim-level
+match another way.
+
 Titles and abstracts are display text. `Entry` carries the title so a card can name the
 record; no matching rule reads it, which is what keeps a record whose *title* contains this
 repository's URL and this challenge's digest from matching anything.
@@ -112,6 +122,31 @@ deriving Inhabited, Repr, BEq
 
 /-- `id`-`v`-`version`, the way the registry names one record. -/
 def Entry.label (e : Entry) : String := s!"{e.id}-v{e.version}"
+
+/-! ### Where a record's bytes came from
+
+`origin` is a path when a bundle held the record and a URL when the probe fetched it, and
+the difference is not bookkeeping. A path can be re-read and digested as an input of this
+build, so a later build can tell whether the bytes that decided a match are still the bytes
+on disk; a network response cannot be, and a warm rebuild replays it silently.
+
+Everything that turns on that distinction — the match rule below, the input ledger the
+freshness gate re-reads, and the copy on the card — routes through these two predicates, so
+the three cannot drift apart about which records are which.
+-/
+
+/-- Whether these bytes were fetched over the network while the build ran. -/
+def isProbeOrigin (origin : String) : Bool :=
+  origin.startsWith "https://" || origin.startsWith "http://"
+
+/-- Whether these bytes came from a file this build can name, re-read and digest. An empty
+origin is not one: a record that cannot say where it came from is not an input either. -/
+def isCachedOrigin (origin : String) : Bool :=
+  !origin.isEmpty && !isProbeOrigin origin
+
+/-- Whether this record's bytes are a re-readable input of this build (`isCachedOrigin`),
+which is the precondition for its match being claim-level. -/
+def Entry.fromCachedInput (e : Entry) : Bool := isCachedOrigin e.origin
 
 /-! ### Structural checks
 
@@ -505,18 +540,21 @@ structure Match where
   entry : Entry := {}
   /-- `repo+digest`, `digest`, `digest-unbound`, `repo-only`. -/
   basis : String := ""
-  /-- Whether the basis binds the record to the claim on the page. Only a digest the
-  verdict recorded does. -/
+  /-- Whether this match binds the record to the claim on the page. Two things are needed:
+  a digest the verdict recorded, and a record this build can re-read (`Entry.fromCachedInput`).
+  A probed record on a binding basis has `claimLevel := false`. -/
   claimLevel : Bool := false
 deriving Inhabited, Repr
 
-/-- The claim-level bases, named once so no surface has to re-derive the rule. -/
+/-- The bases a claim-level match can rest on, named once so no surface has to re-derive the
+rule. Necessary and not sufficient: a record on one of these bases that this build fetched
+over the network is still project-level (`matchEntry?`, CX-076). -/
 def claimLevelBases : List String := ["repo+digest", "digest"]
 
 /--
 Match one record against one claim.
 
-Three rules, in the order they bite:
+Four rules, in the order they bite:
 
 1. **Both when present.** A record that names a repository, matched against a site that
    knows its own, must agree with it. A digest that matches under another repository's name
@@ -524,9 +562,19 @@ Three rules, in the order they bite:
 2. **A claim-level match needs a status-bound digest.** The record's immutable
    `challenge_sha256` must equal the digest of the displayed challenge, and the verdict
    must have recorded that digest too.
-3. **Everything weaker is project-level.** An agreeing digest the verdict does not bind, or
+3. **A claim-level match needs a record this build can re-read.** A probed record is a
+   network response with no file behind it: it is excluded from the input ledger the
+   freshness gate re-hashes, so a warm rebuild would keep its badge with the probe long
+   gone and nothing able to notice. It keeps the basis it earned — the digest really did
+   agree — and comes back project-level, which is the tier that is soft in as many words
+   (CX-076).
+4. **Everything weaker is project-level.** An agreeing digest the verdict does not bind, or
    a repository match with no digest to compare, is provenance about the project — never
    about the claim on the page.
+
+Rule 3 is here rather than at the selection layer because this is the only place a `Match`
+is constructed: `selectMatch?` ranks what this returns, and a caller reaching past it gets
+the same answer.
 -/
 def matchEntry? (claim : ClaimIdentity) (e : Entry) : Option Match :=
   let entryRepo :=
@@ -539,7 +587,8 @@ def matchEntry? (claim : ClaimIdentity) (e : Entry) : Option Match :=
   let digestAgrees := !entryDigest.isEmpty && !claimDigest.isEmpty && entryDigest == claimDigest
   if repoComparable && !repoAgrees then none
   else if digestAgrees && claim.digestStatusBound then
-    some { entry := e, basis := if repoAgrees then "repo+digest" else "digest", claimLevel := true }
+    some { entry := e, basis := if repoAgrees then "repo+digest" else "digest"
+           claimLevel := e.fromCachedInput }
   else if digestAgrees then
     some { entry := e, basis := "digest-unbound" }
   else if repoAgrees then
@@ -565,7 +614,11 @@ private def betterMatch (a b : Match) : Bool :=
 /-- The best match a bundle offers for one claim, or `none`.
 
 A bundle with no match renders nothing at all: it is a bounded projection of a registry, so
-its silence about a project is not evidence that the registry is silent too. -/
+its silence about a project is not evidence that the registry is silent too.
+
+Claim level is decided in `matchEntry?` and only ranked here, so a bundle holding both a
+cached record and a probed one on the same basis selects the cached one — which is the only
+one a claim may rest on. -/
 def selectMatch? (claim : ClaimIdentity) (entries : Array Entry) : Option Match :=
   entries.foldl (init := none) fun best e =>
     match matchEntry? claim e with
@@ -590,6 +643,11 @@ would publish or suppress configured evidence according to what the registry lis
 
 The projection is used to *choose* which records to fetch (rows naming this project's
 repository, capped), not to match: the record fetched is what a match reads.
+
+And soft in the third direction, the one CX-076 found open: whatever a probed record agrees
+with, it is never bound to a claim. `matchEntry?` returns it project-level, because the
+bytes it agreed on are gone by the time the site is written and no later build can check
+that they were ever there.
 -/
 
 /-- How many entry files one probe will fetch. A bounded projection with a bounded number

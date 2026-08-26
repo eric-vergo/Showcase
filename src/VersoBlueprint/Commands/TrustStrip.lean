@@ -73,12 +73,12 @@ register_option verso.blueprint.trust.palomarEntryUrl : String := {
 
 register_option verso.blueprint.trust.palomarBundle : String := {
   defValue := ""
-  descr := "Path (relative to the build CWD) to cached Palomar registry data: either a directory holding the registry's recent.json together with the entries/<id>-v<version>.json records it names, or a single immutable entry JSON. Those canonical records are the only identity evidence this fork matches on — they carry the repository, the revision and `verification.challenge_sha256`, none of which the registry's XML feed does. Set-but-missing, or a root document this build cannot read, is a build error. A single record that a projection row names and this build cannot read is counted and named on the page instead of failing the build (a bundle from a live registry legitimately holds records written to a schema this build has no rules for), and can never match. Empty disables."
+  descr := "Path (relative to the build CWD) to cached Palomar registry data: either a directory holding the registry's recent.json together with the entries/<id>-v<version>.json records it names, or a single immutable entry JSON. Those canonical records are the only identity evidence this fork matches on — they carry the repository, the revision and `verification.challenge_sha256`, none of which the registry's XML feed does — and, because they are files this build records and re-reads before publishing, they are also the only records a CLAIM-level match may rest on: a record fetched by 'verso.blueprint.trust.palomarProbe' is project-level provenance whatever it agrees with. Set-but-missing, or a root document this build cannot read, is a build error. A single record that a projection row names and this build cannot read is counted and named on the page instead of failing the build (a bundle from a live registry legitimately holds records written to a schema this build has no rules for), and can never match. Empty disables."
 }
 
 register_option verso.blueprint.trust.palomarProbe : Bool := {
   defValue := false
-  descr := "Whether the site build may fetch Palomar records from the registry's data host (via curl) rather than reading a cached bundle. Off by default and ALWAYS soft: no curl, no network, or an unreadable document degrades to 'verso.blueprint.trust.palomarBundle' when one is configured and to no registry surface otherwise. A probe never fails a build and is never required for one. What it fetches is the same canonical records a cached bundle holds, bounded to the projection rows naming this project's repository. The published site fetches nothing: the records are read at build time and baked into the page."
+  descr := "Whether the site build may fetch Palomar records from the registry's data host (via curl) rather than reading a cached bundle. Off by default and ALWAYS soft: no curl, no network, or an unreadable document degrades to 'verso.blueprint.trust.palomarBundle' when one is configured and to no registry surface otherwise. A probe never fails a build and is never required for one. What it fetches is added to the configured records, never substituted for them, and it is NEVER bound to a claim: a fetched record is a network response with no file behind it, so it is outside the input ledger this build re-reads before publishing, and it renders only as project-level provenance — explicitly labelled as fetched during the build — however exactly it agrees with the claim. Bind a registration to a claim by caching the record and configuring 'verso.blueprint.trust.palomarBundle'. What it fetches is the same canonical records a cached bundle holds, bounded to the projection rows naming this project's repository. The published site fetches nothing: the records are read at build time and baked into the page."
 }
 
 register_option verso.blueprint.trust.comparatorStatus : String := {
@@ -330,13 +330,22 @@ structure RegistryEntry where
   /-- What this build matched against and where it came from, for the card's provenance
   line. -/
   provenance : String := ""
-  /-- The file or URL this record's bytes were read from. -/
+  /-- The file or URL this record's bytes were read from. A path is an input this build
+  recorded and can re-read; a URL is a network response that is gone, and decides that this
+  record is not claim-level (`isClaimLevel`). -/
   recordOrigin : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- Whether a match binds the record to the claim on the page, rather than to the project. -/
+/-- Whether a match binds the record to the claim on the page, rather than to the project.
+
+Both halves are required, and the second is the CX-076 half: the basis must be one that
+binds, *and* the bytes that decided it must be a file this build recorded as an input. A
+record the probe fetched keeps its basis and stays project-level, because nothing can
+re-read it — so a payload carrying one cannot earn a badge here even if some other build
+minted it. -/
 def RegistryEntry.isClaimLevel (e : RegistryEntry) : Bool :=
   Informal.Palomar.claimLevelBases.contains e.matchBasis
+    && Informal.Palomar.isCachedOrigin e.recordOrigin
 
 /-- `id`-`v`-`version`, the way the registry names one record. -/
 def RegistryEntry.label (e : RegistryEntry) : String := s!"{e.id}-v{e.version}"
@@ -1995,9 +2004,10 @@ is not.
 
 /-- The claim-level registry matches on this payload, across both comparator schemes.
 
-The basis is re-checked here rather than trusted: `attachRegistry` attaches only bound
+`isClaimLevel` is re-checked here rather than trusted: `attachRegistry` attaches only bound
 records to a comparator, and the badge is the one surface where being wrong about that
-would read as a verdict. -/
+would read as a verdict. The check covers the record's origin as well as its basis, so a
+payload from elsewhere carrying a probed record on a binding basis earns nothing here. -/
 def TrustData.claimRegistryEntries (t : TrustData) : List RegistryEntry :=
   ((t.comparator.bind (·.registryEntry?)).toList
     ++ t.comparators.filterMap (·.comparator.registryEntry?)).filter RegistryEntry.isClaimLevel
@@ -2175,8 +2185,10 @@ kernel-advisory override, the **junk-value table override**
 (`verso.blueprint.trust.junkValueTable`), the **characterization sidecar**
 (`verso.blueprint.trust.characterizations`), and the Palomar records a cached bundle
 supplies. Records the `verso.blueprint.trust.palomarProbe` option fetched over the network
-are the one exception, because there is no file to re-read; the probe is soft by
-construction and no match may rest on it alone.
+are the one exception, because there is no file to re-read — and because they are outside
+this set, nothing a claim rests on may be one of them: `Informal.Palomar.matchEntry?`
+returns a probed record project-level, so the exception cannot become a hole in the ledger
+(CX-076).
 -/
 
 /--
@@ -2986,10 +2998,16 @@ def elabKernelAdvisories :
 
 Three options, one of which is evidence. `palomarBundle` names canonical records — the only
 documents that carry a repository, a revision and a challenge digest — and is therefore the
-only input a match may read. `palomarProbe` may fetch the same records over the network and
-is always soft. `palomarEntryUrl` is a link the author pasted in and is never matched
-against anything at all; it rides the payload so the page can render it, labelled, as what
-it is.
+only input a *claim-level* match may rest on. `palomarProbe` may fetch the same records over
+the network; what it returns is added to the records a match is run over, but a probed
+record can only ever reach the project-level card and the bundle-health surface, both of
+which say what they are (CX-076). `palomarEntryUrl` is a link the author pasted in and is
+never matched against anything at all; it rides the payload so the page can render it,
+labelled, as what it is.
+
+The boundary is enforced in `Informal.Palomar.matchEntry?` — the one place a match is built
+— rather than at each surface, and re-checked below by `RegistryEntry.isClaimLevel` and
+again before emission by `Informal.TrustFreshness`.
 -/
 
 open Verso Doc Elab in
@@ -3050,8 +3068,10 @@ names the records at all.
 
 Probed records are outside this: they were fetched over the network during elaboration and
 there is no file to re-read. A warm rebuild does replay them, and this cannot detect it —
-which is one more reason the probe is documented as always soft, never required for a
-build, and never the input a match is allowed to rest on alone.
+which is why the probe is soft everywhere, and why a probed record is not allowed to be
+load-bearing at all: `Informal.Palomar.matchEntry?` returns it project-level, so nothing a
+claim rests on is ever outside this ledger (CX-076). The same predicate decides both, so
+"recorded here" and "may bind a claim" cannot come apart.
 -/
 private def registryInputs (bundlePath : String) (bundle : Informal.Palomar.Bundle) :
     IO (Array Informal.TrustInputs.Input) := do
@@ -3066,7 +3086,7 @@ private def registryInputs (bundlePath : String) (bundle : Informal.Palomar.Bund
         out := out.push i
   for e in bundle.entries do
     let origin := e.origin
-    if origin.isEmpty || origin.startsWith "http" then continue
+    unless Informal.Palomar.isCachedOrigin origin do continue
     if out.any (fun i => i.path == origin) then continue
     unless ← System.FilePath.pathExists origin do continue
     if let some i ← Informal.TrustInputs.Input.probe?
@@ -3080,10 +3100,16 @@ Match the configured registry records against the claims this page presents.
 
 The rules are `Informal.Palomar.matchEntry?`'s; what is decided here is where a match is
 allowed to appear. A claim-level match — the record's digest is the digest of a displayed
-statement, and the verifying run recorded that digest — attaches to that claim's panel and
-earns a strip badge. Anything weaker attaches to the page, once, and only when no claim was
-bound: a record about the project, printed under a claim that a stronger record already
-identifies, adds ambiguity rather than provenance.
+statement, the verifying run recorded that digest, and the record itself came from a
+configured bundle — attaches to that claim's panel and earns a strip badge. Anything weaker
+attaches to the page, once, and only when no claim was bound: a record about the project,
+printed under a claim that a stronger record already identifies, adds ambiguity rather than
+provenance.
+
+"Anything weaker" now includes a record that agreed on everything a binding needs but was
+read over the network (CX-076). It is not thrown away — the agreement is real and worth
+printing — it is printed on the page-level card, which says in prose that it is provenance
+and why.
 -/
 def attachRegistry (trust : TrustData) : PartElabM TrustData := do
   let opts ← Lean.getOptions
@@ -3145,15 +3171,21 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
       { t with comparator := { t.comparator with registryEntry? := claimEntry? t.comparator } } }
   if !trust.claimRegistryEntries.isEmpty then return trust
   -- Nothing was bound to a claim. The weaker readings, in the order they are worth
-  -- anything: a record whose digest is the displayed bytes' under a verdict that recorded
-  -- no digest, then a record that registers this repository.
+  -- anything: a record that agreed on a binding basis but was fetched over the network, then
+  -- one whose digest is the displayed bytes' under a verdict that recorded no digest, then
+  -- one that registers this repository.
   let unbound : List Informal.Palomar.Match :=
     ((trust.comparator.bind matchOf).toList ++ trust.comparators.filterMap (matchOf ·.comparator))
+  let onBasis := fun (bases : List String) =>
+    unbound.find? (fun (m : Informal.Palomar.Match) => bases.contains m.basis)
   let projectMatch? :=
-    match unbound.find? (fun m => m.basis == "digest-unbound") with
+    match onBasis Informal.Palomar.claimLevelBases with
     | Option.some m => Option.some m
     | Option.none =>
-      Informal.Palomar.selectMatch? { repo := trust.projectRepoIdentity } bundle.entries
+      match onBasis ["digest-unbound"] with
+      | Option.some m => Option.some m
+      | Option.none =>
+        Informal.Palomar.selectMatch? { repo := trust.projectRepoIdentity } bundle.entries
   return { trust with registryEntry? := projectMatch?.map entryOf }
 
 /--

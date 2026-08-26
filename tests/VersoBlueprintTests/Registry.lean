@@ -76,7 +76,15 @@ private def record (repo url digest : String) (id : String := "PALOMAR-2026-08-0
   { id, version := 1, registeredAt := "2026-08-01T09:15:00Z", title
     sourceRepository := repo, sourceRepositoryUrl := url
     sourceCommit := "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
-    challengeSha256 := digest }
+    challengeSha256 := digest
+    -- A record comes from somewhere, and where decides what it may establish: this one is a
+    -- file in a cached bundle. `probed` is the same record off the network (CX-076).
+    origin := s!"tests/fixtures/palomar/bundle/entries/{id}-v1.json" }
+
+/-- The same record as the probe hands it over: identical bytes, fetched from the registry's
+data host instead of read from a file. -/
+private def probed (e : Informal.Palomar.Entry) : Informal.Palomar.Entry :=
+  { e with origin := s!"https://data.palomar-registry.org/entries/{e.label}.json" }
 
 private def basisOf (claim : Informal.Palomar.ClaimIdentity) (e : Informal.Palomar.Entry) :
     String × Bool :=
@@ -141,6 +149,60 @@ private def boundClaim : Informal.Palomar.ClaimIdentity :=
   match Informal.Palomar.selectMatch? boundClaim entries with
   | Option.some m => (m.entry.id, m.basis, m.claimLevel)
   | Option.none => ("none", "", false)
+
+/-! ### A probed record binds nothing (CX-076)
+
+A record fetched over the network is not a file: it is excluded from the input ledger the
+freshness gate re-hashes, so a warm rebuild replays whatever it decided with the probe gone
+and nothing able to notice. The digest agreement is real and is kept — the basis is
+unchanged, and printed — but the match comes back project-level, which is the tier that says
+so in as many words.
+-/
+
+-- One record, one claim, two origins. Only the origin differs, and only the origin decides.
+/-- info: (("repo+digest", true), "repo+digest", false) -/
+#guard_msgs in
+#eval
+  let e := record projRepo projUrl matchDigest
+  (basisOf boundClaim e, basisOf boundClaim (probed e))
+
+-- The same demotion where the site cannot name its own repository and the digest is the
+-- whole binding: the weaker claim-level basis is still a claim-level basis.
+/-- info: (("digest", true), "digest", false) -/
+#guard_msgs in
+#eval
+  let e := record projRepo projUrl matchDigest
+  let anonymous := { boundClaim with repo := "" }
+  (basisOf anonymous e, basisOf anonymous (probed e))
+
+-- A record that cannot say where its bytes came from is not an input either.
+/-- info: ("repo+digest", false) -/
+#guard_msgs in
+#eval basisOf boundClaim { record projRepo projUrl matchDigest with origin := "" }
+
+-- Selection ranks claim level before everything else, so a bundle holding both spellings of
+-- one registration selects the one a claim may rest on — even though the probed record is
+-- the later identifier, which is the tiebreak that would otherwise decide.
+/-- info: ("PALOMAR-2026-08-01-000001", "repo+digest", true) -/
+#guard_msgs in
+#eval
+  let entries := #[
+    probed (record projRepo projUrl matchDigest (id := "PALOMAR-2026-08-09-000009")),
+    record projRepo projUrl matchDigest]
+  match Informal.Palomar.selectMatch? boundClaim entries with
+  | Option.some m => (m.entry.id, m.basis, m.claimLevel)
+  | Option.none => ("none", "", false)
+
+-- And the probe-only bundle, which is the finding's own shape: an exact digest match, on a
+-- verdict that recorded the digest, with no cache configured. It matches, it keeps its
+-- basis, and it is not claim-level.
+/-- info: ("repo+digest", false, true) -/
+#guard_msgs in
+#eval
+  let e := probed (record projRepo projUrl matchDigest)
+  match Informal.Palomar.selectMatch? boundClaim #[e] with
+  | Option.some m => (m.basis, m.claimLevel, Informal.Palomar.isProbeOrigin m.entry.origin)
+  | Option.none => ("none", false, false)
 
 /-! ## The input contract (§A9)
 
@@ -332,7 +394,16 @@ private def claimEntry : RegistryEntry :=
     sourceCommit := "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
     treeUrl := projUrl ++ "/tree/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
     challengeSha256 := matchDigest, matchBasis := "repo+digest"
-    provenance := "1 registry record read from the cached bundle at tests/fixtures/palomar/bundle" }
+    provenance := "1 registry record read from the cached bundle at tests/fixtures/palomar/bundle"
+    recordOrigin := entryPath "PALOMAR-2026-08-07-000007-v1" }
+
+/-- The same registration as a probe-only build would carry it: the same record, the same
+basis, fetched over the network instead of read from the bundle. -/
+private def probedClaimEntry : RegistryEntry :=
+  { claimEntry with
+    recordOrigin := "https://data.palomar-registry.org/entries/PALOMAR-2026-08-07-000007-v1.json"
+    provenance := "1 registry record fetched from https://data.palomar-registry.org during \
+      this build" }
 
 /-- info: true -/
 #guard_msgs in
@@ -359,6 +430,29 @@ private def claimEntry : RegistryEntry :=
   hasSubstr unbound "provenance about the project" &&
   hasSubstr repoOnly "data-bp-registry-basis=\"repo-only\"" &&
   hasSubstr unbound "data-bp-registry-basis=\"digest-unbound\""
+
+-- The demoted card (CX-076): the digest agreed on a basis that binds, and the record is
+-- still not bound, because this build cannot re-read the bytes that decided it. The basis
+-- stays printed as data — the agreement was real — and the card says which half is missing
+-- and where the bytes came from, which is the only way to tell a probed record from a cached
+-- one on a page built from both.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let card := (registryCardHtml probedClaimEntry).asString
+  let cached := (registryCardHtml claimEntry).asString
+  RegistryEntry.isClaimLevel claimEntry &&
+  !RegistryEntry.isClaimLevel probedClaimEntry &&
+  hasSubstr card "data-bp-registry-basis=\"repo+digest\"" &&
+  !hasSubstr card "records this claim" &&
+  hasSubstr card "not bound to the claim shown here" &&
+  hasSubstr card "provenance about the project" &&
+  hasSubstr card "not among the inputs this build recorded" &&
+  hasSubstr card
+    "https://data.palomar-registry.org/entries/PALOMAR-2026-08-07-000007-v1.json" &&
+  hasSubstr card "read over the network is not a file this build records" &&
+  -- and none of that appears on a cached record's card, which is untouched
+  !hasSubstr cached "read over the network"
 
 /-! ### Bundle health (CX-073)
 
@@ -488,6 +582,25 @@ private def verifiedComparator : TrustComparator :=
   -- neither reaches the strip: both render byte-identically to no registry at all.
   s projectOnly == s plain &&
   s linkOnly == s plain
+
+-- The probe-only badge, which is the finding (CX-076). A payload carrying the record on a
+-- binding basis but with nothing behind it earns no badge: the strip is byte-identical to
+-- one with no registration, and the payload's own claim-level accessor is empty.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let plain : TrustData := { comparator := Option.some verifiedComparator }
+  let probedBound : TrustData :=
+    { comparator := Option.some
+        { verifiedComparator with registryEntry? := Option.some probedClaimEntry } }
+  let bound : TrustData :=
+    { comparator := Option.some
+        { verifiedComparator with registryEntry? := Option.some claimEntry } }
+  let s := fun (t : TrustData) => (trustStripHtml t).asString
+  (TrustData.claimRegistryEntries probedBound).isEmpty &&
+  (TrustData.claimRegistryEntries bound).length == 1 &&
+  s probedBound == s plain &&
+  !hasSubstr (s probedBound) "registry: Palomar entry"
 
 /-! The payload rides a quoted `TrustData` into an `.olean` and out again through the
 traversal store, so the fields the comparator page reads have to survive that trip — and a
