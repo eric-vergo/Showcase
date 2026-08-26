@@ -251,27 +251,32 @@ a.bp_summary_badge:focus-visible {
   color: var(--bp-color-text-strong);
 }
 
-/* Axiom-audit panel: a two-column declaration / axiom-closure table. */
+/* Axiom-audit panel: a two-column declaration / axiom-closure table. The per-kernel
+   verdict table shares its shape and its status colors. */
 .bp_trust_table_wrap {
   overflow-x: auto;
   margin-top: var(--bp-space-3);
 }
 
-.bp_trust_axiom_table {
+.bp_trust_axiom_table,
+.bp_trust_kernel_table {
   border-collapse: collapse;
   width: 100%;
   font-size: var(--bp-fs-caption);
 }
 
 .bp_trust_axiom_table th,
-.bp_trust_axiom_table td {
+.bp_trust_axiom_table td,
+.bp_trust_kernel_table th,
+.bp_trust_kernel_table td {
   text-align: left;
   padding: var(--bp-space-1) var(--bp-space-3);
   border-bottom: 1px solid var(--bp-color-border-soft);
   vertical-align: top;
 }
 
-.bp_trust_axiom_table th {
+.bp_trust_axiom_table th,
+.bp_trust_kernel_table th {
   font-weight: 600;
   color: var(--bp-color-text-faint);
 }

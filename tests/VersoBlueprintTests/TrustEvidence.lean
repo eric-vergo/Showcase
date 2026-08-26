@@ -274,6 +274,164 @@ private def comparatorHtml (cmp : TrustComparator) : String :=
     challengeSha256 := Informal.Sha256.hexOfString fixtureComparator.challengeSource }
   (cmp.contentBound, cmp.contentUnbound)
 
+/-! ## A label is not a kernel (CX-064)
+
+The comparator's `external_kernels` key is consumer-chosen text it prints and then runs
+the associated command under, reading exit status zero as acceptance. No surface may turn
+that into a second-kernel assurance.
+-/
+
+private def spoofedKernel : TrustComparator :=
+  { fixtureComparator with
+    -- `{"nanoda": ["/usr/bin/true"]}` in the configuration, a replay and a revision in
+    -- the status artifact, and nothing binding either to a program.
+    externalKernels := #[("nanoda", "")]
+    enableNanoda := true
+    kernelReplays := #[("nanoda", true)]
+    kernelRefs := #[("nanoda", "f58f2f6d")] }
+
+private def boundKernel : TrustComparator :=
+  { fixtureComparator with
+    kernelIdentities := #[
+      { label := "nanoda", adapterKind := "nanoda"
+        repository := "https://github.com/ammkrn/nanoda_lib"
+        sourceCommit := "05055695", executableSha256 := "abcdef01"
+        commandArgv := #["/opt/nanoda_bin"], replayed := true, verdict := "accepted" },
+      { label := "lean4lean", repository := "https://github.com/x/lean4lean"
+        sourceCommit := "cc11dd22", executableSha256 := "9876fedc", replayed := true }]
+    kernelReplays := #[("nanoda", true), ("lean4lean", true)]
+    kernelRefs := #[("nanoda", "05055695"), ("lean4lean", "cc11dd22")] }
+
+-- The spoofable shape: the page names no second kernel, keeps the label out of "Checked
+-- with", and says in the table and in prose what the record does and does not establish.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml spoofedKernel
+  !hasSubstr html "independently the nanoda kernel" &&
+  !hasSubstr html "nanoda f58f2f6d" &&
+  !hasSubstr html "nanoda replays included" &&
+  hasSubstr html "external checker labeled" &&
+  hasSubstr html "not authenticated" &&
+  hasSubstr html "recorded separately, not bound to it" &&
+  hasSubstr html "The comparator takes that label from its configuration"
+
+-- A record that binds a source revision and an executable digest to the repository this
+-- fork knows nanoda by earns the name; one that binds them to something else does not.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml boundKernel
+  hasSubstr html "independently the nanoda kernel" &&
+  hasSubstr html "nanoda 05055695" &&
+  hasSubstr html "binary <code>abcdef01</code>" &&
+  -- The second checker is identified but not one this site knows by name, so it is
+  -- reported as an external checker rather than as a kernel.
+  hasSubstr html "external checker labeled" &&
+  hasSubstr html "not a checker this site knows by that name" &&
+  !hasSubstr html "lean4lean and nanoda kernels" &&
+  !hasSubstr html "checkers labeled" &&
+  hasSubstr html "a checker labeled" &&
+  hasSubstr html "<code>lean4lean</code>"
+
+-- One authenticated kernel needs no table; more than one checker, or one this site
+-- cannot name, does.
+/-- info: (false, true, true) -/
+#guard_msgs in
+#eval
+  (hasSubstr (comparatorHtml { fixtureComparator with nanodaReplay := some true })
+     "bp_trust_kernel_table",
+   hasSubstr (comparatorHtml spoofedKernel) "bp_trust_kernel_table",
+   hasSubstr (comparatorHtml boundKernel) "bp_trust_kernel_table")
+
+-- A claimed replay must still name a revision, and the message says a revision is not
+-- the binding.
+/-- info: (true, true, "ok") -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × String) from do
+  let unnamed ← checkOutcome
+    (checkComparatorRunProvenance { kernelReplays := #[("lean4lean", true)] } "status.json")
+  let complete ← checkOutcome (checkComparatorRunProvenance
+    { kernelReplays := #[("lean4lean", true), ("nanoda", true)]
+      kernelRefs := #[("lean4lean", "cc11"), ("nanoda", "f58f")] } "status.json")
+  -- Short substrings: the error formatter wraps long lines.
+  return (hasSubstr unnamed "`lean4lean`", hasSubstr unnamed "sufficient", complete)
+
+/-! ## The comparator tool's own toolchain (CX-053) -/
+
+-- Recorded ⇒ the row and the note say which toolchain the tool was built on; absent ⇒ the
+-- reproduce section says the commands build it on the tool's own, rather than implying an
+-- exact replay.
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  let recorded := comparatorHtml { fixtureComparator with
+    toolRef := "v4.33.0", toolSha := "abc123", toolToolchain := "leanprover/lean4:v4.33.1" }
+  let legacy := comparatorHtml { fixtureComparator with toolRef := "v4.33.0", toolSha := "abc123" }
+  (hasSubstr recorded "Tool built on" && hasSubstr recorded "leanprover/lean4:v4.33.1" &&
+     hasSubstr recorded "rebuilt the comparator on this project's toolchain",
+   !hasSubstr legacy "Tool built on" &&
+     hasSubstr legacy "does not say which Lean toolchain the comparator itself was")
+
+/-! ## The subject revision the run verified (CX-068) -/
+
+-- Recorded ⇒ the reproduce section says the pinned verifiers see the same bytes; absent ⇒
+-- it says plainly that the flow runs against today's tree.
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  let pinned := comparatorHtml { fixtureComparator with
+    repoUrl := "https://github.com/o/r", commit := "76ea8221" }
+  let unpinned := comparatorHtml { fixtureComparator with repoUrl := "https://github.com/o/r" }
+  (hasSubstr pinned "the revision the recorded run verified" &&
+     hasSubstr pinned "git checkout 76ea8221",
+   hasSubstr unpinned "current default branch" &&
+     hasSubstr unpinned "not an exact reproduction of the run above")
+
+/-! ## A transcribed upstream record is not a verification (CX-042) -/
+
+private def upstreamComparator : TrustComparator :=
+  { fixtureComparator with
+    status := "reported-upstream"
+    reportedSource := "anthropics/zeta-23-lean" }
+
+-- The page names the source, refuses the success tier, and — crucially — refuses
+-- `verified_at`'s date, which describes a run this site did not perform.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml upstreamComparator
+  hasSubstr html "Reported upstream" &&
+  hasSubstr html "Transcribed from records published by anthropics/zeta-23-lean" &&
+  hasSubstr html "Names 1 theorem" &&
+  !hasSubstr html "CI-verified" &&
+  !hasSubstr html "bp_summary_badge_success" &&
+  !hasSubstr html "Certifies 1 theorem" &&
+  !hasSubstr html "2026-08-04"
+
+-- The upstream record's own date, when it has one, is the only date it may show.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml { upstreamComparator with reportedAt := "2026-07-01T00:00:00Z" }
+  hasSubstr html "Reported upstream 2026-07-01" &&
+  hasSubstr html "datetime=\"2026-07-01T00:00:00Z\"" &&
+  !hasSubstr html "2026-08-04"
+
+-- On the strip: a neutral badge, a scope line that reports rather than certifies, and no
+-- contribution to the success aggregate.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval
+  let strip := (trustStripHtml { comparator := some upstreamComparator }
+    Option.none Option.none Option.none (some 9)).asString
+  let badge := (trustAggregateComparatorBadge
+    [{ name := "A", comparator := fixtureComparator },
+     { name := "B", comparator := upstreamComparator }]).asString
+  (hasSubstr strip "comparator: reported upstream" && !hasSubstr strip "badge_success",
+   hasSubstr strip "reported verified upstream: 1 theorem of 9",
+   hasSubstr badge "1/2 configs verified" && hasSubstr badge "badge_warn")
+
 /-! ## Multi-config trust surface: N topics render N panels plus an aggregate -/
 
 private def mcTopic (name : String) (thms : List String) : ComparatorTopic :=

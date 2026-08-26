@@ -97,6 +97,126 @@ register_option verso.blueprint.trust.comparatorLiveProject : String := {
   descr := "Project id for comparator.live (the Lean FRO's experimental in-browser statement comparator), e.g. \"mathlib-stable\". When set — and when the challenge and solution sources are both available — the comparator page adds a permalink that opens the exact claim/solution pair in the browser for inspection (it does not re-run the verdict: the solution's import of the project library is not available there). Links only: nothing is fetched at build time and the offline guarantee is untouched. Empty disables the link."
 }
 
+/-! ### Reserved payload structures
+
+The trust payload is quoted into an `.olean` and decoded again at generation time, so
+every field added to it recompiles the whole downstream tree. The structures below are
+therefore landed as one batch: what the multi-kernel surface uses today, plus
+empty-default carriers for the statement-closure, statement-caveat, verifier-currency
+and registry payloads that later rounds attach. Nothing populates the reserved ones
+yet, and an artifact that sets none of them renders exactly as it does today.
+-/
+
+/-- One declaration a certified statement's meaning depends on. Reserved for the
+statement-closure surface; nothing populates it yet. -/
+structure StatementClosureEntry where
+  name : String := ""
+  /-- Where the declaration is defined: `challenge`, `subject`, `mathlib`, `core`, or
+  another module root, named. -/
+  origin : String := ""
+  /-- Distance from the certified statement (0 ⇒ named by it directly). -/
+  depth : Nat := 0
+  /-- Where a reader can read it — a page on this site or an outbound source link.
+  Empty ⇒ none resolved. -/
+  href : String := ""
+  /-- Capped signature text. Empty ⇒ not captured. -/
+  signature : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- What a reader must read to believe one certified claim. Reserved for the
+statement-closure surface; nothing populates it yet. -/
+structure StatementClosure where
+  /-- What the closure was computed from: `chain` (the recorded challenge chain, digest
+  bound), `chain-unbound`, `claim-decls`, `unavailable`. Empty ⇒ not computed. -/
+  provenance : String := ""
+  total : Nat := 0
+  outsideMathlib : Nat := 0
+  /-- Whether the walk stopped at `maxNodes`. Truncation is a verdict state of its own:
+  a truncated closure reports a lower bound, never an exact count. -/
+  truncated : Bool := false
+  maxNodes : Nat := 0
+  entries : Array StatementClosureEntry := #[]
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- One total-function convention a reader of a statement could misread. Reserved for
+the statement-caveat surface; nothing populates it yet. Caveats to check, not findings
+of error. -/
+structure StatementCaveat where
+  symbol : String := ""
+  behavior : String := ""
+  /-- Presence scan over the statement's binders: `present`, `absent`, `unknown`. A
+  presence check, never an assertion that a guard is missing. -/
+  guard : String := ""
+  guardHint : String := ""
+  provenance : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- Currency of one verifier against the advisories known to this site. Reserved for
+the verifier-currency surface; nothing populates it yet. -/
+structure VerifierCurrency where
+  tool : String := ""
+  /-- `current`, `unknown`, or `stale`. Never `current` without a revision the advisory
+  table proves fixed. -/
+  verdict : String := ""
+  /-- The immutable revision the verdict was computed against. Empty ⇒ there was nothing
+  to assess, which is `unknown` rather than `current`: dates select which advisories
+  apply, they do not establish that a fix is in the build that ran. -/
+  revision : String := ""
+  detail : String := ""
+  /-- When the advisory table this verdict was computed against was last updated. -/
+  advisoriesUpdated : String := ""
+  advisories : Array String := #[]
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- A registry entry recording this project's claim elsewhere. Reserved for the
+registry surface; nothing populates it yet. -/
+structure RegistryEntry where
+  url : String := ""
+  title : String := ""
+  recordedAt : String := ""
+  repoUrl : String := ""
+  challengeSha256 : String := ""
+  /-- What the entry is bound to: `unbound`, `repo`, `digest`, or `repo+digest`. A
+  repo-only match is project-level provenance, not a claim-level one. -/
+  matchBasis : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
+/--
+What one run recorded about one external checker it invoked.
+
+**The label is not an identity.** The comparator's `external_kernels` map is
+`String → Array String`: it copies the map key into the name it prints and runs the
+command array, treating exit status zero as acceptance. `{"nanoda": ["/usr/bin/true"]}`
+therefore produces "nanoda kernel accepts the solution" (verified against the pinned
+tool). A label, with or without a separately typed revision, says nothing about what
+program ran.
+
+What does say something is this record, written by the run itself: the argv it invoked,
+the digest of the executable, and the immutable revision that executable was built from.
+Only a record carrying `executableSha256` **and** `sourceCommit` is treated as naming a
+program; only one that *also* carries the canonical `repository` of a kernel this fork
+knows is treated as naming that kernel.
+-/
+structure KernelReplayRecord where
+  /-- The consumer-chosen key from the comparator configuration. Display text, never an
+  identity claim. -/
+  label : String := ""
+  /-- Which protocol the comparator used to talk to the checker. Empty ⇒ unrecorded. -/
+  adapterKind : String := ""
+  /-- Source repository the executable was built from. Empty ⇒ unrecorded. -/
+  repository : String := ""
+  /-- Immutable revision of that repository. Empty ⇒ unrecorded. -/
+  sourceCommit : String := ""
+  /-- The exact command the run invoked. Empty ⇒ unrecorded. -/
+  commandArgv : Array String := #[]
+  /-- SHA-256 of the executable that ran. This, with `sourceCommit`, is what binds the
+  row to a program rather than to a name. Empty ⇒ unrecorded. -/
+  executableSha256 : String := ""
+  replayed : Bool := false
+  /-- The checker's own verdict, as the run recorded it. Empty ⇒ unrecorded. -/
+  verdict : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
 /-- Comparator verdict extracted from the comparator-status artifact.
 
 `runUrl`/`configJson`/`challengeSource` are empty-string sentinels (matching the
@@ -127,8 +247,20 @@ structure TrustComparator where
   configArgPath : String := ""
   /-- The project's repository URL (derived from the first resolved challenge/solution/config
   blob URL in `enrichTrustData`). Adds a "clone the project" step to the tier-3 reproduce
-  commands; empty ⇒ the commands run from the reader's own checkout. -/
+  commands; empty ⇒ the commands run from the reader's own checkout.
+
+  This is what *this build's* checkout says. `repository` is what the verifying run
+  recorded, and takes precedence in the reproduce commands. -/
   repoUrl : String := ""
+  /-- The subject repository the verifying run checked out (the status artifact's
+  `repository`), as a URL or as `owner/repo`. Empty ⇒ unrecorded. -/
+  repository : String := ""
+  /-- The subject revision the verifying run checked out (the status artifact's `commit`).
+  The comparator and its kernels are pinned by revision; without this the project itself
+  is not, and re-running the commands after the default branch moves feeds different
+  Challenge, Solution and configuration bytes to the same pinned verifiers. Empty ⇒
+  unrecorded, and the reproduce section says the flow is a current-tree rerun. -/
+  commit : String := ""
   configJson : String := ""
   challengeSource : String := ""
   /-- Verbatim contents of the comparator's Solution Lean file (embedded on the
@@ -208,6 +340,75 @@ structure TrustComparator where
   inspection, built from `verso.blueprint.trust.comparatorLiveProject` plus the two
   sources. Empty ⇒ not configured, or a source was unavailable. -/
   comparatorLiveUrl : String := ""
+  /-- The Lean toolchain the comparator tool itself was built with (the status
+  artifact's `tool_toolchain`).
+
+  The tool reads the project's oleans, which carry a compiler stamp, so a run
+  rebuilds the tool on the *project's* toolchain rather than the tool's own — and the
+  replay then runs on the kernel of the release the project pins. Empty ⇒ the record
+  predates the field, and the reproduce commands say plainly that they build the tool
+  on its own toolchain instead. -/
+  toolToolchain : String := ""
+  /-- External checkers the comparator *configuration* enables, as (label, recorded spec)
+  pairs parsed from a config-side `external_kernels` map (comparator ≥ v4.34). The spec is
+  whatever the config records for that label — a revision, a path, or empty.
+
+  Consumer-chosen labels, not identities (see `KernelReplayRecord`), and configuration
+  rather than run evidence: like `enableNanoda` this governs the reproduce commands and
+  what a *future* run does. Empty ⇒ the config uses the older `enable_nanoda` flag, or
+  enables no external checker. -/
+  externalKernels : Array (String × String) := #[]
+  /-- Per-label run evidence: what the status artifact recorded about each replay, as
+  (label, replayed) pairs.
+
+  Parsed tolerantly from a `kernel_replays` map/array or from the identity records, or
+  synthesized from the legacy `nanoda_replay` flag. **Empty ⇒ the record says nothing
+  about any replay**, which is not the same as recording that none happened, and is never
+  filled in from the configuration. -/
+  kernelReplays : Array (String × Bool) := #[]
+  /-- Revisions the run recorded per label, as (label, revision) pairs; the legacy
+  `nanoda_ref` is one entry of it. A separately typed revision pins nothing on its own:
+  it is not bound to the executable the run invoked. -/
+  kernelRefs : Array (String × String) := #[]
+  /-- Per-checker identity records the run wrote (a status-side `kernel_identities`
+  array, or a `kernel_replays` array whose entries carry the identity fields). This is
+  the only thing on a status artifact that can bind a replay row to a program rather than
+  to a label. Empty ⇒ the record identifies nothing it ran. -/
+  kernelIdentities : Array KernelReplayRecord := #[]
+  /-- The ordered challenge chain the verifying run recorded (the status artifact's
+  `challenge_chain`): (path, SHA-256) per file, primary Challenge included, in
+  elaboration order. Empty ⇒ the record predates the field, so the chain this site
+  reads is bound to the verdict by nothing.
+
+  Stored and round-tripped here; the surface that binds a meaning closure to it is a
+  later round. -/
+  challengeChain : Array (String × String) := #[]
+  /-- When the *upstream* record this verdict was transcribed from was made (the status
+  artifact's `reported_at`), for a `reported-upstream` status. Deliberately distinct
+  from `verifiedAt`: this site's CI verified nothing, so no date with
+  `verified_at` semantics may be shown. Empty ⇒ no date is rendered at all. -/
+  reportedAt : String := ""
+  /-- Who published the upstream record (the status artifact's `reported_source`), named
+  in the `reported-upstream` label and tooltip. Empty ⇒ the copy says "the subject
+  repository". -/
+  reportedSource : String := ""
+  /-- Chain files beyond the primary Challenge, in elaboration order (a topic manifest's
+  `challenge_deps`). Reserved for the statement-closure surface. -/
+  challengeDeps : Array String := #[]
+  /-- Subject-side declarations aligned with the certified statements (a topic
+  manifest's `claim_decls`). Reserved as the statement-closure fallback anchor. -/
+  claimDecls : Array String := #[]
+  /-- The certified claims' meaning closure. Reserved; `none` ⇒ not computed. -/
+  closure? : Option StatementClosure := none
+  /-- Total-function conventions in the certified statements a reader could misread.
+  Reserved; empty ⇒ not scanned. -/
+  caveats : Array StatementCaveat := #[]
+  /-- Per-verifier currency against the advisories known to this site. Reserved; empty
+  ⇒ not assessed. -/
+  currency : Array VerifierCurrency := #[]
+  /-- A registry entry recording this claim elsewhere. Reserved; `none` ⇒ none
+  configured or none matched. -/
+  registryEntry? : Option RegistryEntry := none
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- A named comparator topic: a display name plus its verdict. The multi-config
@@ -283,6 +484,10 @@ structure TrustData where
   (`verso.blueprint.trust.requireAuditClean`), carried so the trust-model page can
   state which contract this project is under. -/
   requireAuditClean : Bool := false
+  /-- A registry entry recording this *project* (matched by repository alone, so it is
+  project-level provenance and not bound to any one claim). Reserved; `none` ⇒ none
+  configured or none matched. -/
+  registryEntry? : Option RegistryEntry := none
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
@@ -303,11 +508,168 @@ def TrustData.ofFormalizationJson (doc : Json) : TrustData :=
     reviewStatus := (review.getObjValAs? String "status").toOption.getD ""
   }
 
+/-! ### Multi-kernel parsing
+
+The comparator grew from one optional second kernel (`enable_nanoda` in the config,
+`nanoda_replay` in the status artifact) towards naming its kernels (`external_kernels`).
+Both spellings are read here, and neither is allowed to speak for the other:
+configuration says what the *next* run does, the status artifact says what the *linked*
+run did, and a record that says nothing about a replay records nothing — it does not
+record that none happened.
+
+Everything is tolerant of shape and total. A field spelled in a way this parser does not
+recognize yields no kernels rather than a build error: the surfaces that consume it all
+degrade to "unrecorded", which is the honest reading of "we could not tell".
+-/
+
+/-- The revision-ish string a kernel entry records: a plain string value, or the
+`ref`/`rev`/`path` of an object one. Empty when it records only a name. -/
+private def kernelSpecString (j : Json) : String :=
+  match j with
+  | .str s => s
+  | .obj _ =>
+    let pick := fun k => (j.getObjValAs? String k).toOption.getD ""
+    let ref := pick "ref"
+    if !ref.isEmpty then ref
+    else
+      let rev := pick "rev"
+      if !rev.isEmpty then rev else pick "path"
+  | _ => ""
+
+/-- The (name, replayed?, revision) triples of a kernel map/array, accepting an object
+map (`{"nanoda": true}`, `{"nanoda": {"replayed": true, "ref": "…"}}`, `{"nanoda": "…"}`)
+and an array of objects (`[{"kernel": "nanoda", "replayed": true, "ref": "…"}]`) or of
+bare names. Object keys come out in key order, which is stable across builds. -/
+private def kernelEntries (j : Json) : Array (String × Option Bool × String) :=
+  let fields := fun (v : Json) =>
+    match v with
+    | .bool b => (some b, "")
+    | .obj _ =>
+      let replayed :=
+        match (v.getObjValAs? Bool "replayed").toOption with
+        | Option.some b => Option.some b
+        | Option.none => (v.getObjValAs? Bool "replay").toOption
+      (replayed, kernelSpecString v)
+    | _ => (none, kernelSpecString v)
+  match j with
+  | .obj kvs =>
+    kvs.foldl (init := (#[] : Array (String × Option Bool × String))) fun acc k v =>
+      let (replayed, ref) := fields v
+      acc.push (k, replayed, ref)
+  | .arr items =>
+    items.filterMap fun it =>
+      match it with
+      | .str s => if s.isEmpty then none else some (s, none, "")
+      | .obj _ =>
+        let named := (it.getObjValAs? String "kernel").toOption.getD ""
+        let named := if named.isEmpty then (it.getObjValAs? String "name").toOption.getD "" else named
+        if named.isEmpty then none
+        else
+          let (replayed, ref) := fields it
+          some (named, replayed, ref)
+      | _ => none
+  | _ => #[]
+
+/-- Kernels a comparator *configuration* enables, from an `external_kernels` field.
+Absent ⇒ empty (the config uses `enable_nanoda`, or enables no second kernel). -/
+def parseExternalKernels (config : Json) : Array (String × String) :=
+  match config.getObjVal? "external_kernels" with
+  | .ok j => (kernelEntries j).map fun e => (e.1, e.2.2)
+  | .error _ => #[]
+
+/-- Whether a comparator *configuration* enables the nanoda replay, in either spelling:
+the `enable_nanoda` flag, or an `external_kernels` entry named `nanoda`. A configuration
+that migrated from the first to the second has not turned anything off. -/
+def configEnablesNanoda (config : Json) : Bool :=
+  (config.getObjValAs? Bool "enable_nanoda").toOption.getD false
+    || (parseExternalKernels config).any fun e => e.1 == "nanoda"
+
+/-- Per-label run evidence from a *status* artifact, from a `kernel_replays` field or —
+when that is absent — synthesized from the legacy `nanoda_replay`/`nanoda_ref` pair. A
+label with no recorded `replayed` flag contributes a revision but no replay claim. -/
+private def parseKernelRecords (status : Json) : Array (String × Option Bool × String) :=
+  match status.getObjVal? "kernel_replays" with
+  | .ok j => kernelEntries j
+  | .error _ =>
+    let replay := (status.getObjValAs? Bool "nanoda_replay").toOption
+    let ref := (status.getObjValAs? String "nanoda_ref").toOption.getD ""
+    if replay.isNone && ref.isEmpty then #[] else #[("nanoda", replay, ref)]
+
+/-- Whether a JSON object carries any of the identity fields — the difference between a
+run that recorded what it invoked and one that recorded only a label. -/
+private def hasIdentityFields (j : Json) : Bool :=
+  ["executable_sha256", "source_commit", "command_argv", "repository", "adapter_kind",
+   "verdict"].any fun k => (j.getObjVal? k).toOption.isSome
+
+/-- The per-checker identity records a run wrote: a status-side `kernel_identities`
+array, or a `kernel_replays` array whose entries carry identity fields. Absent ⇒ empty,
+and every surface then renders labels as labels. -/
+def parseKernelIdentities (status : Json) : Array KernelReplayRecord :=
+  let ofObj := fun (it : Json) =>
+    let str := fun k => (it.getObjValAs? String k).toOption.getD ""
+    let label :=
+      let l := str "label"
+      if l.isEmpty then (let k := str "kernel"; if k.isEmpty then str "name" else k) else l
+    if label.isEmpty then Option.none
+    else Option.some {
+      label
+      adapterKind := str "adapter_kind"
+      repository := str "repository"
+      sourceCommit := str "source_commit"
+      commandArgv := (it.getObjValAs? (Array String) "command_argv").toOption.getD #[]
+      executableSha256 := str "executable_sha256"
+      replayed := (it.getObjValAs? Bool "replayed").toOption.getD false
+      verdict := str "verdict"
+      : KernelReplayRecord }
+  let fromArray := fun (items : Array Json) => items.filterMap fun it =>
+    match it with
+    | .obj _ => ofObj it
+    | _ => Option.none
+  match status.getObjVal? "kernel_identities" with
+  | .ok (.arr items) => fromArray items
+  | _ =>
+    match status.getObjVal? "kernel_replays" with
+    | .ok (.arr items) => if items.any hasIdentityFields then fromArray items else #[]
+    | _ => #[]
+
+/-- The ordered challenge chain a run recorded (`challenge_chain`): (path, SHA-256) per
+file, in elaboration order. Entries without a path are dropped; a missing digest reads as
+empty, i.e. that entry is unbound. Absent ⇒ empty. -/
+def parseChallengeChain (status : Json) : Array (String × String) :=
+  match status.getObjVal? "challenge_chain" with
+  | .ok (.arr items) =>
+    items.filterMap fun it =>
+      match it with
+      | .str p => if p.isEmpty then none else some (p, "")
+      | .obj _ =>
+        let path := (it.getObjValAs? String "path").toOption.getD ""
+        if path.isEmpty then none
+        else some (path, (it.getObjValAs? String "sha256").toOption.getD "")
+      | _ => none
+  | _ => #[]
+
 /-- Extract the comparator verdict from a comparator-status artifact (`verified_at` may be `null`).
 Every field beyond `status` is optional (absent in older artifacts ⇒ empty-sentinel default), so
 an artifact written before the provenance fields existed still loads. The embedded config /
 Challenge sources are filled in later from their own options (`elabTrustData?`). -/
 def TrustComparator.ofJson (j : Json) : TrustComparator :=
+  let identities := parseKernelIdentities j
+  -- Identity records, when the run wrote them, are also the label-level evidence: a
+  -- second, separately parsed copy of the same facts could disagree with them.
+  let kernels : Array (String × Option Bool × String) :=
+    if identities.isEmpty then parseKernelRecords j
+    else identities.map fun r =>
+      (r.label, Option.some r.replayed, if r.sourceCommit.isEmpty then "" else r.sourceCommit)
+  let kernelOf := fun (name : String) => kernels.find? fun e => e.1 == name
+  -- The nanoda-specific fields stay the one spelling the rest of the fork reads, whether
+  -- the artifact used the legacy pair or the kernel map.
+  let nanodaReplay :=
+    match (j.getObjValAs? Bool "nanoda_replay").toOption with
+    | Option.some b => Option.some b
+    | Option.none => (kernelOf "nanoda").bind (·.2.1)
+  let nanodaRef :=
+    let recorded := (j.getObjValAs? String "nanoda_ref").toOption.getD ""
+    if !recorded.isEmpty then recorded else ((kernelOf "nanoda").map (·.2.2)).getD ""
   {
     status := (j.getObjValAs? String "status").toOption.getD ""
     verifiedAt := (j.getObjValAs? String "verified_at").toOption.getD ""
@@ -318,53 +680,188 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     toolRef := (j.getObjValAs? String "tool_ref").toOption.getD ""
     configArgPath := (j.getObjValAs? String "config").toOption.getD ""
     toolSha := (j.getObjValAs? String "tool_sha").toOption.getD ""
-    nanodaRef := (j.getObjValAs? String "nanoda_ref").toOption.getD ""
+    toolToolchain := (j.getObjValAs? String "tool_toolchain").toOption.getD ""
+    -- The subject the run verified. Without the revision, "reproduce this" reproduces the
+    -- verifiers but not the bytes they checked.
+    repository := (j.getObjValAs? String "repository").toOption.getD ""
+    commit := (j.getObjValAs? String "commit").toOption.getD ""
+    nanodaRef
     landrunRef := (j.getObjValAs? String "landrun_ref").toOption.getD ""
     challengeModule := (j.getObjValAs? String "challenge_module").toOption.getD ""
     solutionModule := (j.getObjValAs? String "solution_module").toOption.getD ""
     -- Run evidence. Absent ⇒ `none` (unrecorded), which is *not* the same as `false`
     -- and is never filled in from the current configuration.
-    nanodaReplay := (j.getObjValAs? Bool "nanoda_replay").toOption
+    nanodaReplay
+    kernelReplays := kernels.filterMap fun e => e.2.1.map fun b => (e.1, b)
+    kernelRefs := kernels.filterMap fun e => if e.2.2.isEmpty then none else some (e.1, e.2.2)
+    kernelIdentities := identities
     -- Content binding. Absent ⇒ empty ⇒ the displayed source is bound to this verdict
     -- by name and path shape only.
     configSha256 := (j.getObjValAs? String "config_sha256").toOption.getD ""
     challengeSha256 := (j.getObjValAs? String "challenge_sha256").toOption.getD ""
     solutionSha256 := (j.getObjValAs? String "solution_sha256").toOption.getD ""
+    challengeChain := parseChallengeChain j
+    -- Upstream-report provenance. `reported_at` is the date the *upstream* record was
+    -- made; it never stands in for `verified_at`.
+    reportedAt := (j.getObjValAs? String "reported_at").toOption.getD ""
+    reportedSource := (j.getObjValAs? String "reported_source").toOption.getD ""
   }
 
 /-! ### Run evidence -/
 
-/--
-Whether the run that produced this verdict performed the independent nanoda-kernel
-replay.
+/-- Per-kernel run evidence in a stable order, with the legacy `nanoda_replay` field
+read as the entry it is. Records built by hand (tests, fixtures) set one or the other;
+both spell the same fact. -/
+def TrustComparator.recordedReplays (cmp : TrustComparator) : Array (String × Bool) :=
+  if cmp.kernelReplays.any (fun e => e.1 == "nanoda") then cmp.kernelReplays
+  else
+    match cmp.nanodaReplay with
+    | Option.some b => cmp.kernelReplays.push ("nanoda", b)
+    | Option.none => cmp.kernelReplays
 
-Run evidence only: the status artifact's `nanoda_replay`. An artifact that predates the
-field records nothing about its run, so absence reads as `false` — under-claiming a
-replay that may have happened is a presentation defect; claiming one that did not is a
-false assertion about a dated verification.
+/-- What the linked run recorded about `kernel`: `some true` it replayed, `some false`
+it did not, `none` it said nothing. Never derived from the configuration. -/
+def TrustComparator.recordedReplay? (cmp : TrustComparator) (kernel : String) : Option Bool :=
+  (cmp.recordedReplays.find? fun e => e.1 == kernel).map (·.2)
+
+/-- The revision the run recorded for `kernel`; empty ⇒ none recorded. -/
+def TrustComparator.recordedKernelRef (cmp : TrustComparator) (kernel : String) : String :=
+  match cmp.kernelRefs.find? fun e => e.1 == kernel with
+  | Option.some e => e.2
+  | Option.none => if kernel == "nanoda" then cmp.nanodaRef else ""
+
+/-- Kernels the current *configuration* enables, in a stable order. `enable_nanoda` and
+an `external_kernels` entry named `nanoda` are two spellings of the same thing, so a
+migrated configuration is not read as having dropped the kernel. -/
+def TrustComparator.configuredKernels (cmp : TrustComparator) : Array String :=
+  let named := cmp.externalKernels.map (·.1)
+  if cmp.enableNanoda && !named.contains "nanoda" then named.push "nanoda" else named
+
+/-- Kernels the linked run recorded that it replayed with. Labels, not identities —
+`kernelIdentityTier` says how much each one is worth. -/
+def TrustComparator.replayedKernels (cmp : TrustComparator) : Array String :=
+  (cmp.recordedReplays.filter (·.2)).map (·.1)
+
+/-! ### Checker identity
+
+A comparator `external_kernels` key is a consumer-chosen label the tool copies into its
+output; the tool runs the associated command array and reads exit status zero as
+acceptance. `{"nanoda": ["/usr/bin/true"]}` prints that nanoda accepted the solution.
+Nothing on this page may therefore turn a label — or a separately typed revision beside
+it — into a claim about which program checked the proof.
+
+`kernelIdentityTier` is the single place that judgement is made, and every surface reads
+it rather than re-deciding.
+-/
+
+/-- Canonical source repositories of the checkers this fork is willing to name. A record
+whose label is one of these but whose recorded repository is something else is not that
+checker: the label is consumer-chosen text. -/
+def knownKernelRepos : List (String × String) :=
+  [("nanoda", "https://github.com/ammkrn/nanoda_lib")]
+
+/-- Repository URL in the form the comparison uses: lower-cased, without a trailing
+`.git` or `/`. -/
+def normalizeRepoUrl (u : String) : String :=
+  let u := u.trimAscii.toString.toLower
+  let u := if u.endsWith ".git" then (u.dropEnd 4).toString else u
+  if u.endsWith "/" then (u.dropEnd 1).toString else u
+
+/-- The run's identity record for `label`, if it wrote one. -/
+def TrustComparator.identityFor? (cmp : TrustComparator) (label : String) :
+    Option KernelReplayRecord :=
+  cmp.kernelIdentities.find? fun r => r.label == label
+
+/--
+How much the run's record authenticates about the checker it labels `label`:
+
+- `"named"` — the record binds an executable digest to an immutable revision of the
+  repository this fork knows that name by. The only tier that may be described as the
+  named kernel.
+- `"ci-built"` — the legacy `nanoda_replay`/`nanoda_ref` pair, with no `external_kernels`
+  map able to redirect the label: the run's CI supplied the binary it built from the
+  recorded revision, and the record's honesty rests on that CI rather than on a digest.
+- `"bound"` — an executable digest and a source revision, but not a checker this fork
+  knows by name (or a recorded repository that is not the canonical one). A program is
+  identified; which program it *is* is not this site's to say.
+- `"labeled"` — a label, at most a separately typed revision, and nothing binding either
+  to what ran.
+-/
+def TrustComparator.kernelIdentityTier (cmp : TrustComparator) (label : String) : String :=
+  match cmp.identityFor? label with
+  | Option.some rec =>
+    if rec.executableSha256.isEmpty || rec.sourceCommit.isEmpty then "labeled"
+    else
+      match knownKernelRepos.find? fun p => p.1 == label with
+      | Option.some (_, canonical) =>
+        if normalizeRepoUrl rec.repository == normalizeRepoUrl canonical then "named" else "bound"
+      | Option.none => "bound"
+  | Option.none =>
+    -- No identity record. The legacy pair is still the tier it always was: a replay the
+    -- run's CI recorded beside the revision that CI built the checker from.
+    if cmp.externalKernels.isEmpty && cmp.kernelIdentities.isEmpty
+        && (knownKernelRepos.any fun p => p.1 == label)
+        && !(cmp.recordedKernelRef label).isEmpty then "ci-built"
+    else "labeled"
+
+/-- Checkers whose replay this page may present as a second opinion from a known kernel:
+the run recorded that they replayed, and their identity tier says the name means
+something. -/
+def TrustComparator.assuredKernels (cmp : TrustComparator) : Array String :=
+  cmp.replayedKernels.filter fun k =>
+    let tier := cmp.kernelIdentityTier k
+    tier == "named" || tier == "ci-built"
+
+/-- Replay claims this page must present as *unnamed* external checkers: the run says
+something ran and accepted, and nothing says what. -/
+def TrustComparator.unnamedReplayClaims (cmp : TrustComparator) : Array String :=
+  cmp.replayedKernels.filter fun k => !(cmp.assuredKernels.contains k)
+
+/--
+Whether the run that produced this verdict performed an independent nanoda-kernel
+replay *this site is willing to call nanoda*.
+
+Two things must hold, and neither implies the other. The run must have recorded the
+replay (`nanoda_replay`, or the `nanoda` entry of its kernel map) — an artifact that
+records nothing about its run reads as `false`, because under-claiming a replay that may
+have happened is a presentation defect while claiming one that did not is a false
+assertion about a dated verification. And the record must authenticate the label: a
+comparator configuration may point the key `nanoda` at any command, so a label alone is
+not the kernel. See `kernelIdentityTier`.
 -/
 def TrustComparator.replayedWithNanoda (cmp : TrustComparator) : Bool :=
-  cmp.nanodaReplay == some true
+  cmp.recordedReplay? "nanoda" == some true &&
+    (let tier := cmp.kernelIdentityTier "nanoda"; tier == "named" || tier == "ci-built")
 
 /-- Whether the status artifact carries the nanoda run-evidence field at all. `false` ⇒
 legacy artifact: the page says the replay is *unrecorded*, not that it did not happen. -/
 def TrustComparator.nanodaReplayRecorded (cmp : TrustComparator) : Bool :=
-  cmp.nanodaReplay.isSome
+  (cmp.recordedReplay? "nanoda").isSome
 
 /--
-Disagreement between the current comparator configuration and the linked run's record.
+Disagreement between the current comparator configuration and the linked run's record,
+for one kernel.
 
 `some true` ⇒ the configuration now enables the replay but the run did not perform one;
 `some false` ⇒ the run performed one but the configuration no longer enables it. Either
 way the configuration has changed since the verdict was produced, and the page says so
 rather than silently adopting one side. `none` ⇒ they agree, or the run recorded nothing
 to disagree with.
+
+A configuration that migrated `enable_nanoda` to an `external_kernels` entry is not
+drift, because `configuredKernels` reads both spellings.
 -/
-def TrustComparator.nanodaConfigDrift? (cmp : TrustComparator) : Option Bool :=
-  match cmp.nanodaReplay with
+def TrustComparator.kernelConfigDrift? (cmp : TrustComparator) (kernel : String) :
+    Option Bool :=
+  match cmp.recordedReplay? kernel with
   | Option.some replayed =>
-    if replayed == cmp.enableNanoda then Option.none else Option.some cmp.enableNanoda
+    let configured := cmp.configuredKernels.contains kernel
+    if replayed == configured then Option.none else Option.some configured
   | Option.none => Option.none
+
+/-- `kernelConfigDrift?` for nanoda, the kernel every current consumer configures. -/
+def TrustComparator.nanodaConfigDrift? (cmp : TrustComparator) : Option Bool :=
+  cmp.kernelConfigDrift? "nanoda"
 
 /-! ### Content binding -/
 
@@ -525,11 +1022,16 @@ reader at the project README rather than guessing the config path). The tool is 
 as `comparator-tool` — a distinct directory that cannot collide with a project's own in-repo
 `comparator/` folder (mirroring the CI checkout). These are *reproduction instructions*, so
 they are the one place the current configuration legitimately drives the prose: when the
-config enables the independent nanoda kernel (`enableNanoda`), the flow clones and builds
+config enables the independent nanoda kernel through `enable_nanoda`, the flow clones and builds
 `nanoda_lib` — describing what a run from this configuration does, not what the linked run did
 (`replayedWithNanoda`) — and points the comparator at it via `COMPARATOR_NANODA`; the relative
 `../nanoda_lib/…` path resolves
-because the run line first cd's into the project directory, a sibling of the two clones. -/
+because the run line first cd's into the project directory, a sibling of the two clones.
+
+An `external_kernels` entry gets a pointer to the comparator's own documentation instead,
+whatever it is labeled: that mechanism carries its own command vector in the
+configuration this page displays, and inventing a build for it would describe a different
+run. -/
 def reproCommands (cmp : TrustComparator) : List String :=
   let branchFlag := if cmp.toolRef.isEmpty then "" else s!"--branch {cmp.toolRef} "
   let cloneTool := s!"git clone {branchFlag}https://github.com/leanprover/comparator.git comparator-tool"
@@ -538,26 +1040,59 @@ def reproCommands (cmp : TrustComparator) : List String :=
   let pinTool :=
     if cmp.toolSha.isEmpty then []
     else [s!"(cd comparator-tool && git checkout {cmp.toolSha})"]
+  -- The tool reads the project's oleans, which carry a compiler stamp, so the run that
+  -- produced this verdict rebuilt the tool on the project's toolchain. Building it on
+  -- the tool's own toolchain instead is a different program checking different bytes.
+  let pinToolchain :=
+    if cmp.toolToolchain.isEmpty then []
+    else [s!"printf '%s\\n' '{cmp.toolToolchain}' > comparator-tool/lean-toolchain"]
   let buildTool := "(cd comparator-tool && lake build lean4export comparator)"
+  -- The nanoda lines describe the `enable_nanoda` mechanism, where the comparator runs a
+  -- binary it is handed through the environment. A configuration that instead lists the
+  -- checker in `external_kernels` carries its own command vector, which is displayed with
+  -- the configuration — inventing a build for it would be describing a different run.
+  let labeledExternally := fun (k : String) => cmp.externalKernels.any fun e => e.1 == k
   let nanodaBuild :=
-    if cmp.enableNanoda then
+    if cmp.enableNanoda && !labeledExternally "nanoda" then
       -- Same reasoning for the independent kernel: CI pins nanoda by revision, so the
       -- reproduce flow must too, or it is checking a different program.
+      let nanodaRef := cmp.recordedKernelRef "nanoda"
       ["git clone https://github.com/ammkrn/nanoda_lib.git"] ++
-      (if cmp.nanodaRef.isEmpty then []
-       else [s!"(cd nanoda_lib && git checkout {cmp.nanodaRef})"]) ++
+      (if nanodaRef.isEmpty then []
+       else [s!"(cd nanoda_lib && git checkout {nanodaRef})"]) ++
       ["(cd nanoda_lib && cargo build --release --locked)"]
     else []
+  let otherKernels :=
+    cmp.externalKernels.toList.map fun e =>
+      s!"# this configuration also runs an external checker labeled {e.1} — see the \
+         comparator README for building it; the command it runs is in the configuration \
+         shown below"
   let nanodaEnv :=
-    if cmp.enableNanoda then "COMPARATOR_NANODA=../nanoda_lib/target/release/nanoda_bin " else ""
-  let projectClone := if cmp.repoUrl.isEmpty then [] else [s!"git clone {cmp.repoUrl}"]
+    if cmp.enableNanoda && !labeledExternally "nanoda" then
+      "COMPARATOR_NANODA=../nanoda_lib/target/release/nanoda_bin " else ""
+  -- The run's own record of what it checked out wins over what this build's checkout
+  -- happens to point at.
+  let recordedRepo :=
+    if cmp.repository.isEmpty then ""
+    else if cmp.repository.startsWith "http" || cmp.repository.startsWith "git@" then cmp.repository
+    else s!"https://github.com/{cmp.repository}"
+  let cloneUrl := if recordedRepo.isEmpty then cmp.repoUrl else recordedRepo
+  let projectClone := if cloneUrl.isEmpty then [] else [s!"git clone {cloneUrl}"]
   let projectDir :=
-    if cmp.repoUrl.isEmpty then "path/to/your/project"
-    else ((cmp.repoUrl.splitOn "/").getLast?).getD "your-project"
+    if cloneUrl.isEmpty then "path/to/your/project"
+    else
+      let last := ((cloneUrl.splitOn "/").getLast?).getD "your-project"
+      if last.endsWith ".git" then (last.dropEnd 4).toString else last
+  -- The verifiers are pinned by revision; the subject must be too, or the same tools check
+  -- different bytes as soon as the default branch moves.
+  let projectPin :=
+    if cmp.commit.isEmpty || cloneUrl.isEmpty then []
+    else [s!"(cd {projectDir} && git checkout {cmp.commit})"]
   let runLines :=
     if cmp.configArgPath.isEmpty then []
     else [s!"cd {projectDir}", s!"{nanodaEnv}lake env ../comparator-tool/.lake/build/bin/comparator {cmp.configArgPath}"]
-  projectClone ++ [cloneTool] ++ pinTool ++ [buildTool] ++ nanodaBuild ++ runLines
+  projectClone ++ projectPin ++ [cloneTool] ++ pinTool ++ pinToolchain ++ [buildTool]
+    ++ nanodaBuild ++ otherKernels ++ runLines
 
 /-- Absolute path of an option-configured path (relative to the build CWD). -/
 private def absOptionPath (workspaceRoot : System.FilePath) (p : String) : System.FilePath :=
@@ -654,6 +1189,33 @@ def trustBadgeHtml (text : String) (variant : String := "")
 is no `T` separator. -/
 private def isoDate (s : String) : String := (s.splitOn "T").headD s
 
+/-! ### Transcribed upstream verdicts
+
+A project may present a verdict it did not produce: the subject repository ran the
+comparator, and this site transcribes what that run reported. The `reported-upstream`
+status is the vocabulary for exactly that. It is not a weaker `verified` — it is a
+different kind of claim, so it never renders in the success tier, never counts towards a
+success aggregate, and never carries a date with `verified_at` semantics. Its only date
+is `reported_at`, the moment the *upstream* record was made, and it renders no date at
+all when that is absent.
+-/
+
+/-- Whether this verdict is a transcription of an upstream record rather than a run this
+project's CI performed. -/
+def TrustComparator.isReportedUpstream (cmp : TrustComparator) : Bool :=
+  cmp.status == "reported-upstream"
+
+/-- Who published the transcribed record, for the label and tooltip; the generic
+"the subject repository" when the artifact does not say. -/
+def TrustComparator.reportedSourceName (cmp : TrustComparator) : String :=
+  if cmp.reportedSource.isEmpty then "the subject repository" else cmp.reportedSource
+
+/-- The one sentence every `reported-upstream` surface says: what the verdict is, and
+what this site did not do. -/
+def TrustComparator.reportedUpstreamNote (cmp : TrustComparator) : String :=
+  s!"Transcribed from records published by {cmp.reportedSourceName}; this site's CI did \
+     not run the comparator on it, and nothing here re-checked the claim."
+
 /--
 The comparator verdict badge, linking to the standalone `comparator/` page.
 
@@ -662,6 +1224,9 @@ badge is a read-back of a JSON artifact a past CI run wrote; nothing is re-check
 when this page is built, and a hand-edited artifact would render the same pill. The
 wording therefore names the source (CI) and the moment (the date) rather than
 asserting a present-tense property of the site.
+
+A `reported-upstream` record names a different source — someone else's CI — and so gets
+a neutral badge and, at most, the upstream record's own date.
 -/
 def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   let theoremsTitle :=
@@ -680,6 +1245,16 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
     let title := if cmp.note.isEmpty then s!"Comparator configured{theoremsTitle}" else cmp.note
     trustBadgeHtml "comparator: configured — not yet run" "warn" (Option.some title)
       (Option.some Informal.NodeRoute.comparatorHref)
+  else if cmp.isReportedUpstream then
+    -- Neutral, not success and not warning: the record is someone else's, which is
+    -- information about provenance rather than a fault. The date, when there is one, is
+    -- the upstream record's own.
+    let label :=
+      if cmp.reportedAt.isEmpty then "comparator: reported upstream"
+      else s!"comparator: reported upstream {isoDate cmp.reportedAt}"
+    trustBadgeHtml label ""
+      (Option.some s!"{cmp.reportedUpstreamNote}{theoremsTitle}")
+      (Option.some Informal.NodeRoute.comparatorHref)
   else
     trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some Informal.NodeRoute.comparatorHref)
 
@@ -694,10 +1269,12 @@ def trustScopeHtml (cmp? : Option TrustComparator) (theoremLikeTotal : Option Na
     else
       let k := cmp.theoremNames.length
       let noun := if k == 1 then "theorem" else "theorems"
+      -- A transcribed verdict reports; it does not certify.
+      let verb := if cmp.isReportedUpstream then "reported verified upstream:" else "certifies"
       let text :=
         match theoremLikeTotal with
-        | Option.some n => s!"certifies {k} {noun} of {n}"
-        | Option.none => s!"certifies {k} named {noun}"
+        | Option.some n => s!"{verb} {k} {noun} of {n}"
+        | Option.none => s!"{verb} {k} named {noun}"
       {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
 
 /-- Aggregate scope line for the multi-config trust surface: total certified
@@ -718,7 +1295,11 @@ def trustAggregateScopeHtml (comparators : List ComparatorTopic)
     {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
 
 /-- The multi-config comparator badge: how many of the M configs are verified,
-linking to the comparator page. -/
+linking to the comparator page.
+
+Only `verified` counts. A `configured` topic has not run, and a `reported-upstream` one
+is a record this site transcribed rather than produced; neither is a verification that
+happened here, so neither may push the badge to the success tier. -/
 def trustAggregateComparatorBadge (comparators : List ComparatorTopic) : Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "config" else "configs"
@@ -788,7 +1369,7 @@ def trustAuditBadge? (audit? : Option Informal.AxiomAudit.Summary) : Option Outp
              beyond propext, Classical.choice, and Quot.sound.")
 
 /--
-The rendered strip: a labelled badge row.
+The rendered strip: a labeled badge row.
 
 Carries the comparator verdict, the structural `uses`-graph gate verdicts, the
 axiom-audit result, and — when the document emits a formalization-metadata page or a
@@ -957,15 +1538,28 @@ A record claiming an independent kernel replay must say *which* kernel: `nanoda_
 true` without a `nanoda_ref` is a claim nobody can check or reproduce, and the page would
 render it as a second-kernel assurance. Hard error.
 
+The requirement is per *claimed* kernel, not per known one: a record naming three kernels
+and recording a revision for two of them is two thirds of a reproducible claim, and the
+third is the one the page must not print.
+
 Public for the same reason as `checkComparatorDigests`.
 -/
 def checkComparatorRunProvenance (cmp : TrustComparator) (statusPath : String) :
     Lean.CoreM Unit := do
-  if cmp.replayedWithNanoda && cmp.nanodaRef.trimAscii.toString.isEmpty then
-    throwError "{statusPath} records `nanoda_replay: true` but no `nanoda_ref`. An \
-      independent kernel replay with no recorded revision cannot be reproduced or \
-      assessed for currency, and would be rendered as a second-kernel assurance. Record \
-      the nanoda revision the run used, or drop the claim."
+  for kernel in cmp.replayedKernels do
+    unless (cmp.recordedKernelRef kernel).trimAscii.toString.isEmpty do continue
+    if kernel == "nanoda" then
+      throwError "{statusPath} records `nanoda_replay: true` but no `nanoda_ref`. An \
+        independent kernel replay with no recorded revision cannot be reproduced or \
+        assessed for currency, and would be rendered as a second-kernel assurance. Record \
+        the nanoda revision the run used, or drop the claim."
+    else
+      throwError "{statusPath} records a replay by an external checker labeled \
+        `{kernel}` but no revision for it. A replay with no recorded revision cannot be \
+        reproduced or assessed for currency. Record the revision the run used, or drop \
+        the claim — and note that a revision typed beside a label is necessary, not \
+        sufficient: only a recorded source commit plus the digest of the executable that \
+        ran binds the row to a program."
 
 /-- Normalize a filesystem path for comparison: separators to `/`, `./` segments
 dropped. Deliberately does **not** resolve `..` — the two paths being compared are
@@ -1115,7 +1709,10 @@ def attachComparatorSources (cmp0 : TrustComparator)
         configJson? := Option.some j
         cmp := { cmp with
           configJson := j.pretty
-          enableNanoda := (j.getObjValAs? Bool "enable_nanoda").toOption.getD false }
+          externalKernels := parseExternalKernels j
+          -- Either spelling counts, so a config that migrated `enable_nanoda` into
+          -- `external_kernels` does not read as having disabled the kernel.
+          enableNanoda := configEnablesNanoda j }
       | .error _ =>
         cmp := { cmp with configJson := raw }
   if !chalPath.isEmpty then
@@ -1211,6 +1808,12 @@ def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTo
       let cmp ← attachComparatorSources cmp0 statusPath cfgPath chalPath solPath liveProject
       -- Same source enrichment (highlighting + links) as the single-pair path.
       let cmp ← liftM (enrichComparatorSources opts workspaceRoot cmp chalPath solPath cfgPath)
+      -- Reserved manifest inputs: the chain files beyond the primary Challenge (in
+      -- elaboration order) and the subject-side statements aligned with the claim.
+      -- Carried now so the statement-closure round needs no second schema pass.
+      let cmp := { cmp with
+        challengeDeps := (t.getObjValAs? (Array String) "challenge_deps").toOption.getD #[]
+        claimDecls := (t.getObjValAs? (Array String) "claim_decls").toOption.getD #[] }
       let topicEntry : ComparatorTopic := { name, comparator := cmp }
       comparators := comparators ++ [topicEntry]
   return (comparators, axiomTopics)

@@ -107,10 +107,15 @@ private def inlineCodeList (items : List String) : Output.Html :=
     let code (s : String) : Output.Html := {{ <code>{{.text true s}}</code> }}
     rest.foldl (init := code first) fun acc x => .seq #[acc, {{ ", " }}, code x]
 
-/-- The verdict header: a status pill ("Verified"/success, "Configured — not yet run"/warn,
-else the raw status), an optional `<time>` (from `verified_at`, date-only), and an optional
-"CI verification record" link, followed by a compact `<dl>` of the certified theorem(s) and
-permitted axioms (each row omitted when its data is empty). -/
+/-- The verdict header: a status pill ("CI-verified"/success, "Configured — not yet run"/warn,
+"Reported upstream"/neutral, else the raw status), an optional `<time>`, and an optional
+"CI verification record" link, followed by a compact `<dl>` of the certified theorem(s),
+permitted axioms, and what the run was checked with (each row omitted when its data is
+empty).
+
+The date follows the status: `verified_at` dates a run this project's CI performed, and a
+transcribed upstream record has no such run, so it shows the upstream record's own
+`reported_at` or no date at all. -/
 private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) : Output.Html :=
   -- "Verified" alone reads as a live claim about the site you are looking at. The
@@ -124,10 +129,18 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
       trustBadgeHtml label "success"
         (Option.some "Recorded by the project's CI run; this page reads that run's artifact back, it does not re-run the check.")
     else if cmp.status == "configured" then trustBadgeHtml "Configured — not yet run" "warn"
+    else if cmp.isReportedUpstream then
+      -- Neutral tier and the upstream's own date, if it recorded one. Nothing here was
+      -- verified by this site's CI, so nothing here may borrow `verified_at`'s meaning.
+      let label :=
+        if cmp.reportedAt.isEmpty then "Reported upstream"
+        else s!"Reported upstream {isoDateOnly cmp.reportedAt}"
+      trustBadgeHtml label "" (Option.some cmp.reportedUpstreamNote)
     else trustBadgeHtml cmp.status
+  let dateSource := if cmp.isReportedUpstream then cmp.reportedAt else cmp.verifiedAt
   let date : Output.Html :=
-    if cmp.verifiedAt.isEmpty then .empty
-    else {{ <time class="bp_trust_verdict_date" datetime={{cmp.verifiedAt}}>{{.text true (isoDateOnly cmp.verifiedAt)}}</time> }}
+    if dateSource.isEmpty then .empty
+    else {{ <time class="bp_trust_verdict_date" datetime={{dateSource}}>{{.text true (isoDateOnly dateSource)}}</time> }}
   let ci : Output.Html :=
     match ciUrl? with
     | some u => trustOutLink u "CI verification record"
@@ -140,14 +153,28 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
       let k := cmp.theoremNames.length
       let noun := if k == 1 then "theorem" else "theorems"
       let text :=
-        match theoremLikeTotal with
-        | some n =>
-          s!"Certifies {k} {noun} of the {n} theorem-like results presented here. \
-             Everything else on this site is built and axiom-audited, but not comparator-certified."
-        | none =>
-          s!"Certifies {k} named {noun}. Everything else on this site is built and \
-             axiom-audited, but not comparator-certified."
+        if cmp.isReportedUpstream then
+          -- "Certifies" is a claim about a check that happened. This one happened
+          -- elsewhere, so the sentence says what it is instead.
+          match theoremLikeTotal with
+          | some n =>
+            s!"Names {k} {noun} of the {n} theorem-like results presented here as verified \
+               upstream. Nothing on this site re-checked them."
+          | none =>
+            s!"Names {k} {noun} as verified upstream. Nothing on this site re-checked them."
+        else
+          match theoremLikeTotal with
+          | some n =>
+            s!"Certifies {k} {noun} of the {n} theorem-like results presented here. \
+               Everything else on this site is built and axiom-audited, but not comparator-certified."
+          | none =>
+            s!"Certifies {k} named {noun}. Everything else on this site is built and \
+               axiom-audited, but not comparator-certified."
       {{ <p class="bp_trust_verdict_scope">{{.text true text}}</p> }}
+  let reportedNote : Output.Html :=
+    if !cmp.isReportedUpstream then .empty
+    else {{ <p class="bp_trust_note">{{.text true cmp.reportedUpstreamNote}}
+              " Read it as provenance, not as verification performed here."</p> }}
   let theoremRow : Output.Html :=
     if cmp.theoremNames.isEmpty then .empty
     else {{ <div><dt>"Certified theorem(s)"</dt><dd>{{inlineCodeList cmp.theoremNames}}</dd></div> }}
@@ -155,29 +182,144 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     if cmp.permittedAxioms.isEmpty then .empty
     else {{ <div><dt>"Permitted axioms"</dt><dd>{{inlineCodeList cmp.permittedAxioms}}</dd></div> }}
   let toolRow : Output.Html :=
-    -- "Checked with" is a statement about the linked run, so nanoda appears only when
-    -- the run recorded that it replayed. A `nanoda_ref` in a status artifact that
-    -- never says the replay happened pins a revision, not a second check.
+    -- "Checked with" is a statement about the linked run, so a checker appears here only
+    -- when the run recorded that it replayed, recorded which revision, and recorded
+    -- enough to authenticate the name. A `nanoda_ref` beside a record that never says the
+    -- replay happened pins a revision, not a second check; a label the comparator was
+    -- told to print is not a program at all, and belongs in the table below with its
+    -- provenance rather than in a row of things that checked this proof.
+    let kernelRefs :=
+      (cmp.assuredKernels.filterMap fun k =>
+        let ref := cmp.recordedKernelRef k
+        if ref.isEmpty then none else some s!"{k} {ref}").toList
     let refs :=
       (if cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolSha}"]) ++
       (if cmp.toolRef.isEmpty || !cmp.toolSha.isEmpty then [] else [s!"comparator {cmp.toolRef}"]) ++
-      (if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then [s!"nanoda {cmp.nanodaRef}"] else []) ++
+      kernelRefs ++
       (if cmp.landrunRef.isEmpty then [] else [s!"landrun {cmp.landrunRef}"])
     match refs with
     | [] => .empty
     | _ => {{ <div><dt>"Checked with"</dt><dd>{{inlineCodeList refs}}</dd></div> }}
+  -- The tool reads the project's oleans, which carry a compiler stamp, so which Lean
+  -- release the tool was built on is part of what ran — and of what a reader must
+  -- reproduce.
+  let toolchainRow : Output.Html :=
+    if cmp.toolToolchain.isEmpty then .empty
+    else {{ <div><dt>"Tool built on"</dt><dd>{{inlineCodeList [cmp.toolToolchain]}}</dd></div> }}
   let metaHtml : Output.Html :=
     if cmp.theoremNames.isEmpty && cmp.permittedAxioms.isEmpty
-        && cmp.toolSha.isEmpty && cmp.toolRef.isEmpty
-        && cmp.nanodaRef.isEmpty && cmp.landrunRef.isEmpty then .empty
-    else {{ <dl class="bp_trust_verdict_meta">{{.seq #[theoremRow, axiomRow, toolRow]}}</dl> }}
+        && cmp.toolSha.isEmpty && cmp.toolRef.isEmpty && cmp.toolToolchain.isEmpty
+        && cmp.nanodaRef.isEmpty && cmp.kernelRefs.isEmpty && cmp.landrunRef.isEmpty then .empty
+    else {{ <dl class="bp_trust_verdict_meta">{{.seq #[theoremRow, axiomRow, toolRow, toolchainRow]}}</dl> }}
   {{
     <section class="bp_trust_verdict">
       <div class="bp_trust_verdict_row">{{.seq #[pill, date, ci]}}</div>
       {{scope}}
+      {{reportedNote}}
       {{metaHtml}}
     </section>
   }}
+
+/-- Every external checker this verdict involves, in a stable order: those the run
+recorded first, then any the configuration enables and the run never mentioned. -/
+private def kernelRows (cmp : TrustComparator) : Array String :=
+  let recorded := cmp.recordedReplays.map (·.1)
+  recorded ++ cmp.configuredKernels.filter (!recorded.contains ·)
+
+/-- What the run's record authenticates about one labeled checker, as a cell: the
+program, or the fact that nothing names it. -/
+private def kernelIdentityCell (cmp : TrustComparator) (label : String) :
+    String × Output.Html :=
+  let ref := cmp.recordedKernelRef label
+  let argvNote : Output.Html :=
+    match (cmp.identityFor? label).map (·.commandArgv) with
+    | some argv =>
+      match argv[0]? with
+      | some exe => {{ " · ran " <code>{{.text true exe}}</code> }}
+      | none => .empty
+    | none => .empty
+  match cmp.kernelIdentityTier label with
+  | "named" =>
+    let record? := cmp.identityFor? label
+    let commit := (record?.map (·.sourceCommit)).getD ""
+    let digest := (record?.map (·.executableSha256)).getD ""
+    ("", {{ <code>{{.text true commit}}</code> " · binary " <code>{{.text true digest}}</code> }})
+  | "bound" =>
+    let record? := cmp.identityFor? label
+    let repo := (record?.map (·.repository)).getD ""
+    let commit := (record?.map (·.sourceCommit)).getD ""
+    let digest := (record?.map (·.executableSha256)).getD ""
+    let repoText := if repo.isEmpty then "an unrecorded repository" else repo
+    ("bp_trust_axiom_warn",
+      {{ "built from " {{.text true repoText}} " at " <code>{{.text true commit}}</code>
+         " · binary " <code>{{.text true digest}}</code>
+         " — not a checker this site knows by that name" }})
+  | "ci-built" =>
+    ("", {{ "built by the run's CI from " <code>{{.text true ref}}</code>
+            " — the record carries no digest of the binary that ran" }})
+  | _ =>
+    let refNote : Output.Html :=
+      if ref.isEmpty then .empty
+      else {{ " (revision " <code>{{.text true ref}}</code> " recorded separately, not bound to it)" }}
+    ("bp_trust_axiom_warn",
+      .seq #[{{ "not authenticated" }}, refNote, argvNote])
+
+/-- A compact per-checker table.
+
+Rendered when more than one checker is in play, or when the run claims a replay this
+site cannot name — a single unnamed claim must not be invisible just because it is the
+only one. With one authenticated kernel the "Checked with" row already says everything,
+and a one-row table would be chrome.
+
+Each row states what the *run record* says, which for a checker the configuration merely
+enables is nothing, and for a bare label is nothing about what ran. That distinction is
+the whole content of the table. -/
+private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
+  let kernels := kernelRows cmp
+  if kernels.size ≤ 1 && cmp.unnamedReplayClaims.isEmpty then none
+  else if kernels.isEmpty then none
+  else
+    let rows : Array Output.Html := kernels.map fun k =>
+      let named := cmp.kernelIdentityTier k == "named" || cmp.kernelIdentityTier k == "ci-built"
+      let checkerCell : Output.Html :=
+        if named then {{ <code>{{.text true k}}</code> }}
+        else {{ "external checker labeled " <code>{{.text true k}}</code> }}
+      let (replayText, replayClass) :=
+        match cmp.recordedReplay? k with
+        | some true => ("replayed", if named then "bp_trust_axiom_ok" else "bp_trust_axiom_warn")
+        | some false => ("not replayed", "bp_trust_axiom_warn")
+        | none => ("not recorded", "")
+      let verdict := ((cmp.identityFor? k).map (·.verdict)).getD ""
+      let replayHtml : Output.Html :=
+        if verdict.isEmpty then {{ {{.text true replayText}} }}
+        else {{ {{.text true replayText}} " — " {{.text true verdict}} }}
+      let (identityClass, identityHtml) := kernelIdentityCell cmp k
+      {{
+        <tr>
+          <td>{{checkerCell}}</td>
+          <td class={{replayClass}}>{{replayHtml}}</td>
+          <td class={{identityClass}}>{{identityHtml}}</td>
+        </tr>
+      }}
+    some <| trustSection "External checkers"
+      (.seq #[
+        {{
+          <div class="bp_trust_table_wrap">
+            <table class="bp_trust_kernel_table">
+              <thead><tr><th>"Checker"</th><th>"In the linked run"</th><th>"Identity"</th></tr></thead>
+              <tbody>{{.seq rows}}</tbody>
+            </table>
+          </div>
+        }},
+        {{
+          <p class="bp_trust_note">
+            "The comparator names an external checker by a key its configuration chooses, "
+            "runs the command that key points at, and reads exit status zero as acceptance. "
+            "A label is therefore display text: only a run record that binds a source "
+            "revision to the digest of the executable it invoked says which program ran. A "
+            "checker the configuration enables but the record does not mention describes the "
+            "next run, and a revision typed beside a label pins nothing."
+          </p> }}])
 
 /-- The "Reproduce it yourself" section: up to three tiers, each dropped when its data is
 absent. Tier 1 opens the challenge in the Lean playground (needs `playgroundUrl`); tier 2
@@ -217,6 +359,48 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
         {{trustOutLink "https://github.com/leanprover/comparator/tags" "comparator tag"}}
         " matching the project's " <code>"lean-toolchain"</code> " before building."
       </p> }}
+  -- Pinning the verifiers and leaving the subject on a moving branch reproduces the tools
+  -- but not the bytes they checked. Say which of the two the commands above are.
+  let subjectPinNote : Output.Html :=
+    if cmp.repository.isEmpty && cmp.repoUrl.isEmpty then .empty
+    else if !cmp.commit.isEmpty then
+      {{
+        <p class="bp_trust_note">
+          "The project is checked out at " <code>{{.text true cmp.commit}}</code>
+          " — the revision the recorded run verified — so the pinned verifiers above see the "
+          "same Challenge, Solution and configuration bytes that run did."
+        </p> }}
+    else
+      {{
+        <p class="bp_trust_note">
+          "The recorded run's subject revision is not recorded here, so these commands run "
+          "against the repository's current default branch: a rerun against today's tree, not "
+          "an exact reproduction of the run above. Compare the digests on this page with the "
+          "files you check out before reading the result as the same check."
+        </p> }}
+  -- The comparator reads the project's oleans, and oleans carry a compiler stamp: a tool
+  -- built on its own toolchain is a different program from the one that produced this
+  -- verdict. Say which of the two the commands above build.
+  let toolchainNote : Output.Html :=
+    if !cmp.toolToolchain.isEmpty then
+      {{
+        <p class="bp_trust_note">
+          "The run behind this verdict rebuilt the comparator on this project's toolchain — "
+          <code>{{.text true cmp.toolToolchain}}</code>
+          " — because the tool reads oleans that carry a compiler stamp, and the replay then "
+          "runs on the kernel of the release this project pins. The commands above write that "
+          "toolchain into the tool checkout before building it, as the run did."
+        </p> }}
+    else if cmp.toolRef.isEmpty && cmp.toolSha.isEmpty then .empty
+    else
+      {{
+        <p class="bp_trust_note">
+          "This verdict's record does not say which Lean toolchain the comparator itself was "
+          "built with, so the commands above build the tool on its own — which need not be "
+          "the toolchain the recorded run used. Since the tool reads oleans that carry a "
+          "compiler stamp, treat the local run as a check of your own build rather than an "
+          "exact replay of the one above."
+        </p> }}
   let configNote : Output.Html :=
     if !cmp.configArgPath.isEmpty then .empty
     else {{
@@ -278,7 +462,7 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
       <li>
         "Run the check locally from a clean working directory:"
         {{shell}}
-        {{.seq #[toolRefNote, configNote, nanodaPinNote, landrunNote]}}
+        {{.seq #[subjectPinNote, toolRefNote, toolchainNote, configNote, nanodaPinNote, landrunNote]}}
       </li> }}
   let items := ([tier1, tier2].filterMap id) ++ [tier3]
   trustSection "Reproduce it yourself"
@@ -325,6 +509,28 @@ private def contentBindingNote (cmp : TrustComparator) : Output.Html :=
                  tripping any check. Follow the repository links above to read the source at \
                  the pinned commit."}} }}
     {{ <p class="bp_trust_note">{{.seq #[boundSentence, unboundSentence]}}</p> }}
+
+/--
+Replay claims the record cannot name: the run says something ran and accepted, and
+nothing in the record says what program that was.
+
+Stated rather than dropped, because the comparator's own output will have called it by
+whatever name the configuration chose.
+-/
+private def unnamedCheckerNote (cmp : TrustComparator) : Output.Html :=
+  let claims := cmp.unnamedReplayClaims
+  if claims.isEmpty then .empty
+  else
+    let subject := if claims.size == 1 then "a checker labeled" else "checkers labeled"
+    let verb := if claims.size == 1 then "was" else "were"
+    {{ <p class="bp_trust_note">
+         "The run also reports that " {{.text true subject}} " " {{inlineCodeList claims.toList}}
+         {{.text true s!" accepted the solution. The comparator takes that label from its \
+            configuration and runs whatever command the label points at, treating exit status \
+            zero as acceptance, and this record does not bind the label to a source revision \
+            and executable digest — so what {verb} run is not established here. Nothing above \
+            counts it as a second kernel."}}
+       </p> }}
 
 /--
 What the linked run recorded about the independent kernel replay, and whether the
@@ -374,8 +580,10 @@ and asserting them through a generated site would test the `ExtraStep` plumbing
 instead. -/
 def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
-  -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool refs).
+  -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool
+  --    refs), plus the per-kernel table when more than one kernel is in play.
   let verdict := comparatorVerdictHeader cmp ciUrl? theoremLikeTotal
+  let kernelSection := (kernelTableSection? cmp).getD .empty
   -- 2. "The claim": the challenge statement, verbatim, with GitHub / playground /
   --    comparator.live links.
   --
@@ -438,9 +646,18 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
   --    an author who switches `enable_nanoda` on must not thereby make a past verdict
   --    claim a replay it never had.
   let kernelClause : Output.Html :=
-    if cmp.replayedWithNanoda then
+    -- Only checkers the run's record authenticates. A configuration can point the key
+    -- `nanoda` at any command, so a label may not become a second-kernel assurance.
+    let replayed := cmp.assuredKernels
+    if replayed == #["nanoda"] then
       {{ "Lean kernel — and, in the run that produced this verdict, independently the nanoda "
          "kernel, a separate reimplementation of Lean's type checker — to confirm that the "
+         "solution proves exactly the challenge statements, using only the permitted axioms "
+         "listed above." }}
+    else if !replayed.isEmpty then
+      {{ "Lean kernel — and, in the run that produced this verdict, independently the "
+         {{.text true (andList replayed.toList)}}
+         " kernels, separate reimplementations of Lean's type checker — to confirm that the "
          "solution proves exactly the challenge statements, using only the permitted axioms "
          "listed above." }}
     else
@@ -456,6 +673,7 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
             "solution cannot weaken or restate the claims it is measured against, and then asks the "
             {{kernelClause}}
           </p> }},
+        unnamedCheckerNote cmp,
         nanodaEvidenceNote cmp])
   -- 4. What you must still check yourself (the one non-automatable step).
   let reproducedClause : Output.Html :=
@@ -505,7 +723,8 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
                <summary>"Show comparator configuration"</summary>
                {{trustCodeBlock "bp_trust_code_json" cmp.configHtml cmp.configJson}}
              </details> }}])
-  .seq #[verdict, claimSection, certifiesSection, checkSection, reproSection, solutionSection, configSection]
+  .seq #[verdict, kernelSection, claimSection, certifiesSection, checkSection, reproSection,
+    solutionSection, configSection]
 
 /-- The single-comparator page: the panel body inside the page shell. -/
 def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)

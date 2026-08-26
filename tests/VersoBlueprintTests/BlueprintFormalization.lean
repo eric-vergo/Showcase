@@ -430,6 +430,200 @@ private def statusWithFields := r##"{
   without.toolRef == "" &&
   without.configArgPath == ""
 
+/-! ### Multi-kernel parsing
+
+The comparator is expected to name its kernels (`external_kernels` in the configuration,
+per-kernel replays in the status artifact) where today it carries one flag
+(`enable_nanoda`) and one revision (`nanoda_ref`). Both spellings must load, neither may
+speak for the other, and absence must keep reading as absence.
+-/
+
+private def parsedJson (s : String) : Json := (Json.parse s).toOption.getD Json.null
+
+private def nextGenConfig := r##"{
+  "challenge_module": "Challenge",
+  "external_kernels": { "nanoda": "aa11", "lean4lean": { "ref": "bb22" } }
+}"##
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let ng := parseExternalKernels (parsedJson nextGenConfig)
+  -- Object keys come out in key order, each with whatever revision the config records.
+  ng == #[("lean4lean", "bb22"), ("nanoda", "aa11")] &&
+  -- An array of names, and an array of objects, load too.
+  parseExternalKernels (parsedJson r##"{ "external_kernels": ["nanoda"] }"##) == #[("nanoda", "")] &&
+  parseExternalKernels (parsedJson r##"{ "external_kernels": [{"kernel": "nanoda", "ref": "cc"}] }"##)
+    == #[("nanoda", "cc")] &&
+  -- A legacy configuration names no kernels…
+  parseExternalKernels (parsedJson r##"{ "enable_nanoda": true }"##) == #[] &&
+  -- …but both spellings of "nanoda is enabled" agree, which is what keeps a migrated
+  -- configuration from reading as a run/config disagreement.
+  configEnablesNanoda (parsedJson r##"{ "enable_nanoda": true }"##) &&
+  configEnablesNanoda (parsedJson nextGenConfig) &&
+  !configEnablesNanoda (parsedJson r##"{ "external_kernels": ["lean4lean"] }"##) &&
+  !configEnablesNanoda (parsedJson r##"{ }"##)
+
+private def nextGenStatus := r##"{
+  "status": "verified",
+  "kernel_replays": {
+    "lean4lean": { "replayed": true, "ref": "bb22" },
+    "nanoda": { "replayed": true, "ref": "aa11" }
+  },
+  "tool_toolchain": "leanprover/lean4:v4.33.1",
+  "challenge_chain": [
+    { "path": "comparator/ChallengeDeps.lean", "sha256": "dd44" },
+    { "path": "comparator/Challenge.lean", "sha256": "ee55" }
+  ]
+}"##
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let legacy := TrustComparator.ofJson
+    (parsedJson r##"{ "status": "verified", "nanoda_replay": true, "nanoda_ref": "aa11" }"##)
+  let next := TrustComparator.ofJson (parsedJson nextGenStatus)
+  let pinOnly := TrustComparator.ofJson (parsedJson r##"{ "status": "verified", "nanoda_ref": "aa11" }"##)
+  let bare := TrustComparator.ofJson (parsedJson r##"{ "status": "configured" }"##)
+  -- Old shape ⇒ the one kernel, readable both generically and through the nanoda fields
+  -- the rest of the fork uses.
+  legacy.kernelReplays == #[("nanoda", true)] &&
+  legacy.recordedKernelRef "nanoda" == "aa11" &&
+  legacy.replayedWithNanoda &&
+  -- New shape ⇒ both kernels, and the nanoda fields still resolve from the map.
+  next.replayedKernels == #["lean4lean", "nanoda"] &&
+  next.recordedKernelRef "lean4lean" == "bb22" &&
+  next.nanodaRef == "aa11" &&
+  next.replayedWithNanoda &&
+  next.toolToolchain == "leanprover/lean4:v4.33.1" &&
+  next.challengeChain
+    == #[("comparator/ChallengeDeps.lean", "dd44"), ("comparator/Challenge.lean", "ee55")] &&
+  -- A recorded revision with no recorded replay pins a program; it claims no check.
+  pinOnly.kernelReplays == #[] &&
+  !pinOnly.replayedWithNanoda &&
+  !pinOnly.nanodaReplayRecorded &&
+  pinOnly.recordedKernelRef "nanoda" == "aa11" &&
+  -- Absence stays absence.
+  bare.kernelReplays == #[] && bare.challengeChain == #[] && bare.toolToolchain == ""
+
+/-! The trust payload rides a quoted `TrustData` through the traversal store, so the new
+fields have to survive the JSON round trip they are carried by. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let next := TrustComparator.ofJson (parsedJson nextGenStatus)
+  match fromJson? (α := TrustComparator) (toJson next) with
+  | .ok back =>
+    back.challengeChain == next.challengeChain &&
+    back.kernelReplays == next.kernelReplays &&
+    back.kernelRefs == next.kernelRefs &&
+    back.toolToolchain == next.toolToolchain
+  | .error _ => false
+
+/-! ### Checker identity (CX-064)
+
+The comparator's `external_kernels` key is a consumer-chosen label it copies into its
+output before running the associated command and reading exit status zero as acceptance:
+`{"nanoda": ["/usr/bin/true"]}` prints that nanoda accepted the solution. A label, and a
+revision typed beside it, therefore authenticate nothing. `kernelIdentityTier` is where
+that judgement is made once.
+-/
+
+private def spoofedLabelStatus := r##"{
+  "status": "verified",
+  "kernel_replays": { "nanoda": { "replayed": true, "ref": "f58f2f6d" } }
+}"##
+
+private def namedIdentityStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib.git",
+      "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
+      "executable_sha256": "abcdef01", "replayed": true, "verdict": "accepted" }
+  ]
+}"##
+
+private def wrongRepoStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "repository": "https://github.com/attacker/not_nanoda",
+      "source_commit": "05055695", "executable_sha256": "abcdef01", "replayed": true }
+  ]
+}"##
+
+private def noDigestStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695", "replayed": true }
+  ]
+}"##
+
+private def unknownCheckerStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "lean4lean", "adapter_kind": "acme", "repository": "https://github.com/x/lean4lean",
+      "source_commit": "cc11dd22", "executable_sha256": "9876fedc", "replayed": true }
+  ]
+}"##
+
+/-- info: ("labeled", "named", "bound", "labeled", "bound", "ci-built") -/
+#guard_msgs in
+#eval
+  -- A label the configuration points somewhere of its choosing, with a revision typed
+  -- beside it: authenticates nothing.
+  let spoofed := { TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
+    externalKernels := #[("nanoda", "")], enableNanoda := true }
+  let named := TrustComparator.ofJson (parsedJson namedIdentityStatus)
+  let wrongRepo := TrustComparator.ofJson (parsedJson wrongRepoStatus)
+  let noDigest := TrustComparator.ofJson (parsedJson noDigestStatus)
+  let unknown := TrustComparator.ofJson (parsedJson unknownCheckerStatus)
+  -- The legacy pair, which no `external_kernels` map can redirect: the run's CI built the
+  -- binary from the recorded revision and wrote both.
+  let legacy := TrustComparator.ofJson
+    (parsedJson r##"{ "status": "verified", "nanoda_replay": true, "nanoda_ref": "f58f2f6d" }"##)
+  (spoofed.kernelIdentityTier "nanoda", named.kernelIdentityTier "nanoda",
+   wrongRepo.kernelIdentityTier "nanoda", noDigest.kernelIdentityTier "nanoda",
+   unknown.kernelIdentityTier "lean4lean", legacy.kernelIdentityTier "nanoda")
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let spoofed := { TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
+    externalKernels := #[("nanoda", "")], enableNanoda := true }
+  let named := TrustComparator.ofJson (parsedJson namedIdentityStatus)
+  let unknown := TrustComparator.ofJson (parsedJson unknownCheckerStatus)
+  -- The run says a replay happened, and this site must not say nanoda performed it.
+  spoofed.replayedKernels == #["nanoda"] &&
+  spoofed.assuredKernels == #[] &&
+  spoofed.unnamedReplayClaims == #["nanoda"] &&
+  !spoofed.replayedWithNanoda &&
+  -- A bound identity of a checker this fork does not know by name is identified, but
+  -- still not named by it.
+  unknown.assuredKernels == #[] && unknown.unnamedReplayClaims == #["lean4lean"] &&
+  -- The full binding of a known kernel is the one case that carries the name.
+  named.assuredKernels == #["nanoda"] && named.replayedWithNanoda &&
+  -- Trailing `.git` and case are spelling, not a different repository.
+  named.kernelIdentities.size == 1
+
+/-! A configuration that migrated `enable_nanoda` into `external_kernels` has not turned
+the kernel off, so a run that replayed is not drift. Dropping the kernel from the map
+still is. -/
+
+/-- info: (none, none, some false) -/
+#guard_msgs in
+#eval
+  let ofConfig (cfg : String) : TrustComparator :=
+    let j := parsedJson cfg
+    { externalKernels := parseExternalKernels j
+      enableNanoda := configEnablesNanoda j
+      nanodaReplay := some true }
+  ((ofConfig r##"{ "external_kernels": { "nanoda": "aa11" } }"##).nanodaConfigDrift?,
+   (ofConfig r##"{ "external_kernels": { "lean4lean": "bb", "nanoda": "aa11" } }"##).nanodaConfigDrift?,
+   (ofConfig r##"{ "external_kernels": { "lean4lean": "bb" } }"##).nanodaConfigDrift?)
+
 /-! `reproCommands` degrades with the data: project-clone only with a `repoUrl`, `--branch`
 only with a `toolRef`, run line only with a `configArgPath`; the tool is always cloned as the
 collision-safe `comparator-tool`. With `enableNanoda`, the flow also clones/builds `nanoda_lib`
@@ -557,6 +751,73 @@ reject every correctly-configured project.
   -- (the page then says so in prose).
   !hasSubstr joinedUnpinned "git checkout" &&
   hasSubstr joinedUnpinned "nanoda_lib"
+
+/-! ### Reproduce commands rebuild the tool the way the run did
+
+The comparator reads the project's oleans, which carry a compiler stamp, so a run
+rebuilds the tool on the *project's* toolchain. When the record says which, the commands
+write it into the checkout before building — after the commit pin, before the build. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let cmp : TrustComparator := {
+    toolRef := "v4.33.0", toolSha := "abc123", toolToolchain := "leanprover/lean4:v4.33.1",
+    configArgPath := "comparator/comparator.json" }
+  let lines := reproCommands cmp
+  let joined := String.intercalate "\n" lines
+  let idx := fun (needle : String) => lines.findIdx? fun l => hasSubstr l needle
+  idx "git checkout abc123" == some 1 &&
+  idx "> comparator-tool/lean-toolchain" == some 2 &&
+  idx "lake build lean4export" == some 3 &&
+  hasSubstr joined "printf '%s\\n' 'leanprover/lean4:v4.33.1' > comparator-tool/lean-toolchain" &&
+  -- Unrecorded ⇒ no override line at all (the page says so in prose instead).
+  !hasSubstr (String.intercalate "\n" (reproCommands { cmp with toolToolchain := "" }))
+    "lean-toolchain"
+
+/-! The verifiers are pinned by revision, so the subject has to be too: the same tools
+check different bytes as soon as the default branch moves. When the run recorded which
+revision it verified, the project step clones and detaches at it, before anything is
+built. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let pinned : TrustComparator := {
+    repository := "eric-vergo/OEIS-A362583-Irrationality"
+    commit := "76ea8221111111111111111111111111111111ab"
+    toolSha := "abc123", configArgPath := "comparator/comparator.json" }
+  let lines := reproCommands pinned
+  let idx := fun (needle : String) => lines.findIdx? fun l => hasSubstr l needle
+  idx "git clone https://github.com/eric-vergo/OEIS-A362583-Irrationality" == some 0 &&
+  idx "git checkout 76ea8221111111111111111111111111111111ab" == some 1 &&
+  idx "comparator.git comparator-tool" == some 2 &&
+  hasSubstr (String.intercalate "\n" lines)
+    "(cd OEIS-A362583-Irrationality && git checkout 76ea8221111111111111111111111111111111ab)" &&
+  -- A record with no subject revision keeps exactly the old shape (clone, then the tool).
+  (reproCommands { pinned with commit := "" }).length + 1 == lines.length &&
+  !hasSubstr (String.intercalate "\n" (reproCommands { pinned with commit := "" }))
+    "git checkout 76ea"
+
+/-! An `external_kernels` entry carries its own command vector in the configuration this
+page displays, so the flow points at the comparator README rather than inventing a build
+— whatever the entry is labeled. The legacy `enable_nanoda` flag, which hands the
+comparator a binary through the environment, still gets the real nanoda flow. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let external : TrustComparator := {
+    configArgPath := "c.json", enableNanoda := true,
+    externalKernels := #[("nanoda", ""), ("lean4lean", "")] }
+  let joined := String.intercalate "\n" (reproCommands external)
+  let legacy := String.intercalate "\n"
+    (reproCommands { configArgPath := "c.json", enableNanoda := true })
+  !hasSubstr joined "nanoda_lib" &&
+  !hasSubstr joined "COMPARATOR_NANODA=" &&
+  countSubstr joined "external checker labeled" == 2 &&
+  hasSubstr legacy "COMPARATOR_NANODA=" &&
+  hasSubstr legacy "nanoda_lib"
 
 /-! ### comparator.live permalink -/
 
