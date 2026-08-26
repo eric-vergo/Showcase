@@ -89,16 +89,24 @@ private def instantiateSourceLinkTemplate (template : String) (vars : Array (Str
   vars.foldl (init := template) fun acc kv =>
     acc.replace ("{" ++ kv.1 ++ "}") kv.2
 
-private def sourceLineFragment? (range? : Option Lean.DeclarationRange) : Option String := do
-  let range ← range?
-  let startLine := range.pos.line
-  let endLine := range.endPos.line
+/--
+The `#L…` line anchor for a source range (empty when there is no usable range).
+
+Public because the revision-free half of a project source link stores only the path:
+the anchor is recomputed at emission from the range the artifact already carries.
+-/
+def sourceLineFragment (startLine endLine : Nat) : String :=
   if startLine == 0 then
-    none
+    ""
   else if endLine > startLine then
-    some s!"#L{startLine}-L{endLine}"
+    s!"#L{startLine}-L{endLine}"
   else
-    some s!"#L{startLine}"
+    s!"#L{startLine}"
+
+private def sourceLineFragmentOf (range? : Option Lean.DeclarationRange) : String :=
+  match range? with
+  | some range => sourceLineFragment range.pos.line range.endPos.line
+  | none => ""
 
 private def absoluteSourcePath (workspaceRoot sourcePath : System.FilePath) : System.FilePath :=
   if sourcePath.isAbsolute then
@@ -114,55 +122,124 @@ private def normalizeSourcePath? (workspaceRoot sourcePath : System.FilePath) :
   catch _ =>
     pure (some sourcePath)
 
-private def gitHubSourceHref? (workspaceRoot sourcePath : System.FilePath)
-    (range? : Option Lean.DeclarationRange) : IO (Option String) := do
+/--
+Where a declaration's source lives, as far as a source link is concerned.
+
+The distinction is *whose* revision the link's `/blob/<rev>/` component may name, and
+therefore whether the link may be composed at elaboration time at all.
+-/
+inductive SourceLink where
+  /--
+  A file in the project's **own** repository, kept as a path relative to that
+  repository's root and deliberately carrying no revision.
+
+  The project's `HEAD` moves, and this value is snapshotted at elaboration into
+  artifacts (`Data.ExternalRef`, the declaration registry) that a warm `.lake` replays
+  across commits — so a revision baked in here outlives the tree it described. The
+  revision is supplied at emission instead, from the one value the build stamp also
+  reads (`Informal.resolveSourceHref?`).
+  -/
+  | project (relPath : String)
+  /--
+  An already-final URL: a consumer template's output, which names no revision of ours,
+  or a blob URL into a dependency checkout, whose revision is pinned by the lockfile
+  and therefore cannot drift within a build.
+  -/
+  | fixed (url : String)
+deriving Inhabited, Repr, BEq
+
+private def gitSourceLink? (workspaceRoot sourcePath : System.FilePath)
+    (fragment : String) : IO (Option SourceLink) := do
   let sourcePath := absoluteSourcePath workspaceRoot sourcePath
   let sourceDir := sourcePath.parent.getD sourcePath
   let some gitRoot ← RuntimeCache.cachedGitRoot? sourceDir (Git.toplevelAt? sourceDir)
     | return none
+  -- The project's own repository: withhold the revision and let emission bind it. The
+  -- test is repository identity, not a path prefix — a sibling package one level up is
+  -- still this repository if git says so, and a `.lake/packages/` checkout never is.
+  let projectRoot? ← RuntimeCache.cachedGitRoot? workspaceRoot (Git.toplevelAt? workspaceRoot)
+  if projectRoot? == some gitRoot then
+    if let some relPath := workspaceRelativeSourcePath? gitRoot sourcePath then
+      return some (.project relPath)
+  -- A dependency checkout — or a build that is in no repository of its own, which has
+  -- no revision to bind against. Either way the commit observed here is the right one.
   let some repoInfo ← RuntimeCache.cachedGitRepoInfo? gitRoot (Git.repositoryInfoAtRoot? gitRoot)
     | return none
   let relPath := (workspaceRelativeSourcePath? repoInfo.root sourcePath).getD sourcePath.toString
-  let fragment := sourceLineFragment? range? |>.getD ""
-  pure <| some s!"{repoInfo.githubUrl}/blob/{repoInfo.commit}/{relPath}{fragment}"
+  pure <| some (.fixed s!"{repoInfo.githubUrl}/blob/{repoInfo.commit}/{relPath}{fragment}")
 
 /--
-Resolve the source link for a declaration from its module/path/range: the
-consumer's `verso.blueprint.externalCode.sourceLinkTemplate` when configured,
-else an automatic GitHub blob URL when the source belongs to a Git checkout with
-a GitHub `origin` remote; `none` when underivable. Shared by the external-ref
-snapshot (`Data.ExternalRef.sourceHref?`) and the declaration registry
-(`DeclRegistry.Entry.sourceHref?`), so both build identical URLs.
+Classify the source link for a declaration from its module/path/range: the consumer's
+`verso.blueprint.externalCode.sourceLinkTemplate` when configured, else the file's place
+in a Git checkout with a GitHub `origin` remote; `none` when underivable.
+
+Files in the project's own repository come back *unresolved* (`SourceLink.project`) —
+see `SourceLink`. Shared by the external-ref snapshot (`Data.ExternalRef`) and the
+declaration registry (`DeclRegistry.Entry`), so the two classify identically.
 -/
-def sourceLinkHref? (opts : Lean.Options) (workspaceRoot : System.FilePath)
+def sourceLinkFor? (opts : Lean.Options) (workspaceRoot : System.FilePath)
+    (moduleName? : Option Lean.Name) (sourcePath? : Option System.FilePath)
+    (range? : Option Lean.DeclarationRange) : IO (Option SourceLink) := do
+  let template := (externalSourceLinkTemplate opts).trimAscii.toString
+  let some sourcePath := sourcePath?
+    | return none
+  if template.isEmpty then
+    gitSourceLink? workspaceRoot sourcePath (sourceLineFragmentOf range?)
+  else
+    let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
+    let line := (range?.map (fun r => toString r.pos.line)).getD ""
+    let column := (range?.map (fun r => toString r.pos.column)).getD ""
+    let endLine := (range?.map (fun r => toString r.endPos.line)).getD ""
+    let endColumn := (range?.map (fun r => toString r.endPos.column)).getD ""
+    let href :=
+      instantiateSourceLinkTemplate template #[
+        ("path", sourcePath.toString),
+        ("relpath", relPath),
+        ("module", (moduleName?.map toString).getD ""),
+        ("line", line),
+        ("column", column),
+        ("endLine", endLine),
+        ("endColumn", endColumn)
+      ]
+    let href := href.trimAscii.toString
+    if href.isEmpty then pure none else pure (some (.fixed href))
+
+/--
+Compose the final `href` for a stored source link.
+
+`repoPath?` is the project-relative path a `SourceLink.project` was stored as and
+`fixed?` the already-final URL a `SourceLink.fixed` was stored as; at most one is set.
+The project case is bound **here**, at emission, to `rev` — the same record the build
+stamp names — which is what makes the trust page's "\"View source\" links point at the
+commit the site was built from" true by construction rather than by coincidence of
+cache state.
+-/
+def resolveSourceHref? (rev : Git.BuildRevision)
+    (repoPath? : Option String) (fragment : String) (fixed? : Option String) :
+    Option String :=
+  match repoPath? with
+  | some relPath => rev.blobUrl? relPath fragment
+  | none => fixed?
+
+/--
+Resolve a source link against the checkout **as it stands now**.
+
+Only for callers that capture the linked file's *bytes* in the same breath: the
+comparator page reads its Challenge/Solution/config text at elaboration and displays it,
+so its link has to name the revision those bytes were read at rather than the one the
+site is emitted at (those files are not Lean modules, so nothing invalidates the cached
+capture when they change). Data that outlives the process stores the unresolved
+`SourceLink` instead and binds it at emission — see `SourceLink`.
+-/
+def sourceLinkHrefNow? (opts : Lean.Options) (workspaceRoot : System.FilePath)
     (moduleName? : Option Lean.Name) (sourcePath? : Option System.FilePath)
     (range? : Option Lean.DeclarationRange) : IO (Option String) := do
-  let template := (externalSourceLinkTemplate opts).trimAscii.toString
-  if template.isEmpty then
-    match sourcePath? with
-    | some sourcePath => gitHubSourceHref? workspaceRoot sourcePath range?
-    | none => pure none
-  else
-    match sourcePath? with
-    | none => pure none
-    | some sourcePath =>
-      let relPath := (workspaceRelativeSourcePath? workspaceRoot sourcePath).getD sourcePath.toString
-      let line := (range?.map (fun r => toString r.pos.line)).getD ""
-      let column := (range?.map (fun r => toString r.pos.column)).getD ""
-      let endLine := (range?.map (fun r => toString r.endPos.line)).getD ""
-      let endColumn := (range?.map (fun r => toString r.endPos.column)).getD ""
-      let href :=
-        instantiateSourceLinkTemplate template #[
-          ("path", sourcePath.toString),
-          ("relpath", relPath),
-          ("module", (moduleName?.map toString).getD ""),
-          ("line", line),
-          ("column", column),
-          ("endLine", endLine),
-          ("endColumn", endColumn)
-        ]
-      let href := href.trimAscii.toString
-      if href.isEmpty then pure none else pure (some href)
+  match ← sourceLinkFor? opts workspaceRoot moduleName? sourcePath? range? with
+  | none => return none
+  | some (.fixed url) => return some url
+  | some (.project relPath) =>
+    let rev ← RuntimeCache.cachedBuildRevision workspaceRoot
+    return rev.blobUrl? relPath (sourceLineFragmentOf range?)
 
 private def moduleSourcePathText (moduleName : Lean.Name) : String :=
   (toString moduleName).replace "." "/" ++ ".lean"
@@ -957,8 +1034,20 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       | none => pure none
     let provenance := mkProvenance workspaceRoot moduleName? sourcePath?
     let selectionRange? := ranges?.map (fun r => r.selectionRange)
-    let sourceHref? ←
-      liftM <| sourceLinkHref? opts workspaceRoot moduleName? sourcePath? (ranges?.map (fun r => r.range))
+    -- Source link, classified but deliberately not dated: a file in the project's own
+    -- repository keeps only its repository-relative path, because this snapshot is
+    -- replayed from `.lake` across commits and a revision baked in here would outlive
+    -- the tree it described (see `SourceLink`). Emission binds it to the build's own.
+    let sourceLink? ←
+      liftM <| sourceLinkFor? opts workspaceRoot moduleName? sourcePath? (ranges?.map (fun r => r.range))
+    let sourceRepoPath? : Option String :=
+      match sourceLink? with
+      | some (.project relPath) => some relPath
+      | _ => none
+    let sourceHref? : Option String :=
+      match sourceLink? with
+      | some (.fixed url) => some url
+      | _ => none
     -- Read the source file once (shared by the verbatim-signature highlight and the
     -- proof-body capture below); `none` on any missing/unreadable source.
     let content? : Option String ←
@@ -1041,6 +1130,7 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
       range? := ranges?.map (fun r => r.range)
       selectionRange?
       sourceHref?
+      sourceRepoPath?
       render
       proofSource?
       proofHtml?

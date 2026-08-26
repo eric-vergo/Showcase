@@ -423,7 +423,24 @@ structure ExternalRef where
   Snapshot of declaration kind and optional source link.
   -/
   kind : NodeKind := .definition
+  /--
+  Source link for declarations whose link names no revision of this project's: a
+  consumer template's output, or a blob URL into a dependency checkout pinned by the
+  lockfile. **Not** set for a file in the project's own repository — see
+  `sourceRepoPath?`, and `Informal.SourceLink` for why.
+  -/
   sourceHref? : Option String := none
+  /--
+  For a file in the project's **own** repository: its path relative to that
+  repository's root, with no revision attached.
+
+  Exactly one of this and `sourceHref?` is set. This snapshot is replayed from a warm
+  `.lake` across commits, so a revision recorded here would keep naming the tree it was
+  elaborated against long after the build stamp moved on (CX-066); the revision is
+  supplied at emission instead, from the value the stamp itself reads
+  (`Informal.resolveSourceHref?`).
+  -/
+  sourceRepoPath? : Option String := none
   /--
   Snapshot of the direct external rendering outcome.
   -/

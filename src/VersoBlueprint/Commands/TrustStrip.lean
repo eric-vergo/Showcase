@@ -1388,10 +1388,16 @@ def enrichComparatorSources (opts : Lean.Options) (workspaceRoot : System.FilePa
   if !cmp.solutionSource.isEmpty then
     if let some html ← Informal.highlightModuleSourceHtml? cmp.solutionSource then
       cmp := { cmp with solutionHtml := html }
-  -- Blob URLs at the pinned commit, via the shared source-link builder (auto GitHub
-  -- when the file is in a checkout with a GitHub `origin`; degrades to none).
+  -- Blob URLs via the shared source-link builder (auto GitHub when the file is in a
+  -- checkout with a GitHub `origin`; degrades to none), resolved against the checkout
+  -- as it stands *here* rather than at emission. Deliberate, and the opposite choice
+  -- from the declaration registry's: the blocks above hold the Challenge/Solution/config
+  -- bytes read a few lines earlier, and these links have to name the revision those
+  -- bytes came from. Those files are not Lean modules, so nothing invalidates this
+  -- capture when they change; re-dating the link at emission would point a reader at
+  -- bytes other than the ones displayed beside it.
   if !chalPath.isEmpty then
-    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+    if let some blob ← liftM <| sourceLinkHrefNow? opts workspaceRoot none
         (some (absOptionPath workspaceRoot chalPath)) none then
       cmp := { cmp with githubChallengeUrl := blob }
       if let some raw := blobToRawGitHubUrl? blob then
@@ -1399,11 +1405,11 @@ def enrichComparatorSources (opts : Lean.Options) (workspaceRoot : System.FilePa
           playgroundUrl :=
             s!"https://live.lean-lang.org/#project={playgroundMathlibProjectId}&url={System.Uri.escapeUri raw}" }
   if !solPath.isEmpty then
-    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+    if let some blob ← liftM <| sourceLinkHrefNow? opts workspaceRoot none
         (some (absOptionPath workspaceRoot solPath)) none then
       cmp := { cmp with githubSolutionUrl := blob }
   if !cfgPath.isEmpty then
-    if let some blob ← liftM <| sourceLinkHref? opts workspaceRoot none
+    if let some blob ← liftM <| sourceLinkHrefNow? opts workspaceRoot none
         (some (absOptionPath workspaceRoot cfgPath)) none then
       cmp := { cmp with githubConfigUrl := blob }
   -- Project repo URL for the tier-3 "clone the project" step: the repository of the first

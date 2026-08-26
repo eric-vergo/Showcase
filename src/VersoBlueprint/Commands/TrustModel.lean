@@ -32,7 +32,9 @@ Six sections:
 1. **What is machine-checked here** — a table built from *this build's* data: the
    toolchain, the axiom audit's findings, the structural graph gates, and the
    comparator verdict with its explicit scope. Nothing is restated from
-   `formalization.yaml`; every row is either run evidence or marked absent.
+   `formalization.yaml`; every row is either run evidence or marked absent. Where the
+   build carries a registry surface, a closing paragraph says what a Palomar
+   registration establishes (a digest identity) and what it does not (a verification).
 2. **What is not machine-checked** — chiefly the informal↔formal correspondence,
    which is a human obligation no part of this stack discharges, plus the
    rendering-tier legend and the source-link caveats.
@@ -128,6 +130,53 @@ private def closureOnTrustData? (trust? : Option TrustData) : Option StatementCl
   | Option.none => (trust.comparators.findSome? (·.comparator.closure?))
 
 /-! ### Section 1 — what this build actually checked -/
+
+/--
+What a Palomar registration establishes on this site, and what it does not.
+
+The page enumerates machine-established evidence and human-asserted evidence, and a
+registry record is neither of the things a reader will assume on sight: a claim-bound
+match *is* machine-established, but what it establishes is a digest identity with an
+immutable third-party snapshot, not a second verification. Said here rather than only on
+the cards, because this is the page a reader comes to for the boundary.
+
+Rendered only where the build actually carries a registry surface — matched records, or a
+permalink the consumer supplied. A site with no registration has nothing to qualify, and
+inventing a row about an absent surface would be the same defect in the other direction.
+-/
+private def registryProse (trust? : Option TrustData) : Output.Html :=
+  match trust? with
+  | Option.none => .empty
+  | Option.some trust =>
+    let claimBound := trust.claimRegistryEntries
+    if claimBound.isEmpty && trust.registryEntry?.isNone && trust.registryLink.isEmpty then
+      .empty
+    else
+      let boundLine :=
+        match claimBound with
+        | [] =>
+          "No record this build matched is bound to a claim this page presents; what it \
+           matched is weaker, and is described below."
+        | [_] => "One record is bound to a claim this page presents."
+        | es => s!"{es.length} records are bound to claims this page presents."
+      .seq #[
+        {{ <h3 class="bp_trustmodel_subtitle">"Registry records"</h3> }},
+        prose
+          s!"A Palomar registration is a record that a project was submitted at one revision \
+             and that the registry accepted it. {boundLine} A bound match is a digest \
+             identity and nothing beyond one: the record's immutable `challenge_sha256` \
+             equals the digest of the challenge statement displayed here, and the verifying \
+             run recorded that same digest — so the record and the claim are demonstrably \
+             about the same bytes.",
+        prose
+          s!"{Informal.Palomar.honestyNote} Nothing in a registration re-ran the kernel or \
+             the comparator, and this build did not either; it compared digests. A weaker \
+             row says less again: a match on the repository alone, or on a digest the \
+             verifying run never recorded, is provenance about the project and is bound to \
+             no statement on this page, and a registry permalink the site's author pasted in \
+             was not checked at all — nothing established that the record behind it exists, \
+             describes this project, or concerns any claim here. Those appear as cards on \
+             the statement comparator page, never as a verdict."]
 
 private def machineCheckedSection (data : TrustModelData) (trust? : Option TrustData)
     (checks : Informal.GraphChecks.Results) (autoDepsActive : Bool) : Output.Html :=
@@ -285,7 +334,8 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
           <tbody>{{.seq #[kernelRow, auditRow, graphRow, comparatorRow, lintRow]}}</tbody>
         </table>
       </div>
-    }}
+    }},
+    registryProse trust?
   ]
 
 /-! ### Section 2 — the limits -/

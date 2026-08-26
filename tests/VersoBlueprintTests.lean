@@ -3,6 +3,7 @@ import VersoBlueprintTests.BlueprintFormalization
 import VersoBlueprintTests.BlueprintMainWrapper
 import VersoBlueprintTests.ExternalDeclRender
 import VersoBlueprintTests.RuntimeCache
+import VersoBlueprintTests.SourceLinkRevision
 import VersoBlueprintTests.TestBlueprintRegistry
 import VersoBlueprintTests.TestBlueprintRegistryChecks
 import VersoBlueprintTests.TestBlueprintRegistryCoverage

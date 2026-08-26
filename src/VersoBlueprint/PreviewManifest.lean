@@ -29,6 +29,8 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphGate
 import VersoBlueprint.GraphMetrics
 import VersoBlueprint.Git
+import VersoBlueprint.RuntimeCache
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.Html
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Process
@@ -656,21 +658,21 @@ def readBuildMetadata : IO BuildMetadata := do
   -- from *is* `abc1234`. Mark a dirty worktree in the stamp itself (and warn), rather
   -- than publishing a commit the reader cannot use to reproduce what they are looking
   -- at. `none` (git unavailable) leaves the stamp unqualified.
-  let commit ← Git.shortCommitAt? cwd
-  let dirty? ← Git.dirtyAt? cwd
-  let commit :=
-    match commit, dirty? with
-    | some c, some true => some s!"{c}-dirty"
-    | c, _ => c
-  if dirty? == some true then
+  --
+  -- One probe, shared: this is the same record every project-local source link is
+  -- composed from at emission. Two independent probes is precisely what let a warm
+  -- `.lake` publish a current stamp over older links (CX-066).
+  let rev ← Informal.RuntimeCache.currentBuildRevision
+  let commit := rev.stampCommit?
+  if rev.dirty? == some true then
     IO.eprintln
       "warning: showcase build metadata: the project worktree has uncommitted changes, so \
        the recorded commit does not describe the sources this site was built from. The build \
        stamp is marked `-dirty`; source links will point at the last commit, not at what you \
        see here."
   let subject ← Git.subjectAt? cwd
-  let projectRepositoryUrl ← Git.repositoryUrlAt? cwd
-  let projectCommitUrl := Git.commitUrl? projectRepositoryUrl (← Git.fullCommitAt? cwd)
+  let projectRepositoryUrl := rev.repositoryUrl?
+  let projectCommitUrl := rev.commitUrl?
   let leanToolchain ← readLeanToolchain
   let blueprintPackage ← readBlueprintPackage manifest?
   let mathlibPackage? ← readMathlibPackage? manifest?
@@ -2318,8 +2320,23 @@ def emitBlueprintPreviewData (extensionImpls : ExtensionImpls) : ExtraStep := fu
   -- All-declarations registry (every project decl, wired or not), when a
   -- `blueprint_graph` block built one under `includeAllDecls`. Absent otherwise —
   -- no file written, no behavior change for consumers without the flag.
+  --
+  -- This is where project-local source links acquire their revision: the stored
+  -- registry carries repository-relative paths, and `resolveStoredRegistry` binds them
+  -- to the same revision record the build stamp names, so the published artifact cannot
+  -- name a commit this build does not claim (CX-066). A registry we serialized
+  -- ourselves and cannot read back is a real failure, not a degradation: reporting it
+  -- and writing nothing keeps an internal-shaped artifact off the site, and the catalog
+  -- and decl-page steps fail the same parse and say so too.
   match Informal.TraversalIndex.DeclRegistry.raw? state with
-  | some registryJson => IO.FS.writeFile (dataDir / "decl-registry.json") registryJson
+  | some registryJson =>
+    match ← Informal.DeclRegistry.resolveStoredRegistry registryJson with
+    | .ok registry =>
+      IO.FS.writeFile (dataDir / "decl-registry.json") (toJson registry).compress
+    | .error err =>
+      logError s!"Showcase declaration registry: could not decode the traversal-stored \
+        registry ({err}); decl-registry.json was not written, so the metadata rail's \
+        source links and lazily-fetched metadata are absent from this build."
   | none => pure ()
   IO.FS.writeFile (dataDir / graphCoreModuleFilename) graphCoreModuleMjs
   IO.FS.writeFile (dataDir / previewCoreModuleFilename) previewCoreModuleMjs

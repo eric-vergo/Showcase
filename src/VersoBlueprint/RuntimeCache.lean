@@ -23,6 +23,10 @@ structure State where
   moduleSourcePaths : Std.HashMap String (Option System.FilePath) := {}
   gitRootsBySourceDir : Std.HashMap String (Option System.FilePath) := {}
   gitRepoInfoByRoot : Std.HashMap String (Option Git.RepositoryInfo) := {}
+  /-- The revision-and-dirty record for one build directory. Keyed by directory
+  because a test may ask about a fixture checkout; production asks once, about the
+  build's own. -/
+  buildRevisions : Std.HashMap String Git.BuildRevision := {}
   /-- Configured `verso.blueprint.subjectModuleRoots` entries already reported as
   matching no imported module, so the diagnostic is emitted once per process
   instead of once per `projectModuleRoots` call (registry, all-decls graph, and
@@ -98,6 +102,32 @@ def cachedGitRepoInfo?
   stateRef.modify fun state =>
     { state with gitRepoInfoByRoot := state.gitRepoInfoByRoot.insert key resolved }
   pure resolved
+
+/--
+The revision-and-dirty record for one checkout, probed once per process.
+
+Process-local, like the caches above: it assumes the checkout does not move under a
+running build, which is the same assumption every other git probe here makes.
+-/
+def cachedBuildRevision (dir : System.FilePath) : IO Git.BuildRevision := do
+  let key := pathKey dir
+  if let some cached := (← stateRef.get).buildRevisions[key]? then
+    return cached
+  let resolved ← Git.buildRevisionAt dir
+  stateRef.modify fun state =>
+    { state with buildRevisions := state.buildRevisions.insert key resolved }
+  pure resolved
+
+/--
+**The** revision this site build describes itself by.
+
+Single source of truth: the build stamp (`PreviewManifest.readBuildMetadata`) and every
+project-local source link composed at emission both read this one value, so the two
+cannot name different commits — which is what CX-066 found them doing when each probed
+git for itself on either side of a warm `.lake` replay.
+-/
+def currentBuildRevision : IO Git.BuildRevision := do
+  cachedBuildRevision (← IO.currentDir)
 
 /--
 Claim the once-per-process diagnostic for one configured subject-module root that

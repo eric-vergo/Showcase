@@ -51,6 +51,14 @@ are deliberately NOT part of the public JSON: `buildDeclRegistry` returns them a
 a separate `Bodies` artifact carried only through the internal traversal store
 (`TraversalIndex.DeclRegistry`, key `"bodies"`) to the decl-page emitter, where
 they are baked into static HTML.
+
+One field is deliberately *not* finished at elaboration: a `sourceHref?` into the
+project's own repository would name the revision the registry was elaborated at, and a
+warm `.lake` replays this artifact across commits — so it would go on naming that
+revision under a build stamp that had moved (CX-066). Such an entry carries
+`sourceRepoPath?` instead, and `Registry.withResolvedSourceLinks` composes the URL at
+emission from the single revision record the build stamp also reads. Links into
+dependency checkouts are pinned by the lockfile and stay resolved where they are built.
 -/
 
 namespace Informal.DeclRegistry
@@ -167,9 +175,25 @@ structure Entry where
   **iff unwired** — wired declarations' canonical page stays their node page, so
   every entry has exactly one of `nodeHref?`/`declHref?`. -/
   declHref? : Option String := none
-  /-- Source link (consumer template or automatic GitHub blob URL, the same
-  builder as `Data.ExternalRef.sourceHref?`); `none` when underivable. -/
+  /-- Source link (consumer template or automatic GitHub blob URL, the same builder as
+  `Data.ExternalRef.sourceHref?`); `none` when underivable.
+
+  In the *elaboration-time* registry this holds only links that name no revision of
+  this project's — a consumer template's output, or a blob URL into a lockfile-pinned
+  dependency checkout. A declaration in the project's own repository arrives here as
+  `sourceRepoPath?` and acquires its URL in `Registry.withResolvedSourceLinks`, so what
+  the **published** artifact carries is always the whole set. -/
   sourceHref? : Option String := none
+  /-- For a file in the project's **own** repository: its path relative to that
+  repository's root, with no revision attached.
+
+  Internal, and the one field of this structure that never reaches
+  `-verso-data/decl-registry.json`: `withResolvedSourceLinks` consumes it into
+  `sourceHref?` and clears it, mirroring how the proof/value `Bodies` stay out of the
+  public JSON. It exists because the registry is built at elaboration and replayed from
+  a warm `.lake` across commits, so a revision recorded here would go on naming the
+  tree it was elaborated against after the build stamp had moved on (CX-066). -/
+  sourceRepoPath? : Option String := none
   /-- Longest dependency-chain length below this declaration (0 = no project
   deps), over the project decl graph; `none` when unresolvable (cycle). -/
   depth? : Option Nat := none
@@ -207,7 +231,12 @@ deriving Inhabited, Repr, ToJson, FromJson
 
 Schema v3 adds each entry's optional `scan` (the caveat report). An entry that was not
 scanned omits the key, so a v3 artifact from a build with the caveat surface off is
-byte-identical to a v2 one apart from this number. -/
+byte-identical to a v2 one apart from this number.
+
+The published shape is unchanged by the CX-066 source-link binding: `sourceHref` is
+still one resolved URL per entry, composed at emission rather than at elaboration, and
+the internal `sourceRepoPath` it is composed from is cleared before serialization. A
+clean build at one revision therefore emits exactly the bytes it emitted before. -/
 structure Registry where
   schemaVersion : Nat := 3
   /-- The configured `verso.blueprint.declNamePrefix`, for client-side (runtime)
@@ -246,6 +275,53 @@ def rawBodyCap : Nat := 100_000
 /-- Cap (in characters) on a body eligible for syntactic highlighting; larger
 bodies keep only the escaped raw source. -/
 def highlightBodyCap : Nat := 40_000
+
+/-! ## Binding source links to the build's revision -/
+
+/--
+Give every project-local entry the source link it publishes, at `rev` — the revision
+this site build describes itself by, and the same record the build stamp names.
+
+This is where a declaration in the project's own repository acquires a revision at all.
+Composing it here rather than at elaboration is the fix for CX-066: the registry is
+built once and replayed from a warm `.lake` across commits, so a URL minted at
+elaboration keeps naming the tree it was elaborated against while the stamp beside it
+advances — a site presenting two different revisions as one provenance. Bound here, the
+trust page's "\"View source\" links point at the commit the site was built from" holds
+by construction, for the same reason the two values cannot differ: there is only one.
+
+The line anchor is recomputed from the entry's own `range?`, and `sourceRepoPath?` is
+cleared: it is elaboration-side bookkeeping and never appears in the published JSON.
+Entries whose link was already final (a consumer template, a pinned dependency
+checkout) pass through untouched — their revision is not this build's to move. A build
+with no GitHub remote or no `HEAD` to name resolves to no link rather than to a guessed
+one, which is the same way every other probe here degrades.
+-/
+def Registry.withResolvedSourceLinks (rev : Informal.Git.BuildRevision)
+    (registry : Registry) : Registry :=
+  { registry with
+    decls := registry.decls.map fun e =>
+      let fragment :=
+        match e.range? with
+        | some r => Informal.sourceLineFragment r.pos.line r.endPos.line
+        | none => ""
+      { e with
+        sourceHref? := Informal.resolveSourceHref? rev e.sourceRepoPath? fragment e.sourceHref?
+        sourceRepoPath? := none } }
+
+/--
+Decode the traversal-stored registry and bind its source links to this build's revision.
+
+The one route from the stored artifact to a registry with publishable source links; the
+revision comes from `RuntimeCache.currentBuildRevision`, probed once per process and
+shared with the build stamp.
+-/
+def resolveStoredRegistry (raw : String) : IO (Except String Registry) := do
+  let rev ← Informal.RuntimeCache.currentBuildRevision
+  let decoded : Except String Registry := do
+    let json ← Json.parse raw
+    FromJson.fromJson? json
+  pure <| decoded.map (Registry.withResolvedSourceLinks rev)
 
 /-! ## Project boundary + enumeration (shared with the all-decls graph) -/
 
@@ -533,10 +609,20 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
   -- metadata rail can inject it without a client-side renderer.
   let docs? ← findDocString? (← getEnv) name
   let docstringHtml? := docstringHtmlString? docs?
-  -- Source link via the same builder the external-ref snapshot uses.
-  let sourceHref? ←
-    liftM <| sourceLinkHref? (← getOptions) workspaceRoot (some moduleName) sourcePath?
+  -- Source link via the same classifier the external-ref snapshot uses. A file in the
+  -- project's own repository keeps only its repository-relative path: this registry is
+  -- replayed from `.lake` across commits, and the revision is emission's to supply.
+  let sourceLink? ←
+    liftM <| sourceLinkFor? (← getOptions) workspaceRoot (some moduleName) sourcePath?
       (ranges?.map (·.range))
+  let sourceRepoPath? : Option String :=
+    match sourceLink? with
+    | some (.project relPath) => some relPath
+    | _ => none
+  let sourceHref? : Option String :=
+    match sourceLink? with
+    | some (.fixed url) => some url
+    | _ => none
   return {
     name := displayName
     kind := toString ((Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).getD Data.NodeKind.definition)
@@ -558,6 +644,7 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     docstringHtml?
     declHref?
     sourceHref?
+    sourceRepoPath?
     depth?
     height?
     axioms

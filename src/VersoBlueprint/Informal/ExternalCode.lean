@@ -193,6 +193,19 @@ private def externalDeclNode (item : LinkedExternalDecl) : Output.Html :=
   else
     declTxt
 
+/--
+The row footer's "open source" affordance.
+
+Rendered only from `sourceHref?` — the links that name no revision of this project's
+(a consumer template, a pinned dependency checkout). A declaration in the project's own
+repository carries `sourceRepoPath?` instead, which has no revision until emission binds
+one, and this render path is pure: it has no build revision to bind with. Omitting the
+link there is the honest half of that trade — and a costless one in practice, since the
+footer this sits in is suppressed on the two-column node card (`includeStatusRows :=
+false`, the properties rail owning declaration identity), so the affordance reaches no
+page of either showcase. The rail's "View source" link, which does reach readers, is
+composed from the registry at emission and is bound to the build revision.
+-/
 private def externalDeclSourceRef? (item : LinkedExternalDecl) : Option Output.Html :=
   open Verso.Output.Html in
   if !item.decl.present then
