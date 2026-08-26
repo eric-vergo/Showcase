@@ -325,8 +325,11 @@ structure RegistryEntry where
   verifiedAt : String := ""
   /-- The registry's submission workflow run. -/
   workflowUrl : String := ""
-  /-- `repo+digest`, `digest` (claim-level), `digest-unbound`, `repo-only` (project-level). -/
+  /-- `repo+digest`, `digest` (claim-level), `digest-not-verified`, `digest-unbound`,
+  `digest-identity-mismatch`, `repo-only` (all project-level). -/
   matchBasis : String := ""
+  /-- What disagreed, where the basis says something did. Empty otherwise. -/
+  matchNote : String := ""
   /-- What this build matched against and where it came from, for the card's provenance
   line. -/
   provenance : String := ""
@@ -1685,6 +1688,16 @@ project's CI performed. -/
 def TrustComparator.isReportedUpstream (cmp : TrustComparator) : Bool :=
   cmp.status == "reported-upstream"
 
+/-- Whether this verdict is a comparator **success**: the one status that certifies
+anything.
+
+Named once because more than one surface turns on it and they must not disagree about what
+counts. `configured` has not run, `reported-upstream` is somebody else's record transcribed,
+and a failure is a failure; none of the three certifies a claim, so none of them may carry a
+success badge or bind a registration to one (CX-065). -/
+def TrustComparator.isSuccessVerdict (cmp : TrustComparator) : Bool :=
+  cmp.status == "verified"
+
 /-- Who published the transcribed record, for the label and tooltip; the generic
 "the subject repository" when the artifact does not say. -/
 def TrustComparator.reportedSourceName (cmp : TrustComparator) : String :=
@@ -1897,7 +1910,7 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   let theoremsTitle :=
     if cmp.theoremNames.isEmpty then ""
     else s!"; certified: {String.intercalate ", " cmp.theoremNames}"
-  if cmp.status == "verified" then
+  if cmp.isSuccessVerdict then
     let label :=
       if cmp.verifiedAt.isEmpty then "comparator: CI-verified"
       else s!"comparator: CI-verified {isoDate cmp.verifiedAt}"
@@ -1968,7 +1981,7 @@ happened here, so neither may push the badge to the success tier. -/
 def trustAggregateComparatorBadge (comparators : List ComparatorTopic) : Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "config" else "configs"
-  let verified := (comparators.filter (·.comparator.status == "verified")).length
+  let verified := (comparators.filter (·.comparator.isSuccessVerdict)).length
   if verified == m then
     trustBadgeHtml s!"comparator: {m} {cfgNoun} verified" "success"
       (href? := Option.some Informal.NodeRoute.comparatorHref)
@@ -3242,6 +3255,7 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
       verifiedAt := e.verifiedAt
       workflowUrl := e.workflowUrl
       matchBasis := m.basis
+      matchNote := m.note
       provenance := bundle.provenance
       recordOrigin := e.origin }
   -- What this site knows about one claim: the digest of the statement it displays, whether
@@ -3249,9 +3263,18 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
   let claimOf (cmp : TrustComparator) : Informal.Palomar.ClaimIdentity :=
     let recorded := Informal.Sha256.normalizeDigest cmp.challengeSha256
     let displayed := Informal.Sha256.normalizeDigest cmp.challengeDigest
+    -- The paths the verdict names, as the *run* recorded them (repository-root-relative):
+    -- the configuration CI was passed, and every challenge-chain file it hashed. A record
+    -- registering some other directory of this repository is not about this claim.
+    let paths : Array String :=
+      (if cmp.configArgPath.isEmpty then #[] else #[cmp.configArgPath])
+        ++ cmp.challengeChain.map (·.1)
     { displayedDigest := cmp.challengeDigest
       digestStatusBound := !recorded.isEmpty && !displayed.isEmpty && recorded == displayed
-      repo := if !cmp.repository.isEmpty then cmp.repository else cmp.repoUrl }
+      statusSuccess := cmp.isSuccessVerdict
+      repo := if !cmp.repository.isEmpty then cmp.repository else cmp.repoUrl
+      sourceCommit := cmp.commit
+      projectPaths := paths }
   let matchOf (cmp : TrustComparator) : Option Informal.Palomar.Match :=
     Informal.Palomar.selectMatch? (claimOf cmp) bundle.entries
   let claimEntry? (cmp : TrustComparator) : Option RegistryEntry := do
@@ -3270,14 +3293,16 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
     ((trust.comparator.bind matchOf).toList ++ trust.comparators.filterMap (matchOf ·.comparator))
   let onBasis := fun (bases : List String) =>
     unbound.find? (fun (m : Informal.Palomar.Match) => bases.contains m.basis)
+  let ladder : List (List String) :=
+    [Informal.Palomar.claimLevelBases,
+     [Informal.Palomar.basisNotVerified],
+     ["digest-unbound"],
+     [Informal.Palomar.basisIdentityMismatch]]
   let projectMatch? :=
-    match onBasis Informal.Palomar.claimLevelBases with
+    match ladder.findSome? onBasis with
     | Option.some m => Option.some m
     | Option.none =>
-      match onBasis ["digest-unbound"] with
-      | Option.some m => Option.some m
-      | Option.none =>
-        Informal.Palomar.selectMatch? { repo := trust.projectRepoIdentity } bundle.entries
+      Informal.Palomar.selectMatch? { repo := trust.projectRepoIdentity } bundle.entries
   return { trust with registryEntry? := projectMatch?.map entryOf }
 
 /--

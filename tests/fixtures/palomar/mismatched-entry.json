@@ -1,0 +1,17 @@
+{
+  "schema_version": 3,
+  "id": "PALOMAR-2026-08-07-000007",
+  "registered_at": "2026-08-07T09:15:00Z",
+  "version": 1,
+  "status": "registered",
+  "title": "A registration at a different source revision and path",
+  "source": {
+    "repository": "eric-vergo/OEIS-A362583-Irrationality",
+    "repository_url": "https://github.com/eric-vergo/OEIS-A362583-Irrationality",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "project_path": "an/unrelated/project/path"
+  },
+  "verification": {
+    "challenge_sha256": "67af1753a29d3cd83d05c319e4c0a1c38475127c7cf9b4120cf1c6e519ddfd1d"
+  }
+}

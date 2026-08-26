@@ -38,6 +38,17 @@ shasum -a 256 tests/fixtures/palomar/claim/{Challenge.lean,comparator.json}
 
 The other form of the option: one immutable entry JSON, configured directly.
 
+## `configured-status.json` and `mismatched-entry.json` (CX-065)
+
+The audit's own hostile pair, verbatim. The status is `configured` — the comparator has not
+run — at commit `bbbb…`; the record registers commit `aaaa…` and the directory
+`an/unrelated/project/path`. Only the repository and the challenge digest agree, and under
+the earlier rule that was enough for the certifying claim sentence and a strip badge.
+
+Each half is disqualifying on its own, and the unit tests beside the render fixture separate
+them: a record of a different revision is a record of something else, and a verdict that has
+not run certifies nothing for any record to be about.
+
 ## `malformed/recent.json`
 
 A bundle whose root document does not parse. A configured input that is broken is a build

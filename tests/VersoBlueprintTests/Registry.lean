@@ -92,8 +92,12 @@ private def basisOf (claim : Informal.Palomar.ClaimIdentity) (e : Informal.Palom
   | Option.some m => (m.basis, m.claimLevel)
   | Option.none => ("no-match", false)
 
+/-- A claim a registration could be bound to: the displayed digest, a verdict that recorded
+it, a verdict that is a *success*, and a repository this site can name. Every field is
+load-bearing; each has its own test below. -/
 private def boundClaim : Informal.Palomar.ClaimIdentity :=
-  { displayedDigest := matchDigest, digestStatusBound := true, repo := projRepo }
+  { displayedDigest := matchDigest, digestStatusBound := true, statusSuccess := true
+    repo := projRepo }
 
 -- The record registers this repository and this challenge, and the verdict recorded the
 -- digest: the one state that binds a registration to a claim.
@@ -298,9 +302,10 @@ listed that day, which is the one thing an optional network read must not decide
 private def fixtureClaimDigest : String :=
   "67af1753a29d3cd83d05c319e4c0a1c38475127c7cf9b4120cf1c6e519ddfd1d"
 
-/-- A claim displaying those bytes, under a verdict that recorded their digest. -/
+/-- A claim displaying those bytes, under a successful verdict that recorded their digest. -/
 private def fixtureClaim : Informal.Palomar.ClaimIdentity :=
-  { displayedDigest := fixtureClaimDigest, digestStatusBound := true, repo := projRepo }
+  { displayedDigest := fixtureClaimDigest, digestStatusBound := true, statusSuccess := true
+    repo := projRepo }
 
 private def probeUrl : String := "https://palomar-registry.example/data"
 
@@ -723,5 +728,135 @@ Multiplication on the naturals commutes.
     !hasSubstr html "PALOMAR-2026-08-02-000002" &&
     !hasSubstr html "PALOMAR-2026-08-03-000003" &&
     !hasSubstr html "PALOMAR-2026-08-04-000004"
+
+/-! ## The rest of the identity a claim binds on (CX-065)
+
+A digest agreement says two byte strings are the same. It does not say the registration is
+of the revision the verdict was produced from, of the directory the verdict's files lie in,
+or of a verdict that produced anything at all — and a record can agree on the digest while
+disagreeing about every one of those.
+
+Three rules, each with its own failure and its own sentence, so the page says which one
+bit; the positive control below has all three agreeing and is the only shape that binds.
+-/
+
+private def altCommit : String := "9988776655443322110099887766554433221100"
+
+-- The audit's shape at the rule level: repository and digest agree, the revision does not.
+-- The record is kept — the digest agreement is real — and it is not about this claim.
+/-- info: ("digest-identity-mismatch", false, true) -/
+#guard_msgs in
+#eval
+  let claim := { boundClaim with sourceCommit := altCommit }
+  match Informal.Palomar.matchEntry? claim (record projRepo projUrl matchDigest) with
+  | Option.some m =>
+    (m.basis, m.claimLevel,
+      hasSubstr m.note "the record registers revision a1b2c3d4e5f60718293a4b5c6d7e8f9012345678")
+  | Option.none => ("no-match", false, false)
+
+-- Abbreviation is spelling: git writes both an eight-character prefix and its expansion for
+-- one object, and one being a prefix of the other is agreement.
+/-- info: ("repo+digest", true) -/
+#guard_msgs in
+#eval basisOf { boundClaim with sourceCommit := "a1b2c3d4" } (record projRepo projUrl matchDigest)
+
+-- The registered directory has to contain the files the verdict names. `comparators` is not
+-- `comparator`, and a directory nothing lies in is a registration of something else.
+/-- info: (("digest-identity-mismatch", false), ("repo+digest", true), "repo+digest", true) -/
+#guard_msgs in
+#eval
+  let e := fun (p : String) =>
+    { record projRepo projUrl matchDigest with projectPath := p }
+  let claim := { boundClaim with projectPaths := #["comparator/comparator.json",
+                                                   "comparator/Challenge.lean"] }
+  (basisOf claim (e "an/unrelated/project/path"),
+   -- the directory the files are in, and the repository root, both contain them
+   basisOf claim (e "comparator"),
+   basisOf claim (e ""))
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let c := Informal.Palomar.projectPathContains
+  c "" "comparator/Challenge.lean" && c "comparator" "./comparator/Challenge.lean" &&
+    c "./comparator/" "comparator/Challenge.lean" && c "a/b" "a/b" &&
+    !c "comparators" "comparator/Challenge.lean" && !c "a/b/c" "a/b"
+
+-- A verdict that has not run certifies nothing, so no record may be shown as recording the
+-- challenge it certifies — whatever else agrees.
+/-- info: (("digest-not-verified", false), ("digest-not-verified", false), "repo+digest", true) -/
+#guard_msgs in
+#eval
+  let e := record projRepo projUrl matchDigest
+  (basisOf { boundClaim with statusSuccess := false } e,
+   -- and the same for a transcribed upstream verdict, which is also not a success here
+   basisOf { boundClaim with statusSuccess := false, repo := "" } e,
+   basisOf boundClaim e)
+
+-- The predicate the strip's aggregate badge and this binding share, so they cannot disagree
+-- about what counts as a success.
+/-- info: (true, false, false, false) -/
+#guard_msgs in
+#eval
+  let of := fun (s : String) => ({ status := s } : TrustComparator).isSuccessVerdict
+  (of "verified", of "configured", of "reported-upstream", of "failed")
+
+/-! ### The audit's exact render fixture, and its positive control -/
+
+set_option verso.blueprint.trust.comparatorStatus "tests/fixtures/palomar/configured-status.json" in
+set_option verso.blueprint.trust.comparatorConfig "" in
+set_option verso.blueprint.trust.challengeFile "tests/fixtures/palomar/claim/Challenge.lean" in
+set_option verso.blueprint.trust.palomarBundle "tests/fixtures/palomar/mismatched-entry.json" in
+#docs (Manual) registryMismatchDoc "Registry Mismatch" :=
+:::::::
+:::theorem "registry.mismatch.anchor" (lean := "Nat.mul_comm")
+Multiplication on the naturals commutes.
+:::
+
+{blueprint_dashboard}
+:::::::
+
+/-- The trust payload a document's dashboard block captured. -/
+private def payloadOf (st : TraverseState) : Option TrustData := do
+  let raw ← Informal.TrustFreshness.cachedPayload? st
+  (fromJson? (α := TrustData) raw).toOption
+
+-- A `configured` verdict at one commit, a record of another commit and an unrelated
+-- directory: no badge, no certifying sentence, and the weaker reading printed instead with
+-- the basis and the disagreement on it.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (html, st) ← renderManualDocHtmlStringAndState extension_impls% registryMismatchDoc
+  let some trust := payloadOf st | return false
+  let some entry := trust.registryEntry? | return false
+  let card := (registryCardHtml entry).asString
+  -- the verdict is what it was, and nothing about the registration reaches the strip
+  return hasSubstr html "comparator: configured — not yet run" &&
+    !hasSubstr html "registry: Palomar entry" &&
+    trust.claimRegistryEntries.isEmpty &&
+    -- the record is kept, at the basis its disagreement earns, and named on the card
+    entry.matchBasis == Informal.Palomar.basisIdentityMismatch &&
+    !entry.isClaimLevel &&
+    !hasSubstr card "records the challenge this verdict certifies" &&
+    !hasSubstr card "records this claim" &&
+    hasSubstr card "its own source identity disagrees with this verdict's" &&
+    -- the two revisions, so a reader can see what disagreed
+    hasSubstr card "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" &&
+    hasSubstr card "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+-- The positive control: the same machinery over the claim fixture, where the verdict is a
+-- success, recorded the displayed digest, and registers the revision the record does. This
+-- is the one shape that binds, and it still does.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (html, st) ← renderManualDocHtmlStringAndState extension_impls% registryBoundDoc
+  let some trust := payloadOf st | return false
+  let some entry := trust.claimRegistryEntries.head? | return false
+  return hasSubstr html "registry: Palomar entry" &&
+    entry.matchBasis == "repo+digest" && entry.isClaimLevel &&
+    entry.matchNote.isEmpty &&
+    hasSubstr (registryCardHtml entry).asString "records this claim"
 
 end Verso.VersoBlueprintTests.Registry

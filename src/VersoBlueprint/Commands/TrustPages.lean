@@ -694,6 +694,17 @@ private def registryMatchSentence (e : RegistryEntry) : String :=
        challenge digest the registry verified, and the verifying run recorded that digest \
        too. This site could not compare repositories with the record, so the digest is the \
        whole of the binding."
+  | "digest-not-verified" =>
+    s!"Palomar entry {e.label} records a challenge whose digest is the digest of the \
+       statement above, and this verdict recorded that digest too — but the verdict is not a \
+       comparator success, so there is no certified claim for the registration to be about. \
+       Read it as provenance about the project."
+  | "digest-identity-mismatch" =>
+    let what := if e.matchNote.isEmpty then "" else s!" ({e.matchNote})"
+    s!"Palomar entry {e.label} records a challenge whose digest is the digest of the \
+       statement above, but its own source identity disagrees with this verdict's{what}. Two \
+       records of the same bytes under different provenance are not one claim, so this is \
+       not bound to the claim shown here: read it as provenance about the project."
   | "digest-unbound" =>
     s!"Palomar entry {e.label} records a challenge whose digest is the digest of the bytes \
        shown on this page — but this verdict records no digest of its own, so the \

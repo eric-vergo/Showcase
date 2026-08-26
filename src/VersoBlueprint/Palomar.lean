@@ -515,6 +515,39 @@ def canonicalRepo (s : String) : String := Id.run do
   let path := if host == "github.com" then path.map String.toLower else path
   return String.intercalate "/" (host :: path)
 
+/-! ## Path comparison
+
+A record names the project directory it registered; a verdict names files it was produced
+from. Both are repository-root-relative, and both are canonicalized the way repositories
+are — separators normalized, `./` dropped, empty segments dropped — before anything is
+compared, so `comparator`, `./comparator/` and `comparator//` are one directory and
+`comparators` is not.
+-/
+
+/-- Path components, canonicalized for comparison. -/
+private def pathComponents (p : String) : List String :=
+  ((p.replace "\\" "/").splitOn "/").filter fun s => s != "." && !s.isEmpty
+
+/-- Whether `projectPath` is the directory `candidate` lies in, or an ancestor of it.
+
+An empty project path is the repository root and contains every path. Comparison is on
+whole components, so a registered `comparator` directory does not contain
+`comparators/Challenge.lean`. -/
+def projectPathContains (projectPath candidate : String) : Bool :=
+  let proj := pathComponents projectPath
+  let cand := pathComponents candidate
+  proj.length ≤ cand.length && proj == cand.take proj.length
+
+/-- Whether two recorded revisions name the same commit, allowing for abbreviation: git
+writes both `05055695` and its 40-character expansion for one object, so one being a prefix
+of the other is agreement. Below seven characters nothing is compared — that is not a
+revision. -/
+def revisionsAgree (a b : String) : Bool :=
+  let a := a.trimAscii.toString.toLower
+  let b := b.trimAscii.toString.toLower
+  if a.length < 7 || b.length < 7 then false
+  else if a.length ≤ b.length then b.startsWith a else a.startsWith b
+
 /-! ## Matching -/
 
 /--
@@ -524,26 +557,47 @@ What this site knows about the claim a record might be bound to.
 the challenge bytes this page displays are bound to the verdict only when the verifying run
 recorded their digest. Where it did not, an agreeing registration is a registration of the
 same bytes under no verdict in particular, which is provenance and not a claim-level match.
+
+`statusSuccess`, `sourceCommit` and `projectPaths` are the rest of the identity a
+claim-level match binds on (CX-065). A registration cannot record "the challenge this
+verdict certifies" when the verdict has not run; and a registration of a different revision
+of the project, or of a directory the verdict's own files do not lie in, is a registration
+of something else that happens to share a digest.
 -/
 structure ClaimIdentity where
   /-- SHA-256 of the challenge bytes this page displays. Empty ⇒ none read. -/
   displayedDigest : String := ""
   /-- Whether the verifying run recorded that digest. -/
   digestStatusBound : Bool := false
+  /-- Whether the verdict is a comparator success. A `configured`, failed or transcribed
+  verdict certifies nothing here, so no record may be presented as recording what it
+  certifies. -/
+  statusSuccess : Bool := false
   /-- The project's repository, as the run recorded it or as this checkout says. Empty ⇒
   unknown, which is not the same as "does not match". -/
   repo : String := ""
+  /-- The subject revision the verifying run checked out. Empty ⇒ unrecorded. -/
+  sourceCommit : String := ""
+  /-- Repository-root-relative paths the verdict names — the configuration CI was passed and
+  the challenge chain the run recorded. Empty ⇒ the record names none, and there is nothing
+  to compare a registered directory against. -/
+  projectPaths : Array String := #[]
 deriving Inhabited, Repr
 
 /-- A record matched against a claim, and on what. -/
 structure Match where
   entry : Entry := {}
-  /-- `repo+digest`, `digest`, `digest-unbound`, `repo-only`. -/
+  /-- `repo+digest`, `digest`, `digest-not-verified`, `digest-unbound`,
+  `digest-identity-mismatch`, `repo-only`. -/
   basis : String := ""
-  /-- Whether this match binds the record to the claim on the page. Two things are needed:
-  a digest the verdict recorded, and a record this build can re-read (`Entry.fromCachedInput`).
-  A probed record on a binding basis has `claimLevel := false`. -/
+  /-- Whether this match binds the record to the claim on the page. Three things are needed:
+  a digest the verdict recorded, a verdict that is a success, and a record this build can
+  re-read (`Entry.fromCachedInput`). Anything less keeps the basis it earned and comes back
+  project-level. -/
   claimLevel : Bool := false
+  /-- What disagreed, or what was missing, in the register the page will use. Empty when
+  nothing did. -/
+  note : String := ""
 deriving Inhabited, Repr
 
 /-- The bases a claim-level match can rest on, named once so no surface has to re-derive the
@@ -551,30 +605,49 @@ rule. Necessary and not sufficient: a record on one of these bases that this bui
 over the network is still project-level (`matchEntry?`, CX-076). -/
 def claimLevelBases : List String := ["repo+digest", "digest"]
 
+/-- The digest agreed and the verdict recorded it, but the verdict is not a success: there
+is no certified claim for the registration to be about (CX-065). -/
+def basisNotVerified : String := "digest-not-verified"
+
+/-- The digest agreed and the verdict recorded it, but the record's own source identity —
+its revision, or the project directory it registered — disagrees with the verdict's. Two
+records of the same bytes under different provenance are not one claim. -/
+def basisIdentityMismatch : String := "digest-identity-mismatch"
+
 /--
 Match one record against one claim.
 
-Four rules, in the order they bite:
+Six rules, in the order they bite:
 
-1. **Both when present.** A record that names a repository, matched against a site that
-   knows its own, must agree with it. A digest that matches under another repository's name
-   is not this project's registration, whatever else it agrees about.
+1. **Both when present, on the repository.** A record that names a repository, matched
+   against a site that knows its own, must agree with it. A digest that matches under
+   another repository's name is not this project's registration, whatever else it agrees
+   about. This one rejects outright, because a different repository is a different project.
 2. **A claim-level match needs a status-bound digest.** The record's immutable
    `challenge_sha256` must equal the digest of the displayed challenge, and the verdict
    must have recorded that digest too.
-3. **A claim-level match needs a record this build can re-read.** A probed record is a
+3. **Both when present, on the rest of the source identity.** The record's revision and the
+   revision the verifying run checked out must agree where both are recorded; the directory
+   the record registered must contain the files the verdict names, where it names any.
+   Disagreement does not reject the record — the digest agreement is real and worth printing
+   — it takes the match down to `basisIdentityMismatch`, where the page says what disagreed
+   (CX-065).
+4. **A claim-level match needs a verdict that certifies something.** A `configured`,
+   failed or transcribed verdict has certified nothing, so no record may be shown as
+   recording the challenge it certifies. That is `basisNotVerified`.
+5. **A claim-level match needs a record this build can re-read.** A probed record is a
    network response with no file behind it: it is excluded from the input ledger the
    freshness gate re-hashes, so a warm rebuild would keep its badge with the probe long
    gone and nothing able to notice. It keeps the basis it earned — the digest really did
    agree — and comes back project-level, which is the tier that is soft in as many words
    (CX-076).
-4. **Everything weaker is project-level.** An agreeing digest the verdict does not bind, or
+6. **Everything weaker is project-level.** An agreeing digest the verdict does not bind, or
    a repository match with no digest to compare, is provenance about the project — never
    about the claim on the page.
 
-Rule 3 is here rather than at the selection layer because this is the only place a `Match`
-is constructed: `selectMatch?` ranks what this returns, and a caller reaching past it gets
-the same answer.
+Rules 3-5 are here rather than at the selection layer because this is the only place a
+`Match` is constructed: `selectMatch?` ranks what this returns, and a caller reaching past
+it gets the same answer.
 -/
 def matchEntry? (claim : ClaimIdentity) (e : Entry) : Option Match :=
   let entryRepo :=
@@ -585,7 +658,27 @@ def matchEntry? (claim : ClaimIdentity) (e : Entry) : Option Match :=
   let entryDigest := Informal.Sha256.normalizeDigest e.challengeSha256
   let claimDigest := Informal.Sha256.normalizeDigest claim.displayedDigest
   let digestAgrees := !entryDigest.isEmpty && !claimDigest.isEmpty && entryDigest == claimDigest
+  let commitDisagrees :=
+    !e.sourceCommit.trimAscii.isEmpty && !claim.sourceCommit.trimAscii.isEmpty
+      && !revisionsAgree e.sourceCommit claim.sourceCommit
+  let pathDisagrees :=
+    !e.projectPath.trimAscii.isEmpty && !claim.projectPaths.isEmpty
+      && !claim.projectPaths.any (projectPathContains e.projectPath ·)
+  let identityNote :=
+    if commitDisagrees && pathDisagrees then
+      s!"the record registers {e.sourceCommit} and the directory {e.projectPath}; the \
+         verifying run recorded {claim.sourceCommit} and files outside it"
+    else if commitDisagrees then
+      s!"the record registers revision {e.sourceCommit}; the verifying run recorded \
+         {claim.sourceCommit}"
+    else
+      s!"the record registers the directory {e.projectPath}; none of the files the verifying \
+         run recorded lies in it"
   if repoComparable && !repoAgrees then none
+  else if digestAgrees && claim.digestStatusBound && (commitDisagrees || pathDisagrees) then
+    some { entry := e, basis := basisIdentityMismatch, note := identityNote }
+  else if digestAgrees && claim.digestStatusBound && !claim.statusSuccess then
+    some { entry := e, basis := basisNotVerified }
   else if digestAgrees && claim.digestStatusBound then
     some { entry := e, basis := if repoAgrees then "repo+digest" else "digest"
            claimLevel := e.fromCachedInput }
@@ -596,9 +689,11 @@ def matchEntry? (claim : ClaimIdentity) (e : Entry) : Option Match :=
   else none
 
 private def basisRank : String → Nat
-  | "repo+digest" => 4
-  | "digest" => 3
-  | "digest-unbound" => 2
+  | "repo+digest" => 6
+  | "digest" => 5
+  | "digest-not-verified" => 4
+  | "digest-unbound" => 3
+  | "digest-identity-mismatch" => 2
   | "repo-only" => 1
   | _ => 0
 

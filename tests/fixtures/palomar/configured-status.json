@@ -1,0 +1,7 @@
+{
+  "status": "configured",
+  "repository": "eric-vergo/OEIS-A362583-Irrationality",
+  "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "challenge_sha256": "67af1753a29d3cd83d05c319e4c0a1c38475127c7cf9b4120cf1c6e519ddfd1d",
+  "note": "Configured only: this comparator has not run."
+}
