@@ -147,6 +147,53 @@ a.bp_summary_badge:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* Verifier currency, under the verdict it qualifies: one block per verifier build the
+   record names, then the clause that ages the advisory table itself. Token-driven, so
+   the stale state reads as a caution in both themes without a colour of its own. */
+.bp_trust_currency {
+  margin: var(--bp-space-3) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-2);
+  max-width: 44rem;
+}
+
+.bp_trust_currency_detail {
+  margin: 0;
+  font-size: var(--bp-fs-caption);
+  line-height: 1.6;
+  color: var(--bp-color-text);
+}
+
+/* The loud state. A left rule rather than a fill: the verdict pill above still owns the
+   page's one strong signal, and this qualifies it. */
+.bp_trust_currency_stale {
+  border-inline-start: 2px solid var(--bp-color-accent-warning);
+  padding-inline-start: var(--bp-space-2);
+}
+
+.bp_trust_currency_advisories {
+  margin: var(--bp-space-1) 0 0;
+  padding-left: var(--bp-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-1);
+  font-size: var(--bp-fs-caption);
+  line-height: 1.6;
+  color: var(--bp-color-text-faint);
+}
+
+/* The ancestry statement: worth its length only where the table could not settle the
+   revision, so it sits on its own line under the advisory it belongs to. */
+.bp_trust_currency_ancestry {
+  display: block;
+  margin-top: var(--bp-space-1);
+}
+
+.bp_trust_currency_ancestry code {
+  overflow-wrap: anywhere;
+}
+
 /* Shell command block: same code chrome as .bp_trust_code, but wrap long lines instead of
    scrolling so the copy-pasteable commands stay fully visible. The compound selector keeps
    it winning over .bp_trust_code's `white-space: pre` regardless of source order. */

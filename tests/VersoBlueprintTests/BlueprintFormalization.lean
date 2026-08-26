@@ -941,4 +941,302 @@ comparator a binary through the environment, still gets the real nanoda flow. -/
   -- An unrecognized tier renders NO marker rather than a wrong one.
   unknown.isEmpty && absent.isEmpty
 
+/-! ### Verifier currency
+
+The three-way judgement (`Informal.KernelAdvisories.currencyVerdict`) against a forced
+table, so the matrix does not move when the shipped advisories do. The shipped table is
+asserted separately, at the end, on the facts a consumer's page depends on.
+-/
+
+open Informal.KernelAdvisories in
+/-- A fixture table with one version-numbered tool and one commit-numbered one, each
+carrying a different flavour of fix evidence. -/
+private def testTable : Table where
+  advisoriesUpdated := "2026-08-25"
+  advisories := #[
+    { id := "t-lean", tool := "lean4", advisoryDate := "2026-08-21"
+      summary := "Fixture kernel advisory.", url := "https://example.invalid/lean"
+      fix := { fixedFromVersion := "v4.33.1", fixedRevisions := #["v4.34.0-rc2"] } },
+    { id := "t-nanoda", tool := "nanoda", advisoryDate := "2026-08-25"
+      summary := "Fixture checker advisory.", url := "https://example.invalid/nanoda"
+      fix := {
+        fixedDescendantsOf := "aaaaaaa1111111111111111111111111111111ff"
+        fixedRevisions := #["aaaaaaa1111111111111111111111111111111ff"]
+        affectedRevisions := #["bbbbbbb2222222222222222222222222222222ff"]
+        ancestry := "Descendants of aaaaaaa1 are fixed." } } ]
+
+private def fixedRev := "aaaaaaa1111111111111111111111111111111ff"
+private def affectedRev := "bbbbbbb2222222222222222222222222222222ff"
+private def unresolvedRev := "ccccccc3333333333333333333333333333333ff"
+
+open Informal.KernelAdvisories in
+private def verdictOf (tool revision recordDate : String) (kind : RefKind := .commit)
+    (identityAssessable : Bool := true) : String × String :=
+  let a := currencyVerdict testTable { tool, revision, kind, identityAssessable, recordDate }
+  (a.verdict.name, a.reason)
+
+/-! Green needs an immutable revision the table *resolves*, and nothing else reaches it. -/
+
+/-- info: ("current", "revision-fixed") -/
+#guard_msgs in
+#eval verdictOf "nanoda" fixedRev "2026-08-20"
+
+-- A revision with no date beside it is still evaluable: the evidence is the revision.
+/-- info: ("current", "revision-fixed") -/
+#guard_msgs in
+#eval verdictOf "nanoda" fixedRev ""
+
+-- CX-046's named case: the run happened *after* the advisory, and pinned a revision the
+-- table resolved as predating the fix. Dates-primary would have called this current.
+/-- info: ("stale", "known-affected") -/
+#guard_msgs in
+#eval verdictOf "nanoda" affectedRev "2026-08-26"
+
+-- The one inference a date supports: a build resolved before the fix existed lacks it.
+/-- info: ("stale", "recorded-before-fix") -/
+#guard_msgs in
+#eval verdictOf "nanoda" unresolvedRev "2026-08-04"
+
+-- The same revision recorded after the fix landed is unknown, not current: nothing says
+-- which side of the fix that commit is on.
+/-- info: ("unknown", "unresolved") -/
+#guard_msgs in
+#eval verdictOf "nanoda" unresolvedRev "2026-08-25"
+
+-- A moving reference is not a build.
+/-- info: ("unknown", "symbolic-revision") -/
+#guard_msgs in
+#eval verdictOf "nanoda" "main" "2026-08-20"
+
+/-- info: ("unknown", "no-revision") -/
+#guard_msgs in
+#eval verdictOf "nanoda" "" "2026-08-20"
+
+-- CX-064: a label the record never bound to a program is unknown whatever revision is
+-- typed beside it — even the revision the table resolves as fixed.
+/-- info: ("unknown", "identity-unbound") -/
+#guard_msgs in
+#eval verdictOf "nanoda" fixedRev "2026-08-20" (identityAssessable := false)
+
+-- A tool the table says nothing about cannot be called current either.
+/-- info: ("unknown", "no-advisories") -/
+#guard_msgs in
+#eval verdictOf "lean4lean" fixedRev "2026-08-20"
+
+/-! Toolchains are ordered against the recorded minimum; prereleases above it are branch
+snapshots whose number does not imply their contents, so they need the allowlist. -/
+
+/-- info: ("stale", "below-fixed-version") -/
+#guard_msgs in
+#eval verdictOf "lean4" "leanprover/lean4:v4.33.0-rc2" "2026-08-24" (kind := .version)
+
+/-- info: ("current", "revision-fixed") -/
+#guard_msgs in
+#eval verdictOf "lean4" "leanprover/lean4:v4.33.1" "2026-08-24" (kind := .version)
+
+-- Allowlisted prerelease of the next line: resolved by hand, not by ordering.
+/-- info: ("current", "revision-fixed") -/
+#guard_msgs in
+#eval verdictOf "lean4" "v4.34.0-rc2" "2026-08-24" (kind := .version)
+
+-- Its sibling rc, above the minimum but never checked, stays unknown.
+/-- info: ("unknown", "unresolved") -/
+#guard_msgs in
+#eval verdictOf "lean4" "v4.34.0-rc1" "2026-08-24" (kind := .version)
+
+-- A stable release above the minimum is carried by the ordering alone.
+/-- info: ("current", "revision-fixed") -/
+#guard_msgs in
+#eval verdictOf "lean4" "leanprover/lean4:v4.34.0" "2026-08-24" (kind := .version)
+
+-- A nightly is immutable but unorderable, which is its own state.
+/-- info: ("unknown", "incomparable-revision") -/
+#guard_msgs in
+#eval verdictOf "lean4" "leanprover/lean4:nightly-2026-08-24" "2026-08-24" (kind := .version)
+
+/-! A table older than the record it judges cannot produce a green claim, and the copy
+leads with that rather than with what the table happens to resolve. -/
+
+/-- info: ("unknown", "table-older-than-record") -/
+#guard_msgs in
+#eval verdictOf "nanoda" fixedRev "2026-08-26"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let a := Informal.KernelAdvisories.currencyVerdict testTable
+    { tool := "nanoda", revision := fixedRev, recordDate := "2026-08-26" }
+  let detail := currencyDetail "nanoda" fixedRev "2026-08-26" "2026-08-25" (some true) a
+  -- Staleness of the table comes first, and no green sentence precedes it.
+  detail.startsWith "This verdict is newer than this site's advisory table" &&
+  hasSubstr detail "no currency claim is made" &&
+  a.tableStale
+
+/-! The stale copy claims exactly as much as the record does: a recorded replay is a
+second-kernel assurance to call dated, an unrecorded one is a pin and nothing more. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let a := Informal.KernelAdvisories.currencyVerdict testTable
+    { tool := "nanoda", revision := affectedRev, recordDate := "2026-08-04" }
+  let replayed := currencyDetail "nanoda" affectedRev "2026-08-04" "2026-08-25" (some true) a
+  let pinned := currencyDetail "nanoda" affectedRev "2026-08-04" "2026-08-25" none a
+  hasSubstr replayed "recorded a replay by nanoda" &&
+  hasSubstr replayed "Treat that second-kernel assurance as dated." &&
+  hasSubstr pinned "pins nanoda at" &&
+  hasSubstr pinned "does not say a replay happened" &&
+  !hasSubstr pinned "second-kernel assurance" &&
+  -- Both name the date the record carries, and neither claims a fix it cannot see.
+  hasSubstr replayed "of 2026-08-04" && hasSubstr pinned "of 2026-08-04"
+
+-- The self-aging clause is a constant obligation, not a branch.
+/-- info: true -/
+#guard_msgs in
+#eval
+  hasSubstr (currencyAgingClause "2026-08-25")
+    "Advisory table last updated 2026-08-25 — a newer advisory would not appear here." &&
+  hasSubstr (currencyAgingClause "") "nothing bounds what it knows"
+
+/-! Rows are built from what the *run* recorded. A checker the configuration merely
+enables has no build to assess, and gets no row rather than a neutral one. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let legacy : TrustComparator :=
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", nanodaRef := affectedRev }
+  let configOnly : TrustComparator :=
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", enableNanoda := true }
+  let withToolchain : TrustComparator :=
+    { legacy with toolToolchain := "leanprover/lean4:v4.33.1" }
+  let legacyRows := legacy.currencyRows testTable
+  let toolchainRows := withToolchain.currencyRows testTable
+  -- The legacy pair is assessable (no configuration can redirect it) and stale here.
+  legacyRows.size == 1 &&
+  (legacyRows[0]!).tool == "nanoda" && (legacyRows[0]!).verdict == "stale" &&
+  (legacyRows[0]!).advisoriesUpdated == "2026-08-25" &&
+  (legacyRows[0]!).advisories.size == 1 &&
+  ((legacyRows[0]!).advisories[0]!).state == "affected" &&
+  -- Configuration is not run evidence: no build, no row.
+  (configOnly.currencyRows testTable).isEmpty &&
+  -- The toolchain the run rebuilt the tool on is assessed first, then the checkers.
+  toolchainRows.size == 2 &&
+  (toolchainRows[0]!).tool == "lean4" && (toolchainRows[0]!).verdict == "current" &&
+  (toolchainRows[1]!).tool == "nanoda"
+
+/-! Revision matching: git abbreviations are prefixes, toolchain strings are versions. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let m := Informal.KernelAdvisories.revisionMatches
+  m .commit "f58f2f6" "f58f2f6d535e189a40fcb02ede8eb95f97a92d37" &&
+  m .commit "F58F2F6D535E189A40FCB02EDE8EB95F97A92D37" "f58f2f6" &&
+  !m .commit "f58f2f6" "aaaaaaa1111111111111111111111111111111ff" &&
+  -- Six digits is below git's own abbreviation floor: not a match by prefix.
+  !m .commit "f58f2f" "f58f2f6d535e189a40fcb02ede8eb95f97a92d37" &&
+  m .version "leanprover/lean4:v4.33.1" "v4.33.1" &&
+  !m .version "v4.33.1" "v4.33.1-rc1"
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let p := Informal.KernelAdvisories.parseVersion?
+  let cmp := fun (a b : String) =>
+    match p a, p b with
+    | some x, some y => some (Informal.KernelAdvisories.compareVersion x y)
+    | _, _ => none
+  cmp "v4.33.1" "v4.33.1" == some .eq &&
+  cmp "v4.33.0-rc2" "v4.33.1" == some .lt &&
+  -- Semver: a prerelease precedes the release it leads to.
+  cmp "v4.33.1-rc1" "v4.33.1" == some .lt &&
+  cmp "v4.34.0-rc2" "v4.33.1" == some .gt &&
+  cmp "leanprover/lean4:v4.34.0" "v4.33.1" == some .gt &&
+  (p "leanprover/lean4:nightly-2026-08-24").isNone &&
+  (p "05055695879dfebb6628a67da88ceca6cd6b0421").isNone
+
+/-! A consumer override replaces the table, and is read from JSON in the shape the
+option documents. -/
+
+/-- info: ("stale", "known-affected") -/
+#guard_msgs in
+#eval
+  let overrideJson := r##"{
+    "advisoriesUpdated": "2026-09-01",
+    "advisories": [
+      { "id": "custom", "tool": "nanoda", "advisoryDate": "2026-08-30",
+        "summary": "A consumer's own advisory.", "url": "https://example.invalid/x",
+        "fix": { "affectedRevisions": ["aaaaaaa1111111111111111111111111111111ff"] } }
+    ]
+  }"##
+  match Informal.KernelAdvisories.Table.ofJson? (parsedJson overrideJson) with
+  | .error e => ("parse error", e)
+  | .ok t =>
+    -- The revision the *fixture* table resolves as fixed is affected under this one.
+    let a := Informal.KernelAdvisories.currencyVerdict t
+      { tool := "nanoda", revision := fixedRev, recordDate := "2026-08-31" }
+    (a.verdict.name, a.reason)
+
+-- Absent evidence reads as absent (a hand-written table need not spell every key), but
+-- the three structural defects are errors: an entry that could never apply, a table that
+-- does not date itself, and an `advisories` value that is not a list.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let ofJson := fun (s : String) => Informal.KernelAdvisories.Table.ofJson? (parsedJson s)
+  let errorHas := fun (r : Except String Informal.KernelAdvisories.Table) (needle : String) =>
+    match r with
+    | .error e => hasSubstr e needle
+    | .ok _ => false
+  let minimal := ofJson r##"{ "advisoriesUpdated": "2026-09-01",
+    "advisories": [ { "tool": "nanoda", "advisoryDate": "2026-08-30" } ] }"##
+  let noTool := ofJson r##"{ "advisoriesUpdated": "2026-09-01",
+    "advisories": [ { "advisoryDate": "2026-08-30" } ] }"##
+  let noDate := ofJson r##"{ "advisories": [] }"##
+  let notArray := ofJson r##"{ "advisoriesUpdated": "2026-09-01", "advisories": {} }"##
+  -- A minimal entry loads, and proves nothing: no evidence, so `unknown`, never green.
+  (match minimal with
+   | .ok t =>
+     ((Informal.KernelAdvisories.currencyVerdict t
+        { tool := "nanoda", revision := fixedRev, recordDate := "2026-08-31" }).verdict.name
+      == "unknown")
+   | .error _ => false) &&
+  errorHas noTool "names no 'tool'" &&
+  errorHas noDate "no 'advisoriesUpdated' date" &&
+  errorHas notArray "not an array"
+
+/-! The shipped table, on the facts a consumer's page depends on. -/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let t := Informal.KernelAdvisories.builtinTable
+  let byTool := fun (tool : String) => t.advisories.find? fun a => a.tool == tool
+  t.advisoriesUpdated == "2026-08-25" &&
+  t.advisories.size == 2 &&
+  (byTool "lean4").isSome && (byTool "nanoda").isSome &&
+  ((byTool "lean4").map (·.fix.fixedFromVersion)) == some "v4.33.1" &&
+  ((byTool "lean4").map (·.advisoryDate)) == some "2026-08-21" &&
+  -- The nanoda series completed with #28; that merge commit is the ancestry anchor.
+  ((byTool "nanoda").map (·.fix.fixedDescendantsOf)) ==
+    some "05055695879dfebb6628a67da88ceca6cd6b0421" &&
+  ((byTool "nanoda").map (·.advisoryDate)) == some "2026-08-25"
+
+-- The record this whole surface exists for: a real 2026-08-04 verdict pinning a nanoda
+-- revision from three weeks before the fixes. It must read stale against the shipped
+-- table, and it must say so without claiming a replay the record never recorded.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let real : TrustComparator :=
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z"
+      nanodaRef := "f58f2f6d535e189a40fcb02ede8eb95f97a92d37" }
+  let rows := real.currencyRows Informal.KernelAdvisories.builtinTable
+  rows.size == 1 && (rows[0]!).verdict == "stale" &&
+  hasSubstr (rows[0]!).detail "pins nanoda at f58f2f6d535e189a40fcb02ede8eb95f97a92d37" &&
+  !hasSubstr (rows[0]!).detail "second-kernel assurance" &&
+  -- And the toolchain that ran is simply not recorded there, so no row claims otherwise.
+  !((rows.map (·.tool)).contains "lean4")
+
 end Verso.VersoBlueprintTests.BlueprintFormalization

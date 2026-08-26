@@ -88,7 +88,9 @@ Addition on the naturals commutes.
   let html ← renderManualDocHtmlString extension_impls% trustEvidenceDoc
   return !hasSubstr html "as the independent kernel the run recorded" &&
     !hasSubstr html "pins its independent kernel" &&
-    hasSubstr html "does not say that the run performed one" &&
+    -- Section 5 used to make this point in nanoda-specific prose; it is now the currency
+    -- row's own sentence, which says the same thing per checker.
+    hasSubstr html "does not say a replay happened" &&
     -- CX-012: sandbox coverage is claimed for the replay step only.
     hasSubstr html "the sandbox the comparator replay ran under" &&
     hasSubstr html "happened outside the sandbox"
@@ -592,6 +594,46 @@ private def mixedTopicsHtml : String :=
   hasSubstr html "presents no independently comparator-certified theorems of its 20" &&
   hasSubstr html "Its 2 comparator configs name 3 theorems that are configured but not yet run" &&
   !hasSubstr html "3 independently comparator-certified"
+
+/-! ## Verifier currency reaches the page (F3b)
+
+The fixture is the interesting case rather than a convenient one: a real-shaped legacy
+record, dated 2026-08-04, pinning a nanoda revision the shipped advisory table cannot
+place. The run predates the fixes, so the revision it resolved predates them too — and the
+page says that without claiming the replay the record never recorded.
+-/
+
+/-- info: true -/
+#guard_msgs in
+#eval
+  let cmp := fixtureComparator.withCurrency Informal.KernelAdvisories.builtinTable
+  let html := comparatorHtml cmp
+  hasSubstr html "bp_trust_currency_stale" &&
+  hasSubstr html "pins nanoda at 1111111111111111111111111111111111111111" &&
+  hasSubstr html "a revision predating the fixes below" &&
+  -- The record never said a replay happened, so no assurance is called dated.
+  !hasSubstr html "second-kernel assurance" &&
+  -- The advisory it was measured against is named and linked.
+  hasSubstr html "https://github.com/ammkrn/nanoda_lib" &&
+  -- And the clause that ages the table itself, always.
+  hasSubstr html "Advisory table last updated 2026-08-25" &&
+  hasSubstr html "a newer advisory would not appear here" &&
+  -- A record with no currency rows renders exactly as it did before: no block at all.
+  !hasSubstr (comparatorHtml fixtureComparator) "bp_trust_currency"
+
+-- On the trust-model page, section 5 is driven by the same rows, over every config.
+/-- info: true -/
+#guard_msgs in
+#eval show IO Bool from do
+  let html ← renderManualDocHtmlString extension_impls% trustEvidenceDoc
+  return hasSubstr html "Verifier currency" &&
+    -- The fixture's own pin, assessed, in the list rather than in nanoda-specific prose.
+    hasSubstr html "nanoda: not current" &&
+    hasSubstr html "a revision predating the fixes below" &&
+    hasSubstr html "Advisory table last updated 2026-08-25" &&
+    -- The record names no toolchain, so the gap is stated instead of assessed.
+    hasSubstr html "no verdict here records which Lean release the comparator was built on" &&
+    !hasSubstr html "Lean toolchain:"
 
 /-! ## Scale cap (c): the degraded rendering tiers render their honest glyphs -/
 

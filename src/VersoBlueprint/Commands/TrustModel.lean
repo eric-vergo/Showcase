@@ -479,46 +479,108 @@ private def independenceSection : Output.Html :=
     }}
   ]
 
-/-! ### Section 5 — verifier currency -/
+/-! ### Section 5 — verifier currency
+
+Driven by the same assessments the comparator page renders (`TrustComparator.currency`,
+computed at elaboration from the recorded revisions against the fork's advisory table), so
+the two surfaces cannot disagree about whether a pin is current. One line per verifier
+build any verdict on this site names — every comparator config, not only the first — and
+the self-aging clause under all of them, because a verdict read off a hand-maintained
+table is a claim about the table.
+-/
+
+/-- Every currency assessment this site computed, labelled by the config that produced it
+(empty label ⇒ the single-pair surface, which has no topic name). -/
+private def currencyRowsOf (trust? : Option TrustData) : Array (String × VerifierCurrency) :=
+  match trust? with
+  | Option.none => #[]
+  | Option.some trust =>
+    let single : Array (String × VerifierCurrency) :=
+      match trust.comparator with
+      | Option.some cmp => cmp.currency.map fun r => ("", r)
+      | Option.none => #[]
+    trust.comparators.foldl (init := single) fun acc topic =>
+      acc ++ topic.comparator.currency.map fun r => (topic.name, r)
 
 private def currencySection (trust? : Option TrustData) : Output.Html :=
-  let cmp? := trust?.bind (·.comparator)
-  let pinNote :=
-    match cmp? with
-    | Option.some cmp =>
-      let nanodaRef := cmp.recordedKernelRef "nanoda"
-      if cmp.replayedWithNanoda && !nanodaRef.isEmpty then
-        s!"The run behind this verdict used nanoda {nanodaRef} as its independent kernel. \
-           That pin makes the verification reproducible; it does not make it current."
-      else if cmp.enableNanoda then
-        "This project's comparator configuration enables an independent kernel, but the \
-         verdict's record does not say that the run performed one — so there is no second \
-         opinion here whose currency could be assessed."
+  let rows := currencyRowsOf trust?
+  let comparators : List TrustComparator :=
+    match trust? with
+    | Option.none => []
+    | Option.some trust =>
+      (trust.comparator.toList) ++ trust.comparators.map (·.comparator)
+  -- Which Lean release a run's kernel was is recorded in one place only: the comparator's
+  -- own toolchain field. A record without it leaves the primary kernel's currency
+  -- unassessable, which is a gap worth naming rather than an absence worth passing over.
+  let toolchainRecorded := comparators.any fun c => !c.toolToolchain.isEmpty
+  -- The payload's own field, not a row's: the clause that ages the table is exactly what
+  -- a page with nothing to assess still owes the reader.
+  let advisoriesUpdated :=
+    let fromPayload := (trust?.map (·.advisoriesUpdated)).getD ""
+    if fromPayload.isEmpty then ((rows[0]?).map (·.2.advisoriesUpdated)).getD ""
+    else fromPayload
+  let item (label detail : String) : Output.Html :=
+    {{ <li><strong>{{.text true label}}</strong>" — "{{.text true detail}}</li> }}
+  let verdictWord (r : VerifierCurrency) : String :=
+    if r.verdict == "stale" then "not current" else r.verdict
+  let rowItems : Array Output.Html := rows.map fun (topic, r) =>
+    let label :=
+      let tool := if r.tool == "lean4" then "Lean toolchain" else r.tool
+      if topic.isEmpty then s!"{tool}: {verdictWord r}"
+      else s!"{tool} ({topic}): {verdictWord r}"
+    item label r.detail
+  let assessed : Array Output.Html :=
+    if rows.isEmpty then
+      #[prose
+          (if comparators.isEmpty then
+            "This site publishes no statement-comparator verdict, so there is no recorded \
+             verifier build here whose currency could be assessed."
+           else
+            "No verdict on this site records a verifier build to assess: no revision for an \
+             independent kernel, and no Lean release for the comparator that produced the \
+             verdict. A configuration that enables a second kernel is not such a record — it \
+             describes the next run — so there is nothing here whose currency this site could \
+             check."),
+        {{ <p class="bp_trust_note">{{.text true (currencyAgingClause advisoriesUpdated)}}</p> }}]
+    else
+      #[prose
+          "Against the advisories this site records, the builds behind its verdicts stand as \
+           follows. `current` means the recorded revision is one the table resolves as \
+           carrying every fix it knows of; `unknown` means the table settled nothing, in \
+           either direction, and is not a clean bill.",
+        {{ <ul class="bp_trustmodel_list">{{.seq rowItems}}</ul> }},
+        {{ <p class="bp_trust_note">{{.text true (currencyAgingClause advisoriesUpdated)}}</p> }}]
+  let gap :=
+    let toolchainGap :=
+      if toolchainRecorded then ""
       else
-        "This project's verdict records no independent kernel replay, so the site rests on \
-         one kernel implementation."
-    | Option.none => "This project runs no independent kernel."
-  section' "Verifier currency" #[
+        " no verdict here records which Lean release the comparator was built on, so the \
+         currency of the primary kernel — the one that accepted every proof on this site — \
+         cannot be assessed at all;"
+    s!"Known gap: no scheduled re-verification job;{toolchainGap} no binding between a \
+       displayed verdict and a specific CI run beyond the recorded URL; and the advisory \
+       table above is maintained by hand rather than tracked from upstream."
+  section' "Verifier currency" (#[
     prose
       "Pinning a verifier by revision and keeping a verifier current are in tension. A pinned \
        verifier gives a reproducible result: anyone can re-run exactly what CI ran. A current \
        verifier gives a result that reflects every soundness fix known today. A single run \
        cannot do both.",
-    prose pinNote,
+    prose
+      "So the pin is reported, and then measured against a list of soundness advisories this \
+       fork maintains by hand. A revision the list resolves as carrying every fix is current; \
+       a revision it resolves as predating one is not, whatever date the run carries; and a \
+       revision it cannot place — or a checker the record never bound to a program — is \
+       unknown, which is a fact about this list rather than about the verifier."
+  ] ++ assessed ++ #[
     prose
       "The policy this project follows is to pin for reproducibility and to re-verify against \
        current tooling on a schedule, reporting both. The scheduled re-verification is not yet \
        implemented — the verdict shown on this site is a pinned one only, and nothing here \
        re-checks it against today's kernels. This is tracked as future work rather than \
        presented as done.",
-    {{
-      <p class="bp_trust_note">
-        "Known gap: no scheduled re-verification job, and no binding between the displayed \
-         verdict and a specific CI run beyond the recorded URL. Both are on the project's \
-         roadmap."
-      </p>
-    }}
-  ]
+    {{ <p class="bp_trust_note">{{.text true gap}}</p> }}
+  ])
 
 /-! ### Section 6 — how this was produced -/
 

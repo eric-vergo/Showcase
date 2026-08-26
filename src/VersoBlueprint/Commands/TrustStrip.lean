@@ -18,6 +18,7 @@ import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Sha256
+import VersoBlueprint.KernelAdvisories
 
 /-!
 Dashboard trust strip.
@@ -75,6 +76,11 @@ register_option verso.blueprint.trust.challengeFile : String := {
 register_option verso.blueprint.trust.solutionFile : String := {
   defValue := ""
   descr := "Path (relative to the build CWD) to the comparator's Solution Lean file; its contents are embedded verbatim on the comparator evidence page (after the Challenge file). Empty or missing ⇒ omitted (probe-and-degrade)."
+}
+
+register_option verso.blueprint.trust.kernelAdvisories : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to a JSON advisory table replacing the one this fork ships, for assessing the currency of the verifier revisions a comparator run recorded. Schema: {\"advisoriesUpdated\": \"YYYY-MM-DD\", \"advisories\": [ {\"id\", \"tool\", \"advisoryDate\", \"summary\", \"url\", \"fix\": {\"fixedRevisions\": [...], \"fixedDescendantsOf\", \"ancestry\", \"fixedFromVersion\", \"affectedRevisions\": [...]}}, … ]}. `tool` is `lean4` for the toolchain the comparator was built on, otherwise the checker's canonical name. The override REPLACES the built-in table rather than merging into it (a partial override of a safety table loses entries silently). Empty ⇒ the built-in table; set-but-missing or unparsable ⇒ build error."
 }
 
 register_option verso.blueprint.trust.requireConnected : Bool := {
@@ -151,9 +157,25 @@ structure StatementCaveat where
   provenance : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- Currency of one verifier against the advisories known to this site. Reserved for
-the verifier-currency surface; nothing populates it yet. -/
+/-- One advisory as it bore on one recorded verifier revision, ready to render. -/
+structure VerifierAdvisory where
+  summary : String := ""
+  /-- The date from which a build can carry this advisory's fixes. -/
+  advisoryDate : String := ""
+  url : String := ""
+  /-- `fixed`, `affected` or `unresolved` for the revision assessed. -/
+  state : String := ""
+  /-- The table's ancestry statement, published so a reader can settle a revision of
+  their own. Empty ⇒ none recorded. -/
+  ancestry : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
+/-- Currency of one verifier the run recorded, against the advisories known to this
+site. Computed at elaboration by `TrustComparator.currencyRows`; empty ⇒ the record
+mentioned no verifier build to assess. -/
 structure VerifierCurrency where
+  /-- The advisory-table key: `lean4` for the toolchain the comparator was built on,
+  otherwise the checker's recorded label. -/
   tool : String := ""
   /-- `current`, `unknown`, or `stale`. Never `current` without a revision the advisory
   table proves fixed. -/
@@ -162,10 +184,16 @@ structure VerifierCurrency where
   to assess, which is `unknown` rather than `current`: dates select which advisories
   apply, they do not establish that a fix is in the build that ran. -/
   revision : String := ""
+  /-- Which rule decided (`revision-affected`, `identity-unbound`, … — see
+  `KernelAdvisories.Assessment.reason`). Carried so the copy and the data cannot drift. -/
+  reason : String := ""
   detail : String := ""
   /-- When the advisory table this verdict was computed against was last updated. -/
   advisoriesUpdated : String := ""
-  advisories : Array String := #[]
+  /-- Whether the record assessed is newer than the table that judged it. No green claim
+  is available in this state, and the copy leads with the reason. -/
+  tableStale : Bool := false
+  advisories : Array VerifierAdvisory := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- A registry entry recording this project's claim elsewhere. Reserved for the
@@ -409,8 +437,9 @@ structure TrustComparator where
   /-- Total-function conventions in the certified statements a reader could misread.
   Reserved; empty ⇒ not scanned. -/
   caveats : Array StatementCaveat := #[]
-  /-- Per-verifier currency against the advisories known to this site. Reserved; empty
-  ⇒ not assessed. -/
+  /-- Per-verifier currency against the advisories known to this site, computed at
+  elaboration from the recorded revisions. Empty ⇒ the record named no verifier build to
+  assess (which is itself said in prose, never rendered as a clean bill). -/
   currency : Array VerifierCurrency := #[]
   /-- A registry entry recording this claim elsewhere. Reserved; `none` ⇒ none
   configured or none matched. -/
@@ -494,6 +523,11 @@ structure TrustData where
   project-level provenance and not bound to any one claim). Reserved; `none` ⇒ none
   configured or none matched. -/
   registryEntry? : Option RegistryEntry := none
+  /-- When the kernel-advisory table this build assessed verifier currency against was
+  last revised by hand. Carried on the payload rather than only on the currency rows,
+  because the self-aging clause is exactly what a page with *no* assessable verifier
+  still has to publish. Empty ⇒ no table was read (a payload from before this field). -/
+  advisoriesUpdated : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
@@ -1318,6 +1352,187 @@ def TrustComparator.reportedUpstreamNote (cmp : TrustComparator) : String :=
   s!"Transcribed from records published by {cmp.reportedSourceName}; this site's CI did \
      not run the comparator on it, and nothing here re-checked the claim."
 
+/-! ### Verifier currency
+
+A pinned verifier is reproducible and ages; the page has to say which of the two it is
+looking at. `Informal.KernelAdvisories` owns the table and the three-way judgement, and
+this section is the adapter: it decides *which* verifier builds a record actually
+recorded, hands each to the pure verdict function, and writes the one sentence the
+surfaces render.
+
+Two rules shape what appears at all. A checker the *configuration* enables but the run
+never mentioned has no build to assess, and the drift notes already say so, so it gets no
+row — the currency block reports on what ran, not on what would run next. And a label the
+record does not bind to a program (CX-064) yields `unknown` whatever revision is typed
+beside it, because the revision is not evidence about the executable.
+
+Like the digest cross-checks below, the assessment runs at elaboration, so Lake caches it
+with the module's `.olean`: editing only a consumer's advisory-table override changes no
+Lean input, and a warm rebuild can reuse the previous verdicts. A cold build — CI, or any
+build after the document module re-elaborates — recomputes them, which is the build that
+publishes the site.
+-/
+
+/-- The date the record is *of*: a run this site's CI performed, or the date the upstream
+record it transcribes was made. Empty ⇒ the record carries no date. -/
+def TrustComparator.recordDate (cmp : TrustComparator) : String :=
+  if cmp.isReportedUpstream then cmp.reportedAt else cmp.verifiedAt
+
+/-- Checkers whose *run record* names something assessable: a replay, a revision, or an
+identity record. A checker the configuration merely enables is excluded — there is no
+build to be current or stale. -/
+def TrustComparator.currencyKernels (cmp : TrustComparator) : Array String :=
+  cmp.mentionedKernels.filter fun k =>
+    (cmp.recordedReplay? k).isSome || !(cmp.recordedKernelRef k).isEmpty
+      || (cmp.identityFor? k).isSome
+
+/-- Whether a checker's identity tier lets its recorded revision stand for the program
+that ran: a full identity binding, or the legacy pair no configuration can redirect. -/
+def TrustComparator.currencyAssessable (cmp : TrustComparator) (label : String) : Bool :=
+  let tier := cmp.kernelIdentityTier label
+  tier == "named" || tier == "ci-built"
+
+open Informal.KernelAdvisories in
+/-- How to name a tool in the currency copy. -/
+private def currencyToolPhrase (tool : String) : String :=
+  if tool == "lean4" then "the Lean toolchain the comparator was built on" else tool
+
+open Informal.KernelAdvisories in
+/-- The dates in a stale verdict's advisories, as prose: what the revision predates. -/
+private def currencyFixDates (as : Assessment) : String :=
+  let dates := (as.outcomes.filter (·.state == "affected")).filterMap fun o =>
+    if o.advisory.advisoryDate.isEmpty then none else some o.advisory.advisoryDate
+  let dates := dates.foldl (init := #[]) fun acc d => if acc.contains d then acc else acc.push d
+  String.intercalate " and " dates.toList
+
+open Informal.KernelAdvisories in
+/--
+The one sentence a currency row says, given what the record is and what the table
+resolved. Kept here rather than in the renderer so the copy is unit-testable and cannot
+disagree with the verdict beside it.
+
+`replayed?` shapes the stale case only, and shapes it in the direction of claiming less:
+a record that never said the replay happened has no second-kernel assurance to call
+dated, and the sentence says that instead.
+-/
+def currencyDetail (tool : String) (revision recordDate advisoriesUpdated : String)
+    (replayed? : Option Bool) (as : Assessment) : String :=
+  let who := currencyToolPhrase tool
+  let isToolchain := tool == "lean4"
+  let date := dateOnly recordDate
+  let fixes :=
+    let d := currencyFixDates as
+    if d.isEmpty then "the fixes below" else s!"the fixes below (dated {d})"
+  match as.verdict with
+  | .stale =>
+    let lead := if date.isEmpty then "This verdict" else s!"This verdict, of {date},"
+    if isToolchain then
+      s!"{lead} was produced by a comparator built on {revision} — a Lean release \
+         predating {fixes}. The kernel that accepted this proof is the one those fixes \
+         repaired."
+    else if replayed? == some true then
+      s!"{lead} recorded a replay by {who} {revision}, a revision predating {fixes}. \
+         Treat that second-kernel assurance as dated."
+    else
+      s!"{lead} pins {who} at {revision}, a revision predating {fixes}. The record does \
+         not say a replay happened, so nothing here rests on it — and the pin is not \
+         current either."
+  | .current =>
+    if isToolchain then
+      s!"The comparator was built on {revision}, at or above every Lean release this \
+         site's advisory table records a kernel-soundness fix in."
+    else
+      s!"{who} {revision} is a revision this site's advisory table resolves as carrying \
+         every fix it records for it."
+  | .unknown =>
+    match as.reason with
+    | "table-older-than-record" =>
+      s!"This verdict is newer than this site's advisory table, last revised \
+         {advisoriesUpdated}, so no currency claim is made for {who}: an advisory \
+         published since would not appear here. Against what the table does record, \
+         {revision} carries every fix."
+    | "identity-unbound" =>
+      s!"Nothing in this record binds the label {tool} to a program, so there is no build \
+         whose currency could be assessed. That is a gap in the record, not a finding \
+         about the checker."
+    | "no-revision" =>
+      s!"The record names {who} but no revision of it, so there is nothing to assess \
+         against the advisories below."
+    | "symbolic-revision" =>
+      s!"The record names {who} at '{revision}', a moving reference rather than a \
+         revision: what it pointed at when the run happened is not recoverable here, so \
+         currency cannot be assessed."
+    | "incomparable-revision" =>
+      s!"The record names {who} as '{revision}', which this site's table cannot order \
+         against a release — a nightly or a branch build — so currency cannot be assessed."
+    | "no-advisories" =>
+      s!"This site's advisory table records nothing about {tool}, so it can neither \
+         confirm nor deny that the build behind this verdict is current."
+    | _ =>
+      s!"{revision} is not a revision this site's table resolved for {tool}, and the \
+         record's date settles nothing either way. Currency unknown — which is not a \
+         finding of staleness."
+
+open Informal.KernelAdvisories in
+/-- One rendered currency row from a pure assessment. -/
+private def currencyRow (table : Table) (tool revision recordDate : String)
+    (replayed? : Option Bool) (as : Assessment) : VerifierCurrency :=
+  { tool
+    verdict := as.verdict.name
+    revision
+    reason := as.reason
+    detail := currencyDetail tool revision recordDate table.advisoriesUpdated replayed? as
+    advisoriesUpdated := table.advisoriesUpdated
+    tableStale := as.tableStale
+    advisories := as.outcomes.map fun o =>
+      { summary := o.advisory.summary
+        advisoryDate := o.advisory.advisoryDate
+        url := o.advisory.url
+        state := o.state
+        ancestry := o.advisory.fix.ancestry } }
+
+open Informal.KernelAdvisories in
+/--
+Currency of every verifier build this verdict's record names: the Lean toolchain the
+comparator was rebuilt on, then each checker the run mentioned.
+
+Pure, so the whole matrix is testable without a site. Empty ⇒ the record named no build,
+and the surfaces say that in prose rather than rendering silence as a clean bill.
+-/
+def TrustComparator.currencyRows (cmp : TrustComparator) (table : Table) :
+    Array VerifierCurrency :=
+  let recordDate := cmp.recordDate
+  let toolchainRow : Array VerifierCurrency :=
+    if cmp.toolToolchain.isEmpty then #[]
+    else
+      let input : Input := {
+        tool := "lean4", revision := cmp.toolToolchain, kind := .version,
+        identityAssessable := true, recordDate }
+      #[currencyRow table "lean4" cmp.toolToolchain recordDate none (currencyVerdict table input)]
+  let kernelRows : Array VerifierCurrency := cmp.currencyKernels.map fun k =>
+    let revision := cmp.recordedKernelRef k
+    let input : Input := {
+      tool := k, revision, kind := .commit,
+      identityAssessable := cmp.currencyAssessable k, recordDate }
+    currencyRow table k revision recordDate (cmp.recordedReplay? k) (currencyVerdict table input)
+  toolchainRow ++ kernelRows
+
+open Informal.KernelAdvisories in
+/-- The verdict with its currency rows attached. -/
+def TrustComparator.withCurrency (cmp : TrustComparator) (table : Table) :
+    TrustComparator :=
+  { cmp with currency := cmp.currencyRows table }
+
+/-- The self-aging clause every currency surface publishes. A verdict read from a
+hand-maintained table is a claim about the table, and this is the sentence that says so.
+-/
+def currencyAgingClause (advisoriesUpdated : String) : String :=
+  if advisoriesUpdated.isEmpty then
+    "This site's advisory table records no revision date, so nothing bounds what it knows."
+  else
+    s!"Advisory table last updated {advisoriesUpdated} — a newer advisory would not appear \
+       here."
+
 /--
 The comparator verdict badge, linking to the standalone `comparator/` page.
 
@@ -1946,6 +2161,35 @@ def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTo
 
 open Verso Doc Elab in
 /--
+The advisory table currency is assessed against: the one this fork ships, or the one
+`verso.blueprint.trust.kernelAdvisories` names. A set option pointing at a missing or
+unparsable file is a build error — a configured safety table must not degrade into the
+default without saying so, since the two differ exactly in what they would have caught.
+
+The override replaces the built-in table rather than merging into it: a merge would let
+a consumer drop an advisory by omission, which is the one edit nobody would notice.
+-/
+def elabKernelAdvisories : PartElabM Informal.KernelAdvisories.Table := do
+  let opts ← Lean.getOptions
+  let path := opts.get verso.blueprint.trust.kernelAdvisories.name
+    verso.blueprint.trust.kernelAdvisories.defValue
+  if path.isEmpty then return Informal.KernelAdvisories.builtinTable
+  unless ← System.FilePath.pathExists path do
+    throwError "option 'verso.blueprint.trust.kernelAdvisories' names a missing file \
+      (resolved against the build directory): {path}"
+  let j ← match Json.parse (← IO.FS.readFile path) with
+    | .error err => throwError "could not parse {path}: {err}"
+    | .ok j => pure j
+  match Informal.KernelAdvisories.Table.ofJson? j with
+  | .error err =>
+    throwError "{path} is not a kernel-advisory table: {err}. Expected an object with \
+      'advisoriesUpdated' (a date) and 'advisories' (an array of entries, each with \
+      'tool', 'advisoryDate', 'summary', 'url' and a 'fix' object) — see the option's \
+      description for the full shape."
+  | .ok table => return table
+
+open Verso Doc Elab in
+/--
 Read the artifacts named by the `verso.blueprint.trust.*` options into a
 `TrustData` payload. `none` when all options are unset; a build error when a
 set option names a missing or unparsable file. Reads happen at elaboration
@@ -2006,6 +2250,15 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   -- Layer on the comparator-source enrichment (syntax highlighting + source links).
   -- Runs in `CoreM`; degrades to empty fields, never a build error.
   trust := (← liftM (enrichTrustData opts trust))
+  -- Currency of the verifier builds each record names, against the advisory table. Pure
+  -- once the table is read, and computed for every verdict on the page so the
+  -- single-pair and multi-config surfaces cannot answer differently.
+  let advisories ← elabKernelAdvisories
+  trust := { trust with
+    advisoriesUpdated := advisories.advisoriesUpdated
+    comparator := trust.comparator.map (·.withCurrency advisories)
+    comparators := trust.comparators.map fun t =>
+      { t with comparator := t.comparator.withCurrency advisories } }
   let requireConnected : Bool :=
     opts.get verso.blueprint.trust.requireConnected.name
       verso.blueprint.trust.requireConnected.defValue

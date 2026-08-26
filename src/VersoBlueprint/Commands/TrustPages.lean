@@ -107,6 +107,52 @@ private def inlineCodeList (items : List String) : Output.Html :=
     let code (s : String) : Output.Html := {{ <code>{{.text true s}}</code> }}
     rest.foldl (init := code first) fun acc x => .seq #[acc, {{ ", " }}, code x]
 
+/--
+Currency of the verifier builds this record names, under the verdict that rests on them.
+
+A pinned verifier is reproducible and ages, and the page has no way to tell those apart
+for the reader except by saying which one it is looking at. One sentence per build, the
+advisories it was measured against, and — always, whatever the verdicts — the clause that
+ages the table itself: a fix published after the table was last revised is invisible
+here, and a reader who is not told that will read silence as a clean bill.
+
+A record naming no verifier build renders nothing at all, exactly as before.
+-/
+private def currencyNote (cmp : TrustComparator) : Output.Html :=
+  if cmp.currency.isEmpty then .empty
+  else
+    let rows : Array Output.Html := cmp.currency.map fun c =>
+      let rowClass :=
+        if c.verdict == "stale" then "bp_trust_currency_row bp_trust_currency_stale"
+        else "bp_trust_currency_row"
+      let advisories : Array Output.Html := c.advisories.map fun a =>
+        let dateText := if a.advisoryDate.isEmpty then "" else s!"{a.advisoryDate} — "
+        let link : Output.Html :=
+          if a.url.isEmpty then .empty
+          else .seq #[{{ " " }}, trustOutLink a.url "Advisory"]
+        -- The ancestry statement is worth its length in exactly one state: a real
+        -- revision the table could not place. Where the label was never bound to a
+        -- program, or the reference moves, resolving ancestry answers a question the
+        -- record has not earned yet.
+        let ancestry : Output.Html :=
+          if c.reason != "unresolved" || a.state != "unresolved" || a.ancestry.isEmpty then .empty
+          else {{ <span class="bp_trust_currency_ancestry">{{.text true a.ancestry}}</span> }}
+        {{ <li>{{.text true (dateText ++ a.summary)}}{{link}}{{ancestry}}</li> }}
+      let advisoryList : Output.Html :=
+        if advisories.isEmpty then .empty
+        else {{ <ul class="bp_trust_currency_advisories">{{.seq advisories}}</ul> }}
+      {{
+        <div class={{rowClass}}>
+          <p class="bp_trust_currency_detail">{{.text true c.detail}}</p>
+          {{advisoryList}}
+        </div> }}
+    let updated := (cmp.currency[0]?).map (·.advisoriesUpdated) |>.getD ""
+    {{
+      <div class="bp_trust_currency">
+        {{.seq rows}}
+        <p class="bp_trust_note">{{.text true (currencyAgingClause updated)}}</p>
+      </div> }}
+
 /-- The verdict header: a status pill ("CI-verified"/success, "Configured — not yet run"/warn,
 "Reported upstream"/neutral, else the raw status), an optional `<time>`, and an optional
 "CI verification record" link, followed by a compact `<dl>` of the certified theorem(s),
@@ -218,6 +264,7 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
       {{scope}}
       {{reportedNote}}
       {{metaHtml}}
+      {{currencyNote cmp}}
     </section>
   }}
 
