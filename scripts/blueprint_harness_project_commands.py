@@ -46,7 +46,7 @@ OFFICIAL_BLUEPRINT_SOURCE_DESCRIPTION = (
 # `project_template/lake-manifest.json`, so a fresh out-of-tree copy builds with no `lake update`.
 # `test_official_blueprint_require_matches_committed_template` keeps this in lockstep with the
 # committed `project_template/lakefile.lean`; bump both together when moving the pin.
-SHOWCASE_TEMPLATE_PINNED_COMMIT = "0c463f2d5c96286f8861feda6a3d21637c5d9268"
+SHOWCASE_TEMPLATE_PINNED_COMMIT = "05fc64392a811007eee48f1451edbbf03e55925a"
 OFFICIAL_BLUEPRINT_REQUIRE = (
     'require VersoBlueprint from git '
     f'"https://github.com/{SHOWCASE_FORK_REPOSITORY}.git"@"{SHOWCASE_TEMPLATE_PINNED_COMMIT}"'

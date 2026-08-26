@@ -89,12 +89,30 @@ DOCUMENTED_ABSENCES = frozenset(
 
 FLAG_RE = re.compile(r"--[A-Za-z][A-Za-z0-9-]*")
 BACKTICKED_RE = re.compile(r"`([^`\n]+)`")
-LEAN_STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+# A Lean string literal, including one written across lines with a *string gap* — a
+# backslash at end of line, which Lean reads as a continuation. The escape class is
+# `[\s\S]` rather than `.` for exactly that: with `.`, a gap ends no literal, the opening
+# quote stays unpaired, and every literal after it in the file is recovered from the wrong
+# halves of the wrong strings. That is not hypothetical — it is how `--dump-manifest`,
+# `--dump-schema` and `--dump-html-cache` disappeared from `parsed_flags()` when a
+# multi-line `logError` message was added above them, leaving the README advertising three
+# flags the extractor could no longer see.
+LEAN_STRING_RE = re.compile(r'"((?:[^"\\]|\\[\s\S])*)"')
+# `r"…"` / `r#"…"#` / `r##"…"##`: no escapes inside, so quote-pairing does not apply to
+# their contents. They are blanked before the scan rather than parsed, since a CLI flag is
+# never declared inside one, and an odd number of quotes in an embedded CSS or JS blob
+# would otherwise desynchronize the reader the same way a string gap did.
+RAW_STRING_RE = re.compile(r'(?<![A-Za-z0-9_])r(#*)"[\s\S]*?"\1')
 BUILD_SYNOPSIS_RE = re.compile(r"^.*lake exe vbp build \[.*$", re.MULTILINE)
 
 
 def read(path: Path) -> str:
     return (PACKAGE_ROOT / path).read_text(encoding="utf-8")
+
+
+def read_lean(path: Path) -> str:
+    """A Lean source with its raw string literals blanked (see `RAW_STRING_RE`)."""
+    return RAW_STRING_RE.sub('""', read(path))
 
 
 def lean_list_literals(text: str, name: str) -> list[str]:
@@ -112,7 +130,7 @@ def lean_list_literals(text: str, name: str) -> list[str]:
 
 def build_synopsis() -> str:
     """The `vbp build` usage line `VbpMain.helpText` prints."""
-    main = read(FLAG_SOURCES[0])
+    main = read_lean(FLAG_SOURCES[0])
     for line in lean_list_literals(main, "mainCommandLines"):
         if line.startswith("lake exe vbp build"):
             return line
@@ -126,8 +144,8 @@ def help_text_flags() -> set[str]:
     `defaultHelpLines`; taking the flags out of those literals models it exactly
     without running Lean.
     """
-    main = read(FLAG_SOURCES[0])
-    vbp = read(Path("src") / "VersoBlueprint" / "Vbp.lean")
+    main = read_lean(FLAG_SOURCES[0])
+    vbp = read_lean(Path("src") / "VersoBlueprint" / "Vbp.lean")
     lines = (
         lean_list_literals(main, "mainCommandLines")
         + lean_list_literals(main, "defaultHelpLines")
@@ -140,7 +158,7 @@ def parsed_flags() -> set[str]:
     """Every flag the tools actually parse, as `"--flag"` literals in their sources."""
     flags: set[str] = set()
     for source in FLAG_SOURCES:
-        for literal in LEAN_STRING_RE.findall(read(source)):
+        for literal in LEAN_STRING_RE.findall(read_lean(source)):
             if FLAG_RE.fullmatch(literal):
                 flags.add(literal)
     assert flags, "no flag literals recovered from the CLI sources"
@@ -225,6 +243,30 @@ def source_path_resolves(token: str) -> bool:
 
 
 class DocCliContractTests(unittest.TestCase):
+    def test_string_reader_survives_gaps_and_raw_strings(self) -> None:
+        # The reader models Lean string literals, and the two shapes that break a naive
+        # one are worth pinning directly rather than only through their symptom. A *string
+        # gap* — backslash at end of line — leaves the opening quote unpaired unless the
+        # escape may be a newline; a raw string's contents are unescaped, so an odd number
+        # of quotes in an embedded CSS blob does the same. Either way every literal after
+        # it is recovered from the wrong halves of the wrong strings, which is how three
+        # implemented flags went missing from `parsed_flags()` while the README went on
+        # advertising them.
+        source = "\n".join(
+            [
+                'def note : String := "one line \\',
+                r'  continued onto another"',
+                r'def css : String := r##"a::after { content: " """##',
+                r'def flag : String := "--dump-manifest"',
+            ]
+        )
+        literals = LEAN_STRING_RE.findall(RAW_STRING_RE.sub('""', source))
+        self.assertIn("--dump-manifest", literals)
+        self.assertTrue(
+            any("continued onto another" in literal for literal in literals),
+            "a string written across a gap must be recovered as one literal",
+        )
+
     def test_flag_extraction_is_recoverable(self) -> None:
         # Guards the extraction itself: if the CLI sources change shape, this fails
         # loudly instead of silently reporting an empty (vacuously satisfied) set.
