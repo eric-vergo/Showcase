@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-08-26",
+  "sources": ["partly-unresolved override fixture (CX-060)"],
+  "entries": [
+    {
+      "symbol": "Nat.sub",
+      "behavior": "Truncated: `a - b` is `0` when `b` exceeds `a`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Definitely.Not.A.Real.Declaration",
+      "behavior": "This row can never match because its symbol does not resolve.",
+      "provenance": "curated"
+    }
+  ]
+}

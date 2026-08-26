@@ -58,6 +58,38 @@ def completedZeroCopy (version digest : String) : String :=
   s!"No matches in the configured partial table (version {version}, digest {digest}); this \
      is not evidence that no total-function caveat applies."
 
+/-- How many unresolved keys are named before the rest are counted instead. A table's
+inapplicable half is a fact worth stating; a page that becomes a list of names has stopped
+stating it. -/
+private def maxUnresolvedNamed : Nat := 6
+
+/--
+Table health, in one sentence: how many of the effective table's match keys name a
+declaration the scanned environment actually has (CX-060).
+
+A key that does not resolve there could not have matched, so a scan reporting no matches
+over a table full of them has said much less than it appears to. Empty when no resolution
+was performed — a report from before this check says nothing about its keys, and inventing
+"all resolved" for it would be the exact false silence this sentence exists to remove.
+-/
+def tableHealthCopy (r : ScanReport) : String :=
+  if r.tableKeys == 0 then ""
+  else
+    let unresolved := r.tableUnresolved.size
+    let resolved := r.tableKeys - unresolved
+    if unresolved == 0 then
+      s!"All {r.tableKeys} of the table's match keys name declarations present in the \
+         environment scanned."
+    else
+      let named := String.intercalate ", " (r.tableUnresolved.take maxUnresolvedNamed).toList
+      let more :=
+        if unresolved > maxUnresolvedNamed then
+          s!", and {unresolved - maxUnresolvedNamed} more"
+        else ""
+      s!"Table health: {resolved} of the table's {r.tableKeys} match keys name declarations \
+         present in the environment scanned. The other {unresolved} are not present in this \
+         environment and could not have matched here ({named}{more})."
+
 /-- The same point, under a list of hits: the list is what one partial table knows. -/
 def partialTableCopy (version digest : String) : String :=
   s!"The table is partial (version {version}, digest {digest}): a symbol it does not list is \
@@ -174,6 +206,7 @@ def body (r : ScanReport) : Html :=
   else if r.status == statusCompletedZero then
     .seq #[lead,
       {{ <p class="bp_caveats_behavior">{{.text true (completedZeroCopy version digest)}}</p> }},
+      noteP (tableHealthCopy r),
       noteP (coverageCopy r.coverage),
       optionSection r]
   else if r.status != statusPartial && r.status != statusCompletedWithHits then
@@ -197,6 +230,7 @@ def body (r : ScanReport) : Html :=
       {{ <p class="bp_caveats_behavior">{{.text true headline}}</p> }},
       findingList r.hits,
       noteP (partialTableCopy version digest),
+      noteP (tableHealthCopy r),
       noteP (coverageCopy r.coverage),
       optionSection r]
 

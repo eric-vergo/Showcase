@@ -686,13 +686,21 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let caveatIndex? : Option Informal.JunkValues.Index ←
     if Informal.JunkValues.caveatsEnabled (← getOptions) then
       let path := Informal.JunkValues.tableOverridePath (← getOptions)
-      match ← Informal.JunkValues.loadTable path with
+      match ← Informal.JunkValues.loadTableWithOverride path with
       | .error err =>
         if path.isEmpty then
           throwError "the caveat table this fork ships is unusable: {err}"
         else
           throwError "option 'verso.blueprint.trust.junkValueTable' {err}"
-      | .ok t => pure (some t.index)
+      | .ok (t, override?) =>
+        -- A configured override whose keys name nothing here is a broken configuration,
+        -- not a table that found nothing (CX-060).
+        if let some override := override? then
+          if let some reason := Informal.JunkValues.overrideUnusableReason? env path override then
+            throwError "option 'verso.blueprint.trust.junkValueTable' {reason}"
+        -- Resolved against the environment this scan runs in, so a key that could not have
+        -- matched is reported as such rather than as silence.
+        pure (some (t.indexIn env))
     else pure none
   -- The registry tracks every project declaration, `private` helpers included (the
   -- all-decls graph keeps them out to stay readable — see `enumerateProjectDecls`).

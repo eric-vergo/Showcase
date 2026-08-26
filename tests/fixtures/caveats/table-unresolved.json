@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-08-26",
+  "sources": ["adversarial unresolved-name fixture (CX-060)"],
+  "entries": [
+    {
+      "symbol": "Definitely.Not.A.Real.Declaration",
+      "behavior": "This row can never match because its symbol does not resolve.",
+      "provenance": "curated"
+    }
+  ]
+}

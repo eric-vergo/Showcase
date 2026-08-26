@@ -119,6 +119,105 @@ private def errorHas (e : Except String α) (needle : String) : Bool :=
 #eval show IO Bool from do
   return errorHas (← loadTable s!"{fixtureDir}/no-such-table.json") "names a missing file"
 
+/-! ## The keys have to exist where the scan runs (CX-060)
+
+A match key is a name, and a name that does not resolve in the environment a scan runs
+against can never be matched by it. Two consequences, deliberately different:
+
+- an override **none** of whose keys resolve is a broken configuration, refused at the
+  option like every other set-but-broken trust input;
+- an override **some** of whose keys resolve is legitimate, and the ones that could not
+  have matched are carried into the report and named in the copy.
+
+The unqualified `completed-zero` — a table saying it looked and found nothing, over a key
+that could never have matched — is what neither of these leaves behind.
+-/
+
+private def loadFixtureOverride (name : String) : IO (Option Table) := do
+  match ← loadTableWithOverride s!"{fixtureDir}/{name}" with
+  | .error _ => return none
+  | .ok (_, o?) => return o?
+
+-- The bundled table's own keys resolve where the registry scan runs. (Not all of them:
+-- this test library does not import every module the table names, which is the state the
+-- report is now able to say out loud.)
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × Bool) from do
+  let r := Table.resolveKeys (← getEnv) bundledTable
+  return (r.ran, decide (r.resolved > 0), r.keys == r.resolved + r.unresolved.size)
+
+-- Codex's exact override: one entry, one key, and the key names nothing here.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × Bool) from do
+  let env ← getEnv
+  let some override ← liftM (loadFixtureOverride "table-unresolved.json") | return (false, false, false)
+  let reason? := overrideUnusableReason? env "t.json" override
+  return (reason?.isSome,
+    ((reason?.getD "").splitOn "Definitely.Not.A.Real.Declaration").length > 1,
+    ((reason?.getD "").splitOn "would report that as having found nothing").length > 1)
+
+-- One key that resolves is enough for the override to be usable: the unresolved rest is
+-- reported, not refused.
+/-- info: (true, 1, #["Definitely.Not.A.Real.Declaration"]) -/
+#guard_msgs in
+#eval show CoreM (Bool × Nat × Array String) from do
+  let env ← getEnv
+  let some override ← liftM (loadFixtureOverride "table-partly-unresolved.json")
+    | return (false, 0, #[])
+  let r := Table.resolveKeys env override
+  return ((overrideUnusableReason? env "t.json" override).isNone, r.resolved, r.unresolved)
+
+-- The index carries the resolution, so every report the scan produces states it. An index
+-- built without an environment says nothing rather than implying everything resolved.
+/-- info: (false, true, true) -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × Bool) from do
+  let envless := bundledTable.index
+  let resolved := bundledTable.indexIn (← getEnv)
+  return (envless.resolution.ran, resolved.resolution.ran,
+    resolved.byKey.size == envless.byKey.size)
+
+-- The copy: nothing at all where no resolution ran, and the unresolved keys named where
+-- one did.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval
+  let silent : ScanReport := { status := statusCompletedZero }
+  let clean : ScanReport := { status := statusCompletedZero, tableKeys := 12 }
+  let holed : ScanReport := { status := statusCompletedZero, tableKeys := 12
+                              tableUnresolved := #["No.Such.Name"] }
+  ((Informal.CaveatsRender.tableHealthCopy silent).isEmpty,
+   hasSubstr (Informal.CaveatsRender.tableHealthCopy clean) "All 12 of the table's match keys",
+   hasSubstr (Informal.CaveatsRender.tableHealthCopy holed) "11 of the table's 12 match keys" &&
+     hasSubstr (Informal.CaveatsRender.tableHealthCopy holed)
+       "could not have matched here (No.Such.Name)")
+
+-- End to end through the real subprocess, on Codex's exact override: the zero-match state
+-- is still `completed-zero`, and it is no longer unqualified.
+/-- info: (true, 1, #["Definitely.Not.A.Real.Declaration"], true) -/
+#guard_msgs in
+#eval show IO (Bool × Nat × Array String × Bool) from do
+  let some override ← loadFixtureOverride "table-unresolved.json" | return (false, 0, #[], false)
+  let job : Informal.StatementClosure.Job := {
+    files := #["tests/fixtures/trust/Challenge.lean"]
+    roots := #["TrustFixture.add_comm_claim"]
+    caveatTable? := some override
+  }
+  match ← runStatementClosureTool toolPath job.toJson with
+  | .error _ => return (false, 0, #[], false)
+  | .ok doc =>
+    match Informal.StatementClosure.Report.ofJson? doc with
+    | .error _ => return (false, 0, #[], false)
+    | .ok report =>
+      match report.caveats? with
+      | none => return (false, 0, #[], false)
+      | some c =>
+        return (c.status == statusCompletedZero, c.tableKeys, c.tableUnresolved,
+          hasSubstr (Informal.CaveatsRender.body c).asString
+            "could not have matched here (Definitely.Not.A.Real.Declaration)")
+
 /-! ## Guard presence is three states, and none of them is "guarded" (§A7(c)) -/
 
 private def headsOfDecl (n : Name) : CoreM (Std.HashSet Name) := do

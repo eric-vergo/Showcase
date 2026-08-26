@@ -439,7 +439,10 @@ def closureAndScan (cfg : Config) (roots : Array Name)
     let w ← walk env cfg roots
     return (← render cfg roots w, none)
   | some table =>
-    let ix := table.index
+    -- Resolved against the chain's own fresh environment, which is the one the scan runs
+    -- in: a key naming something this chain does not import could not have matched, and a
+    -- zero-match result over it is a fact about the environment (CX-060).
+    let ix := table.indexIn env
     let (w, st) := Id.run <|
       (walk (m := StateM Informal.JunkValues.ScanState) env cfg roots
         (fun e => Informal.JunkValues.observe ix e.site.name e.site.origin e.depth)).run {}

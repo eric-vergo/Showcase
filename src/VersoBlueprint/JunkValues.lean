@@ -25,7 +25,10 @@ Three things about the register, because they are the whole point:
 - **The table is partial and says so everywhere.** A scan that matched nothing has found
   nothing in *this table*, which is not evidence that no total-function convention
   applies. Every zero-match state renders that sentence, with the table's version and
-  digest, so a reader can tell which table was silent.
+  digest, so a reader can tell which table was silent. It also renders how many of the
+  table's match keys name a declaration the scanned environment actually has: a key that
+  cannot resolve there could not have matched, so silence over it says nothing at all
+  (CX-060).
 - **Guard detection is a presence scan, never a verdict.** It looks for a hypothesis whose
   head symbol the table lists as a guarding shape. Finding one does not establish that it
   guards the flagged operand, and the copy never says it does; finding none does not
@@ -161,6 +164,49 @@ reader can tell which table was silent. -/
 def Table.digest (t : Table) : String :=
   ((Informal.Sha256.hexOfString (toJson t).compress).take 12).toString
 
+/-! ### Whether the table's keys exist where the scan runs (CX-060)
+
+A match key is a name. A name that does not resolve in the environment a scan runs against
+cannot be matched by that scan, so a table containing one has less coverage than its entry
+count suggests — and a scan that finished with no matches has said correspondingly less.
+
+Resolution is therefore performed against **the environment each scan actually uses**: the
+site's for the registry-side scan, the challenge chain's fresh one inside the subprocess.
+The two answer differently on purpose. A `Mathlib` key is inapplicable to a chain that
+imports only `Init`, and saying so is the point.
+-/
+
+/-- How many of a table's match keys name a declaration a given environment has, and which
+ones do not. -/
+structure Resolution where
+  /-- Match keys checked. `0` ⇒ no resolution was performed, which is what a report from
+  before this check carries and is not the same as "everything resolved". -/
+  keys : Nat := 0
+  /-- The checked keys the environment does not have, in table order. -/
+  unresolved : Array String := #[]
+deriving Inhabited, Repr
+
+/-- Keys that resolved. -/
+def Resolution.resolved (r : Resolution) : Nat := r.keys - r.unresolved.size
+
+/-- Whether a resolution ran at all. -/
+def Resolution.ran (r : Resolution) : Bool := r.keys > 0
+
+/-- Whether every checked key resolved. `false` for a resolution that did not run. -/
+def Resolution.complete (r : Resolution) : Bool := r.ran && r.unresolved.isEmpty
+
+/-- Resolve every match key of a table — symbols, aliases and instance names alike —
+against one environment. -/
+def Table.resolveKeys (env : Environment) (t : Table) : Resolution := Id.run do
+  let mut keys := 0
+  let mut unresolved : Array String := #[]
+  for e in t.entries do
+    for k in e.keys do
+      keys := keys + 1
+      if (env.find? k.toName).isNone then
+        unresolved := unresolved.push k
+  return { keys, unresolved }
+
 /-- Reject a table whose entries collide on any match key.
 
 A duplicate key makes the match ambiguous — two entries would claim the same constant, and
@@ -250,11 +296,12 @@ A configured path that does not exist, does not parse, carries an unsupported sc
 version, or collides on a match key returns the reason, which the caller raises as a build
 error. A configured safety table must not degrade into the default one.
 -/
-def loadTable (overridePath : String) : IO (Except String Table) := do
+def loadTableWithOverride (overridePath : String) :
+    IO (Except String (Table × Option Table)) := do
   let base ← match bundled with
     | .error err => return .error err
     | .ok t => pure t
-  if overridePath.isEmpty then return .ok base
+  if overridePath.isEmpty then return .ok (base, none)
   unless ← System.FilePath.pathExists overridePath do
     return .error s!"names a missing file (resolved against the build directory): {overridePath}"
   let raw ←
@@ -267,7 +314,40 @@ def loadTable (overridePath : String) : IO (Except String Table) := do
   | .ok j =>
     match Table.ofJson? j with
     | .error err => return .error s!"{overridePath}: {err}"
-    | .ok override => return Table.mergeOver base override
+    | .ok override =>
+      match Table.mergeOver base override with
+      | .error err => return .error err
+      | .ok merged => return .ok (merged, some override)
+
+/-- The effective table alone, for callers with nothing to say about the override. -/
+def loadTable (overridePath : String) : IO (Except String Table) := do
+  return (← loadTableWithOverride overridePath).map (·.1)
+
+/--
+The reason a configured override is unusable in this environment, or `none`.
+
+**Fully unresolvable is a build error**, matching every other set-but-broken trust option:
+an override none of whose match keys names a declaration the scanned environment has cannot
+match anything, so a project that configured a safety table would be served the silent
+zero-match state instead of being told its configuration is wrong.
+
+Partially unresolvable is not an error. An override may legitimately name a symbol from a
+module some scans do not import, and the keys that could not have matched are carried into
+each scan's report instead (`ScanReport.tableUnresolved`), where the reader is told which
+they were.
+-/
+def overrideUnusableReason? (env : Environment) (path : String) (override : Table) :
+    Option String :=
+  let r := Table.resolveKeys env override
+  if !r.ran || r.resolved > 0 then none
+  else
+    let named := String.intercalate ", " (r.unresolved.take 8).toList
+    let more := if r.unresolved.size > 8 then s!", and {r.unresolved.size - 8} more" else ""
+    let keyNoun := if r.keys == 1 then "match key names a declaration" else
+      "match keys all name declarations"
+    some s!"names {path}, whose {r.keys} {keyNoun} this build's environment does not have \
+      ({named}{more}). A table whose keys cannot resolve here matches nothing, and the scan \
+      would report that as having found nothing."
 
 /-! ## Consumer-declared characterizations (§A7(e))
 
@@ -360,14 +440,24 @@ def unresolvedDecls (env : Environment) (cs : Characterizations) : Array String 
 structure Index where
   byKey : Std.HashMap String Entry := {}
   table : Table := {}
+  /-- Which of the table's match keys exist in the environment this index will be used
+  against. Default (`keys = 0`) ⇒ built without an environment, and the reports it produces
+  say nothing about resolution rather than implying everything resolved. -/
+  resolution : Resolution := {}
 deriving Inhabited
 
-/-- Index a table for lookup. `Table.checkKeys` has already refused collisions, so the last
-writer here is also the only writer. -/
+/-- Index a table for lookup, without resolving its keys. `Table.checkKeys` has already
+refused collisions, so the last writer here is also the only writer. -/
 def Table.index (t : Table) : Index :=
   { table := t
     byKey := t.entries.foldl (init := ({} : Std.HashMap String Entry)) fun m e =>
       e.keys.foldl (init := m) fun m k => m.insert k e }
+
+/-- Index a table and resolve its match keys against the environment the scan will run in.
+Done once per scanning pass rather than per declaration: the answer is a property of the
+table and the environment, not of what is being scanned. -/
+def Table.indexIn (env : Environment) (t : Table) : Index :=
+  { t.index with resolution := Table.resolveKeys env t }
 
 def Index.find? (ix : Index) (n : Name) : Option Entry := ix.byKey[n.toString]?
 
@@ -517,6 +607,14 @@ structure ScanReport where
   tableVersion : String := ""
   /-- The effective table's digest, so a reader can tell which table was silent. -/
   tableDigest : String := ""
+  /-- Match keys of the effective table this scan resolved against its own environment.
+  `0` ⇒ no resolution was performed (a report from before this check), which is a different
+  thing from "every key resolved" and renders differently. -/
+  tableKeys : Nat := 0
+  /-- The checked keys the scanned environment does not have. They could not have matched,
+  so a zero-match result over them is a fact about the environment rather than about the
+  statement (CX-060). -/
+  tableUnresolved : Array String := #[]
   /-- What was actually looked at, in the words the surface repeats verbatim. -/
   coverage : String := ""
   truncated : Bool := false
@@ -538,6 +636,11 @@ instance : ToJson ScanReport where
         ("tableDigest", Json.str r.tableDigest),
         ("coverage", Json.str r.coverage),
         ("truncated", Json.bool r.truncated)]
+    -- Omitted when no resolution ran, so a report from a scan that could not check its
+    -- keys is distinguishable from one whose keys all resolved.
+    ++ (if r.tableKeys == 0 then [] else [("tableKeys", Json.num r.tableKeys)])
+    ++ (if r.tableUnresolved.isEmpty then []
+        else [("tableUnresolved", Json.arr (r.tableUnresolved.map Json.str))])
     ++ (if r.optionOverrides.isEmpty then []
         else [("optionOverrides", Json.arr (r.optionOverrides.map toJson))])
     ++ (if r.optionScanFiles.isEmpty then []
@@ -557,6 +660,8 @@ instance : FromJson ScanReport where
       hits := ← arrOf Finding "matches"
       tableVersion := (j.getObjValAs? String "tableVersion").toOption.getD ""
       tableDigest := (j.getObjValAs? String "tableDigest").toOption.getD ""
+      tableKeys := (j.getObjValAs? Nat "tableKeys").toOption.getD 0
+      tableUnresolved := (j.getObjValAs? (Array String) "tableUnresolved").toOption.getD #[]
       coverage := (j.getObjValAs? String "coverage").toOption.getD ""
       truncated := (j.getObjValAs? Bool "truncated").toOption.getD false
       optionOverrides := ← arrOf OptionOverride "optionOverrides"
@@ -633,6 +738,8 @@ def finish (ix : Index) (st : ScanState) (heads : Std.HashSet Name) (truncated :
     hits
     tableVersion := ix.table.version
     tableDigest := ix.table.digest
+    tableKeys := ix.resolution.keys
+    tableUnresolved := ix.resolution.unresolved
     coverage
     truncated
   }

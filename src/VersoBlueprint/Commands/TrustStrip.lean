@@ -2594,13 +2594,21 @@ def elabCaveatTable? : PartElabM (Option Informal.JunkValues.Table) := do
   let opts ← Lean.getOptions
   unless Informal.JunkValues.caveatsEnabled opts do return none
   let path := Informal.JunkValues.tableOverridePath opts
-  match ← liftM (Informal.JunkValues.loadTable path) with
+  match ← liftM (Informal.JunkValues.loadTableWithOverride path) with
   | .error err =>
     if path.isEmpty then
       throwError "the caveat table this fork ships is unusable: {err}"
     else
       throwError "option 'verso.blueprint.trust.junkValueTable' {err}"
-  | .ok table => return some table
+  | .ok (table, override?) =>
+    -- The one check the loader cannot make: whether the override's match keys name
+    -- anything in this build's environment. An override that can never match would
+    -- otherwise be served to the reader as a scan that found nothing (CX-060).
+    if let some override := override? then
+      if let some reason :=
+          Informal.JunkValues.overrideUnusableReason? (← Lean.getEnv) path override then
+        throwError "option 'verso.blueprint.trust.junkValueTable' {reason}"
+    return some table
 
 open Verso Doc Elab in
 /--
