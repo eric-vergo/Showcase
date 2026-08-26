@@ -99,10 +99,34 @@ def roleNoun (role : String) : String :=
   else if role == roleRegistryRecord then "Palomar record"
   else role
 
+/-! ## Capture states
+
+A configured path that was **not there** when the payload was captured is as much a fact
+about the capture as one that was: some of these options are documented to degrade when
+their file is missing (the comparator configuration, the Solution), and a repository may
+legitimately configure a Solution it has not generated yet.
+
+Recording only the files that existed is what CX-077 found: the path is absent from the
+ledger, so it is absent from the recheck, so the file *appearing* later moves nothing this
+gate can see — and a warm build then publishes a capture that a cold build refuses, because
+the cold build would hash the new bytes against the digests the verdict recorded and stop.
+
+So absence is recorded, as a state rather than as a missing row, and every transition is a
+mismatch: absent→present, present→absent, present→changed.
+-/
+
+/-- The path held a file this build read, and `sha256` is over those bytes. This is the
+state a record carries by saying nothing (`Input.state?` unset). -/
+def statePresent : String := "present"
+
+/-- The option named this path and there was no file there. `sha256` is empty — the only
+state in which it legally is. -/
+def stateAbsent : String := "absent"
+
 /-! ## The record -/
 
 /--
-One non-Lean file a trust payload was elaborated from.
+One non-Lean file a trust payload was elaborated from, or was configured to be.
 
 `path` is the path exactly as the build resolved it — the configured option value, or the
 path a manifest named — and therefore **revision-free**: it identifies a file in a working
@@ -111,14 +135,25 @@ option that named it did, so the check re-reads what elaboration read as long as
 runs from the same directory as the build (which is already required for the option paths
 to mean anything).
 
-`sha256` is over the bytes of that one read.
+`sha256` is over the bytes of that one read, and is empty exactly when `state` is `absent`.
 -/
 structure Input where
   role : String := ""
   path : String := ""
-  /-- Lowercase hex, as `shasum -a 256` spells it. -/
+  /-- Lowercase hex, as `shasum -a 256` spells it. Empty exactly when this record is
+  `absent`. -/
   sha256 : String := ""
+  /-- `absent` (`stateAbsent`) when the capture found no file at this path. Unset is
+  `present`: it is what every row of every payload written before this field existed meant,
+  and — since the derived `ToJson` omits a `none` — it keeps those payloads byte-identical.
+  An `Option` rather than a defaulted `String` deliberately: the derived `FromJson` fails on
+  a *missing* non-optional field, which would make a legacy payload undecodable and
+  therefore silently unchecked. -/
+  state? : Option String := none
 deriving Inhabited, BEq, Repr, FromJson, ToJson
+
+/-- Whether this record says the path held a file at capture. -/
+def Input.wasPresent (i : Input) : Bool := i.state? != some stateAbsent
 
 /-- Read a file once as bytes: its SHA-256 and its decoded text.
 
@@ -144,6 +179,14 @@ def digestOfFile (path : String) : IO String := do
 
 /-- An input record for a file whose bytes are already in hand. -/
 def Input.ofDigest (role path sha256 : String) : Input := { role, path, sha256 }
+
+/-- An input record for a configured path that held no file when the payload was captured.
+
+There is nothing to hash, and that is the point: what is recorded is that this build looked
+and found nothing, so a file appearing at that path afterwards is a change, not a state the
+recheck has no opinion about (CX-077). -/
+def Input.absent (role path : String) : Input :=
+  { role, path, state? := some stateAbsent }
 
 /-- An input record for a file read through somebody else's loader. Returns `none` when the
 path is empty; propagates an IO error, since a file the build just read successfully has to
@@ -196,44 +239,74 @@ def ofPayload (payload : Json) : Array Tagged := Id.run do
 
 /-! ## The check -/
 
-/-- One input whose current bytes are not the bytes the payload was elaborated from. -/
+/-- One input that is not now what the payload says it was. -/
 structure Finding where
   topic : String := ""
   input : Input := {}
-  /-- `changed` (readable, different bytes) or `unreadable` (gone, or unreadable now). -/
+  /-- `changed` (readable, different bytes), `unreadable` (gone, or unreadable now),
+  `appeared` (recorded absent, there now) or `unrecorded` (recorded present with no digest,
+  so this build cannot tell). -/
   kind : String := ""
   /-- The current digest, or the IO error. -/
   detail : String := ""
 deriving Inhabited, Repr
 
-/-- Whether this finding is a file whose bytes moved (as opposed to one that vanished). -/
+/-- Whether this finding is a file whose bytes moved (as opposed to one that vanished,
+appeared, or was recorded without a digest). -/
 def Finding.changed (f : Finding) : Bool := f.kind == "changed"
 
 /--
-Re-read every recorded input and report the ones that no longer hold the bytes the payload
-was elaborated from.
+Re-read every recorded input and report the ones that are not what the payload says.
+
+Every transition is a finding, in both directions (CX-077):
+
+- recorded present, readable, different bytes ⇒ `changed`;
+- recorded present, not readable now ⇒ `unreadable`;
+- recorded **absent**, a file there now ⇒ `appeared` — the case a ledger of only-existing
+  files cannot see, and the one where a warm build would otherwise skip the content binding
+  a cold build applies to the new bytes;
+- recorded absent and still absent ⇒ nothing. That is the state the capture describes.
 
 Total: an unreadable file is a finding, not an exception, so one missing file cannot hide
-the other four. An input recorded without a digest is skipped — a payload written by a
-build that could not hash something has nothing to compare, and inventing a failure from
-that would stop builds over a record's silence.
+the other four.
+
+A record that says `present` and carries no digest is itself a finding (`unrecorded`)
+rather than being skipped. Nothing this fork writes produces one — every present record
+comes from a read that hashed what it read, and a build that found nothing writes
+`Input.absent` — so such a row is a payload this build cannot check, which is exactly what
+the gate exists to refuse. (It was previously skipped, which is the half of CX-077 that
+made an absent capture indistinguishable from an unhashed one.)
 -/
 def recheck (inputs : Array Tagged) : IO (Array Finding) := do
   let mut findings : Array Finding := #[]
   for (topic, input) in inputs do
-    if input.sha256.isEmpty then continue
     let current ←
       try
         pure (Except.ok (← digestOfFile input.path))
       catch e =>
         pure (Except.error (toString e))
+    if !input.wasPresent then
+      -- Recorded absent, so existence is the question — asked directly rather than inferred
+      -- from a failed read, which would report a file that is there but unreadable as still
+      -- missing. The digest, or the reason there is none, rides along so the stop message
+      -- can name what turned up.
+      let there ← try System.FilePath.pathExists input.path catch _ => pure false
+      if there then
+        findings := findings.push { topic, input, kind := "appeared"
+                                    detail := match current with
+                                              | .ok digest => digest
+                                              | .error err => err }
+      continue
     match current with
     | .error err =>
       findings := findings.push { topic, input, kind := "unreadable", detail := err }
     | .ok digest =>
-      unless Informal.Sha256.normalizeDigest digest
-          == Informal.Sha256.normalizeDigest input.sha256 do
-        findings := findings.push { topic, input, kind := "changed", detail := digest }
+      if input.sha256.isEmpty then
+        findings := findings.push { topic, input, kind := "unrecorded", detail := digest }
+      else
+        unless Informal.Sha256.normalizeDigest digest
+            == Informal.Sha256.normalizeDigest input.sha256 do
+          findings := findings.push { topic, input, kind := "changed", detail := digest }
   return findings
 
 /-- One finding as three lines of the stop message: which file, what it is, and what moved.
@@ -243,11 +316,19 @@ indentation is load-bearing (it is what makes a list of files scannable in a CI 
 string gap eats exactly that. -/
 private def findingLine (f : Finding) : String :=
   let topicNote := if f.topic.isEmpty then "" else s!" [topic: {f.topic}]"
+  let (was, now) :=
+    if f.kind == "appeared" then
+      ("not there when this payload was captured", s!"on disk now      {f.detail}")
+    else if f.kind == "unrecorded" then
+      ("recorded with no digest, so this build cannot tell what it was",
+        s!"on disk now      {f.detail}")
+    else if f.changed then
+      (s!"elaborated from  {f.input.sha256}", s!"on disk now      {f.detail}")
+    else (s!"elaborated from  {f.input.sha256}", s!"cannot be read now: {f.detail}")
   String.intercalate "\n" [
     s!"  {f.input.path} — {roleNoun f.input.role}{topicNote}",
-    s!"      elaborated from  {f.input.sha256}",
-    if f.changed then s!"      on disk now      {f.detail}"
-    else s!"      cannot be read now: {f.detail}"]
+    s!"      {was}",
+    s!"      {now}"]
 
 /--
 The stop message: which files moved, why that is not recoverable at generation time, and
@@ -262,15 +343,18 @@ def stopMessage (findings : Array Finding) (cwd : System.FilePath) : String :=
   let noun := if n == 1 then "file" else "files"
   let lines := String.intercalate "\n" (findings.map findingLine).toList
   s!"Showcase comparator evidence check FAILED (stale capture): {n} {noun} the trust \
-     payload was elaborated from {if n == 1 then "no longer holds" else "no longer hold"} \
-     the bytes this build read.\n\n\
+     payload describes {if n == 1 then "is" else "are"} not what it says — different bytes, \
+     gone, or there when this build recorded nothing at that path.\n\n\
      {lines}\n\n\
      The comparator surfaces — the verdict, the statement, the recorded digests, the \
      repository links, the reproduce commands — are captured when the document module \
-     elaborates. Those files are not Lean modules, so changing one invalidates nothing \
-     Lake tracks, and this build was about to re-serve the earlier capture under the \
-     current revision: the earlier verdict beside the earlier statement, internally \
-     consistent and silently out of date.\n\n\
+     elaborates. Those files are not Lean modules, so changing one — or creating one where \
+     the capture found nothing — invalidates nothing Lake tracks, and this build was about \
+     to re-serve the earlier capture under the current revision: the earlier verdict beside \
+     the earlier statement, internally consistent and silently out of date. A file that has \
+     appeared since the capture is the same failure read forward: the verdict's recorded \
+     digests were never checked against those bytes, and a cold build would have done \
+     that.\n\n\
      Re-elaborate the module carrying the `blueprint_dashboard` block so the payload is \
      read from the files above, then regenerate. `lake build <lib> -R` forces it; \
      declaring the files as Lake input files in the consumer's lakefile makes ordinary \

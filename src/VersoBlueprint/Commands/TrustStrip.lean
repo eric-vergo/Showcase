@@ -88,7 +88,7 @@ register_option verso.blueprint.trust.comparatorStatus : String := {
 
 register_option verso.blueprint.trust.comparatorConfig : String := {
   defValue := ""
-  descr := "Path (relative to the build CWD) to the comparator's configuration JSON; its contents are embedded verbatim (pretty-printed) on the comparator evidence page. Empty or missing ⇒ omitted (probe-and-degrade)."
+  descr := "Path (relative to the build CWD) to the comparator's configuration JSON; its contents are embedded verbatim (pretty-printed) on the comparator evidence page. Empty disables. Configured-but-missing ⇒ the section is omitted (probe-and-degrade), and the path is recorded on the payload as absent, so a file generated at it after this capture fails the freshness gate rather than being published without its digests ever being checked (CX-077)."
 }
 
 register_option verso.blueprint.trust.comparatorTopics : String := {
@@ -103,7 +103,7 @@ register_option verso.blueprint.trust.challengeFile : String := {
 
 register_option verso.blueprint.trust.solutionFile : String := {
   defValue := ""
-  descr := "Path (relative to the build CWD) to the comparator's Solution Lean file; its contents are embedded verbatim on the comparator evidence page (after the Challenge file). Empty or missing ⇒ omitted (probe-and-degrade)."
+  descr := "Path (relative to the build CWD) to the comparator's Solution Lean file; its contents are embedded verbatim on the comparator evidence page (after the Challenge file). Empty disables. Configured-but-missing ⇒ the section is omitted (probe-and-degrade), and the path is recorded on the payload as absent, so a Solution generated at it after this capture fails the freshness gate rather than being published without its digests ever being checked (CX-077)."
 }
 
 register_option verso.blueprint.trust.kernelAdvisories : String := {
@@ -2178,7 +2178,11 @@ the payload with its path and digest (`TrustComparator.inputs` / `TrustData.inpu
 if any has moved. Cold builds remain the publishing path; a warm one that would have
 served a stale capture now fails instead of shipping.
 
-The recorded set is every non-Lean file this module reads: the comparator status artifact,
+The recorded set is every non-Lean file this module reads — and, for the two inputs whose
+absence is not an error, every path it was configured to read and found nothing at, marked
+absent (CX-077): recording only the files that existed made a Solution generated after the
+capture invisible to the gate, so a warm build published it with its digests never compared
+against the verdict's. The set: the comparator status artifact,
 its config, the Challenge and Solution sources, the topic manifest and each topic's own
 four files, the challenge-chain files the closure tool hashes, `formalization.yaml`, the
 kernel-advisory override, the **junk-value table override**
@@ -2402,6 +2406,15 @@ private def readSourceWithDigest (path : String) : IO (String × String) :=
 private def withInput (cmp : TrustComparator) (role path digest : String) : TrustComparator :=
   { cmp with inputs := cmp.inputs.push (Informal.TrustInputs.Input.ofDigest role path digest) }
 
+/-- Record a configured path that held no file when this verdict was captured.
+
+The options whose file is optional degrade to omitting a section; what they must not do is
+degrade to omitting the *path*, because then the file appearing later moves nothing the
+freshness gate can see, and a warm build publishes a capture whose content binding was
+never run against those bytes (CX-077). -/
+private def withAbsentInput (cmp : TrustComparator) (role path : String) : TrustComparator :=
+  { cmp with inputs := cmp.inputs.push (Informal.TrustInputs.Input.absent role path) }
+
 open Verso Doc Elab in
 /--
 Attach the config / Challenge / Solution source (with digests, cross-checks, and
@@ -2426,6 +2439,10 @@ def attachComparatorSources (cmp0 : TrustComparator)
   let mut cmp := cmp0
   -- Every read below records what it read, in the order it read it: the stop message a
   -- stale capture produces lists the files a reader would go looking for, in that order.
+  -- A configured path with no file at it is recorded too, as absent: the two optional
+  -- inputs degrade to omitting a section, never to omitting the path, or a file generated
+  -- after this capture would appear on a warm build without its bytes ever being compared
+  -- against the digests the verdict recorded (CX-077).
   unless statusPath.isEmpty || statusDigest.isEmpty do
     cmp := withInput cmp Informal.TrustInputs.roleStatus statusPath statusDigest
   let mut configJson? : Option Json := Option.none
@@ -2445,6 +2462,8 @@ def attachComparatorSources (cmp0 : TrustComparator)
           enableNanoda := configEnablesNanoda j }
       | .error _ =>
         cmp := { cmp with configJson := raw }
+    else
+      cmp := withAbsentInput cmp Informal.TrustInputs.roleConfig cfgPath
   if !chalPath.isEmpty then
     unless ← System.FilePath.pathExists chalPath do
       throwError "comparator challenge file names a missing file (resolved against the build \
@@ -2461,6 +2480,8 @@ def attachComparatorSources (cmp0 : TrustComparator)
       let (digest, src) ← readSourceWithDigest solPath
       cmp := { cmp with solutionSource := src, solutionDigest := digest }
       cmp := withInput cmp Informal.TrustInputs.roleSolution solPath digest
+    else
+      cmp := withAbsentInput cmp Informal.TrustInputs.roleSolution solPath
   -- Self-consistency of the record first: a contradictory record has no reading, so
   -- nothing downstream should get the chance to pick one.
   liftM (checkComparatorEncodings cmp statusPath)
@@ -3293,7 +3314,8 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   -- Embed the comparator's config JSON + Challenge/Solution Lean source verbatim on the
   -- comparator page. Unlike the two required options above, these degrade silently
   -- when their file is empty/missing (probe-and-degrade) and only attach when a
-  -- comparator verdict exists.
+  -- comparator verdict exists — silently in what they render, not in what they record:
+  -- a configured path with no file at it comes back on the payload as absent (CX-077).
   if let some cmp := trust.comparator then
     let cfgPath : String :=
       opts.get verso.blueprint.trust.comparatorConfig.name

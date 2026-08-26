@@ -27,6 +27,12 @@ written. It never re-serves the snapshot and never repairs it: a capture that do
 match its sources is not evidence about this build, and the only correct outcome is a
 rebuild.
 
+That includes the paths the capture found *nothing* at: a configured comparator config or
+Solution that did not exist is recorded as absent, and a file appearing at one of them
+afterwards is a stale transition like any other (CX-077). Otherwise the one state a warm
+build cannot see is the one where new bytes turn up that a cold build would have hashed
+against the verdict's recorded digests — and refused.
+
 Placed beside `Informal.GraphGate` in `PreviewManifest.emitBlueprintHtml` rather than in
 an `ExtraStep`, and for the same reason: it runs between traversal and emission, so it
 covers **both** consumers of the payload — the dashboard trust strip and the trust-model
@@ -310,6 +316,10 @@ def provenanceJson (inputs : Array Informal.TrustInputs.Tagged) : IO Json := do
       [("role", Json.str input.role),
        ("path", Json.str input.path),
        ("sha256", Json.str input.sha256)] ++
+      -- `absent` only, for the same reason `topic` is written only when there is one: a
+      -- publishing gate re-hashing these paths has to be told which of them it must find
+      -- *nothing* at, and a row that says nothing means what it always meant (CX-077).
+      (if input.wasPresent then [] else [("state", Json.str Informal.TrustInputs.stateAbsent)]) ++
       (if topic.isEmpty then [] else [("topic", Json.str topic)])
   return Json.mkObj [
     ("schemaVersion", Json.num provenanceSchemaVersion),

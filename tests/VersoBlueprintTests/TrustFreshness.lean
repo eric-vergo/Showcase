@@ -187,20 +187,129 @@ implicate the three files that did not move.
     hasSubstr stop "NoSuchChallenge.lean" &&
     hasSubstr stop "cannot be read now"
 
-/-! ## An unchecked record is not a failure
+/-! ## A record with no digest is a record this build cannot check (CX-077)
 
-A payload from a build that recorded no digest for something has nothing to compare. That
-is a weaker state, not a violation, and stopping builds over a record's silence would make
-the gate the thing consumers switch off.
+An input that says it was *present* and carries no digest has nothing to compare, and used
+to be skipped for that reason. Nothing this fork writes produces one — a present record
+comes from a read that hashed what it read, and a build that found nothing writes
+`Input.absent` — so the row is a payload this gate cannot check, which is the thing it
+exists to refuse. Skipping it is also what made an absent capture indistinguishable from an
+unhashed one, which is half of how the file-appears case got through.
 -/
 
 /-- info: true -/
 #guard_msgs(info, drop warning) in
 #eval show IO Bool from do
   let unrecorded : Informal.TrustInputs.Input :=
-    { role := Informal.TrustInputs.roleChallenge, path := "tests/fixtures/trust/gone.lean" }
+    { role := Informal.TrustInputs.roleChallenge, path := "tests/fixtures/trust/Challenge.lean" }
   let findings ← Informal.TrustInputs.recheck #[("", unrecorded)]
+  let stop ← stopFor #[("", unrecorded)]
+  return findings.size == 1 && findings[0]!.kind == "unrecorded" &&
+    hasSubstr stop "recorded with no digest" &&
+    hasSubstr stop "tests/fixtures/trust/Challenge.lean"
+
+/-! ## Configured, absent, and then there (CX-077)
+
+The comparator configuration and the Solution are the two inputs whose absence is not a
+build error: the section is omitted and the page says less. What their absence must not do
+is omit the *path*, because then the ledger has no row for it, the recheck has nothing to
+re-read, and a file generated at that path afterwards is published by a warm build with its
+bytes never compared against the digests the verdict recorded — the comparison a cold build
+runs, and fails.
+
+The finding's replay is cold-A (paths absent), then create the files, then warm-B. The
+`.olean` is the payload, so the unit-equivalent drives the same comparison from the payload
+side: capture with the paths absent, then ask the recheck about a path that is there. That
+is the idiom the digest cases above use, for the same reason — it needs no mutation of the
+fixture tree.
+-/
+
+private def missingSolution : String := "tests/fixtures/trust/NotYetGenerated.lean"
+private def missingConfig : String := "tests/fixtures/trust/not-yet-generated.json"
+
+set_option verso.blueprint.trust.comparatorStatus "tests/fixtures/trust/comparator-status.json" in
+set_option verso.blueprint.trust.comparatorConfig "tests/fixtures/trust/not-yet-generated.json" in
+set_option verso.blueprint.trust.challengeFile "tests/fixtures/trust/Challenge.lean" in
+set_option verso.blueprint.trust.solutionFile "tests/fixtures/trust/NotYetGenerated.lean" in
+#docs (Manual) pendingDoc "Trust Freshness Pending" :=
+:::::::
+:::theorem "trust.pending.anchor" (lean := "Nat.add_comm")
+Addition on the naturals commutes.
+:::
+
+{blueprint_dashboard}
+:::::::
+
+/-- The input records the capture above produced, with two of its four paths absent. -/
+def pendingInputs : IO (Array Informal.TrustInputs.Tagged) := do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% pendingDoc
+  return Informal.TrustFreshness.cachedInputs st
+
+-- Cold A: the build renders — a missing config and Solution are not an error — and both
+-- configured paths are on the payload, recorded absent and with no digest.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← pendingInputs
+  let recordedAbsent := fun (role path : String) =>
+    inputs.any fun (topic, i) =>
+      topic.isEmpty && i.role == role && i.path == path && !i.wasPresent && i.sha256.isEmpty
+  return inputs.size == 4 &&
+    recordedAbsent Informal.TrustInputs.roleConfig missingConfig &&
+    recordedAbsent Informal.TrustInputs.roleSolution missingSolution &&
+    -- and the two files that were there are recorded the way they always were
+    inputs.any (fun (_, i) => i.role == Informal.TrustInputs.roleStatus && i.wasPresent
+      && i.sha256.length == 64)
+
+-- Warm B, nothing created: absent then, absent now. The gate is silent, because that is the
+-- state the capture describes.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let (_, st) ← renderManualDocHtmlAndState extension_impls% pendingDoc
+  let findings ← Informal.TrustInputs.recheck (Informal.TrustFreshness.cachedInputs st)
+  Informal.TrustFreshness.run .multi st
   return findings.isEmpty
+
+-- Warm B, the Solution generated in between: the recheck sees a file where the capture
+-- recorded none, and the stop names the path, says what it was, and says what it is now.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← pendingInputs
+  let appeared := inputs.map fun (topic, i) =>
+    if i.role == Informal.TrustInputs.roleSolution then
+      (topic, { i with path := "tests/fixtures/trust/Solution.lean" })
+    else (topic, i)
+  let findings ← Informal.TrustInputs.recheck appeared
+  let stop ← stopFor appeared
+  return findings.size == 1 && findings[0]!.kind == "appeared" &&
+    !findings[0]!.changed &&
+    hasSubstr stop "tests/fixtures/trust/Solution.lean" &&
+    hasSubstr stop "Solution source" &&
+    hasSubstr stop "not there when this payload was captured" &&
+    hasSubstr stop "on disk now" &&
+    -- the three inputs that did not move are not implicated
+    !hasSubstr stop "comparator-status.json" &&
+    !hasSubstr stop "tests/fixtures/trust/Challenge.lean" &&
+    !hasSubstr stop missingConfig &&
+    -- and it explains why an appearance is the same failure as a change
+    hasSubstr stop "a cold build would have done that"
+
+-- The reverse transition, on the same payload: a file that was there at capture and is gone
+-- now is still named, and named differently.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let inputs ← capturedInputs
+  let vanished := inputs.map fun (topic, i) =>
+    if i.role == Informal.TrustInputs.roleSolution then
+      (topic, { i with path := missingSolution })
+    else (topic, i)
+  let findings ← Informal.TrustInputs.recheck vanished
+  let stop ← stopFor vanished
+  return findings.size == 1 && findings[0]!.kind == "unreadable" &&
+    hasSubstr stop missingSolution && hasSubstr stop "cannot be read now"
 
 /-! ## Reading the records back out of a serialized payload
 
