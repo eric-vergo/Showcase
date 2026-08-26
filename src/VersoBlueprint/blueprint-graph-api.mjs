@@ -15,6 +15,14 @@ import {
  * Data-only calls do not load the interactive graph renderer; render helpers
  * lazy-load it when called.
  *
+ * Use the data helpers when a dashboard needs finalized graph records from the
+ * manifest or graph JSON embedded beside a rendered graph block. Use
+ * {@link renderGraphs} or {@link renderGraphBlock} when the page already
+ * contains generated graph-block markup. Rendering graph blocks requires an
+ * explicit preview renderer from `api/preview.mjs` (passed as
+ * `options.previewUtils`) so graph popovers and nested previews use the same
+ * manifest/cache loader and hydration path as the rest of the page.
+ *
  * @module blueprint-graph-api
  */
 
@@ -77,7 +85,7 @@ export const loadManifestGraphs = (url, options) => {
 };
 
 /**
- * Load graph variants from this generated site's default manifest.
+ * Load finalized graph records from this generated site's default manifest.
  *
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<BlueprintGraphData[]>}

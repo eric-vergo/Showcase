@@ -8,6 +8,25 @@ import { createPreviewRuntimeApi } from "./Commands/preview-runtime-api.mjs";
  * It composes the data API with DOM rendering, hydration, canonical-node
  * insertion, and call-scoped external-markup fallback renderers.
  *
+ * The renderer returned by {@link createPreview} keeps its own manifest/cache
+ * load state. Use it instead of reading `window.VersoBlueprint` or importing
+ * private `Commands/*.mjs` chunks. Data-only clients should use
+ * `api/data.mjs`; graph-only or graph-rendering clients should use
+ * `api/graph.mjs` and pass an explicit preview renderer to graph render
+ * helpers.
+ *
+ * Common rendering choices:
+ *
+ * - {@link renderPreviewInto} inserts only the cached preview body fragment,
+ *   for clients that own their surrounding UI.
+ * - {@link renderCanonicalPreviewInto} inserts the standard generated
+ *   Blueprint node wrapper from the canonical generated page.
+ * - {@link renderNode} starts from a Blueprint label and can fall back to
+ *   call-scoped external Markdown, TeX, Verso, or source renderers when no
+ *   native preview exists.
+ * - {@link hydrate} runs Blueprint math and nested-preview behavior after a
+ *   client has inserted cached HTML itself.
+ *
  * @module blueprint-preview-api
  */
 
@@ -21,8 +40,33 @@ const previewUrls = createPreviewUrlApi(moduleUrl);
 /**
  * Create an isolated render-capable preview API instance.
  *
+ * Prefer this entry point for custom browser clients. Pass `dataBaseUrl` or
+ * `fetchJson` when the generated data files are not next to this module, and
+ * pass `fetchText`, `loadDocument`, or `canonicalBaseUrl` when canonical node
+ * rendering needs custom page loading.
+ *
  * @param {BlueprintPreviewOptions} [options] Loader, hydration, and generated-data options.
  * @returns {BlueprintPreviewApi} Preview API instance.
+ *
+ * @example
+ * // Import the render-capable API from the generated site.
+ * import { createPreview } from "./-verso-data/api/preview.mjs";
+ *
+ * // Create one renderer for this custom client and register any client widgets
+ * // that need to run after Blueprint content is inserted.
+ * const preview = createPreview({
+ *   hydrators: {
+ *     audit(root) {
+ *       root.querySelectorAll("[data-audit-target]").forEach(bindAuditWidget);
+ *     }
+ *   }
+ * });
+ *
+ * // Render the same generated Blueprint node wrapper used by the site.
+ * await preview.renderCanonicalPreviewInto(
+ *   document.querySelector("#target"),
+ *   preview.statementPreviewKey("Chapter2:Problem2.11.6")
+ * );
  */
 export function createPreview(options) {
   return createPreviewRuntimeApi(optionsWithDefaultDataBaseUrl(options, moduleUrl));

@@ -161,6 +161,11 @@ export function readHtmlCacheStatus() {
 /**
  * Load and decode the Blueprint manifest.
  *
+ * The manifest is the semantic data source for generated Blueprint sites. Use
+ * it for labels, generated links, external markup metadata, graph records, and
+ * other structured facts. The HTML cache is rendered presentation data; do not
+ * parse it to recover semantics.
+ *
  * @param {BlueprintDataApiOptions} [options] Optional per-call load overrides.
  * @returns {Promise<Map<string, BlueprintManifestEntry>>}
  */

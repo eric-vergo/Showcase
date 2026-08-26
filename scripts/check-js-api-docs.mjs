@@ -191,7 +191,7 @@ requireSameStringSet(
 requireIncludes(
   "index.html",
   pages["index.html"],
-  "Verso Blueprint JavaScript API",
+  "Showcase JavaScript API",
   "landing-page title"
 );
 for (const entry of [...Object.values(publicApiContract.modules), publicApiContract.typesModule]) {
