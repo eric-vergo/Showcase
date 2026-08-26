@@ -8,14 +8,6 @@ open Informal
 
 #doc (Manual) "Addition" =>
 
-:::source_document "addition-source"
-%%%
-title := "Starter Addition Notes"
-kind := .pdf
-pdf := "source/addition-source.pdf"
-%%%
-:::
-
 :::group "addition_core"
 Core statements about addition on natural numbers.
 :::
@@ -30,20 +22,6 @@ operation.
 :::
 
 :::theorem "addition_right_identity" (parent := "addition_core") (owner := "project_author") (tags := "starter, arithmetic") (effort := "small") (priority := "high")
-%%%
-source := {
-  document := "addition-source"
-  spans := #[
-    {
-      page := "1"
-      pdf := some {
-        path := "source/addition-source.pdf"
-      }
-    }
-  ]
-}
-%%%
-
 For every natural number $`n`, adding zero on the right leaves it unchanged:
 $`n + 0 = n`.
 This is the first sanity check for {uses "addition_spec"}[].
@@ -57,6 +35,20 @@ successor on each side.
 ```lean "addition_right_identity"
 theorem nat_add_zero_right (n : Nat) : n + 0 = n := by
   simp
+```
+
+A project ported from an existing paper or set of notes can keep the original
+wording next to the statement it became, together with the place it was read
+from. The attachment below records the file and the line range in
+`source/addition-source.tex`; both travel with the node in the exported
+Blueprint manifest. `(display := source)` makes the witness visible on the
+rendered page — the default is `hidden`, which is what a large port normally
+wants.
+
+```tex "addition_right_identity" (slot := statement) (path := "source/addition-source.tex") (start_line := 3) (start_character := 0) (end_line := 6) (end_character := 0) (display := source)
+\begin{theorem}\label{thm:addition-right-identity}
+For every natural number $n$, adding zero on the right leaves it unchanged.
+\end{theorem}
 ```
 
 :::theorem "addition_assoc" (parent := "addition_core") (lean := "Nat.add_assoc")
@@ -73,6 +65,7 @@ links to an existing declaration instead of restating the code locally.
 :::definition "addition_runtime_note" (parent := "addition_core")
 Some projects keep implementation notes or helper snippets next to the informal
 statement surface. Blueprint can attach a small Rust block for that purpose.
+The helper below computes the sum specified in {uses "addition_spec"}[].
 :::
 
 ```rust "addition_runtime_note"

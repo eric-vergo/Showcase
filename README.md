@@ -378,46 +378,28 @@ These `ExternalMarkup` attachments are primarily a porting aid for existing TeX
 or Markdown documents. Use `slot` names such as `statement` and `proof` when
 one Blueprint node corresponds to multiple informal markup witnesses.
 
-Blueprint can separately record Level 1 original-source provenance for audit
-tools. Declare a source document with `:::source_document` and attach node-local
-source spans in a leading Verso metadata block:
+Upstream's separate Level 1 provenance layer — a `:::source_document` directive,
+a `source :=` node metadata field, manifest `sourceDocuments` / per-entry
+`sources`, and the browser helpers that resolved them — belongs to the
+source-metadata runtime this fork does not carry (see
+[Fork status](#fork-status-upstream-capabilities-not-carried-over)). Neither the
+directive nor the metadata field is registered here; writing one is a build
+error, not a silently ignored block.
+
+What this fork records instead is the *source location* of an external markup
+attachment, given on the block itself:
 
 ````md
-:::source_document "paper"
-%%%
-title := "Representation Theory"
-kind := .pdf
-pdf := "source/paper.pdf"
-%%%
-:::
-
-:::lemma_ "addition_right_identity"
-%%%
-source := {
-  document := "paper"
-  spans := #[
-    {
-      page := "12"
-      pdf := some { path := "source/pages/page-12.pdf" }
-    }
-  ]
-}
-%%%
-
-For every natural number $`n`, $`n + 0 = n`.
-:::
+```tex "addition_right_identity" (slot := statement) (path := "source/paper.tex") (start_line := 11) (start_character := 0) (end_line := 15) (end_character := 0)
+\begin{theorem}\label{thm:addition-right-identity}
+For every natural number $n$, adding zero on the right leaves it unchanged.
+\end{theorem}
+```
 ````
 
-Current behavior: source provenance is exported in the Blueprint manifest as
-`sourceDocuments` and per-entry `sources`, and kept hidden in rendered pages.
-Browser clients can resolve source-document ids with `loadSourceDocument`, load
-the complete catalog with `loadSourceDocuments`, or join entry source refs with
-declared documents using `resolveSourceMetadata` from `api/data.mjs` or
-`api/preview.mjs`.
-Manifest entries also carry source-location lookup results. Custom browser
-clients can call `resolveLabel` for Blueprint labels or `resolveDeclaration`
-for Lean declarations when they need jump-to-source targets.
-Rich audit-interface rendering is planned separately.
+The path and range travel with the node in the exported Blueprint manifest, which
+is the provenance half that survives the fork.
+[project_template/](./project_template/)'s addition chapter is a worked example.
 
 ### Rendering to HTML
 

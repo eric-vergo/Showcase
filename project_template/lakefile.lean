@@ -22,6 +22,14 @@ require VersoBlueprint from git "https://github.com/eric-vergo/Showcase.git"@"0c
 
 package ProjectTemplate where
   precompileModules := false
+  -- Two graph gates run on every render. Acyclicity is unconditional. Connectivity is on by
+  -- default: the build fails if the `uses` edges leave the graph in more than one piece, which
+  -- is how an orphan — a statement nothing depends on and that depends on nothing — is caught
+  -- before it ships. These chapters are wired so the check passes; keep it that way rather than
+  -- silencing it, because the first thing a reader asks of a Blueprint graph is where a node
+  -- sits in it. The escape hatch is for a Blueprint that deliberately covers several unrelated
+  -- topics and so has no single connected graph to gate on (acyclicity still gates):
+  --   ⟨`verso.blueprint.trust.requireConnected, false⟩
   leanOptions := #[⟨`experimental.module, true⟩]
 
 @[default_target]

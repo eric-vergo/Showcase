@@ -36,6 +36,7 @@ theorem multiplication_one_right (n : Nat) : n * 1 = n := by
 :::theorem "multiplication_assoc" (parent := "multiplication_core") (lean := "Nat.mul_assoc")
 For all natural numbers $`a`, $`b`, and $`c`, multiplication is associative:
 $`(a * b) * c = a * (b * c)`.
+This is another consequence of {uses "multiplication_spec"}[].
 :::
 
 :::proof "multiplication_assoc"
