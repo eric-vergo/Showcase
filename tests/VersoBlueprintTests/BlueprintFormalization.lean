@@ -637,7 +637,7 @@ private def namedIdentityStatus := r##"{
     { "label": "nanoda", "adapter_kind": "nanoda",
       "repository": "https://github.com/ammkrn/nanoda_lib.git",
       "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
-      "executable_sha256": "abcdef01", "replayed": true, "verdict": "accepted" }
+      "executable_sha256": "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc", "replayed": true, "verdict": "accepted" }
   ]
 }"##
 
@@ -645,7 +645,7 @@ private def wrongRepoStatus := r##"{
   "status": "verified",
   "kernel_identities": [
     { "label": "nanoda", "repository": "https://github.com/attacker/not_nanoda",
-      "source_commit": "05055695", "executable_sha256": "abcdef01", "replayed": true }
+      "source_commit": "05055695", "executable_sha256": "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc", "replayed": true }
   ]
 }"##
 
@@ -657,11 +657,40 @@ private def noDigestStatus := r##"{
   ]
 }"##
 
+-- CX-064's exact hostile record: canonical repository text, a real revision, an unknown
+-- adapter invoking `/usr/bin/true`, and a producer string typed into the field named
+-- `executable_sha256`. Every field a `named` tier reads is present; one of them is not a
+-- digest, and that is the part this build can check.
+private def malformedDigestStatus := r##"{
+  "status": "verified",
+  "verified_at": "2026-08-25T00:00:00Z",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "unknown-adapter",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695879dfebb6628a67da88ceca6cd6b0421",
+      "command_argv": ["/usr/bin/true"],
+      "executable_sha256": "arbitrary-producer-string",
+      "replayed": true, "verdict": "accepted" }
+  ]
+}"##
+
+-- The same record with a revision that is not one either: a branch name where a git object
+-- name belongs.
+private def symbolicCommitStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "main",
+      "executable_sha256": "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc",
+      "replayed": true }
+  ]
+}"##
+
 private def unknownCheckerStatus := r##"{
   "status": "verified",
   "kernel_identities": [
     { "label": "lean4lean", "adapter_kind": "acme", "repository": "https://github.com/x/lean4lean",
-      "source_commit": "cc11dd22", "executable_sha256": "9876fedc", "replayed": true }
+      "source_commit": "cc11dd22", "executable_sha256": "74252c1798f3db857bbb88b7386c80b2ce812e7e27ed9b2abc1f278f4d85eb84", "replayed": true }
   ]
 }"##
 
@@ -703,6 +732,81 @@ private def unknownCheckerStatus := r##"{
   named.assuredKernels == #["nanoda"] && named.replayedWithNanoda &&
   -- Trailing `.git` and case are spelling, not a different repository.
   named.kernelIdentities.size == 1
+
+/-! ### A field named `executable_sha256` is not a digest (CX-064)
+
+Nothing available at site-build time can attest that a recorded digest is of the binary
+that ran: there is no oracle here to compare it against, and the finding's mismatched-digest
+fixture was dropped for that reason. What *is* checkable is well-formedness, and it is
+exactly what the finding's replay defeated — an arbitrary producer string in the digest
+field promoted the record to the tier that names a kernel, assured it, and carried it into a
+`current` currency verdict.
+
+So the floor is shape: 64 lowercase hex for the executable digest, 7-40 for the revision.
+A record that fails it has bound nothing, lands in `labeled`, and every consequence follows
+from that one decision rather than from a second rule per surface. The undetectable case —
+a well-formed digest that is simply not the binary's — remains undetectable, and no tier
+here claims otherwise.
+-/
+
+/-- info: (true, true, "labeled", "labeled") -/
+#guard_msgs in
+#eval
+  let bad := TrustComparator.ofJson (parsedJson malformedDigestStatus)
+  let symbolic := TrustComparator.ofJson (parsedJson symbolicCommitStatus)
+  -- The record parsed, and the fields are there: this is a shape verdict, not a read failure.
+  (bad.kernelIdentities.size == 1 && symbolic.kernelIdentities.size == 1,
+   ((bad.identityFor? "nanoda").map (·.executableSha256)) == some "arbitrary-producer-string",
+   bad.kernelIdentityTier "nanoda", symbolic.kernelIdentityTier "nanoda")
+
+-- The consequences, in one place: no assurance, no nanoda, and currency `unknown` rather
+-- than the green `current` the finding's replay obtained.
+/-- info: (#[], false, #[("nanoda", "unknown", "identity-unbound")]) -/
+#guard_msgs in
+#eval
+  let bad := (TrustComparator.ofJson (parsedJson malformedDigestStatus)).withCurrency
+    Informal.KernelAdvisories.builtinTable
+  (bad.assuredKernels, bad.replayedWithNanoda,
+   bad.currency.map fun r => (r.tool, r.verdict, r.reason))
+
+-- The floor itself, on the shapes it exists to separate.
+/-- info: (true, true, true, true) -/
+#guard_msgs in
+#eval
+  let d := "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc"
+  let full := "05055695879dfebb6628a67da88ceca6cd6b0421"
+  (isExecutableDigest d && isSourceRevision "05055695" && isSourceRevision full,
+   -- Not a digest: the finding's string, something too short, something uppercase.
+   !isExecutableDigest "arbitrary-producer-string" && !isExecutableDigest "abcdef01" &&
+     !isExecutableDigest d.toUpper && !isExecutableDigest "",
+   -- Not a revision: a branch, a tag, something too short, a whole digest.
+   !isSourceRevision "main" && !isSourceRevision "v4.33.1" && !isSourceRevision "abc" &&
+     !isSourceRevision d,
+   -- Whitespace around a well-formed value is spelling, not a different value.
+   isExecutableDigest s!"  {d}  ")
+
+-- A malformed record is not a *contradictory* one, so it does not stop the build: the page
+-- claims less and says why. Both validators still pass, which is the correct answer to a
+-- different question — they check that a record agrees with itself.
+/-- info: (true, true) -/
+#guard_msgs(info, drop warning) in
+#eval show CoreM (Bool × Bool) from do
+  let bad := TrustComparator.ofJson (parsedJson malformedDigestStatus)
+  let ran : Lean.CoreM Unit → CoreM Bool := fun act => do
+    try act; pure true catch _ => pure false
+  return (← ran (checkComparatorEncodings bad "status.json"),
+          ← ran (checkComparatorRunProvenance bad "status.json"))
+
+-- It does earn a warning, because a producer who typed something other than a digest into
+-- that field meant to record one, and quietly rendering the weaker page is how they never
+-- find out.
+/--
+warning: status.json: the identity record for `nanoda` does not bind that label to a program — `executable_sha256` is 'arbitrary-producer-string', which is not 64 lowercase hex characters. The row renders as an unauthenticated label and its currency as unknown, which is what an unbound record establishes; record the revision the checker was built from and the SHA-256 of the executable that ran, or drop the fields.
+-/
+#guard_msgs in
+#eval show CoreM Unit from do
+  checkComparatorRunProvenance (TrustComparator.ofJson (parsedJson malformedDigestStatus))
+    "status.json"
 
 /-! A configuration that migrated `enable_nanoda` into `external_kernels` has not turned
 the kernel off, so a run that replayed is not drift. Dropping the kernel from the map
@@ -1560,11 +1664,11 @@ private def duplicateIdentitiesStatus := r##"{
     { "label": "nanoda", "adapter_kind": "nanoda",
       "repository": "https://github.com/ammkrn/nanoda_lib",
       "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
-      "executable_sha256": "abcdef01", "replayed": true, "verdict": "ok" },
+      "executable_sha256": "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc", "replayed": true, "verdict": "ok" },
     { "label": "nanoda", "adapter_kind": "nanoda",
       "repository": "https://github.com/ammkrn/nanoda_lib.git",
       "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
-      "executable_sha256": "ABCDEF01", "replayed": true, "verdict": "ok" }
+      "executable_sha256": "F035EE955E00221EE35FE819AC1EA5818EDCE8A459FFFD380120A450373BE6DC", "replayed": true, "verdict": "ok" }
   ]
 }"##
 

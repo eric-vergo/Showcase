@@ -1183,6 +1183,32 @@ checker: the label is consumer-chosen text. -/
 def knownKernelRepos : List (String × String) :=
   [("nanoda", "https://github.com/ammkrn/nanoda_lib")]
 
+/-- Whether every character is a lowercase hex digit. -/
+private def isLowerHex (s : String) : Bool :=
+  !s.isEmpty && s.toList.all fun c => ('0' ≤ c && c ≤ '9') || ('a' ≤ c && c ≤ 'f')
+
+/--
+Whether a recorded executable digest is *shaped like* one: 64 lowercase hex characters, as
+every tool that writes a SHA-256 spells it.
+
+This is a well-formedness floor, not an attestation — nothing here checks that the digest is
+of the binary that ran, and nothing can (CX-064). What it does rule out is the shape the
+finding's fixture used: an arbitrary non-empty string, typed by a producer into a field
+named `executable_sha256`, earning the tier that names a kernel. A record that spells its
+digest some other way, uppercase included, falls to `labeled`, which is the safe direction:
+it claims less than the record does, never more.
+-/
+def isExecutableDigest (s : String) : Bool :=
+  let s := s.trimAscii.toString
+  s.length == 64 && isLowerHex s
+
+/-- Whether a recorded source revision is shaped like a git object name: 7 to 40 lowercase
+hex characters, abbreviated or full. Same floor, same direction as `isExecutableDigest`: a
+branch name, a tag, or a sentence is not a revision an executable can be bound to. -/
+def isSourceRevision (s : String) : Bool :=
+  let s := s.trimAscii.toString
+  7 ≤ s.length && s.length ≤ 40 && isLowerHex s
+
 /-- The run's identity record for `label`, if it wrote one.
 
 At most one record per label survives parsing: `canonicalKernelIdentities` merges
@@ -1193,24 +1219,30 @@ def TrustComparator.identityFor? (cmp : TrustComparator) (label : String) :
   cmp.kernelIdentities.find? fun r => r.label == label
 
 /--
-How much the run's record authenticates about the checker it labels `label`:
+How much the run's record *says* about the checker it labels `label` — and no more than
+that. Every tier here is a reading of a producer's own JSON: nothing on this page re-runs a
+checker, fetches a source tree, or hashes a binary, so no tier is an attestation and none of
+them licenses categorical prose about which program checked the proof (CX-064).
 
-- `"named"` — the record binds an executable digest to an immutable revision of the
-  repository this fork knows that name by. The only tier that may be described as the
-  named kernel.
+- `"named"` — the record binds a well-formed executable digest to a well-formed revision of
+  the repository this fork knows that name by. The strongest thing a record can say about
+  itself; the surfaces attribute it to the producing CI rather than asserting it.
 - `"ci-built"` — the legacy `nanoda_replay`/`nanoda_ref` pair, with no `external_kernels`
   map able to redirect the label: the run's CI supplied the binary it built from the
   recorded revision, and the record's honesty rests on that CI rather than on a digest.
-- `"bound"` — an executable digest and a source revision, but not a checker this fork
-  knows by name (or a recorded repository that is not the canonical one). A program is
-  identified; which program it *is* is not this site's to say.
+- `"bound"` — a well-formed digest and revision, but not a checker this fork knows by name
+  (or a recorded repository that is not the canonical one). A program is identified; which
+  program it *is* is not this site's to say.
 - `"labeled"` — a label, at most a separately typed revision, and nothing binding either
-  to what ran.
+  to what ran. **Also where a malformed identity record lands**: a producer that typed
+  something other than a digest into `executable_sha256` has bound nothing, and the tier
+  says so rather than reading the field's name as its content.
 -/
 def TrustComparator.kernelIdentityTier (cmp : TrustComparator) (label : String) : String :=
   match cmp.identityFor? label with
   | Option.some rec =>
-    if rec.executableSha256.isEmpty || rec.sourceCommit.isEmpty then "labeled"
+    if !isExecutableDigest rec.executableSha256 || !isSourceRevision rec.sourceCommit then
+      "labeled"
     else
       match knownKernelRepos.find? fun p => p.1 == label with
       | Option.some (_, canonical) =>
@@ -1224,9 +1256,12 @@ def TrustComparator.kernelIdentityTier (cmp : TrustComparator) (label : String) 
         && !(cmp.recordedKernelRef label).isEmpty then "ci-built"
     else "labeled"
 
-/-- Checkers whose replay this page may present as a second opinion from a known kernel:
-the run recorded that they replayed, and their identity tier says the name means
-something. -/
+/-- Checkers whose replay this page may report *under the name the record gives them*: the
+run recorded that they replayed, and their identity tier says the record binds that name to
+something rather than typing it beside a label.
+
+Not "assured" in the sense of attested. What earns a place here is a well-formed record, and
+the copy that reads this attributes it to the run that wrote it — see `TrustPages`. -/
 def TrustComparator.assuredKernels (cmp : TrustComparator) : Array String :=
   cmp.replayedKernels.filter fun k =>
     let tier := cmp.kernelIdentityTier k
@@ -1238,16 +1273,19 @@ def TrustComparator.unnamedReplayClaims (cmp : TrustComparator) : Array String :
   cmp.replayedKernels.filter fun k => !(cmp.assuredKernels.contains k)
 
 /--
-Whether the run that produced this verdict performed an independent nanoda-kernel
-replay *this site is willing to call nanoda*.
+Whether the run that produced this verdict **recorded** a nanoda replay in a form this site
+is willing to repeat under that name.
 
 Two things must hold, and neither implies the other. The run must have recorded the
 replay (`nanoda_replay`, or the `nanoda` entry of its kernel map) — an artifact that
 records nothing about its run reads as `false`, because under-claiming a replay that may
 have happened is a presentation defect while claiming one that did not is a false
-assertion about a dated verification. And the record must authenticate the label: a
+assertion about a dated verification. And the record must bind the label to something: a
 comparator configuration may point the key `nanoda` at any command, so a label alone is
 not the kernel. See `kernelIdentityTier`.
+
+What it is **not** is evidence that nanoda ran. It is a reading of the producing run's own
+record, and every surface that consumes it says so in those terms (CX-064).
 -/
 def TrustComparator.replayedWithNanoda (cmp : TrustComparator) : Bool :=
   cmp.recordedReplay? "nanoda" == some true &&
@@ -1748,8 +1786,11 @@ def currencyDetail (tool : String) (revision recordDate advisoriesUpdated : Stri
       s!"The comparator was built on {revision}, at or above every Lean release this \
          site's advisory table records a kernel-soundness fix in."
     else
-      s!"{who} {revision} is a revision this site's advisory table resolves as carrying \
-         every fix it records for it."
+      -- The verdict is about the revision the record names, not about the program that
+      -- ran: nothing here binds the two beyond the producing CI's own say-so (CX-064).
+      s!"Per the recorded revision, {who} {revision} is one this site's advisory table \
+         resolves as carrying every fix it records for it. That is a reading of the run's \
+         record, not a check of the binary it invoked."
   | .unknown =>
     match as.reason with
     | "table-older-than-record" =>
@@ -1758,9 +1799,10 @@ def currencyDetail (tool : String) (revision recordDate advisoriesUpdated : Stri
          published since would not appear here. Against what the table does record, \
          {revision} carries every fix."
     | "identity-unbound" =>
-      s!"Nothing in this record binds the label {tool} to a program, so there is no build \
-         whose currency could be assessed. That is a gap in the record, not a finding \
-         about the checker."
+      s!"Nothing in this record binds the label {tool} to a program — no revision and \
+         executable digest of the shape those fields are for — so there is no build whose \
+         currency could be assessed. That is a gap in the record, not a finding about the \
+         checker."
     | "no-revision" =>
       s!"The record names {who} but no revision of it, so there is nothing to assess \
          against the advisories below."
@@ -2274,6 +2316,27 @@ Public for the same reason as `checkComparatorDigests`.
 -/
 def checkComparatorRunProvenance (cmp : TrustComparator) (statusPath : String) :
     Lean.CoreM Unit := do
+  -- A malformed identity record is not a contradiction, so it is not an error: the record
+  -- simply binds nothing, `kernelIdentityTier` reads it as `labeled`, and every surface
+  -- says less accordingly (CX-064). It is worth a warning all the same — a producer who
+  -- typed something other than a digest into `executable_sha256` meant to record one, and
+  -- silently rendering the weaker page is how they never find out.
+  for rec in cmp.kernelIdentities do
+    let bad :=
+      (if rec.executableSha256.isEmpty then [] else
+        if isExecutableDigest rec.executableSha256 then [] else
+          [s!"`executable_sha256` is '{rec.executableSha256}', which is not 64 lowercase hex \
+             characters"]) ++
+      (if rec.sourceCommit.isEmpty then [] else
+        if isSourceRevision rec.sourceCommit then [] else
+          [s!"`source_commit` is '{rec.sourceCommit}', which is not 7-40 lowercase hex \
+             characters"])
+    unless bad.isEmpty do
+      logWarning m!"{statusPath}: the identity record for `{rec.label}` does not bind that \
+        label to a program — {String.intercalate "; and " bad}. The row renders as \
+        an unauthenticated label and its currency as unknown, which is what an unbound \
+        record establishes; record the revision the checker was built from and the SHA-256 \
+        of the executable that ran, or drop the fields."
   for kernel in cmp.replayedKernels do
     unless (cmp.recordedKernelRef kernel).trimAscii.toString.isEmpty do continue
     if kernel == "nanoda" then

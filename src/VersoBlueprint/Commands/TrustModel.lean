@@ -542,10 +542,14 @@ private def trustingSection (data : TrustModelData) (trust? : Option TrustData) 
       -- The semantic accessor, never the raw compatibility field: one canonical record
       -- means every surface names the same revision.
       let nanodaRef := cmp.recordedKernelRef "nanoda"
+      -- Attributed, not asserted: the revision and any digest beside it are the producing
+      -- CI's own record of what it invoked, and nothing here fetched that revision, built
+      -- it, or hashed the executable against it (CX-064).
       let nanodaItem :=
         if cmp.replayedWithNanoda && !nanodaRef.isEmpty then
-          #[item "nanoda" s!"at revision {nanodaRef}, as the independent kernel the run \
-              recorded."]
+          #[item "nanoda" s!"at revision {nanodaRef}, as the second kernel the run's own \
+              record names. That record is the producing CI's; this site did not re-run the \
+              checker or check the binary against the revision."]
         else #[]
       -- Confinement is claimed only for the step the record covers. Elaborating Lean runs
       -- arbitrary code, so the first elaboration of the untrusted solution is the

@@ -369,11 +369,13 @@ private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
             "The comparator names an external checker by a key its configuration chooses, "
             "runs the command that key points at, and reads exit status zero as acceptance. "
             "A label is therefore display text: only a run record that binds a source "
-            "revision to the digest of the executable it invoked says which program ran. A "
-            "checker the configuration enables but the record does not mention describes the "
-            "next run, and a revision typed beside a label pins nothing. Where the two "
-            "columns disagree, the configuration has changed since this verdict: the run "
-            "record is what happened, the configuration is what would happen now."
+            "revision to the digest of the executable it invoked says which program ran — "
+            "and it says so as the producing CI's own assertion, which this site displays "
+            "and does not verify. A checker the configuration enables but the record does "
+            "not mention describes the next run, and a revision typed beside a label pins "
+            "nothing. Where the two columns disagree, the configuration has changed since "
+            "this verdict: the run record is what happened, the configuration is what would "
+            "happen now."
           </p> }}])
 
 /-- The "Reproduce it yourself" section: up to three tiers, each dropped when its data is
@@ -397,7 +399,8 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
       -- `enable_nanoda` describes the next run and says nothing about this one.
       let replayNote :=
         if cmp.replayedWithNanoda then
-          " — the exact run that produced this verdict, Lean-kernel and nanoda replays included."
+          " — the exact run that produced this verdict, Lean-kernel replay included; its own \
+            record additionally names a nanoda replay."
         else
           " — the exact run that produced this verdict, Lean-kernel replay included."
       some {{
@@ -566,6 +569,39 @@ private def contentBindingNote (cmp : TrustComparator) : Output.Html :=
     {{ <p class="bp_trust_note">{{.seq #[boundSentence, unboundSentence]}}</p> }}
 
 /--
+Replay claims the record *can* name, attributed to the record that names them (CX-064).
+
+The strongest thing a status artifact can say about a second checker is that it was built
+from some revision and that the binary invoked had some digest. Both are the producing CI's
+own assertions: nothing on this site fetched that revision, built it, or hashed the
+executable, and no oracle available here could. So the sentence names the record as its
+source and says what was not done, rather than claiming that a second kernel independently
+checked this proof.
+
+A `ci-built` record does not even carry the digest — it is a revision the run's CI says it
+built the checker from — and is worded accordingly.
+-/
+private def recordedKernelNote (cmp : TrustComparator) : Output.Html :=
+  let assured := cmp.assuredKernels
+  if assured.isEmpty then .empty
+  else
+    let phrase := fun (k : String) =>
+      match cmp.identityFor? k with
+      | some rec =>
+        if cmp.kernelIdentityTier k == "named" then
+          s!"{k}, built from {rec.sourceCommit}, binary {rec.executableSha256}"
+        else s!"{k}, built by the run's CI from {cmp.recordedKernelRef k}"
+      | none => s!"{k}, built by the run's CI from {cmp.recordedKernelRef k}"
+    let subject := if assured.size == 1 then "a replay by" else "replays by"
+    {{ <p class="bp_trust_note">
+         {{.text true s!"The linked run's record additionally names {subject} \
+            {andList (assured.map phrase).toList}. That is what the producing CI recorded, \
+            not something this site attested: nothing here re-ran the checker, fetched that \
+            revision, or hashed the binary against it. Read it as the run's account of what \
+            it invoked."}}
+       </p> }}
+
+/--
 Replay claims the record cannot name: the run says something ran and accepted, and
 nothing in the record says what program that was.
 
@@ -577,13 +613,12 @@ private def unnamedCheckerNote (cmp : TrustComparator) : Output.Html :=
   if claims.isEmpty then .empty
   else
     let subject := if claims.size == 1 then "a checker labeled" else "checkers labeled"
-    let verb := if claims.size == 1 then "was" else "were"
     {{ <p class="bp_trust_note">
          "The run also reports that " {{.text true subject}} " " {{inlineCodeList claims.toList}}
-         {{.text true s!" accepted the solution. The comparator takes that label from its \
+         {{.text true " accepted the solution. The comparator takes that label from its \
             configuration and runs whatever command the label points at, treating exit status \
             zero as acceptance, and this record does not bind the label to a source revision \
-            and executable digest — so what {verb} run is not established here. Nothing above \
+            and executable digest — so what ran is not established here. Nothing above \
             counts it as a second kernel."}}
        </p> }}
 
@@ -883,24 +918,13 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
   --    The second-kernel clause is *run evidence* (`nanoda_replay`), not configuration:
   --    an author who switches `enable_nanoda` on must not thereby make a past verdict
   --    claim a replay it never had.
+  -- One clause, whatever the record says about second kernels. The tier a record earns is
+  -- a reading of that record's own fields, so it licenses attribution and not assertion:
+  -- what the second kernel did belongs in the note below, in the producing CI's voice
+  -- (CX-064).
   let kernelClause : Output.Html :=
-    -- Only checkers the run's record authenticates. A configuration can point the key
-    -- `nanoda` at any command, so a label may not become a second-kernel assurance.
-    let replayed := cmp.assuredKernels
-    if replayed == #["nanoda"] then
-      {{ "Lean kernel — and, in the run that produced this verdict, independently the nanoda "
-         "kernel, a separate reimplementation of Lean's type checker — to confirm that the "
-         "solution proves exactly the challenge statements, using only the permitted axioms "
-         "listed above." }}
-    else if !replayed.isEmpty then
-      {{ "Lean kernel — and, in the run that produced this verdict, independently the "
-         {{.text true (andList replayed.toList)}}
-         " kernels, separate reimplementations of Lean's type checker — to confirm that the "
-         "solution proves exactly the challenge statements, using only the permitted axioms "
-         "listed above." }}
-    else
-      {{ "Lean kernel to confirm that the solution proves exactly the challenge statements, using "
-         "only the permitted axioms listed above." }}
+    {{ "Lean kernel to confirm that the solution proves exactly the challenge statements, using "
+       "only the permitted axioms listed above." }}
   let certifiesSection : Output.Html :=
     trustSection "What this page certifies"
       (.seq #[
@@ -911,6 +935,7 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
             "solution cannot weaken or restate the claims it is measured against, and then asks the "
             {{kernelClause}}
           </p> }},
+        recordedKernelNote cmp,
         unnamedCheckerNote cmp,
         nanodaEvidenceNote cmp])
   -- 4. What you must still check yourself (the one non-automatable step).

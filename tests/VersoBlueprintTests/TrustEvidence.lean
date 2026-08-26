@@ -225,14 +225,19 @@ private def comparatorHtml (cmp : TrustComparator) : String :=
   hasSubstr html "predates the field that says whether the" &&
   hasSubstr html "nanoda_lib"
 
--- The run recorded a replay: now — and only now — the page may say so.
+-- The run recorded a replay: now — and only now — the page may report one. It reports it
+-- as the record's own account, never as something this site established (CX-064).
 /-- info: true -/
 #guard_msgs in
 #eval
   let html := comparatorHtml
     { fixtureComparator with enableNanoda := true, nanodaReplay := some true }
-  hasSubstr html "nanoda replays included" &&
-  hasSubstr html "independently the nanoda kernel" &&
+  hasSubstr html "record additionally names a nanoda replay" &&
+  hasSubstr html "The linked run's record additionally names a replay by nanoda, built by \
+    the run's CI from 1111111111111111111111111111111111111111" &&
+  hasSubstr html "not something this site attested" &&
+  -- and no tier, this one included, licenses the categorical sentence
+  !hasSubstr html "independently the nanoda kernel" &&
   hasSubstr html "nanoda 1111111111111111111111111111111111111111" &&
   !hasSubstr html "predates the field"
 
@@ -245,9 +250,9 @@ private def comparatorHtml (cmp : TrustComparator) : String :=
   let runOnly := comparatorHtml
     { fixtureComparator with enableNanoda := false, nanodaReplay := some true }
   (hasSubstr configOnly "configuration has changed since this verdict" &&
-     !hasSubstr configOnly "nanoda replays included",
+     !hasSubstr configOnly "record additionally names a nanoda replay",
    hasSubstr runOnly "configuration has changed since this verdict" &&
-     hasSubstr runOnly "nanoda replays included")
+     hasSubstr runOnly "record additionally names a nanoda replay")
 
 /-! ## The comparator page discloses how the source is bound to the verdict -/
 
@@ -297,10 +302,10 @@ private def boundKernel : TrustComparator :=
     kernelIdentities := #[
       { label := "nanoda", adapterKind := "nanoda"
         repository := "https://github.com/ammkrn/nanoda_lib"
-        sourceCommit := "05055695", executableSha256 := "abcdef01"
+        sourceCommit := "05055695", executableSha256 := "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc"
         commandArgv := #["/opt/nanoda_bin"], replayed := true, verdict := "accepted" },
       { label := "lean4lean", repository := "https://github.com/x/lean4lean"
-        sourceCommit := "cc11dd22", executableSha256 := "9876fedc", replayed := true }]
+        sourceCommit := "cc11dd22", executableSha256 := "74252c1798f3db857bbb88b7386c80b2ce812e7e27ed9b2abc1f278f4d85eb84", replayed := true }]
     kernelReplays := #[("nanoda", true), ("lean4lean", true)]
     kernelRefs := #[("nanoda", "05055695"), ("lean4lean", "cc11dd22")] }
 
@@ -312,21 +317,27 @@ private def boundKernel : TrustComparator :=
   let html := comparatorHtml spoofedKernel
   !hasSubstr html "independently the nanoda kernel" &&
   !hasSubstr html "nanoda f58f2f6d" &&
-  !hasSubstr html "nanoda replays included" &&
+  !hasSubstr html "record additionally names a nanoda replay" &&
   hasSubstr html "external checker labeled" &&
   hasSubstr html "not authenticated" &&
   hasSubstr html "recorded separately, not bound to it" &&
   hasSubstr html "The comparator takes that label from its configuration"
 
--- A record that binds a source revision and an executable digest to the repository this
--- fork knows nanoda by earns the name; one that binds them to something else does not.
+-- A record that binds a well-formed source revision and executable digest to the
+-- repository this fork knows nanoda by earns the name; one that binds them to something
+-- else does not. What the name earns is attribution — the record's fields, printed as the
+-- producing CI's account — and never the categorical sentence (CX-064).
 /-- info: true -/
 #guard_msgs in
 #eval
   let html := comparatorHtml boundKernel
-  hasSubstr html "independently the nanoda kernel" &&
+  !hasSubstr html "independently the nanoda kernel" &&
+  hasSubstr html "The linked run's record additionally names a replay by nanoda, built \
+    from 05055695, binary" &&
+  hasSubstr html "nothing here re-ran the checker, fetched that revision, or hashed the \
+    binary against it" &&
   hasSubstr html "nanoda 05055695" &&
-  hasSubstr html "binary <code>abcdef01</code>" &&
+  hasSubstr html "binary <code>f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc</code>" &&
   -- The second checker is identified but not one this site knows by name, so it is
   -- reported as an external checker rather than as a kernel.
   hasSubstr html "external checker labeled" &&
@@ -393,14 +404,14 @@ private def soleChecker (replay? : Option Bool) (configured : Bool) : TrustCompa
       nanodaRef := ""
       kernelIdentities := #[
         { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
-          sourceCommit := "05055695", executableSha256 := "deadbeefcafebabe"
+          sourceCommit := "05055695", executableSha256 := "71aec9373ce521f160a4db531c6a865a1d6f236b3b9f99c958313bfaee639303"
           replayed := true }]
       kernelReplays := #[("nanoda", true)]
       kernelRefs := #[("nanoda", "05055695")] }
   let html := comparatorHtml sole
   hasSubstr html "nanoda 05055695" &&
   hasSubstr html "bp_trust_kernel_table" &&
-  hasSubstr html "binary <code>deadbeefcafebabe</code>"
+  hasSubstr html "binary <code>71aec9373ce521f160a4db531c6a865a1d6f236b3b9f99c958313bfaee639303</code>"
 
 -- The legacy a362583 shape — a recorded revision, no recorded replay — gains its row and
 -- loses nothing: the revision is shown as the pin it is, and the run cell says the replay
