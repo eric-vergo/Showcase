@@ -19,6 +19,7 @@ import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Sha256
 import VersoBlueprint.KernelAdvisories
+import VersoBlueprint.StatementClosure
 
 /-!
 Dashboard trust strip.
@@ -83,6 +84,21 @@ register_option verso.blueprint.trust.kernelAdvisories : String := {
   descr := "Path (relative to the build CWD) to a JSON advisory table replacing the one this fork ships, for assessing the currency of the verifier revisions a comparator run recorded. Schema: {\"advisoriesUpdated\": \"YYYY-MM-DD\", \"advisories\": [ {\"id\", \"tool\", \"advisoryDate\", \"summary\", \"url\", \"fix\": {\"fixedRevisions\": [...], \"fixedDescendantsOf\", \"ancestry\", \"fixedFromVersion\", \"affectedRevisions\": [...]}}, … ]}. `tool` is `lean4` for the toolchain the comparator was built on, otherwise the checker's canonical name. The override REPLACES the built-in table rather than merging into it (a partial override of a safety table loses entries silently). Empty ⇒ the built-in table; set-but-missing or unparsable ⇒ build error."
 }
 
+register_option verso.blueprint.trust.statementClosure : Bool := {
+  defValue := false
+  descr := "Whether to compute, for each certified comparator claim, the closure of declarations its STATEMENT depends on — what a reader must read to know what the claim says, as opposed to how it is proved. Off by default. When on, the site build runs the fork's `statement-closure` executable, which elaborates the challenge chain in a FRESH environment holding exactly the chain's declared imports (not this site's environment, where the subject library and Verso are in scope and a short name could resolve to something the verifier never saw). Probe-and-degrade: a tool that is absent or fails records the reason rather than failing the build."
+}
+
+register_option verso.blueprint.trust.statementClosureMaxNodes : Nat := {
+  defValue := 400
+  descr := "Cap on the declarations one statement closure records. Reaching it makes the closure a lower bound rather than a count, and the surface says so. Values below 32 are a build error: under that a truncated closure is not a weak claim but an empty one."
+}
+
+register_option verso.blueprint.trust.statementClosureTool : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to the `statement-closure` executable. Empty ⇒ the build probes `.lake/build/bin/statement-closure` and `.lake/packages/VersoBlueprint/.lake/build/bin/statement-closure`, and records an honest unavailable notice when neither exists. Set-but-missing is a build error: a configured tool must not degrade into a probe."
+}
+
 register_option verso.blueprint.trust.requireConnected : Bool := {
   defValue := true
   descr := "Whether a disconnected `uses` graph (more than one weakly-connected component) FAILS the site build. Default true (a coherent formalization should be a single connected development). Set false for a deliberately multi-topic blueprint (independent example chapters): the connectivity check is then reported for information but does not gate the build. Acyclicity always hard-gates regardless."
@@ -113,13 +129,19 @@ and registry payloads that later rounds attach. Nothing populates the reserved o
 yet, and an artifact that sets none of them renders exactly as it does today.
 -/
 
-/-- One declaration a certified statement's meaning depends on. Reserved for the
-statement-closure surface; nothing populates it yet. -/
+/-- One declaration a certified statement's meaning depends on. -/
 structure StatementClosureEntry where
   name : String := ""
   /-- Where the declaration is defined: `challenge`, `subject`, `mathlib`, `core`, or
   another module root, named. -/
   origin : String := ""
+  /-- `def`, `theorem`, `structure`, `inductive`, `constructor`, `axiom`, … -/
+  kind : String := ""
+  /-- Machinery rather than something a reader reads: an auto-generated recursor,
+  matcher, `noConfusion`, or a reserved derived name. Counted like everything else —
+  the walk reached it through a real dependency edge — and flagged so a reading list
+  can fold it away and say that it did. -/
+  auxiliary : Bool := false
   /-- Distance from the certified statement (0 ⇒ named by it directly). -/
   depth : Nat := 0
   /-- Where a reader can read it — a page on this site or an outbound source link.
@@ -127,20 +149,41 @@ structure StatementClosureEntry where
   href : String := ""
   /-- Capped signature text. Empty ⇒ not captured. -/
   signature : String := ""
+  /-- Defining module; empty for a declaration the challenge chain itself makes. -/
+  definesModule : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- What a reader must read to believe one certified claim. Reserved for the
-statement-closure surface; nothing populates it yet. -/
+/-- What a reader must read to believe one certified claim.
+
+Computed by the `statement-closure` subprocess, which elaborates the challenge chain in a
+fresh environment holding exactly the chain's declared imports. This payload records what
+came back and how firmly it is tied to the verified run; it makes no claim of its own. -/
 structure StatementClosure where
   /-- What the closure was computed from: `chain` (the recorded challenge chain, digest
   bound), `chain-unbound`, `claim-decls`, `unavailable`. Empty ⇒ not computed. -/
   provenance : String := ""
+  /-- Why the closure is unbound or unavailable, in the register the page uses. Empty for
+  a bound closure. -/
+  reason : String := ""
+  /-- The certified statements the closure was computed from. -/
+  roots : List String := []
   total : Nat := 0
+  /-- Entries whose origin is not `mathlib`. -/
   outsideMathlib : Nat := 0
+  /-- Entries outside the trusted frontier: what a reader cannot skip by accepting the
+  libraries this site treats as given. -/
+  untrusted : Nat := 0
   /-- Whether the walk stopped at `maxNodes`. Truncation is a verdict state of its own:
   a truncated closure reports a lower bound, never an exact count. -/
   truncated : Bool := false
   maxNodes : Nat := 0
+  /-- Per-origin totals, in first-appearance order. -/
+  counts : Array (String × Nat) := #[]
+  /-- The chain as the tool read it: (path, SHA-256) in elaboration order. This is what
+  `TrustComparator.challengeChain` is compared against to decide `provenance`. -/
+  chainFiles : Array (String × String) := #[]
+  /-- The import closure loaded into the fresh environment. -/
+  imports : Array String := #[]
   entries : Array StatementClosureEntry := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
@@ -1903,8 +1946,7 @@ def checkComparatorRunProvenance (cmp : TrustComparator) (statusPath : String) :
 dropped. Deliberately does **not** resolve `..` — the two paths being compared are
 rooted differently by design. -/
 def normalizePathForCompare (p : String) : String :=
-  let segs := ((p.replace "\\" "/").splitOn "/").filter fun s => s != "." && !s.isEmpty
-  String.intercalate "/" segs
+  Informal.StatementClosure.normalizePathForCompare p
 
 /-- Whether `path` ends with `suffix` on a *path-component* boundary.
 
@@ -1912,11 +1954,12 @@ The consumer's option paths resolve against the build CWD (`site/`), while the
 status artifact records repo-root-relative paths, so the same file is spelled
 `../comparator/comparator.json` and `comparator/comparator.json`. Comparing the
 strings would reject every correctly-configured project; comparing components
-catches a genuinely different file while accepting a different root. -/
+catches a genuinely different file while accepting a different root.
+
+Defined in `StatementClosure` so the chain-binding comparison, the closure tool and
+these cross-checks cannot drift into three slightly different notions of "same file". -/
 def pathHasSuffix (path suffix : String) : Bool :=
-  let ps := (normalizePathForCompare path).splitOn "/"
-  let ss := (normalizePathForCompare suffix).splitOn "/"
-  ss.length ≤ ps.length && ss == ps.drop (ps.length - ss.length)
+  Informal.StatementClosure.pathHasSuffix path suffix
 
 /-- A module name's final component (`ComparatorChallenges.I_Foo` ↦ `I_Foo`), which is
 what a Lake `srcDir` layout names the file. -/
@@ -2079,6 +2122,149 @@ def attachComparatorSources (cmp0 : TrustComparator)
       comparatorLiveUrl := comparatorLivePermalink liveProject cmp.challengeSource cmp.solutionSource }
   return cmp
 
+/-! ### Statement closure
+
+The build-time driver for the `statement-closure` subprocess (§A2). What it may and may
+not conclude:
+
+- The closure is computed by a separate process that imports **exactly** the chain's
+  declared imports. Nothing about this site's environment reaches it.
+- The closure is labelled `chain` — bound to the verdict — only when every chain file the
+  tool hashed matches, in order, what the verifying run recorded in `challenge_chain`
+  (§A1). Anything else is `chain-unbound` with the specific reason, including the case
+  the run recorded no chain at all.
+- A missing or failing tool degrades to `unavailable` carrying the reason. It never fails
+  the build and never quietly omits the surface: once the option is on, the absence is
+  itself recorded.
+-/
+
+/-- Where the build looks for the tool when the option does not name it. Relative to the
+build CWD: the first is a consumer that *is* this package, the second a consumer that
+depends on it. -/
+private def statementClosureToolCandidates : Array String := #[
+  ".lake/build/bin/statement-closure",
+  ".lake/packages/VersoBlueprint/.lake/build/bin/statement-closure"
+]
+
+open Verso Doc Elab in
+/-- Locate the tool. A configured path that does not exist is a build error (a configured
+signal must not degrade into a probe); an unconfigured probe that finds nothing returns
+the reason it will record. -/
+def findStatementClosureTool (opts : Lean.Options) : PartElabM (Except String String) := do
+  let configured := opts.get verso.blueprint.trust.statementClosureTool.name
+    verso.blueprint.trust.statementClosureTool.defValue
+  if !configured.isEmpty then
+    unless ← System.FilePath.pathExists configured do
+      throwError "option 'verso.blueprint.trust.statementClosureTool' names a missing file \
+        (resolved against the build directory): {configured}"
+    return .ok configured
+  for cand in statementClosureToolCandidates do
+    if ← System.FilePath.pathExists cand then
+      return .ok cand
+  return .error s!"the statement-closure tool was not found (looked for \
+    {String.intercalate " and " statementClosureToolCandidates.toList} under \
+    {(← liftM Informal.workspaceRoot).toString}); build it with `lake build \
+    statement-closure`, or name it with 'verso.blueprint.trust.statementClosureTool'"
+
+/-- Run the tool on a job spec, following the `runTrimmedCommand?` precedent: every
+failure is a reason string, never an exception. The child inherits this build's working
+directory and `LEAN_PATH`, which is how it resolves the chain's imports. -/
+def runStatementClosureTool (tool : String) (job : Json) : IO (Except String Json) := do
+  try
+    IO.FS.withTempFile fun handle jobPath => do
+      handle.putStr job.compress
+      handle.flush
+      let out ← IO.Process.output { cmd := tool, args := #[jobPath.toString] }
+      match Json.parse out.stdout with
+      | .error err =>
+        return .error s!"the statement-closure tool exited with code {out.exitCode} and \
+          wrote no readable result ({err}){
+            let e := out.stderr.trimAscii.toString
+            if e.isEmpty then "" else s!"; stderr: {e}"}"
+      | .ok j =>
+        -- A nonzero exit with a document claiming success contradicts itself; the exit
+        -- code is the one signal the tool cannot have written by mistake.
+        if out.exitCode != 0 && (j.getObjValAs? Bool "ok").toOption == some true then
+          return .error s!"the statement-closure tool exited with code {out.exitCode} but \
+            wrote a result claiming success"
+        return .ok j
+  catch e =>
+    return .error s!"the statement-closure tool could not be run: {e}"
+
+/-- The honest empty state: the option is on, and this is why there is no closure. -/
+def statementClosureUnavailable (reason : String) : StatementClosure :=
+  { provenance := "unavailable", reason }
+
+open Verso Doc Elab in
+/--
+Compute one claim's statement closure and record it, bound or not.
+
+`chalPath` is the primary Challenge; `cmp.challengeDeps` are the chain files elaborated
+before it, in manifest order. That order is what gets hashed and compared, so a
+dependency edited without touching the primary Challenge drops the binding.
+-/
+def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
+    PartElabM TrustComparator := do
+  let opts ← Lean.getOptions
+  unless opts.get verso.blueprint.trust.statementClosure.name
+      verso.blueprint.trust.statementClosure.defValue do
+    return cmp
+  let maxNodes := opts.get verso.blueprint.trust.statementClosureMaxNodes.name
+    verso.blueprint.trust.statementClosureMaxNodes.defValue
+  if maxNodes < Informal.StatementClosure.capFloor then
+    throwError "option 'verso.blueprint.trust.statementClosureMaxNodes' is {maxNodes}; the \
+      floor is {Informal.StatementClosure.capFloor}. Below it a truncated closure is not a \
+      weak claim but an empty one: a handful of arbitrary declarations, reported as a lower \
+      bound nobody can use."
+  let record (c : StatementClosure) : TrustComparator := { cmp with closure? := some c }
+  if chalPath.isEmpty then
+    return record (statementClosureUnavailable
+      "no Challenge source is configured for this claim, so there is no statement to close over")
+  if cmp.theoremNames.isEmpty then
+    return record (statementClosureUnavailable
+      "the run record names no certified theorem, so there is no statement to close over")
+  let job : Informal.StatementClosure.Job := {
+    files := cmp.challengeDeps.push chalPath
+    roots := cmp.theoremNames.toArray
+    maxNodes
+    subjectRoots := (Informal.configuredSubjectModuleRoots opts).map (·.toString)
+  }
+  match ← findStatementClosureTool opts with
+  | .error reason => return record (statementClosureUnavailable reason)
+  | .ok tool =>
+    match ← liftM (runStatementClosureTool tool job.toJson) with
+    | .error reason => return record (statementClosureUnavailable reason)
+    | .ok doc =>
+      match Informal.StatementClosure.Report.ofJson? doc with
+      | .error reason =>
+        return record (statementClosureUnavailable
+          s!"the statement-closure tool did not produce a closure — {reason}")
+      | .ok report =>
+        let binding := Informal.StatementClosure.bindChain report.provenance.files cmp.challengeChain
+        let r := report.result
+        return record {
+          provenance := binding.provenanceTag
+          reason := binding.reason
+          roots := cmp.theoremNames
+          total := r.total
+          outsideMathlib := r.outsideMathlib
+          untrusted := r.untrusted
+          truncated := r.truncated
+          maxNodes := r.maxNodes
+          counts := r.counts
+          chainFiles := report.provenance.files.map fun f => (f.path, f.sha256)
+          imports := report.provenance.imports
+          entries := r.entries.map fun e => {
+            name := e.name
+            origin := e.origin
+            kind := e.kind
+            auxiliary := e.auxiliary
+            depth := e.depth
+            signature := e.signature
+            definesModule := e.definesModule
+          }
+        }
+
 open Verso Doc Elab in
 /--
 Build the multi-config comparator + axiom-audit topics from the JSON manifest
@@ -2155,6 +2341,8 @@ def elabComparatorTopics? : PartElabM (List ComparatorTopic × List AxiomAuditTo
       let cmp := { cmp with
         challengeDeps := (t.getObjValAs? (Array String) "challenge_deps").toOption.getD #[]
         claimDecls := (t.getObjValAs? (Array String) "claim_decls").toOption.getD #[] }
+      -- After `challenge_deps`: the chain order is what gets hashed and compared.
+      let cmp ← attachStatementClosure cmp chalPath
       let topicEntry : ComparatorTopic := { name, comparator := cmp }
       comparators := comparators ++ [topicEntry]
   return (comparators, axiomTopics)
@@ -2242,6 +2430,8 @@ def elabTrustData? : PartElabM (Option TrustData) := do
     -- Config/Challenge/Solution embedding + digests + cross-checks + live permalink,
     -- via the shared helper (identical honesty logic for the multi-config topics).
     let cmp ← attachComparatorSources cmp cmpPath cfgPath chalPath solPath liveProject
+    -- The single-pair path has no topic manifest, so its chain is the Challenge alone.
+    let cmp ← attachStatementClosure cmp chalPath
     trust := { trust with comparator := Option.some cmp }
   -- Multi-config comparator + axiom-audit topics, independent of the single-pair
   -- options above (a consumer uses one scheme or the other).

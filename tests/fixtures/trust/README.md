@@ -15,6 +15,13 @@ CX-011 / CX-014 audit findings produced:
   shasum -a 256 tests/fixtures/trust/{comparator.json,Challenge.lean,Solution.lean}
   ```
 
+- **Chain binding.** It carries `challenge_chain` — the ordered `{path, sha256}` of every
+  file the run elaborated — over the same `Challenge.lean` bytes. That is what a statement
+  closure is bound to: `statement-closure` hashes the files it reads, and the closure may
+  be presented as adjacent to the verdict only when those digests match this list, in this
+  order. The digest is the same one as `challenge_sha256`, so the refresh command below
+  covers both.
+
 - **Run evidence.** It records `nanoda_ref` but *no* `nanoda_replay`, while
   `comparator.json` sets `enable_nanoda: true`. That is the legacy shape CX-011 is
   about: configuration says a future run will replay, the run record says nothing,

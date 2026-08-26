@@ -13,5 +13,9 @@
   "config_sha256": "c21e396cf9cd9a46a50eeea9694255b9ecc181076529e915e016c8da40c6e5e6",
   "challenge_sha256": "1811a3f8941e8d1b2d558933b6738bf6a8eed1177945e05166238164c7d88dba",
   "solution_sha256": "0e2879d13e341497563908d8aa7dda1c11901438948152aaf3e1f59695d78e2f",
-  "note": "Trust-evidence fixture: content-bound, with no nanoda_replay run record."
+  "note": "Trust-evidence fixture: content-bound, with no nanoda_replay run record.",
+  "challenge_chain": [
+    { "path": "tests/fixtures/trust/Challenge.lean",
+      "sha256": "1811a3f8941e8d1b2d558933b6738bf6a8eed1177945e05166238164c7d88dba" }
+  ]
 }
