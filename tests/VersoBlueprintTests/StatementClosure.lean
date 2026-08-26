@@ -309,6 +309,60 @@ refused by the subprocess.
     ← stageOf "tests/fixtures/statement-closure/AmbientTerm.lean" "ambientOnly",
     ← stageOf "tests/fixtures/statement-closure/AmbientCommand.lean" "ambientDoc")
 
+/-! ### One file's imports are not another's (§A2, CX-044)
+
+The chain's import boundary is per file. `Dep.lean` imports only `Init` and names
+`Lean.Json`; the primary `Challenge.lean` listed after it imports `Lean`. A tool that loads
+the union of the chain's declared imports once and carries a single environment forward
+accepts the pair and emits a completed closure over a dependency that does not elaborate
+under its own header — which is the environment the comparator would have checked it in.
+
+The dependency must therefore fail at its own step, with its own error.
+-/
+
+private def supersetDir : String := "tests/fixtures/statement-closure/later-import-superset"
+
+/-- info: (true, "elaborate", true, true) -/
+#guard_msgs in
+#eval show IO (Bool × String × Bool × Bool) from do
+  let job : Job := {
+    files := #[s!"{supersetDir}/Dep.lean", s!"{supersetDir}/Challenge.lean"]
+    roots := #["LaterImportSuperset.root"]
+    maxNodes := capFloor
+  }
+  match ← Informal.Commands.runStatementClosureTool toolPath job.toJson with
+  | .error _ => return (false, "tool did not run", false, false)
+  | .ok doc =>
+    let err := (doc.getObjValAs? String "error").toOption.getD ""
+    return (
+      (doc.getObjValAs? Bool "ok").toOption == some false,
+      (doc.getObjValAs? String "stage").toOption.getD "",
+      -- The dependency, not the Challenge, and its own unknown identifier.
+      (err.splitOn "Dep.lean did not elaborate").length > 1,
+      (err.splitOn "Lean.Json").length > 1)
+
+-- The same pair with the dependency's own header repaired elaborates, which is what makes
+-- the refusal above about the import boundary rather than about the file.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval show IO (Bool × Bool × Bool) from do
+  let job : Json := Json.mkObj [
+    ("files", Json.arr #[Json.str s!"{supersetDir}/Dep.lean",
+      Json.str s!"{supersetDir}/Challenge.lean"]),
+    ("roots", Json.arr #[Json.str "LaterImportSuperset.root"]),
+    ("maxNodes", Json.num capFloor),
+    -- An explicit override is documented to replace the headers verbatim, for every file.
+    ("imports", Json.arr #[Json.str "Init", Json.str "Lean"])]
+  match ← Informal.Commands.runStatementClosureTool toolPath job with
+  | .error _ => return (false, false, false)
+  | .ok doc =>
+    match Report.ofJson? doc with
+    | .error _ => return (false, false, false)
+    | .ok r =>
+      return (r.provenance.importsOverridden,
+        r.provenance.chainInternalImports == #["Dep"],
+        r.result.entries.any (·.name == "LaterImportSuperset.root"))
+
 -- A missing tool is a reason string, never an exception and never a silent omission.
 /-- info: true -/
 #guard_msgs in

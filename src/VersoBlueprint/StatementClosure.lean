@@ -538,7 +538,9 @@ deriving Inhabited, Repr, BEq
 structure Provenance where
   /-- Chain files in elaboration order, with the digest of the bytes read. -/
   files : Array ChainDigest := #[]
-  /-- The import closure that was loaded into the fresh environment. -/
+  /-- Every module the run loaded, across the whole chain. Deliberately **not** what any
+  one file elaborated against: each chain file gets its own declared imports plus those of
+  the earlier chain files it imports, and nothing a later file declared (CX-044). -/
   imports : Array String := #[]
   /-- Imports satisfied by an earlier chain file rather than by an olean. -/
   chainInternalImports : Array String := #[]

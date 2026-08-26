@@ -22,6 +22,27 @@ constant, and the resulting reading list would describe a statement nobody certi
 This process imports exactly the chain's declared import closure — no subject library, no
 Verso, no site state — so what it reads is what the chain says.
 
+## The boundary is per file, not per chain (CX-044)
+
+Loading the union of the whole chain's declared imports once and carrying one environment
+forward moves the same defect one file down: a dependency that does not elaborate under
+its own header succeeds because a *later* file imported what it was missing, and the tool
+reports a completed closure over a file the comparator's own import discipline would
+reject.
+
+So each file elaborates in an environment built from **its own declared imports plus the
+earlier chain files it transitively imports** — which is exactly what Lean's transitive
+`import` gives it, and nothing more. A file that needs something only a later file
+declared fails at its own step, with its own error, and no closure is written.
+
+Earlier chain modules have no `.olean`, so they are materialized by re-elaborating them
+into the later file's environment. That re-elaboration happens under a superset of the
+imports the file itself declared, so it is cross-checked: the names a replay produces must
+be exactly the names that file produced at its own step, or the tool stops rather than
+reporting a closure over a differently-elaborated dependency. In the ordinary case — a
+linear chain whose later files declare no import their dependencies did not — the previous
+file's finished environment *is* the next file's base, and nothing is replayed at all.
+
 ## Required working directory
 
 Module resolution is `LEAN_PATH`-driven, so the tool must run **from the consumer's Lake
@@ -153,25 +174,54 @@ def parseChainHeader (src : ChainSource) : ToolM ChainParsed := do
     parserState
   }
 
+/-- Deduplicating union of two import lists, first-appearance order preserved. -/
+private def unionImports (a b : Array Import) : Array Import :=
+  b.foldl (init := a) fun acc imp =>
+    if acc.any (fun c => c.module == imp.module && c.isMeta == imp.isMeta) then acc
+    else acc.push imp
+
+/-- The chain's import structure, kept **per file** rather than as one union: which
+imports each file declares that no chain file satisfies, and which earlier chain files it
+imports. -/
+structure ChainImports where
+  /-- Per file, in chain order: the imports an `importModules` call has to load for it. -/
+  external : Array (Array Import) := #[]
+  /-- Per file: indices of the earlier chain files it imports directly. -/
+  internal : Array (Array Nat) := #[]
+  /-- Module names satisfied by an earlier chain file rather than by an olean, in
+  first-appearance order. The provenance line's `chainInternalImports`. -/
+  internalNames : Array String := #[]
+deriving Inhabited
+
+/-- Every import the chain loads anywhere, in chain-then-import order. What the provenance
+line reports: the modules this run read. It is deliberately **not** what any one file
+elaborates against — see `elaborateChain`. -/
+def ChainImports.allExternal (ci : ChainImports) : Array Import :=
+  ci.external.foldl (init := #[]) unionImports
+
 /--
-Partition the chain's declared imports into the closure to load and the imports an
-earlier chain file satisfies.
+Partition each chain file's declared imports into the ones an `importModules` call must
+load and the ones an earlier chain file satisfies.
 
 An import naming a *later* chain file is a chain-order error rather than something to
 paper over: elaborating in the stated order would not see it, and guessing an order is
 the kind of quiet repair that makes a provenance record worthless.
 -/
-def partitionImports (files : Array ChainParsed) : ToolM (Array Import × Array String) := do
+def partitionImports (files : Array ChainParsed) : ToolM ChainImports := do
   let paths := files.map (·.path)
-  let mut closure : Array Import := #[]
-  let mut internal : Array String := #[]
+  let mut external : Array (Array Import) := #[]
+  let mut internal : Array (Array Nat) := #[]
+  let mut internalNames : Array String := #[]
   for (f, i) in files.zipIdx do
+    let mut ext : Array Import := #[]
+    let mut int : Array Nat := #[]
     for imp in f.imports do
       match chainFileFor? paths imp.module with
       | some k =>
         if k < i then
-          unless internal.contains imp.module.toString do
-            internal := internal.push imp.module.toString
+          unless int.contains k do int := int.push k
+          unless internalNames.contains imp.module.toString do
+            internalNames := internalNames.push imp.module.toString
         else if k == i then
           fail "chain-order" s!"{f.path} imports {imp.module}, which names the file itself."
         else
@@ -179,9 +229,27 @@ def partitionImports (files : Array ChainParsed) : ToolM (Array Import × Array 
             after it ({paths[k]!}). The chain elaborates in the order given, so a \
             dependency must be listed before the file that imports it."
       | none =>
-        unless closure.any (fun c => c.module == imp.module && c.isMeta == imp.isMeta) do
-          closure := closure.push imp
-  return (closure, internal)
+        unless ext.any (fun c => c.module == imp.module && c.isMeta == imp.isMeta) do
+          ext := ext.push imp
+    external := external.push ext
+    internal := internal.push int
+  return { external, internal, internalNames }
+
+/-- Indices of every earlier chain file `i` imports, directly or through another chain
+file, in ascending (elaboration) order.
+
+`import` is transitive in Lean, so a file that imports a chain module also sees that
+module's imports. It sees **nothing else**: that is the whole of the per-file boundary. -/
+def transitiveChainDeps (internal : Array (Array Nat)) (i : Nat) : Array Nat := Id.run do
+  let mut seen : Array Nat := #[]
+  let mut stack : Array Nat := (internal[i]?).getD #[]
+  while !stack.isEmpty do
+    let k := stack.back!
+    stack := stack.pop
+    unless seen.contains k do
+      seen := seen.push k
+      stack := stack ++ (internal[k]?).getD #[]
+  return seen.qsort (· < ·)
 
 /-- The module name to elaborate a chain file under: the name a later chain file imports
 it by when one does, else the file's stem. It affects private-name mangling and message
@@ -202,45 +270,125 @@ def chainDeclaredNames (env : Environment) : Array String :=
     #[] env.constants
   (names.map (·.toString)).qsort (· < ·)
 
-/--
-Elaborate the chain in a fresh environment and return it with what was elaborated.
+/-- Elaborate one chain file into `env`, failing with the file's own messages. Heartbeats
+are unlimited: the elaboration is a handful of statements, and a heartbeat failure here
+would degrade a trust surface for a reason that has nothing to do with trust. -/
+private unsafe def elabChainFile (files : Array ChainParsed) (elabOpts : Options)
+    (env : Environment) (i : Nat) : ToolM Environment := do
+  let some f := files[i]?
+    | fail "elaborate" s!"chain position {i} is not a file this run read."
+  let cmdState := Lean.Elab.Command.mkState (env.setMainModule (mainModuleFor files i)) {} elabOpts
+  let st ← tryIO "elaborate" s!"elaborating {f.path}"
+    (Lean.Elab.IO.processCommands f.inputCtx f.parserState cmdState)
+  if st.commandState.messages.hasErrors then
+    fail "elaborate" s!"{f.path} did not elaborate: \
+      {← tryIO "elaborate" "reading messages" (messageLogText st.commandState.messages)}"
+  return st.commandState.env
 
-`importModules` receives exactly the partitioned closure, so the environment holds the
-chain's imports and nothing else. Heartbeats are unlimited: the elaboration is a handful
-of statements, and a heartbeat failure here would degrade a trust surface for a reason
-that has nothing to do with trust.
+/-- Names in `after` that are not in `before`: what elaborating one file added. -/
+private def addedNames (before after : Array String) : Array String :=
+  let seen : Std.HashSet String := before.foldl (init := {}) (·.insert ·)
+  after.filter fun n => !seen.contains n
+
+/-- The identity of an environment as a base: which imports it loaded, at which olean
+level, and which chain files were elaborated into it. Two files with the same key need the
+same environment, which is what lets a linear chain reuse one. -/
+private def baseKey (imports : Array Import) (exported : Bool) (deps : Array Nat) : String :=
+  let imps := (imports.map fun c => c.module.toString ++ (if c.isMeta then "!" else "")).toList
+  s!"{deps.toList}|{exported}|{imps}"
+
+/--
+The environment one chain file elaborates in: its effective import closure loaded fresh,
+then every earlier chain file it transitively imports, replayed in chain order.
+
+The replay is the only way to materialize a chain module — it has no `.olean` — and it
+runs under a superset of the imports that file declared for itself, so it is checked
+against what that file declared at its own step. A dependency that elaborates to a
+different set of names in the two environments is not a dependency this tool can report a
+closure over.
 -/
-unsafe def elaborateChain (files : Array ChainParsed) (importsOverride? : Option (Array String)) :
-    ToolM (Environment × Provenance) := do
-  let (headerImports, internal) ← partitionImports files
-  let imports : Array Import :=
-    match importsOverride? with
-    | some names => names.map fun n => { module := n.toName : Import }
-    | none => headerImports
-  let level : OLeanLevel := if files.all (·.isModule) then .exported else .private
-  let env0 ← tryIO "import"
+private unsafe def assembleBase (files : Array ChainParsed) (elabOpts : Options)
+    (imports : Array Import) (exported : Bool) (deps : Array Nat)
+    (declaredBy : Array (Array String)) : ToolM Environment := do
+  let level : OLeanLevel := if exported then .exported else .private
+  let mut env ← tryIO "import"
     s!"importing the chain's declared closure \
       ({String.intercalate ", " (imports.map (·.module.toString)).toList}); the tool \
       resolves modules through LEAN_PATH, so it must run from the consumer's Lake workspace"
     (Lean.importModules imports {} (trustLevel := 1024) (loadExts := true) (level := level))
+  for k in deps do
+    let before := chainDeclaredNames env
+    env ← elabChainFile files elabOpts env k
+    let added := addedNames before (chainDeclaredNames env)
+    match declaredBy[k]? with
+    | some expected =>
+      unless added == expected do
+        let path := ((files[k]?).map (·.path)).getD s!"chain position {k}"
+        fail "elaborate" s!"{path} declares different names under its own imports than \
+          under the imports a later chain file requires ({expected.size} against \
+          {added.size}). A dependency whose meaning depends on which file is reading it \
+          is not one this tool can compute a closure over."
+    | none => pure ()
+  return env
+
+/--
+Elaborate the chain and return the final environment with what was elaborated.
+
+Each file gets its own base (`assembleBase`) built from **its own** declared imports plus
+those of the earlier chain files it transitively imports — never from imports only a later
+file declared (CX-044). Where consecutive files need the same base plus the previous file,
+the previous file's finished environment is reused, so an ordinary linear chain still
+imports once and elaborates each file once.
+
+A caller-supplied `imports` override replaces the header closure for every file, verbatim,
+which is what the job spec documents it to do.
+-/
+unsafe def elaborateChain (files : Array ChainParsed) (importsOverride? : Option (Array String)) :
+    ToolM (Environment × Provenance) := do
+  let ci ← partitionImports files
+  let overrideImports? : Option (Array Import) :=
+    importsOverride?.map fun names => names.map fun n => ({ module := n.toName } : Import)
+  let n := files.size
+  let deps : Array (Array Nat) := (Array.range n).map (transitiveChainDeps ci.internal ·)
+  let effective : Array (Array Import) := (Array.range n).map fun i =>
+    match overrideImports? with
+    | some imps => imps
+    | none => ((deps[i]!).push i).foldl (init := #[]) fun acc k => unionImports acc (ci.external[k]!)
+  -- The olean level a file's own base loads at is decided by that file and the chain files
+  -- it imports, for the same reason its import set is: a `module` keyword in a file nobody
+  -- imports is not a fact about this one's environment.
+  let exported : Array Bool := (Array.range n).map fun i =>
+    ((deps[i]!).push i).all fun k => ((files[k]?).map (·.isModule)).getD false
   let elabOpts : Options := Lean.Options.set {} `maxHeartbeats (0 : Nat)
-  let mut env := env0
-  for (f, i) in files.zipIdx do
-    let cmdState := Lean.Elab.Command.mkState (env.setMainModule (mainModuleFor files i)) {} elabOpts
-    let st ← tryIO "elaborate" s!"elaborating {f.path}"
-      (Lean.Elab.IO.processCommands f.inputCtx f.parserState cmdState)
-    if st.commandState.messages.hasErrors then
-      fail "elaborate" s!"{f.path} did not elaborate: \
-        {← tryIO "elaborate" "reading messages" (messageLogText st.commandState.messages)}"
-    env := st.commandState.env
+  let mut declaredBy : Array (Array String) := #[]
+  let mut prev? : Option (String × Environment) := none
+  let mut final? : Option Environment := none
+  for i in [0:n] do
+    let want := baseKey effective[i]! exported[i]! deps[i]!
+    let base ←
+      match prev? with
+      | some (k, e) => if k == want then pure e else
+          assembleBase files elabOpts effective[i]! exported[i]! deps[i]! declaredBy
+      | none => assembleBase files elabOpts effective[i]! exported[i]! deps[i]! declaredBy
+    let before := chainDeclaredNames base
+    let env ← elabChainFile files elabOpts base i
+    declaredBy := declaredBy.push (addedNames before (chainDeclaredNames env))
+    prev? := some (baseKey effective[i]! exported[i]! ((deps[i]!).push i), env)
+    final? := some env
+  let some env := final?
+    | fail "chain-read" "the job spec names no chain files, so there is nothing to elaborate."
+  let loaded : Array Import :=
+    match overrideImports? with
+    | some imps => imps
+    | none => ci.allExternal
   let provenance : Provenance := {
     files := files.map fun f => { path := f.path, sha256 := f.digest }
     -- By module name: `Init` is imported twice (once `meta`), which is a fact about the
     -- import records, not about what a reader of the provenance line needs.
-    imports := imports.foldl (init := #[]) fun acc imp =>
+    imports := loaded.foldl (init := #[]) fun acc imp =>
       let m := imp.module.toString
       if acc.contains m then acc else acc.push m
-    chainInternalImports := internal
+    chainInternalImports := ci.internalNames
     importsOverridden := importsOverride?.isSome
   }
   return (env, provenance)
