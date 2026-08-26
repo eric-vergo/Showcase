@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 import tempfile
 import unittest
 
 from scripts.blueprint_test_blueprints import (
-    TAG_PATTERN,
     StandaloneTestBlueprint,
+    blueprint_meta_by_slug,
     default_test_blueprint_manifest,
     find_test_blueprint,
     generate_test_blueprint_outputs,
@@ -16,6 +15,7 @@ from scripts.blueprint_test_blueprints import (
     load_test_blueprints_manifest,
     render_test_blueprint_index_html,
     split_generation_targets,
+    validate_curated_test_doc_meta,
     validate_test_blueprint_outputs,
     write_test_blueprint_index,
 )
@@ -157,25 +157,79 @@ class StandaloneTestBlueprintTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid tag"):
                 load_test_blueprints_manifest(manifest)
 
-    def test_curated_docs_follow_shared_category_vocabulary(self) -> None:
+    # `validate_curated_test_doc_meta` is the shared gate that `list_curated_test_doc_meta`
+    # applies to real `lake exe blueprint-test-docs --list-json` output, so covering the
+    # validator directly keeps this suite hermetic (the Harness Tests job installs no elan).
+    def test_curated_doc_metadata_uses_the_shared_catalog_vocabulary(self) -> None:
         manifest = default_test_blueprint_manifest(PACKAGE_ROOT)
-        categories = set(load_test_blueprint_categories(manifest))
-        result = subprocess.run(
-            ["./scripts/lean-low-priority", "lake", "exe", "blueprint-test-docs", "--list-json"],
-            cwd=PACKAGE_ROOT,
-            check=True,
-            text=True,
-            capture_output=True,
+        categories = load_test_blueprint_categories(manifest)
+        entries = [
+            {
+                "slug": "demo",
+                "title": "Demo",
+                "category": "Runtime",
+                "summary": "Demo entry",
+                "tags": ["preview", "runtime"],
+                "kind": "curated_doc",
+            }
+        ]
+
+        self.assertEqual(validate_curated_test_doc_meta(entries, categories), entries)
+
+    def test_curated_doc_metadata_rejects_invalid_catalog_fields(self) -> None:
+        categories = ("Runtime",)
+        valid = {
+            "slug": "demo",
+            "title": "Demo",
+            "category": "Runtime",
+            "summary": "Demo entry",
+            "tags": ["preview", "runtime"],
+            "kind": "curated_doc",
+        }
+        invalid_entries = (
+            ({**valid, "title": ""}, "expected non-empty string field `title`"),
+            ({**valid, "category": "Unknown"}, "unknown category"),
+            ({**valid, "summary": None}, "expected non-empty string field `summary`"),
+            ({**valid, "kind": "standalone_project"}, "expected kind `curated_doc`"),
+            ({**valid, "tags": ["not valid"]}, "invalid tag"),
+            ({**valid, "tags": ["preview", "preview"]}, "duplicate values"),
         )
-        entries = json.loads(result.stdout)
-        self.assertTrue(entries)
-        for entry in entries:
-            self.assertIn(entry["category"], categories)
-            self.assertEqual(entry["kind"], "curated_doc")
-            self.assertIsInstance(entry.get("tags"), list)
-            self.assertTrue(all(isinstance(tag, str) and tag for tag in entry["tags"]))
-            self.assertEqual(len(entry["tags"]), len(set(entry["tags"])))
-            self.assertTrue(all(TAG_PATTERN.fullmatch(tag) for tag in entry["tags"]))
+
+        for entry, message in invalid_entries:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_curated_test_doc_meta([entry], categories)
+
+    def test_curated_doc_metadata_rejects_empty_listing(self) -> None:
+        with self.assertRaisesRegex(ValueError, "at least one entry"):
+            validate_curated_test_doc_meta([], ("Runtime",))
+
+    def test_test_blueprint_catalog_rejects_cross_catalog_slug_collisions(self) -> None:
+        fixture = StandaloneTestBlueprint(
+            slug="shared",
+            title="Standalone",
+            category="Runtime",
+            summary="Standalone fixture",
+            tags=(),
+            project_root="tests/test_blueprints/shared",
+            build_command=None,
+            generate_command=("lake", "exe", "blueprint-gen", "--output", "{output_dir}"),
+            panel_regression_script=None,
+            browser_tests_path=None,
+        )
+        curated = [
+            {
+                "slug": "shared",
+                "title": "Curated",
+                "category": "Runtime",
+                "summary": "Curated fixture",
+                "tags": [],
+                "kind": "curated_doc",
+            }
+        ]
+
+        with self.assertRaisesRegex(ValueError, "declared by both"):
+            blueprint_meta_by_slug(curated, [fixture])
 
     def test_meta_uses_unified_shape(self) -> None:
         fixture = StandaloneTestBlueprint(
