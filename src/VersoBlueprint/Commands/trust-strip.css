@@ -339,3 +339,120 @@ a.bp_summary_badge:focus-visible {
 .bp_trust_axiom_bad {
   color: var(--bp-color-accent-danger);
 }
+
+/* Statement closure — "what you must read to believe this claim". A headline sentence,
+   the trust-gradient line, a collapsed reading list grouped by origin, and (for a small
+   complete closure) the meaning graph. Tokens only, so both themes come for free. */
+.bp_closure_headline {
+  margin-top: var(--bp-space-3);
+}
+
+.bp_closure_gradient {
+  margin-top: var(--bp-space-2);
+  color: var(--bp-color-text-muted);
+}
+
+.bp_closure_disclosure {
+  margin-top: var(--bp-space-3);
+}
+
+.bp_closure_groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-4);
+  margin-top: var(--bp-space-3);
+}
+
+.bp_closure_group_title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bp-space-2);
+  margin: 0;
+  font-size: var(--bp-fs-caption);
+  font-weight: 600;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_closure_group_count {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp_closure_list {
+  list-style: none;
+  margin: var(--bp-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-space-1);
+}
+
+.bp_closure_row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bp-space-2);
+  min-width: 0;
+  font-size: var(--bp-fs-caption);
+  line-height: 1.5;
+}
+
+.bp_closure_kind {
+  flex: none;
+  min-width: 5.5rem;
+  color: var(--bp-color-text-faint);
+}
+
+.bp_closure_name {
+  overflow-wrap: anywhere;
+  color: var(--bp-color-text-strong);
+}
+
+.bp_closure_link {
+  text-decoration: none;
+}
+
+.bp_closure_link:hover .bp_closure_name {
+  text-decoration: underline;
+}
+
+/* The type, quiet and clipped: it is orientation, not the thing being read. */
+.bp_closure_sig {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--bp-color-text-muted);
+}
+
+.bp_closure_aux {
+  margin-top: var(--bp-space-2);
+}
+
+.bp_closure_aux > summary {
+  cursor: pointer;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-faint);
+}
+
+.bp_closure_aux > summary:hover {
+  text-decoration: underline;
+}
+
+.bp_closure_graph {
+  margin: var(--bp-space-4) 0 0;
+}
+
+.bp_closure_graph > figcaption {
+  margin-top: var(--bp-space-2);
+}
+
+@media (max-width: 40rem) {
+  .bp_closure_row {
+    flex-wrap: wrap;
+  }
+
+  .bp_closure_sig {
+    flex-basis: 100%;
+  }
+}

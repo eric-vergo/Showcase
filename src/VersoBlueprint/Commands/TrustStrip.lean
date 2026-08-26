@@ -5,8 +5,11 @@ Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code
 -/
 
 import Lean
+import Std.Data.HashMap
 import Verso
 import VersoManual
+import VersoBlueprint.Git
+import VersoBlueprint.RuntimeCache
 import VersoBlueprint.AxiomAudit
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Commands.Common
@@ -151,6 +154,10 @@ structure StatementClosureEntry where
   signature : String := ""
   /-- Defining module; empty for a declaration the challenge chain itself makes. -/
   definesModule : String := ""
+  /-- The declarations this one's meaning refers to, restricted to entries the reading
+  list records. The meaning graph is drawn from these; an edge into something the cap
+  turned away is dropped rather than pointing at a row that is not there. -/
+  uses : Array String := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- What a reader must read to believe one certified claim.
@@ -1364,6 +1371,22 @@ def trustBadgeHtml (text : String) (variant : String := "")
   | Option.some href => .tag "a" (attrs.push ("href", href)) (.text true text)
   | Option.none => .tag "span" attrs (.text true text)
 
+/-- One titled section of a trust page. `id?` gives the section a link target, for the
+one case that needs one: the reading list points back at the rendered Challenge source
+where the chain's own declarations are printed. -/
+def trustSection (title : String) (body : Output.Html) (id? : Option String := Option.none) :
+    Output.Html :=
+  let attrs := #[("class", "bp_trust_section")]
+  let attrs := match id? with
+    | Option.some anchor => attrs.push ("id", anchor)
+    | Option.none => attrs
+  .tag "section" attrs
+    (.seq #[{{ <h2 class="bp_trust_section_title">{{.text true title}}</h2> }}, body])
+
+/-- A quiet outbound link. -/
+def trustOutLink (href label : String) : Output.Html :=
+  {{ <a class="bp_trust_out_link" href={{href}} target="_blank" rel="noopener">{{.text true label}}</a> }}
+
 /-- The date part (`YYYY-MM-DD`) of an ISO-8601 timestamp; the whole string when there
 is no `T` separator. -/
 private def isoDate (s : String) : String := (s.splitOn "T").headD s
@@ -2133,9 +2156,17 @@ not conclude:
   tool hashed matches, in order, what the verifying run recorded in `challenge_chain`
   (§A1). Anything else is `chain-unbound` with the specific reason, including the case
   the run recorded no chain at all.
-- A missing or failing tool degrades to `unavailable` carrying the reason. It never fails
-  the build and never quietly omits the surface: once the option is on, the absence is
-  itself recorded.
+- A missing or failing tool degrades to the `claim_decls` anchor when the manifest supplies
+  one — a closure computed here, over the subject declarations the consumer aligned with
+  the certified statements, and labelled as being of those rather than of the challenge
+  file — and to `unavailable` carrying the reason when it does not. It never fails the
+  build and never quietly omits the surface: once the option is on, the absence is itself
+  recorded.
+
+The ladder is therefore `chain` → `chain-unbound` → `claim-decls` → `unavailable`, and
+every rung renders something. Note that `chain-unbound` does **not** fall through: a
+closure of the right file that is not tied to the recorded run is still a closure of the
+right file, and is worth more than a closure of something else.
 -/
 
 /-- Where the build looks for the tool when the option does not name it. Relative to the
@@ -2195,6 +2226,151 @@ def runStatementClosureTool (tool : String) (job : Json) : IO (Except String Jso
 def statementClosureUnavailable (reason : String) : StatementClosure :=
   { provenance := "unavailable", reason }
 
+/-! #### Where a reader can go and read one of these declarations
+
+Rows the reading list can resolve are worth more than rows it cannot, and a row linked to
+the wrong place is worth less than an unlinked one. Three resolutions, three rules:
+
+- **Challenge**: the chain's own declarations are printed on the comparator page itself,
+  so the row anchors there. Resolved at render time; nothing to look up.
+- **Subject**: this site publishes a page for these, and which page (node or declaration)
+  is the registry's business, so that resolution happens at generation time from the
+  registry rather than being guessed from a name here.
+- **Everything else** — Mathlib, core, an unexpected root: an outbound link into the
+  package checkout the build read the declaration from, resolved here because only
+  elaboration has the module index and the options. Probe-and-degrade: a package that is
+  not a Git checkout, a module whose file cannot be located, a checkout with no GitHub
+  remote all yield an unlinked row.
+-/
+
+/-- The `.lake/packages/<pkg>` checkout a resolved source path lies in, which is the unit
+repository information is looked up per: one `git` call for Mathlib, not one per Mathlib
+subdirectory. `none` for a path outside any checkout — a toolchain source, say, which is
+in no repository this build can name. -/
+private def lakePackageRoot? (path : System.FilePath) : Option System.FilePath :=
+  let marker := "/.lake/packages/"
+  match (path.toString.splitOn marker) with
+  | before :: rest :: _ =>
+    match (rest.splitOn "/").head? with
+    | Option.some pkg => if pkg.isEmpty then Option.none
+        else Option.some (System.FilePath.mk (before ++ marker ++ pkg))
+    | Option.none => Option.none
+  | _ => Option.none
+
+/-- An outbound source link for a declaration in a dependency checkout: the GitHub blob
+URL of the file its module was compiled from, at the revision the checkout is pinned to.
+
+Deliberately not routed through `sourceLinkHref?`: the consumer's source-link template
+maps paths inside *its own* repository, and applying it to a Mathlib file would produce a
+confident link to a file that is not there. Locating the module is
+`packageModuleSourcePath?`'s job, so the `srcDir := "src"` layout resolves here exactly as
+it does everywhere else. -/
+private def librarySourceHref? (workspaceRoot : System.FilePath) (m : Name) :
+    IO (Option String) := do
+  try
+    let Option.some path ← Informal.packageModuleSourcePath? workspaceRoot m
+      | return Option.none
+    let Option.some pkgRoot := lakePackageRoot? path | return Option.none
+    let Option.some gitRoot ← Informal.RuntimeCache.cachedGitRoot? pkgRoot
+      (Informal.Git.toplevelAt? pkgRoot)
+      | return Option.none
+    let Option.some info ← Informal.RuntimeCache.cachedGitRepoInfo? gitRoot
+      (Informal.Git.repositoryInfoAtRoot? gitRoot)
+      | return Option.none
+    let rootText := (← IO.FS.realPath gitRoot).toString
+    let pathText := (← IO.FS.realPath path).toString
+    unless pathText.startsWith (rootText ++ "/") do
+      return Option.none
+    let rel := (pathText.drop (rootText.length + 1)).toString
+    return Option.some s!"{info.githubUrl}/blob/{info.commit}/{rel}"
+  catch _ =>
+    return Option.none
+
+/--
+Resolve outbound source links for every closure entry the site cannot resolve itself,
+memoized per defining module.
+
+Challenge and subject rows are skipped: the first are printed on the comparator page, the
+second are the registry's to place at generation time, and a link into a dependency
+checkout would be wrong for both. Public so a test can measure what a real tree resolves —
+"probe-and-degrade" is only honest if somebody checks which of the two it does.
+-/
+def resolveClosureHrefs (workspaceRoot : System.FilePath)
+    (entries : Array Informal.StatementClosure.Entry) : IO (Array StatementClosureEntry) := do
+  let mut cache : Std.HashMap String (Option String) := {}
+  let mut out : Array StatementClosureEntry := #[]
+  for e in entries do
+    let mut href := ""
+    if e.origin != "challenge" && e.origin != "subject" && !e.definesModule.isEmpty then
+      match cache[e.definesModule]? with
+      | Option.some resolved => href := resolved.getD ""
+      | Option.none =>
+        let resolved ← librarySourceHref? workspaceRoot e.definesModule.toName
+        cache := cache.insert e.definesModule resolved
+        href := resolved.getD ""
+    out := out.push {
+      name := e.name
+      origin := e.origin
+      kind := e.kind
+      auxiliary := e.auxiliary
+      depth := e.depth
+      href
+      signature := e.signature
+      definesModule := e.definesModule
+      uses := e.uses
+    }
+  return out
+
+open Verso Doc Elab in
+/--
+The `claim_decls` rung: a closure of the subject declarations the consumer aligned with
+the certified statements, computed here, in this site's own environment.
+
+Those declarations *are* in scope here — that is the whole reason this rung exists — so no
+subprocess is involved and §A2's argument does not apply: nothing is being elaborated, and
+the constants walked are the ones this build compiled. What it is not is a closure of the
+challenge file, and every surface that renders it says so.
+
+`none` when the manifest supplies no anchor, or when it names nothing this environment
+has: an empty reading list under a confident label is worse than the honest notice.
+-/
+def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : String) :
+    PartElabM (Option StatementClosure) := do
+  if cmp.claimDecls.isEmpty then return none
+  let opts ← Lean.getOptions
+  let env ← Lean.getEnv
+  let names := cmp.claimDecls.map String.toName
+  let roots := names.filter (fun n => (env.find? n).isSome)
+  if roots.isEmpty then return none
+  let missing := (names.filter (fun n => (env.find? n).isNone)).map toString
+  let cfg : Informal.StatementClosure.Config := {
+    subjectRoots := Informal.configuredSubjectModuleRoots opts
+    -- No module here is the challenge, and a constant with no defining module is one this
+    -- document is elaborating rather than one the chain declared.
+    chainModules := #[]
+    localIsChain := false
+    maxNodes
+  }
+  let r ← liftM (m := Lean.MetaM) (Informal.StatementClosure.closure cfg roots)
+  let missingNote :=
+    if missing.isEmpty then ""
+    else s!" The manifest also names {String.intercalate ", " missing.toList}, which this \
+      build's environment does not have; {if missing.size == 1 then "it is" else "they are"} \
+      not in the closure below."
+  let entries ← liftM (resolveClosureHrefs (← liftM Informal.workspaceRoot) r.entries)
+  return some {
+    provenance := "claim-decls"
+    reason := chainReason ++ missingNote
+    roots := (roots.map toString).toList
+    total := r.total
+    outsideMathlib := r.outsideMathlib
+    untrusted := r.untrusted
+    truncated := r.truncated
+    maxNodes := r.maxNodes
+    counts := r.counts
+    entries
+  }
+
 open Verso Doc Elab in
 /--
 Compute one claim's statement closure and record it, bound or not.
@@ -2217,12 +2393,18 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
       weak claim but an empty one: a handful of arbitrary declarations, reported as a lower \
       bound nobody can use."
   let record (c : StatementClosure) : TrustComparator := { cmp with closure? := some c }
+  -- The bottom two rungs, taken together: the aligned-statement anchor when the manifest
+  -- has one, and otherwise the notice that says why there is nothing.
+  let fallback (reason : String) : PartElabM TrustComparator := do
+    match ← claimDeclsClosure? cmp maxNodes reason with
+    | Option.some c => return record c
+    | Option.none => return record (statementClosureUnavailable reason)
   if chalPath.isEmpty then
-    return record (statementClosureUnavailable
-      "no Challenge source is configured for this claim, so there is no statement to close over")
+    return ← fallback
+      "no Challenge source is configured for this claim, so there is no statement to close over"
   if cmp.theoremNames.isEmpty then
-    return record (statementClosureUnavailable
-      "the run record names no certified theorem, so there is no statement to close over")
+    return ← fallback
+      "the run record names no certified theorem, so there is no statement to close over"
   let job : Informal.StatementClosure.Job := {
     files := cmp.challengeDeps.push chalPath
     roots := cmp.theoremNames.toArray
@@ -2230,18 +2412,18 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
     subjectRoots := (Informal.configuredSubjectModuleRoots opts).map (·.toString)
   }
   match ← findStatementClosureTool opts with
-  | .error reason => return record (statementClosureUnavailable reason)
+  | .error reason => fallback reason
   | .ok tool =>
     match ← liftM (runStatementClosureTool tool job.toJson) with
-    | .error reason => return record (statementClosureUnavailable reason)
+    | .error reason => fallback reason
     | .ok doc =>
       match Informal.StatementClosure.Report.ofJson? doc with
       | .error reason =>
-        return record (statementClosureUnavailable
-          s!"the statement-closure tool did not produce a closure — {reason}")
+        fallback s!"the statement-closure tool did not produce a closure — {reason}"
       | .ok report =>
         let binding := Informal.StatementClosure.bindChain report.provenance.files cmp.challengeChain
         let r := report.result
+        let entries ← liftM (resolveClosureHrefs (← liftM Informal.workspaceRoot) r.entries)
         return record {
           provenance := binding.provenanceTag
           reason := binding.reason
@@ -2254,15 +2436,7 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
           counts := r.counts
           chainFiles := report.provenance.files.map fun f => (f.path, f.sha256)
           imports := report.provenance.imports
-          entries := r.entries.map fun e => {
-            name := e.name
-            origin := e.origin
-            kind := e.kind
-            auxiliary := e.auxiliary
-            depth := e.depth
-            signature := e.signature
-            definesModule := e.definesModule
-          }
+          entries
         }
 
 open Verso Doc Elab in

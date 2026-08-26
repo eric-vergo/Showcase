@@ -280,6 +280,16 @@ private def lakePackageModuleSourcePath? (workspaceRoot : System.FilePath)
   catch _ =>
     pure none
 
+/-- The source file of `moduleName` inside one of the `.lake/packages` checkouts, or
+`none`.
+
+Public because the statement-closure surface resolves outbound links into those checkouts
+and must locate a module's file the same way everything else here does — including the
+`srcDir := "src"` layout, which a naive `<pkg>/<Module/Path>.lean` probe silently misses. -/
+def packageModuleSourcePath? (workspaceRoot : System.FilePath) (moduleName : Lean.Name) :
+    IO (Option System.FilePath) :=
+  lakePackageModuleSourcePath? workspaceRoot (moduleSourcePathText moduleName)
+
 def sourcePathForModule? (workspaceRoot : System.FilePath)
     (moduleName : Lean.Name) : Lean.CoreM (Option System.FilePath) := do
   RuntimeCache.cachedModuleSourcePath? workspaceRoot moduleName do

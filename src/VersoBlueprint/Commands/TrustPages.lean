@@ -4,10 +4,13 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code)
 -/
 
+import Std.Data.HashMap
 import VersoManual
 import VersoBlueprint.NodePage
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.Commands.TrustStrip
+import VersoBlueprint.Commands.StatementClosurePanel
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
 import VersoBlueprint.NodeRoute
@@ -59,19 +62,6 @@ private def trustPageShell (heading intro : String) (body : Output.Html) : Outpu
       {{body}}
     </div>
   }}
-
-/-- One titled section. -/
-private def trustSection (title : String) (body : Output.Html) : Output.Html :=
-  {{
-    <section class="bp_trust_section">
-      <h2 class="bp_trust_section_title">{{.text true title}}</h2>
-      {{body}}
-    </section>
-  }}
-
-/-- A quiet outbound link. -/
-private def trustOutLink (href label : String) : Output.Html :=
-  {{ <a class="bp_trust_out_link" href={{href}} target="_blank" rel="noopener">{{.text true label}}</a> }}
 
 /-- A code block: highlighted token markup when available (wrapped in
 `<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
@@ -644,11 +634,20 @@ run-evidence and content-binding rules this body enforces are the point of the p
 and asserting them through a generated site would test the `ExtraStep` plumbing
 instead. -/
 def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
-    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
+    (closureCtx : StatementClosurePanel.Context := {}) : Output.Html :=
   -- 1. Verdict header (pill + date + CI link + scope + certified theorems + axioms + tool
   --    refs), plus the per-kernel table when more than one kernel is in play.
   let verdict := comparatorVerdictHeader cmp ciUrl? theoremLikeTotal
   let kernelSection := (kernelTableSection? cmp).getD .empty
+  -- The claim section is the one place the challenge chain's own declarations are printed,
+  -- so it carries the id the statement closure's reading list points its challenge-origin
+  -- rows at. Anchored only when there is a source to anchor to.
+  let claimAnchor :=
+    if cmp.challengeSource.isEmpty || !StatementClosurePanel.needsClaimAnchor cmp then ""
+    else if closureCtx.idSuffix.isEmpty then "bp-trust-claim"
+    else s!"bp-trust-claim-{closureCtx.idSuffix}"
+  let closureCtx := { closureCtx with claimAnchor }
   -- 2. "The claim": the challenge statement, verbatim, with GitHub / playground /
   --    comparator.live links.
   --
@@ -706,6 +705,7 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
           trustCodeBlock "bp_trust_code_lean" cmp.challengeHtml cmp.challengeSource,
           contentBindingNote cmp,
           liveNote])
+        (id? := if claimAnchor.isEmpty then Option.none else Option.some claimAnchor)
   -- 3. What this page certifies (static prose).
   --    The second-kernel clause is *run evidence* (`nanoda_replay`), not configuration:
   --    an author who switches `enable_nanoda` on must not thereby make a past verdict
@@ -788,14 +788,19 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
                <summary>"Show comparator configuration"</summary>
                {{trustCodeBlock "bp_trust_code_json" cmp.configHtml cmp.configJson}}
              </details> }}])
-  .seq #[verdict, kernelSection, claimSection, certifiesSection, checkSection, reproSection,
-    solutionSection, configSection]
+  -- The statement closure sits between the claim and the prose about it: a reader who has
+  -- just read the statement is the reader who wants to know what reading it committed
+  -- them to. Renders nothing at all unless the closure surface is configured.
+  let closureSection := StatementClosurePanel.render cmp closureCtx
+  .seq #[verdict, kernelSection, claimSection, closureSection, certifiesSection, checkSection,
+    reproSection, solutionSection, configSection]
 
 /-- The single-comparator page: the panel body inside the page shell. -/
 def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
-    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
+    (closureCtx : StatementClosurePanel.Context := {}) : Output.Html :=
   trustPageShell "Statement comparator" ""
-    (comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref?)
+    (comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref? closureCtx)
 
 /-! ## Multi-config trust surface -/
 
@@ -862,7 +867,8 @@ transcribed from someone else's records, was told it presented that many
 in a clause that says what they actually are. -/
 def comparatorsPageBody (comparators : List ComparatorTopic)
     (axiomTopics : List AxiomAuditTopic) (ciUrl? : Option String)
-    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
+    (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
+    (closureCtx : StatementClosurePanel.Context := {}) : Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
   let verified := comparators.filter (·.comparator.status == "verified")
@@ -924,13 +930,16 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
         {{axiomNote}}
       </section>
     }}
-  let comparatorPanels : Array Output.Html := (comparators.map fun topic =>
+  -- Each panel's element ids are suffixed by its position, so a multi-topic page's
+  -- reading lists anchor into their own claim rather than the first one on the page.
+  let comparatorPanels : Array Output.Html := comparators.toArray.zipIdx.map fun (topic, i) =>
+    let panelCtx := { closureCtx with idSuffix := toString (i + 1) }
     {{
       <section class="bp_trust_topic">
         <h2 class="bp_trust_topic_title">{{.text true topic.name}}</h2>
-        {{comparatorPanelInner topic.comparator ciUrl? theoremLikeTotal trustModelHref?}}
+        {{comparatorPanelInner topic.comparator ciUrl? theoremLikeTotal trustModelHref? panelCtx}}
       </section>
-    }}).toArray
+    }}
   let axiomPanels : Array Output.Html := (axiomTopics.map axiomAuditPanel).toArray
   trustPageShell "Statement comparator" ""
     (.seq (#[header] ++ comparatorPanels ++ axiomPanels))
@@ -941,6 +950,31 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
 private def cachedTrust? (state : TraverseState) : Option TrustData :=
   (Informal.TraversalIndex.TrustData.raw? state).bind fun json =>
     (fromJson? (α := TrustData) json).toOption
+
+/--
+Where this site publishes each declaration it knows about, read from the traversal-cached
+registry.
+
+The registry is the only thing that knows which page a declaration has — wired
+declarations keep their node page, unwired ones get a `decl/` page — so a name it does not
+carry resolves to nothing and the reading list renders that row unlinked. Guessing a decl
+slug from a name would produce a confident link to a page that was never emitted, which is
+the one outcome worse than no link. Empty when the all-declarations registry is off. -/
+private def registrySiteHrefs (state : TraverseState) : String → Option String :=
+  let table : Std.HashMap String String :=
+    match Informal.TraversalIndex.DeclRegistry.raw? state with
+    | none => {}
+    | some raw =>
+      match (do
+          let j ← Json.parse raw
+          (FromJson.fromJson? j : Except String Informal.DeclRegistry.Registry)) with
+      | .error _ => {}
+      | .ok registry =>
+        registry.decls.foldl (init := {}) fun m e =>
+          match e.nodeHref? <|> e.declHref? with
+          | some href => m.insert e.name href
+          | none => m
+  fun name => table[name]?
 
 /--
 `ExtraStep` that emits the claim-first `comparator/` page from the traversal-cached trust
@@ -980,6 +1014,8 @@ def emitBlueprintComparatorPage : ExtraStep :=
         -- falling back to the shared `ciRunUrl` option.
         let ciFor (cmp : TrustComparator) : Option String :=
           if cmp.runUrl.isEmpty then trust.ciRunUrl else some cmp.runUrl
+        let closureCtx : StatementClosurePanel.Context :=
+          { siteHref := registrySiteHrefs state }
         let body? : Option Output.Html :=
           if !trust.comparators.isEmpty || !trust.axiomAuditTopics.isEmpty then
             -- Multi-config trust surface: one certified panel per topic + aggregate.
@@ -987,11 +1023,12 @@ def emitBlueprintComparatorPage : ExtraStep :=
             let ciUrl? :=
               (trust.comparators.head?.map (fun t => ciFor t.comparator)).getD trust.ciRunUrl
             some (comparatorsPageBody trust.comparators trust.axiomAuditTopics ciUrl?
-              theoremLikeTotal trustModelHref?)
+              theoremLikeTotal trustModelHref? closureCtx)
           else match trust.comparator with
             | Option.none => Option.none
             | Option.some cmp =>
-              Option.some (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref?)
+              Option.some
+                (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref? closureCtx)
         match body? with
         | Option.none => pure ()
         | Option.some body =>

@@ -233,6 +233,11 @@ structure Walk where
   /-- Recorded constants in discovery order (breadth-first, so a truncated walk keeps
   the shallowest — the part of the reading list a reader would start with). -/
   nodes : Array Node := #[]
+  /-- Every edge the walk enumerated, as (expanded constant, constant it names). A
+  repeat encounter is a real edge and is kept; an edge into a constant the cap turned
+  away is kept here and dropped when the reading list is rendered, so the picture never
+  points at a row that is not in the list. -/
+  edges : Array (Name × Name) := #[]
   /-- The cap was reached and constants were left undiscovered. -/
   truncated : Bool := false
 deriving Inhabited
@@ -240,6 +245,7 @@ deriving Inhabited
 private structure St where
   seen : NameSet := {}
   nodes : Array Node := #[]
+  edges : Array (Name × Name) := #[]
   queue : Array (Name × Nat) := #[]
   head : Nat := 0
   truncated : Bool := false
@@ -271,8 +277,14 @@ private partial def walkGo {m : Type → Type} [Monad m] (env : Environment) (cf
         let s := { s with seen := s.seen.insert n, nodes := s.nodes.push node }
         let s :=
           if site.trusted then s
-          else (successors info).foldl (init := s) fun s c =>
-            if s.seen.contains c then s else { s with queue := s.queue.push (c, depth + 1) }
+          else
+            -- A constant is expanded exactly once, so deduplicating within its own
+            -- successors is enough to keep the edge list free of repeats.
+            let succs := (successors info).foldl (init := (#[] : Array Name)) fun acc c =>
+              if acc.contains c then acc else acc.push c
+            succs.foldl (init := s) fun s c =>
+              let s := { s with edges := s.edges.push (n, c) }
+              if s.seen.contains c then s else { s with queue := s.queue.push (c, depth + 1) }
         walkGo env cfg visit s
   else
     return s
@@ -288,7 +300,7 @@ disagree with it.
 def walk {m : Type → Type} [Monad m] (env : Environment) (cfg : Config) (roots : Array Name)
     (visit : Encounter → m Unit := fun _ => pure ()) : m Walk := do
   let s ← walkGo env cfg visit { queue := roots.map (fun r => (r, 0)) }
-  return { nodes := s.nodes, truncated := s.truncated }
+  return { nodes := s.nodes, edges := s.edges, truncated := s.truncated }
 
 /-! ## Rendering the reading list -/
 
@@ -334,6 +346,10 @@ structure Entry where
   signature : String
   /-- Defining module; empty for a declaration the chain itself made. -/
   definesModule : String
+  /-- Constants this one's meaning refers to, restricted to declarations the reading
+  list actually records. This is the edge structure the meaning graph draws; an edge to
+  something the cap turned away is dropped here rather than pointing at a missing row. -/
+  uses : Array String := #[]
 deriving Inhabited, Repr
 
 /-- A completed closure computation. -/
@@ -362,6 +378,9 @@ private def tally (nodes : Array Node) : Array (String × Nat) :=
 /-- Render a walk into a reading list, pretty-printing each recorded type. -/
 def render (cfg : Config) (roots : Array Name) (w : Walk) : MetaM Result := do
   let env ← Lean.getEnv
+  let recorded : NameSet := w.nodes.foldl (init := {}) fun s n => s.insert n.site.name
+  let uses : NameMap (Array Name) := w.edges.foldl (init := {}) fun m (from_, to) =>
+    if recorded.contains to then m.insert from_ (((m.find? from_).getD #[]).push to) else m
   let mut entries : Array Entry := #[]
   for node in w.nodes do
     let signature ←
@@ -377,6 +396,7 @@ def render (cfg : Config) (roots : Array Name) (w : Walk) : MetaM Result := do
       signature
       definesModule :=
         if node.site.definesModule.isAnonymous then "" else node.site.definesModule.toString
+      uses := ((uses.find? node.site.name).getD #[]).map (·.toString)
     }
   return {
     roots := roots.map (·.toString)
@@ -402,8 +422,9 @@ The subprocess boundary. Both sides of it live here so the shape cannot drift: t
 writes `Result.toJson`, the build-time driver reads it back with `Result.ofJson?`.
 -/
 
-/-- Schema version of the job spec and the result document. -/
-def schemaVersion : Nat := 1
+/-- Schema version of the job spec and the result document. Version 2 adds each entry's
+`uses`, the edge structure the meaning graph is drawn from. -/
+def schemaVersion : Nat := 2
 
 def Entry.toJson (e : Entry) : Json :=
   Json.mkObj <|
@@ -412,6 +433,7 @@ def Entry.toJson (e : Entry) : Json :=
     ++ (if e.auxiliary then [("auxiliary", Json.bool true)] else [])
     ++ (if e.signature.isEmpty then [] else [("signature", Json.str e.signature)])
     ++ (if e.definesModule.isEmpty then [] else [("definesModule", Json.str e.definesModule)])
+    ++ (if e.uses.isEmpty then [] else [("uses", Json.arr (e.uses.map Json.str))])
 
 def Entry.ofJson? (j : Json) : Except String Entry := do
   let str (k : String) : String := (j.getObjValAs? String k).toOption.getD ""
@@ -425,6 +447,7 @@ def Entry.ofJson? (j : Json) : Except String Entry := do
     depth := (j.getObjValAs? Nat "depth").toOption.getD 0
     signature := str "signature"
     definesModule := str "definesModule"
+    uses := (j.getObjValAs? (Array String) "uses").toOption.getD #[]
   }
 
 def Result.toJson (r : Result) : Json :=

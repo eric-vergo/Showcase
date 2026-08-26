@@ -117,6 +117,16 @@ private def checkRow (what : String) (verdict : Output.Html) (detail : String) :
 private def notCheckedBadge : Output.Html :=
   trustBadgeHtml "not checked" "warn"
 
+/-- A statement closure this build computed, if any — the single-pair comparator's first,
+otherwise the first topic that has one. One is enough: this page describes what the
+closure surface *is*, and the per-claim particulars belong on the comparator page beside
+the claim they are about. -/
+private def closureOnTrustData? (trust? : Option TrustData) : Option StatementClosure := do
+  let trust ← trust?
+  match trust.comparator.bind (·.closure?) with
+  | Option.some c => Option.some c
+  | Option.none => (trust.comparators.findSome? (·.comparator.closure?))
+
 /-! ### Section 1 — what this build actually checked -/
 
 private def machineCheckedSection (data : TrustModelData) (trust? : Option TrustData)
@@ -331,6 +341,45 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
                  appear in the code (informal-level edges — a mathematical dependency the \
                  Lean proof reaches by another route)."}}
           </p> }}
+  -- The closure surface does not move the unmovable step; it measures it. Said here, in
+  -- the section that admits the step exists, and only when a closure was actually
+  -- computed — a site without the surface reads exactly as it did before.
+  let closureProse : Output.Html :=
+    match closureOnTrustData? trust? with
+    | Option.none => .empty
+    | Option.some c =>
+      let boundClause :=
+        if c.provenance == "chain" then
+          "For each certified claim, the comparator page lists the declarations that \
+           statement's meaning depends on — computed from the exact challenge files the \
+           verifying run recorded, elaborated in a fresh environment holding only their \
+           declared imports, and marked as bound to that run only when the bytes match \
+           digest for digest."
+        else if c.provenance == "chain-unbound" then
+          "For each certified claim, the comparator page lists the declarations that \
+           statement's meaning depends on. That list is computed from the challenge files \
+           as they stand in this build, and nothing ties them to the run the verdict came \
+           from; the page says so where the list is."
+        else if c.provenance == "claim-decls" then
+          "For each certified claim, the comparator page lists the declarations a statement's \
+           meaning depends on. Here that list was computed from subject declarations the \
+           project's manifest aligned with the certified statements rather than from the \
+           challenge file itself, which is a weaker thing, and the page says so where the \
+           list is."
+        else
+          "The comparator page is configured to list, for each certified claim, the \
+           declarations that statement's meaning depends on; it reports there why it could \
+           not."
+      .seq #[
+        prose boundClause,
+        prose
+          "That list does not check the correspondence and cannot. What it does is put a \
+           number on the step above: it says how much reading the unmovable residue actually \
+           is, and which declarations it consists of. A short list means the statement can \
+           be checked in a sitting; a long one means checking it is a real piece of work \
+           that has not been done for you. Reaching the site's configured cap is reported as \
+           an incomplete list rather than as a count, because a lower bound and a total are \
+           not the same claim."]
   section' "What is not machine-checked" #[
     {{ <h3 class="bp_trustmodel_subtitle">"The informal ↔ formal correspondence"</h3> }},
     prose
@@ -344,6 +393,7 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
       "If the Lean statement is a faithful rendering of the informal one, then the machine \
        checks above tell you the theorem is proved. If it is not, they tell you nothing you \
        care about. Reading the formal statement is the step that cannot be delegated.",
+    closureProse,
     {{ <h3 class="bp_trustmodel_subtitle">{{.text true edgeSubtitle}}</h3> }},
     edgeProse,
     edgeNote,
