@@ -1511,4 +1511,99 @@ private def renderedV03 : String :=
   !hasSubstr v04 "<div class=\"bp_formalization_fields\"></div>" &&
   !hasSubstr v03 "<div class=\"bp_formalization_fields\"></div>"
 
+/-! ## Two identity records for one checker have no reading (CX-071)
+
+The audit's fixture: two `nanoda` identities agreeing on source commit and on `replayed`,
+so the cross-encoding pass found nothing to object to, but naming different repositories,
+executable digests and argv. `identityFor?` took the first, so the order of a JSON array
+decided between `named` with the canonical digest and `bound` with the attacker's — the
+same two-record multiset validating either way.
+
+Both orders must now fail, on the same fields; an exact duplicate must still merge to one
+record; and spelling differences the module already normalizes away (a `.git` suffix, an
+upper-case digest) must not be mistaken for disagreement.
+-/
+
+private def contradictoryIdentitiesCanonicalFirst := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
+      "executable_sha256": "canonical-digest", "replayed": true, "verdict": "ok" },
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/attacker/not_nanoda",
+      "source_commit": "05055695", "command_argv": ["/tmp/evil"],
+      "executable_sha256": "attacker-digest", "replayed": true, "verdict": "ok" }
+  ]
+}"##
+
+private def contradictoryIdentitiesAttackerFirst := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/attacker/not_nanoda",
+      "source_commit": "05055695", "command_argv": ["/tmp/evil"],
+      "executable_sha256": "attacker-digest", "replayed": true, "verdict": "ok" },
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
+      "executable_sha256": "canonical-digest", "replayed": true, "verdict": "ok" }
+  ]
+}"##
+
+-- The control: the same record twice, the second spelled the way the normalizations
+-- already accept. One record, no conflict, and the name still carries.
+private def duplicateIdentitiesStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
+      "executable_sha256": "abcdef01", "replayed": true, "verdict": "ok" },
+    { "label": "nanoda", "adapter_kind": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib.git",
+      "source_commit": "05055695", "command_argv": ["/opt/nanoda_bin"],
+      "executable_sha256": "ABCDEF01", "replayed": true, "verdict": "ok" }
+  ]
+}"##
+
+-- Disagreement on exactly the three identity fields that differ, in either order, and one
+-- surviving record either way (the merge keeps the first; the build never gets to use it).
+/-- info: (3, 3, true, true, 1, 1) -/
+#guard_msgs in
+#eval
+  let first := TrustComparator.ofJson (parsedJson contradictoryIdentitiesCanonicalFirst)
+  let second := TrustComparator.ofJson (parsedJson contradictoryIdentitiesAttackerFirst)
+  let namesFields := fun (c : TrustComparator) =>
+    ["repository", "executable_sha256", "command_argv"].all fun f =>
+      c.encodingConflicts.any (fun m => hasSubstr m f)
+  (first.encodingConflicts.size, second.encodingConflicts.size,
+   namesFields first, namesFields second,
+   first.kernelIdentities.size, second.kernelIdentities.size)
+
+-- And the build stops on both, before any surface can select between the two accounts.
+/-- info: (true, true, true, "ok") -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × Bool × String) from do
+  let first := TrustComparator.ofJson (parsedJson contradictoryIdentitiesCanonicalFirst)
+  let second := TrustComparator.ofJson (parsedJson contradictoryIdentitiesAttackerFirst)
+  let dup := TrustComparator.ofJson (parsedJson duplicateIdentitiesStatus)
+  let msg1 ← checkOutcome (checkComparatorEncodings first "status.json")
+  let msg2 ← checkOutcome (checkComparatorEncodings second "status.json")
+  let clean ← checkOutcome (checkComparatorEncodings dup "status.json")
+  return (hasSubstr msg1 "contradicts itself" && hasSubstr msg1 "attacker-digest",
+          hasSubstr msg2 "contradicts itself" && hasSubstr msg2 "canonical-digest",
+          hasSubstr msg1 "duplicate record" && hasSubstr msg2 "duplicate record",
+          clean)
+
+-- The identical-duplicate control passes with a single record, and the checker keeps the
+-- name its identity earns: deduplication must not cost the assurance it is protecting.
+/-- info: (1, "named", true, 0) -/
+#guard_msgs in
+#eval
+  let dup := TrustComparator.ofJson (parsedJson duplicateIdentitiesStatus)
+  (dup.kernelIdentities.size, dup.kernelIdentityTier "nanoda", dup.replayedWithNanoda,
+   dup.encodingConflicts.size)
+
 end Verso.VersoBlueprintTests.BlueprintFormalization

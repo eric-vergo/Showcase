@@ -830,7 +830,82 @@ most one distinct non-empty revision across all of them. Disagreement is a build
 a machine record that contradicts itself has no reading, and picking a winner would be
 inventing one. Labels named by one encoding and not another are a union, not a conflict:
 an encoding may be partial without being wrong.
+
+The same rule holds *within* the identity array, and on every identity-bearing field
+rather than on the two the cross-encoding pass compares: see `canonicalKernelIdentities`.
+Uniqueness there is what lets `identityFor?` be a lookup instead of a choice.
 -/
+
+/-- Repository URL in the form the comparison uses: lower-cased, without a trailing
+`.git` or `/`. -/
+def normalizeRepoUrl (u : String) : String :=
+  let u := u.trimAscii.toString.toLower
+  let u := if u.endsWith ".git" then (u.dropEnd 4).toString else u
+  if u.endsWith "/" then (u.dropEnd 1).toString else u
+
+/-- A digest in the form comparisons use: trimmed and lower-cased. Hex case is spelling,
+not identity, so a record giving the same digest twice in two cases has recorded one. -/
+private def normalizeDigest (s : String) : String := s.trimAscii.toString.toLower
+
+/-- The identity-bearing fields of one record, named and in the normalized form same-label
+records must agree on.
+
+Field by field rather than structural equality, for two reasons: a disagreement can be
+*named* (a reader of the build error learns which field), and a field added later for
+display alone does not silently become a conflict criterion by existing. -/
+private def identityFields (r : KernelReplayRecord) : Array (String × String) := #[
+  ("repository", normalizeRepoUrl r.repository),
+  ("source_commit", r.sourceCommit.trimAscii.toString),
+  ("executable_sha256", normalizeDigest r.executableSha256),
+  -- JSON-rendered: readable in the error, and escaped, so no argument can spell a
+  -- separator and make two different vectors compare equal.
+  ("command_argv", (toJson r.commandArgv).compress),
+  ("adapter_kind", r.adapterKind.trimAscii.toString),
+  ("replayed", toString r.replayed),
+  ("verdict", r.verdict.trimAscii.toString)]
+
+private def shownFieldValue (s : String) : String :=
+  if s.isEmpty then "(absent)" else s
+
+/--
+Merge same-label identity records into one, or name every disagreement.
+
+`parseKernelIdentities` keeps every object in the array, so one artifact can carry two
+`nanoda` records — a canonical repository and executable digest in the first, an
+attacker's in the second. The conflict pass above compares only the replay boolean and
+the recorded revision, so a pair agreeing on those two survived it intact, and
+`identityFor?` then takes the *first*: a non-semantic permutation of a JSON array decided
+the assurance tier, the displayed digest, and whether the label could be called the kernel
+it names. Both orders validated (CX-071).
+
+Same-label records must therefore agree on every identity-bearing field — repository,
+source commit, executable digest, argv, adapter kind, replay and verdict — under the
+normalizations this module already uses elsewhere (repository URLs canonicalized, digests
+lower-cased, the rest trimmed). Identical duplicates are the one benign case and merge to
+a single record. Anything else is named here and thrown before selection can happen: a
+record that contradicts itself about what ran has no reading, and picking one of its
+halves would be inventing one.
+
+Returns the merged records in first-mention order, plus the conflicts.
+-/
+def canonicalKernelIdentities (identities : Array KernelReplayRecord) :
+    Array KernelReplayRecord × Array String := Id.run do
+  let mut merged : Array KernelReplayRecord := #[]
+  let mut conflicts : Array String := #[]
+  for r in identities do
+    match merged.findIdx? (fun m => m.label == r.label) with
+    | Option.none => merged := merged.push r
+    | Option.some i =>
+      let kept := identityFields merged[i]!
+      let dup := identityFields r
+      for k in [0:kept.size] do
+        let (field, keptValue) := kept[k]!
+        let dupValue := (dup[k]!).2
+        if keptValue != dupValue then
+          conflicts := conflicts.push
+            s!"'{r.label}' has two identity records disagreeing on {field}: \
+               {shownFieldValue keptValue} and {shownFieldValue dupValue}"
+  return (merged, conflicts)
 
 /-- The encodings a status artifact carries, each as (source name, entries). -/
 private def kernelEncodings (status : Json)
@@ -913,7 +988,8 @@ Every field beyond `status` is optional (absent in older artifacts ⇒ empty-sen
 an artifact written before the provenance fields existed still loads. The embedded config /
 Challenge sources are filled in later from their own options (`elabTrustData?`). -/
 def TrustComparator.ofJson (j : Json) : TrustComparator :=
-  let identities := parseKernelIdentities j
+  -- ONE identity record per checker label, before anything can select between two.
+  let (identities, identityConflicts) := canonicalKernelIdentities (parseKernelIdentities j)
   -- ONE canonical record set, merged from every encoding present and required to agree.
   let (kernels, conflicts) := canonicalKernelRecords (kernelEncodings j identities)
   let kernelOf := fun (name : String) => kernels.find? fun e => e.1 == name
@@ -946,7 +1022,9 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     kernelReplays := kernels.filterMap fun e => e.2.1.map fun b => (e.1, b)
     kernelRefs := kernels.filterMap fun e => if e.2.2.isEmpty then none else some (e.1, e.2.2)
     kernelIdentities := identities
-    encodingConflicts := conflicts
+    -- Identity disagreements first: they are the ones that would otherwise be settled by
+    -- array order rather than by evidence.
+    encodingConflicts := identityConflicts ++ conflicts
     -- Content binding. Absent ⇒ empty ⇒ the displayed source is bound to this verdict
     -- by name and path shape only.
     configSha256 := (j.getObjValAs? String "config_sha256").toOption.getD ""
@@ -1032,14 +1110,11 @@ checker: the label is consumer-chosen text. -/
 def knownKernelRepos : List (String × String) :=
   [("nanoda", "https://github.com/ammkrn/nanoda_lib")]
 
-/-- Repository URL in the form the comparison uses: lower-cased, without a trailing
-`.git` or `/`. -/
-def normalizeRepoUrl (u : String) : String :=
-  let u := u.trimAscii.toString.toLower
-  let u := if u.endsWith ".git" then (u.dropEnd 4).toString else u
-  if u.endsWith "/" then (u.dropEnd 1).toString else u
+/-- The run's identity record for `label`, if it wrote one.
 
-/-- The run's identity record for `label`, if it wrote one. -/
+At most one record per label survives parsing: `canonicalKernelIdentities` merges
+identical duplicates and makes any disagreement a build error, so this `find?` cannot be
+a choice between two answers. -/
 def TrustComparator.identityFor? (cmp : TrustComparator) (label : String) :
     Option KernelReplayRecord :=
   cmp.kernelIdentities.find? fun r => r.label == label
@@ -2071,13 +2146,21 @@ def checkComparatorDigests (cmp : TrustComparator) (statusPath : String) :
     cmp.configSha256 cmp.configDigest
 
 /--
-Agreement between the encodings a status artifact used for its run evidence.
+Self-agreement of a status artifact's run evidence.
 
-A record may spell the same replay three ways; it may not spell it three *different* ways.
-When the identity records, the `kernel_replays` map and the legacy
-`nanoda_replay`/`nanoda_ref` pair disagree about whether a checker replayed or at which
-revision, there is no fact to render — one page would say the run used one binary and
-another page a different one — so the build stops with every disagreement named.
+Two shapes of disagreement land here, and neither has a reading:
+
+- **Across encodings.** A record may spell the same replay three ways; it may not spell it
+  three *different* ways. When the identity records, the `kernel_replays` map and the
+  legacy `nanoda_replay`/`nanoda_ref` pair disagree about whether a checker replayed or at
+  which revision, one page would say the run used one binary and another page a different
+  one.
+- **Within the identity array.** Two records for one checker label that disagree about
+  repository, source commit, executable digest, argv, adapter, replay or verdict are two
+  incompatible accounts of one program, and which of them a renderer sees is a fact about
+  JSON array order rather than about the run (CX-071).
+
+Either way the build stops with every disagreement named, before any surface selects.
 
 Public for the same reason as `checkComparatorDigests`.
 -/
@@ -2086,10 +2169,12 @@ def checkComparatorEncodings (cmp : TrustComparator) (statusPath : String) :
   unless cmp.encodingConflicts.isEmpty do
     throwError "{statusPath} contradicts itself about what its verifiers did:\\n\\
       {String.intercalate "\\n" cmp.encodingConflicts.toList}\\n\\
-      The status artifact spells its run evidence in more than one way, and the spellings \\
-      disagree. There is no reading of this record: rendering it would report one revision \\
-      on one page and another elsewhere. Re-run CI so the artifact is regenerated, or \\
-      remove the stale encoding."
+      Run evidence may be spelled more than one way, and one checker may be described more \\
+      than once; the spellings and the descriptions have to agree. There is no reading of \\
+      this record: rendering it would report one revision or one binary on one page and \\
+      another elsewhere, and which account comes first in a JSON array is not a fact about \\
+      the run. Re-run CI so the artifact is regenerated, or remove the stale encoding or \\
+      the duplicate record."
 
 /--
 Internal completeness of the status artifact's own run-evidence fields.
