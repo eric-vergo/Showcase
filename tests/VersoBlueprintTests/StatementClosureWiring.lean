@@ -90,4 +90,37 @@ time; a field that does not survive that is a field the comparator page never se
       -- The schema-2 edge structure the meaning graph is drawn from.
       c.entries.any (fun e => !e.uses.isEmpty))
 
+/-! ## The caveat scan rides the same option path
+
+`verso.blueprint.trust.statementCaveats` defaults on, so turning the closure on turns the
+certified-claim scan on with it. What must arrive is a *completed* report naming the table
+that produced it — the fixture's Challenge has no junk symbol in it, so the state under
+test is the one that found nothing and has to say what that does and does not mean.
+-/
+
+/-- info: (some "completed-zero", true, true, some true) -/
+#guard_msgs(info, drop warning) in
+#eval show IO (Option String × Bool × Bool × Option Bool) from do
+  let (_, st) ← renderManualDocHtmlStringAndState extension_impls% closureWiringDoc
+  let trust? := (Informal.TraversalIndex.TrustData.raw? st).bind fun j =>
+    (fromJson? (α := TrustData) j).toOption
+  match (trust?.bind (·.comparator)).bind (·.caveats?) with
+  | Option.none => return (none, false, false, none)
+  | Option.some c =>
+    return (
+      some c.status,
+      c.tableVersion == Informal.JunkValues.bundledTableVersion && c.tableDigest.length == 12,
+      c.coverage == Informal.JunkValues.coverageMeaningClosure,
+      -- The lexical half ran over the chain the tool hashed, and found nothing to report.
+      some (!c.optionScanFiles.isEmpty && c.optionOverrides.isEmpty))
+
+-- And the trust-model page says what a silent scan established, which is nothing.
+/-- info: true -/
+#guard_msgs(info, drop warning) in
+#eval show IO Bool from do
+  let html ← renderManualDocHtmlString extension_impls% closureWiringDoc
+  return hasSubstr html "Known caveat patterns" &&
+    hasSubstr html "a symbol the table does not list is a symbol nobody looked for" &&
+    hasSubstr html "no row anywhere says a statement is guarded"
+
 end Verso.VersoBlueprintTests.StatementClosureWiring

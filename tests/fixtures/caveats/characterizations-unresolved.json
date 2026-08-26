@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "characterizations": [
+    { "decl": "No.Such.Declaration.Anywhere", "statement": "Names something this environment does not have." }
+  ]
+}

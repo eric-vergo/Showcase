@@ -23,6 +23,8 @@ import VersoBlueprint.NodeRoute
 import VersoBlueprint.Sha256
 import VersoBlueprint.KernelAdvisories
 import VersoBlueprint.StatementClosure
+import VersoBlueprint.JunkValues
+import VersoBlueprint.CaveatsRender
 
 /-!
 Dashboard trust strip.
@@ -100,6 +102,16 @@ register_option verso.blueprint.trust.statementClosureMaxNodes : Nat := {
 register_option verso.blueprint.trust.statementClosureTool : String := {
   defValue := ""
   descr := "Path (relative to the build CWD) to the `statement-closure` executable. Empty ⇒ the build probes `.lake/build/bin/statement-closure` and `.lake/packages/VersoBlueprint/.lake/build/bin/statement-closure`, and records an honest unavailable notice when neither exists. Set-but-missing is a build error: a configured tool must not degrade into a probe."
+}
+
+-- `verso.blueprint.trust.statementCaveats` and `.junkValueTable` are registered in
+-- `VersoBlueprint.JunkValues`, which the declaration registry also reads them from: the
+-- registry cannot import this module, and one registration is the only way both scans
+-- answer to the same switch.
+
+register_option verso.blueprint.trust.characterizations : String := {
+  defValue := ""
+  descr := "Path (relative to the build CWD) to a JSON sidecar declaring what the project takes its definitions to be characterized by — the consumer's answer to a junk-value caveat. Schema: {\"schemaVersion\": 1, \"characterizations\": [ {\"decl\", \"statement\", \"reference\"?, \"note\"?} ]}. Rendered on the comparator page as \"consumer-declared characterization\", with the sidecar's path and digest, and asserted by nobody. Every failure mode is a build error rather than a silent omission: a missing file, a malformed document, two entries for one declaration, or a `decl` this build's environment does not have. Empty disables. Read at elaboration (see the warm-rebuild staleness note)."
 }
 
 register_option verso.blueprint.trust.requireConnected : Bool := {
@@ -194,18 +206,19 @@ structure StatementClosure where
   entries : Array StatementClosureEntry := #[]
 deriving Inhabited, FromJson, ToJson, Quote
 
-/-- One total-function convention a reader of a statement could misread. Reserved for
-the statement-caveat surface; nothing populates it yet. Caveats to check, not findings
-of error. -/
-structure StatementCaveat where
-  symbol : String := ""
-  behavior : String := ""
-  /-- Presence scan over the statement's binders: `present`, `absent`, `unknown`. A
-  presence check, never an assertion that a guard is missing. -/
-  guard : String := ""
-  guardHint : String := ""
-  provenance : String := ""
-deriving Inhabited, FromJson, ToJson, Quote
+/-! ### The caveat-scan payload
+
+Defined in `VersoBlueprint.JunkValues`, which the `statement-closure` subprocess also
+imports: one definition of the scan's data, so the wire format and the payload cannot
+drift. The `Quote` instances are derived here rather than there, since the deriving handler
+lives in Verso and the tool has no business importing it.
+-/
+
+deriving instance Quote for Informal.JunkValues.Finding
+deriving instance Quote for Informal.JunkValues.OptionOverride
+deriving instance Quote for Informal.JunkValues.ScanReport
+deriving instance Quote for Informal.JunkValues.Characterization
+deriving instance Quote for Informal.JunkValues.Characterizations
 
 /-- One advisory as it bore on one recorded verifier revision, ready to render. -/
 structure VerifierAdvisory where
@@ -484,9 +497,10 @@ structure TrustComparator where
   claimDecls : Array String := #[]
   /-- The certified claims' meaning closure. Reserved; `none` ⇒ not computed. -/
   closure? : Option StatementClosure := none
-  /-- Total-function conventions in the certified statements a reader could misread.
-  Reserved; empty ⇒ not scanned. -/
-  caveats : Array StatementCaveat := #[]
+  /-- Total-function conventions in the certified statements a reader could misread, from
+  the scan that rode the meaning traversal. `none` ⇒ not scanned, which is a different
+  thing from a scan that matched nothing and renders differently. -/
+  caveats? : Option Informal.JunkValues.ScanReport := none
   /-- Per-verifier currency against the advisories known to this site, computed at
   elaboration from the recorded revisions. Empty ⇒ the record named no verifier build to
   assess (which is itself said in prose, never rendered as a clean bill). -/
@@ -578,6 +592,11 @@ structure TrustData where
   because the self-aging clause is exactly what a page with *no* assessable verifier
   still has to publish. Empty ⇒ no table was read (a payload from before this field). -/
   advisoriesUpdated : String := ""
+  /-- The characterization sidecar this project declares
+  (`verso.blueprint.trust.characterizations`), with the path and digest of the bytes read.
+  Project-level rather than per-claim, which is what a sidecar of declarations is. `none` ⇒
+  none configured. -/
+  characterizations? : Option Informal.JunkValues.Characterizations := none
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The Mathlib project id used to open the Challenge file in the Lean 4 web
@@ -1816,8 +1835,10 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
 -- comparator page (verdict header, prose sections, reproduce list). See trust-strip.css.
 def trustStripCss := include_str "trust-strip.css"
 
+-- The caveat block rides the same site-wide channel: it appears on the comparator page,
+-- which reuses the site chrome, and its rules are tokens-only.
 def trustStripAssetBundle : BlueprintAssetBundle :=
-  blueprintCssAssetBundle [trustStripCss]
+  blueprintCssAssetBundle [trustStripCss, Informal.CaveatsRender.css]
 
 open Verso Doc Elab Genre Manual in
 block_extension Block.trustStrip (trust : TrustData) where
@@ -1879,6 +1900,15 @@ itself changes — always re-checks. The binding is therefore a property of the 
 produced a site from scratch, which is the build that publishes it. (Verified: a
 substituted challenge file is accepted by a warm rebuild and rejected as soon as the
 module re-elaborates.)
+
+The same applies to every other file this module reads at elaboration, which is now: the
+comparator status artifact, its config, the Challenge and Solution sources, the kernel
+advisory override, the challenge-chain files the closure tool hashes, the **junk-value
+table override** (`verso.blueprint.trust.junkValueTable`) and the **characterization
+sidecar** (`verso.blueprint.trust.characterizations`). Editing any of them without
+touching a Lean input leaves the previous contents in the `.olean` — including the table
+version and digest the caveat surface prints, which would then name a table this build did
+not read. Cold builds remain the publishing path.
 -/
 
 /--
@@ -2226,6 +2256,57 @@ def runStatementClosureTool (tool : String) (job : Json) : IO (Except String Jso
 def statementClosureUnavailable (reason : String) : StatementClosure :=
   { provenance := "unavailable", reason }
 
+/-! #### The caveat table and the characterization sidecar (F2)
+
+Both are *configured inputs*, so both fail the build rather than degrading: a project that
+configured a safety table and got the default one, or that declared characterizations that
+silently vanished, is worse off than a project that was told to fix its configuration.
+
+Both are read at elaboration, which puts them on the warm-rebuild staleness list beside the
+comparator artifacts: editing the override or the sidecar without touching the document that
+carries the dashboard block leaves the previous contents in the `.olean`. Cold CI builds
+remain the publishing path.
+-/
+
+open Verso Doc Elab in
+/-- The effective caveat table: the bundled one, with a consumer override merged over it.
+`none` when the surface is off. Every way the override can be wrong is a build error. -/
+def elabCaveatTable? : PartElabM (Option Informal.JunkValues.Table) := do
+  let opts ← Lean.getOptions
+  unless Informal.JunkValues.caveatsEnabled opts do return none
+  let path := Informal.JunkValues.tableOverridePath opts
+  match ← liftM (Informal.JunkValues.loadTable path) with
+  | .error err =>
+    if path.isEmpty then
+      throwError "the caveat table this fork ships is unusable: {err}"
+    else
+      throwError "option 'verso.blueprint.trust.junkValueTable' {err}"
+  | .ok table => return some table
+
+open Verso Doc Elab in
+/--
+The consumer's characterization sidecar, with every failure mode raised.
+
+The unresolved-declaration check happens here rather than in the loader because it is the
+one check that needs this build's environment: a sidecar naming a declaration the project
+does not have is describing something else.
+-/
+def elabCharacterizations? : PartElabM (Option Informal.JunkValues.Characterizations) := do
+  let opts ← Lean.getOptions
+  let path := opts.get verso.blueprint.trust.characterizations.name
+    verso.blueprint.trust.characterizations.defValue
+  if path.isEmpty then return none
+  match ← liftM (Informal.JunkValues.loadCharacterizations path) with
+  | .error err => throwError "option 'verso.blueprint.trust.characterizations' {err}"
+  | .ok cs =>
+    let missing := Informal.JunkValues.unresolvedDecls (← Lean.getEnv) cs
+    unless missing.isEmpty do
+      throwError "{cs.path} declares characterizations for \
+        {String.intercalate ", " missing.toList}, which this build's environment does not \
+        have. A characterization of a declaration nobody can look up describes something \
+        other than this project."
+    return some cs
+
 /-! #### Where a reader can go and read one of these declarations
 
 Rows the reading list can resolve are worth more than rows it cannot, and a row linked to
@@ -2334,8 +2415,9 @@ challenge file, and every surface that renders it says so.
 `none` when the manifest supplies no anchor, or when it names nothing this environment
 has: an empty reading list under a confident label is worse than the honest notice.
 -/
-def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : String) :
-    PartElabM (Option StatementClosure) := do
+def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : String)
+    (table? : Option Informal.JunkValues.Table) :
+    PartElabM (Option (StatementClosure × Option Informal.JunkValues.ScanReport)) := do
   if cmp.claimDecls.isEmpty then return none
   let opts ← Lean.getOptions
   let env ← Lean.getEnv
@@ -2351,14 +2433,15 @@ def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : S
     localIsChain := false
     maxNodes
   }
-  let r ← liftM (m := Lean.MetaM) (Informal.StatementClosure.closure cfg roots)
+  let (r, scan?) ← liftM (m := Lean.MetaM)
+    (Informal.StatementClosure.closureAndScan cfg roots table?)
   let missingNote :=
     if missing.isEmpty then ""
     else s!" The manifest also names {String.intercalate ", " missing.toList}, which this \
       build's environment does not have; {if missing.size == 1 then "it is" else "they are"} \
       not in the closure below."
   let entries ← liftM (resolveClosureHrefs (← liftM Informal.workspaceRoot) r.entries)
-  return some {
+  return some ({
     provenance := "claim-decls"
     reason := chainReason ++ missingNote
     roots := (roots.map toString).toList
@@ -2369,7 +2452,7 @@ def claimDeclsClosure? (cmp : TrustComparator) (maxNodes : Nat) (chainReason : S
     maxNodes := r.maxNodes
     counts := r.counts
     entries
-  }
+  }, scan?)
 
 open Verso Doc Elab in
 /--
@@ -2392,13 +2475,23 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
       floor is {Informal.StatementClosure.capFloor}. Below it a truncated closure is not a \
       weak claim but an empty one: a handful of arbitrary declarations, reported as a lower \
       bound nobody can use."
-  let record (c : StatementClosure) : TrustComparator := { cmp with closure? := some c }
+  -- The caveat table, when the caveat surface is on. It is loaded here rather than in the
+  -- tool so that a bad override is a build error at the consumer's boundary, and so that
+  -- the version and digest the page names are the ones this build merged.
+  let table? ← elabCaveatTable?
+  let record (c : StatementClosure) (scan? : Option Informal.JunkValues.ScanReport) :
+      TrustComparator :=
+    { cmp with closure? := some c, caveats? := scan? }
   -- The bottom two rungs, taken together: the aligned-statement anchor when the manifest
-  -- has one, and otherwise the notice that says why there is nothing.
+  -- has one, and otherwise the notice that says why there is nothing. A rung with no
+  -- closure has no traversal for the caveat scan to ride, so the scan is unavailable for
+  -- the same reason and says so rather than reporting an empty result.
   let fallback (reason : String) : PartElabM TrustComparator := do
-    match ← claimDeclsClosure? cmp maxNodes reason with
-    | Option.some c => return record c
-    | Option.none => return record (statementClosureUnavailable reason)
+    match ← claimDeclsClosure? cmp maxNodes reason table? with
+    | Option.some (c, scan?) => return record c scan?
+    | Option.none =>
+      return record (statementClosureUnavailable reason)
+        (if table?.isNone then none else some (Informal.JunkValues.unavailable reason))
   if chalPath.isEmpty then
     return ← fallback
       "no Challenge source is configured for this claim, so there is no statement to close over"
@@ -2410,6 +2503,7 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
     roots := cmp.theoremNames.toArray
     maxNodes
     subjectRoots := (Informal.configuredSubjectModuleRoots opts).map (·.toString)
+    caveatTable? := table?
   }
   match ← findStatementClosureTool opts with
   | .error reason => fallback reason
@@ -2424,7 +2518,15 @@ def attachStatementClosure (cmp : TrustComparator) (chalPath : String) :
         let binding := Informal.StatementClosure.bindChain report.provenance.files cmp.challengeChain
         let r := report.result
         let entries ← liftM (resolveClosureHrefs (← liftM Informal.workspaceRoot) r.entries)
-        return record {
+        -- A tool old enough to omit the caveat report is reported as unavailable rather
+        -- than as a scan that found nothing.
+        let scan? : Option Informal.JunkValues.ScanReport :=
+          if table?.isNone then Option.none
+          else match report.caveats? with
+            | Option.some c => Option.some c
+            | Option.none => Option.some (Informal.JunkValues.unavailable
+                "the statement-closure tool this build ran returned no caveat report")
+        return record (scan? := scan?) {
           provenance := binding.provenanceTag
           reason := binding.reason
           roots := cmp.theoremNames
@@ -2568,6 +2670,12 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   let topicsPath : String :=
     opts.get verso.blueprint.trust.comparatorTopics.name
       verso.blueprint.trust.comparatorTopics.defValue
+  -- Both F2 inputs are validated here, before the early return, so that a configured file
+  -- which is missing or malformed fails the build whether or not this document also
+  -- carries a comparator. A configured input that is never read is a configured input
+  -- nobody finds out is broken.
+  let _ ← elabCaveatTable?
+  let characterizations? ← elabCharacterizations?
   if yamlPath.isEmpty && cmpPath.isEmpty && topicsPath.isEmpty then
     return Option.none
   let mut trust : TrustData := {}
@@ -2634,6 +2742,8 @@ def elabTrustData? : PartElabM (Option TrustData) := do
       verso.blueprint.trust.ciRunUrl.defValue
     if u.isEmpty then none else some u
   trust := { trust with requireConnected, requireAuditClean, ciRunUrl }
+  -- The consumer's own characterizations, which the caveat surface renders as theirs.
+  trust := { trust with characterizations? }
   return Option.some trust
 
 open Verso Doc Elab in

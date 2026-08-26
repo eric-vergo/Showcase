@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-08-25",
+  "sources": [
+    "Every symbol, alias and instance name below was resolved against Lean v4.33.1 and the Mathlib revision vendored at a362583-irrationality/.lake/packages/mathlib, by elaborating `#check @Name` for each candidate under `import Mathlib`. Names that did not resolve were corrected or dropped rather than shipped.",
+    "Behaviour sentences cite a lemma or a declaration docstring that was read in that checkout; where a lemma is named in a sentence, the lemma's statement was checked, not just its existence.",
+    "Corrected on contact: `instDivNat` -> `Nat.instDiv`; `instModNat` -> `Nat.instMod`; `Int.div`/`Int.mod` were removed from core (the `/` and `%` notation on ZZ is `Int.ediv`/`Int.emod`, and the truncating family is `Int.tdiv`/`Int.tmod`); `Int.instDivInt` -> `Int.instDiv`; `AnalyticAt.order` -> `analyticOrderAt`; `Set.Infinite.encard` -> `Set.Infinite.encard_eq`.",
+    "Dropped after checking: `Finset.min'` and `Finset.max'` take an explicit `s.Nonempty` argument, so the empty case is ruled out at the type level and they are not total-function conventions at all. `Set.encard` is the honest counterpart of `Set.ncard`, not a caveat of its own.",
+    "Corrected claim: `Real.log` is NOT zero on negative arguments. Its docstring extends it as `Real.log |x|`, so only `Real.log 0 = 0`. The entry below states the convention that actually holds.",
+    "This table is partial by construction. A symbol it does not list is a symbol nobody looked for."
+  ],
+  "entries": [
+    {
+      "symbol": "Nat.sub",
+      "instances": ["instSubNat"],
+      "behavior": "Subtraction on the naturals is truncated: `a - b` is `0` whenever `b` is at least `a`, so an equation about a difference can hold for the uninteresting reason that both sides collapsed to zero (`Nat.sub_eq_zero_of_le`).",
+      "guards": ["LE.le", "LT.lt"],
+      "guardHint": "A hypothesis bounding the subtrahend, such as `b ≤ a`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Nat.div",
+      "instances": ["Nat.instDiv"],
+      "behavior": "Division on the naturals floors, and `n / 0` is `0` (`Nat.div_zero`), so a quotient can be zero either because the division came out that way or because the divisor was.",
+      "guards": ["Ne", "LT.lt", "Dvd.dvd"],
+      "guardHint": "A hypothesis excluding a zero divisor, such as `b ≠ 0` or `0 < b`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Nat.mod",
+      "instances": ["Nat.instMod"],
+      "behavior": "`a % 0` is `a` rather than an error (`Nat.mod_zero`), so a residue claim with a possibly-zero modulus can hold trivially.",
+      "guards": ["Ne", "LT.lt"],
+      "guardHint": "A hypothesis excluding a zero modulus, such as `n ≠ 0`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Nat.pred",
+      "behavior": "`Nat.pred 0` is `0` (`Nat.pred_zero`), so a predecessor is not always one less.",
+      "guards": ["LT.lt", "Ne"],
+      "guardHint": "A hypothesis excluding zero, such as `0 < n`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Nat.log",
+      "behavior": "`Nat.log b n` is `0` when `n < b` and when `b ≤ 1` (`Nat.log_eq_zero_iff`), so a zero logarithm records either a genuinely small argument or a degenerate base.",
+      "guards": ["LT.lt", "LE.le"],
+      "guardHint": "Hypotheses fixing the base and the argument, such as `1 < b` and `b ≤ n`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Nat.sqrt",
+      "behavior": "`Nat.sqrt` is the floor of the square root, not the square root: `Nat.sqrt n` squared is at most `n`, with equality only for perfect squares.",
+      "guards": [],
+      "guardHint": "",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Int.ediv",
+      "instances": ["Int.instDiv"],
+      "behavior": "`/` on the integers is Euclidean division (`Int.ediv`), which rounds towards negative infinity for a positive divisor rather than towards zero, and `a / 0` is `0` (`Int.ediv_zero`).",
+      "guards": ["Ne", "LT.lt", "Dvd.dvd"],
+      "guardHint": "A hypothesis excluding a zero divisor, such as `b ≠ 0`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Int.emod",
+      "instances": ["Int.instMod"],
+      "behavior": "`%` on the integers is the Euclidean remainder (`Int.emod`), which is non-negative for a non-zero modulus, and `a % 0` is `a` (`Int.emod_zero`).",
+      "guards": ["Ne", "LT.lt"],
+      "guardHint": "A hypothesis excluding a zero modulus, such as `n ≠ 0`.",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Int.tdiv",
+      "aliases": ["Int.tmod"],
+      "behavior": "`Int.tdiv` and `Int.tmod` round towards zero, which is not what the `/` and `%` notation on the integers means (that is `Int.ediv`/`Int.emod`), so the two families disagree on negative arguments.",
+      "guards": [],
+      "guardHint": "",
+      "provenance": "core"
+    },
+    {
+      "symbol": "Int.fdiv",
+      "aliases": ["Int.fmod"],
+      "behavior": "`Int.fdiv` and `Int.fmod` round towards negative infinity, which is not what the `/` and `%` notation on the integers means (that is `Int.ediv`/`Int.emod`); the two families agree for a positive divisor and disagree otherwise.",
+      "guards": [],
+      "guardHint": "",
+      "provenance": "core"
+    },
+    {
+      "symbol": "HDiv.hDiv",
+      "aliases": ["Div.div", "DivInvMonoid.toDiv"],
+      "behavior": "Division by zero is zero in every `GroupWithZero`, the reals and the rationals included (`div_zero`), so `a / b = c` carries no information about `b` being invertible.",
+      "guards": ["Ne", "IsUnit", "LT.lt"],
+      "guardHint": "A hypothesis excluding a zero denominator, such as `b ≠ 0`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Inv.inv",
+      "aliases": ["DivisionRing.toInv", "Field.toInv"],
+      "behavior": "The inverse of zero is zero in every `GroupWithZero` (`inv_zero`), so an identity about an inverse can hold at zero for that reason alone.",
+      "guards": ["Ne", "IsUnit"],
+      "guardHint": "A hypothesis excluding zero, such as `x ≠ 0`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Real.sqrt",
+      "behavior": "`Real.sqrt` returns `0` on every non-positive argument (`Real.sqrt_eq_zero_of_nonpos`), so `Real.sqrt x = 0` says `x ≤ 0` rather than `x = 0`.",
+      "guards": ["LE.le", "LT.lt"],
+      "guardHint": "A hypothesis placing the argument in the non-negative reals, such as `0 ≤ x`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Real.log",
+      "behavior": "`Real.log 0` is `0`, and on a negative argument `Real.log` is `Real.log |x|` rather than undefined (`Real.log_neg_eq_log`) — the extension chosen so that `log (x * y) = log x + log y` holds for all non-zero arguments.",
+      "guards": ["Ne", "LT.lt"],
+      "guardHint": "A hypothesis placing the argument in the positive reals, such as `0 < x`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Real.rpow",
+      "behavior": "`Real.rpow` is `0 ^ 0 = 1` and `0 ^ y = 0` for non-zero `y` (`Real.rpow_zero`, `Real.zero_rpow`); on a negative base it is `exp (log x * y) * cos (y * π)`, a choice its own docstring calls somewhat arbitrary (`Real.rpow_def_of_neg`).",
+      "guards": ["LT.lt", "LE.le", "Ne"],
+      "guardHint": "A hypothesis placing the base in the positive reals, such as `0 < x`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "sInf",
+      "aliases": ["InfSet.sInf", "iInf"],
+      "behavior": "On the reals `sInf` returns `0` for a set that is empty or unbounded below (`Real.sInf_empty`, `Real.sInf_def`), so an infimum of `0` records either the infimum or the absence of one.",
+      "guards": ["Set.Nonempty", "BddBelow", "Set.Finite"],
+      "guardHint": "Hypotheses that the set is non-empty and bounded below.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "sSup",
+      "aliases": ["SupSet.sSup", "iSup"],
+      "behavior": "On the reals `sSup` returns `0` for a set that is empty or unbounded above (`Real.sSup_empty`, `Real.sSup_def`), so a supremum of `0` records either the supremum or the absence of one.",
+      "guards": ["Set.Nonempty", "BddAbove", "Set.Finite"],
+      "guardHint": "Hypotheses that the set is non-empty and bounded above.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Set.ncard",
+      "behavior": "`Set.ncard` is `Set.encard` truncated to a natural, so an infinite set has cardinality `0` (`Set.Infinite.ncard`) — indistinguishable from the empty set. `Set.encard`, valued in `ℕ∞`, is the counterpart that does not truncate.",
+      "guards": ["Set.Finite"],
+      "guardHint": "A finiteness hypothesis on the set, such as `s.Finite`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Nat.card",
+      "behavior": "`Nat.card α` is `0` for an infinite type as well as for an empty one (`Nat.card_eq_zero`), so a cardinality of `0` does not say the type is empty.",
+      "guards": ["Finite", "Fintype", "Nonempty"],
+      "guardHint": "A finiteness hypothesis on the type, such as `[Finite α]`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "Finset.min",
+      "aliases": ["Finset.max"],
+      "behavior": "`Finset.min` and `Finset.max` land in `WithTop`/`WithBot` and return `⊤`/`⊥` on the empty finset (`Finset.min_empty`, `Finset.max_empty`), so a comparison against them can hold vacuously.",
+      "guards": ["Finset.Nonempty", "Set.Nonempty"],
+      "guardHint": "A non-emptiness hypothesis on the finset. `Finset.min'`/`Finset.max'` take one as an argument and have no edge case.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "orderOf",
+      "behavior": "`orderOf x` is `0` when `x` has infinite order (`orderOf_eq_zero_iff`), so a zero order records the absence of a finite one rather than a small one.",
+      "guards": ["IsOfFinOrder", "Finite", "Fintype"],
+      "guardHint": "A hypothesis that the element has finite order, such as `IsOfFinOrder x`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "deriv",
+      "aliases": ["fderiv"],
+      "behavior": "`deriv f x` is `0` where `f` is not differentiable (`deriv_zero_of_not_differentiableAt`), so a vanishing derivative records either a stationary point or no derivative at all.",
+      "guards": ["DifferentiableAt", "Differentiable", "DifferentiableOn", "ContDiff", "ContDiffAt"],
+      "guardHint": "A differentiability hypothesis at the point, such as `DifferentiableAt ℝ f x`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "analyticOrderAt",
+      "aliases": ["analyticOrderNatAt"],
+      "behavior": "`analyticOrderAt f z` returns `0` when `f` is not analytic at `z`, which its own docstring calls a junk value (`analyticOrderAt_of_not_analyticAt`); `0` is also the honest order of a non-vanishing analytic point, so the two are indistinguishable. `analyticOrderNatAt` additionally truncates the `⊤` of an identically-zero germ to `0`.",
+      "guards": ["AnalyticAt", "AnalyticOn", "AnalyticOnNhd", "MeromorphicAt"],
+      "guardHint": "An analyticity hypothesis at the point, such as `AnalyticAt ℂ f z`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "finsum",
+      "behavior": "`∑ᶠ` is `0` when the summand's support is infinite (`finsum_of_infinite_support`), so a vanishing finite sum records either cancellation or an unsummable family.",
+      "guards": ["Set.Finite", "Finite", "Function.support"],
+      "guardHint": "A hypothesis that the support is finite, such as `(Function.support f).Finite`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "finprod",
+      "behavior": "`∏ᶠ` is `1` when the multiplicand's multiplicative support is infinite (`finprod_of_infinite_mulSupport`), so a product of `1` records either the product or an unmultipliable family.",
+      "guards": ["Set.Finite", "Finite", "Function.mulSupport"],
+      "guardHint": "A hypothesis that the multiplicative support is finite, such as `(Function.mulSupport f).Finite`.",
+      "provenance": "mathlib"
+    },
+    {
+      "symbol": "tsum",
+      "behavior": "`∑'` is `0` for a family that is not summable (`tsum_eq_zero_of_not_summable`), so a vanishing infinite sum records either the limit or the absence of one.",
+      "guards": ["Summable", "HasSum"],
+      "guardHint": "A summability hypothesis, such as `Summable f`.",
+      "provenance": "mathlib"
+    }
+  ]
+}

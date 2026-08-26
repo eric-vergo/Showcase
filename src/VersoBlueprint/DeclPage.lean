@@ -10,6 +10,7 @@ import VersoBlueprint.NodePage
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.NodeCard
 import VersoBlueprint.DeclRegistry
+import VersoBlueprint.CaveatsRender
 import VersoBlueprint.Informal.CodeSummary
 
 /-!
@@ -220,6 +221,20 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
     Output.Html :=
   let short := displayShort e
   let card := Informal.NodeCard.render (declCardParts bodies e slug) {}
+  -- Known caveat patterns, under the card and above the graph: a reader who has just read
+  -- the signature is the reader who wants to know which of its symbols have a convention
+  -- that can be misread. `.empty` for an entry that carries no scan — which is the
+  -- not-scanned state, and renders as nothing rather than as a clean bill on a page that
+  -- never looked.
+  let caveatsSection : Output.Html :=
+    match e.scan? with
+    | none => .empty
+    | some r =>
+      if r.status.isEmpty then .empty
+      else
+        {{ <section class="bp_node_page_caveats">
+             {{Informal.CaveatsRender.render (some r) (headingTag := "h2")}}
+           </section> }}
   let graphSection : Output.Html :=
     if e.isPrivate then .empty
     else
@@ -268,13 +283,15 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
   {{
     <div class="bp_node_page bp_decl_page">
       <header class="bp_node_page_header">
-        <style>{{.text false (Informal.NodePage.nodeBreadcrumbCss ++ declPageCss)}}</style>
+        <style>{{.text false (Informal.NodePage.nodeBreadcrumbCss ++ declPageCss
+          ++ (if e.scan?.isSome then Informal.CaveatsRender.css else ""))}}</style>
         <div class="bp_node_page_topbar">
           {{breadcrumb}}
           {{copyLink}}
         </div>
       </header>
       <section class="bp_node_page_statement bp_node_page_card2">{{card}}</section>
+      {{caveatsSection}}
       {{graphSection}}
     </div>
   }}

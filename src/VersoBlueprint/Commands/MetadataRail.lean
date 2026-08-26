@@ -544,6 +544,34 @@ def css : String := r##"
   line-height: 1.5;
 }
 
+/* ---- Known caveat patterns (registry v3) ---------------------------------- */
+/* One quiet chip per matched symbol, glossed through the shared rail tooltip.
+   Deliberately not colour-coded by guard state: colouring a presence check would
+   say what the copy refuses to say. */
+.bp-rail-caveats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bp-space-1);
+}
+
+.bp-rail-caveat {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-pill);
+  background: var(--bp-color-surface-subtle);
+  color: var(--bp-color-text-muted);
+  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: var(--bp-fs-badge, 0.72rem);
+  line-height: 1.6;
+  cursor: help;
+  overflow-wrap: anywhere;
+}
+
+.bp-rail-caveat:focus-visible {
+  outline: 2px solid var(--bp-color-accent);
+  outline-offset: 1px;
+}
+
 /* ---- Pinned footer (absorbed theme + proofs controls) ---------------------- */
 .bp-rail-footer {
   flex: 0 0 auto;

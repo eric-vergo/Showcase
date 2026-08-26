@@ -15,6 +15,7 @@ import VersoBlueprint.ExternalRefSnapshot
 import VersoBlueprint.ExternalDeclRender
 import VersoBlueprint.NodeCard
 import VersoBlueprint.NodeRoute
+import VersoBlueprint.JunkValues
 
 /-!
 # Declaration registry
@@ -188,11 +189,27 @@ structure Entry where
   /-- Which pipeline produced this declaration's proof/value body HTML —
   `"reelab"` / `"syntactic"` / `"raw"`; `none` when no body was captured. -/
   proofTier? : Option String := none
+  /-- The caveat scan over this declaration's own statement (schema v3).
+
+  **`none` is the not-scanned state**, and it is a different thing from a scan that
+  matched nothing: a v2 registry has no scan at all, a build with
+  `verso.blueprint.trust.statementCaveats` off did not look, and a `completed-zero`
+  report looked and found nothing in a table it names. Consumers branch on all three
+  rather than treating absence as an empty result.
+
+  Coverage is deliberately the shallow one — this declaration's type constants plus one
+  instance hop — and the report says so in the words the surface repeats. The deep
+  meaning-closure scan is the certified-claim surface's, not the registry's. -/
+  scan? : Option Informal.JunkValues.ScanReport := none
 deriving Inhabited, Repr, ToJson, FromJson
 
-/-- The full declaration registry artifact. -/
+/-- The full declaration registry artifact.
+
+Schema v3 adds each entry's optional `scan` (the caveat report). An entry that was not
+scanned omits the key, so a v3 artifact from a build with the caveat surface off is
+byte-identical to a v2 one apart from this number. -/
 structure Registry where
-  schemaVersion : Nat := 2
+  schemaVersion : Nat := 3
   /-- The configured `verso.blueprint.declNamePrefix`, for client-side (runtime)
   name shortening of names that arrive outside the registry. Empty ⇒ none. -/
   namePrefix : String := ""
@@ -440,6 +457,7 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     (sourcePath? : Option System.FilePath) (ranges? : Option DeclarationRanges)
     (statementDeps proofDeps : Array Name)
     (depth? height? : Option Nat)
+    (caveatIndex? : Option Informal.JunkValues.Index)
     (sigSourceHtml? : Option String := none)
     (sigTier? proofTier? : Option String := none) : MetaM Entry := do
   let range? : Option Range := ranges?.map fun r =>
@@ -545,6 +563,9 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     axioms
     sigTier?
     proofTier?
+    -- The shallow scan, over this declaration's own type. `none` when the caveat surface
+    -- is off, which the consumers render as not-scanned rather than as no findings.
+    scan? := caveatIndex?.map (Informal.JunkValues.scanDeclType (← getEnv) · cinfo.type)
   }
 
 /--
@@ -571,6 +592,21 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   let roots ← projectModuleRoots
   if roots.isEmpty then
     return ({}, {})
+  -- The caveat table, read once for the whole registry. A configured override that is
+  -- unusable is a build error here as it is on the trust path: the two surfaces answer to
+  -- one switch and one table, and a registry that silently fell back to the bundled table
+  -- would name a version the consumer did not configure.
+  let caveatIndex? : Option Informal.JunkValues.Index ←
+    if Informal.JunkValues.caveatsEnabled (← getOptions) then
+      let path := Informal.JunkValues.tableOverridePath (← getOptions)
+      match ← Informal.JunkValues.loadTable path with
+      | .error err =>
+        if path.isEmpty then
+          throwError "the caveat table this fork ships is unusable: {err}"
+        else
+          throwError "option 'verso.blueprint.trust.junkValueTable' {err}"
+      | .ok t => pure (some t.index)
+    else pure none
   -- The registry tracks every project declaration, `private` helpers included (the
   -- all-decls graph keeps them out to stay readable — see `enumerateProjectDecls`).
   let decls ← enumerateProjectDecls roots (includePrivate := true)
@@ -720,7 +756,7 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
     let entry ← withCurrHeartbeats <|
       (buildEntry workspaceRoot namePrefix leanNameLabels (usedBy.getD n #[])
         n ci modName sourcePath? ranges? typeDeps valueDeps
-        depths[i]! heights[i]! sigSourceHtml? sigTier? proofTier?).run'
+        depths[i]! heights[i]! caveatIndex? sigSourceHtml? sigTier? proofTier?).run'
     entries := entries.push entry
     match bodyText? with
     | some src => bodies := bodies.push { name := entry.name, html? := bodyHtml?, text? := some src }
@@ -732,7 +768,7 @@ def buildDeclRegistry : CoreM (Registry × Bodies) := do
   else if fullDeclAttempts > 0 then
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
   return (
-    { schemaVersion := 2, namePrefix, declCount := entries.size, decls := entries },
+    { schemaVersion := 3, namePrefix, declCount := entries.size, decls := entries },
     { bodies })
 
 end Informal.DeclRegistry

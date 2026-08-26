@@ -527,7 +527,11 @@ function viewModel(name, hintMeta) {
     docstringHtml: reg ? reg.docstringHtml : undefined,
     sourceHref: reg ? reg.sourceHref : undefined,
     depth: reg && reg.depth != null ? reg.depth : undefined,
-    height: reg && reg.height != null ? reg.height : undefined
+    height: reg && reg.height != null ? reg.height : undefined,
+    // Registry v3: the caveat scan. `undefined` is the NOT-SCANNED state — a v2
+    // registry, or a build with verso.blueprint.trust.statementCaveats off — and is
+    // deliberately distinct from a scan that ran and matched nothing.
+    scan: reg && reg.scan && typeof reg.scan === "object" ? reg.scan : undefined
   };
 }
 
@@ -702,6 +706,89 @@ function depSection(title, items, cap) {
   return collapsibleSection(title, children);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Known caveat patterns (registry v3)                                        */
+/* -------------------------------------------------------------------------- */
+
+// The three guard sentences, verbatim from CaveatsRender.guardCopy. Kept in step
+// with the Lean copy by hand: the same fact must not be worded two ways depending
+// on which surface a reader is looking at. None of them says "guarded".
+function guardSentence(m) {
+  const guard = m && m.guard;
+  if (guard === "candidate-present") {
+    return "A guard-shaped hypothesis occurs; this presence scan did not relate it to the flagged operand.";
+  }
+  if (guard === "not-detected") {
+    const base =
+      "No hypothesis of the guarding shape was detected. This is a presence check: the statement may be guarded another way, or may not need a guard.";
+    return m.guardHint ? base + " A guard would look like: " + m.guardHint : base;
+  }
+  return "No guard shape is recorded for this symbol, so nothing was looked for.";
+}
+
+// A scan report as a collapsed rail section. Branches explicitly on every state
+// the report can be in; the caller has already established that a report exists,
+// because "no report" is not one of these states and renders nothing at all.
+function caveatsSection(scan) {
+  const status = scan.status || "";
+  const hits = Array.isArray(scan.matches) ? scan.matches : [];
+  const version = scan.tableVersion || "unversioned";
+  const digest = scan.tableDigest || "unknown";
+  const children = [];
+  if (status === "unavailable" || status === "disabled") {
+    children.push(
+      el("p", {
+        class: "bp-rail-note",
+        text:
+          status === "disabled"
+            ? "The caveat scan is switched off for this site, so no symbols were looked for."
+            : "No caveat scan is available here" + (scan.reason ? ": " + scan.reason : "") + "."
+      })
+    );
+  } else if (hits.length === 0) {
+    children.push(
+      el("p", {
+        class: "bp-rail-note",
+        text:
+          "No matches in the configured partial table (version " + version + ", digest " + digest +
+          "); this is not evidence that no total-function caveat applies."
+      })
+    );
+  } else {
+    const list = el("div", { class: "bp-rail-caveats" });
+    hits.forEach(function (m) {
+      const chip = el("span", {
+        class: "bp-rail-caveat",
+        attrs: { "data-guard": m.guard || "", tabindex: "0" },
+        text: m.symbol || ""
+      });
+      attachTooltip(chip, (m.behavior ? m.behavior + " " : "") + guardSentence(m));
+      list.appendChild(chip);
+    });
+    children.push(list);
+    if (status === "partial") {
+      children.push(
+        el("p", {
+          class: "bp-rail-note",
+          text: "The scan stopped at this site's configured cap, so this is a lower bound."
+        })
+      );
+    }
+    children.push(
+      el("p", {
+        class: "bp-rail-note",
+        text:
+          "Caveats to check, not findings of error. The table is partial (version " + version +
+          ", digest " + digest + "): a symbol it does not list is a symbol nobody looked for."
+      })
+    );
+  }
+  if (scan.coverage) {
+    children.push(el("p", { class: "bp-rail-note", text: "Scanned: " + scan.coverage + "." }));
+  }
+  return collapsibleSection("Known caveat patterns", children);
+}
+
 function pendingNote() {
   if (registryState === "loading" || registryState === "idle") {
     return el("p", { class: "bp-rail-note", text: "Loading dependency data…" });
@@ -806,6 +893,15 @@ function renderRail(name, hintMeta) {
     }
   } else {
     frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Parameters"), pendingNote()]));
+  }
+
+  // --- Known caveat patterns (registry v3) --------------------------------
+  // Rendered only when the entry carries a scan. An entry with no `scan` was not
+  // scanned, which is not the same as a scan that found nothing, and a section
+  // saying "nothing found" on a page that never looked would be the one thing
+  // this surface must not do.
+  if (vm.scan && vm.scan.status) {
+    frag.appendChild(caveatsSection(vm.scan));
   }
 
   // --- Metrics (fan-in/out client-side; depth/height from the registry) ----

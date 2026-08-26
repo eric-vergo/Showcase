@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "updated": "2099-01-01",
+  "sources": ["Consumer override fixture: replaces one bundled entry and adds one."],
+  "entries": [
+    {
+      "symbol": "Nat.sub",
+      "instances": ["instSubNat"],
+      "behavior": "Replaced by the consumer.",
+      "guards": [],
+      "provenance": "curated"
+    },
+    {
+      "symbol": "CaveatFixture.score",
+      "behavior": "Added by the consumer.",
+      "provenance": "curated"
+    }
+  ]
+}

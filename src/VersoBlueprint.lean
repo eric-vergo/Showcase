@@ -37,6 +37,8 @@ import VersoBlueprint.NodePage
 import VersoBlueprint.ExtraPages
 import VersoBlueprint.DeclIndex
 import VersoBlueprint.DeclPage
+import VersoBlueprint.JunkValues
+import VersoBlueprint.CaveatsRender
 import VersoBlueprint.Commands.Summary
 import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Commands.Formalization

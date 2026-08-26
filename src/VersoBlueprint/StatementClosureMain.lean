@@ -65,11 +65,13 @@ def helpText : String := String.intercalate "\n" [
   "    \"maxNodes\":       cap on recorded declarations (floor 32),",
   "    \"trustedRoots\":   [module roots the walk stops at] - optional,",
   "    \"subjectRoots\":   [module roots of the presented library] - optional,",
-  "    \"signatureChars\": cap on a recorded signature's characters - optional",
+  "    \"signatureChars\": cap on a recorded signature's characters - optional,",
+  "    \"caveatTable\":    the junk-value table to match, by value - optional; omitted",
+  "                      means no symbols are looked for, reported as a disabled scan",
   "  }",
   "",
-  "Output: {\"ok\": true, \"schemaVersion\", \"chain\", \"declared\", \"closure\"} on success;",
-  "  {\"ok\": false, \"stage\", \"error\"} and a nonzero exit otherwise."
+  "Output: {\"ok\": true, \"schemaVersion\", \"chain\", \"declared\", \"closure\", \"caveats\"}",
+  "  on success; {\"ok\": false, \"stage\", \"error\"} and a nonzero exit otherwise."
 ]
 
 /-- A chain file with the bytes that were hashed and will be elaborated. Read from disk in
@@ -243,8 +245,10 @@ unsafe def elaborateChain (files : Array ChainParsed) (importsOverride? : Option
   }
   return (env, provenance)
 
-/-- Compute the closure of `roots` in `env`. -/
-def runClosure (env : Environment) (cfg : Config) (roots : Array Name) : ToolM Result := do
+/-- Compute the closure of `roots` in `env`, with the caveat scan riding the same walk. -/
+def runClosure (env : Environment) (cfg : Config) (roots : Array Name)
+    (table? : Option Informal.JunkValues.Table) :
+    ToolM (Result × Option Informal.JunkValues.ScanReport) := do
   for r in roots do
     if (env.find? r).isNone then
       fail "roots" s!"the chain does not declare '{r}'. The closure must be computed from \
@@ -255,17 +259,38 @@ def runClosure (env : Environment) (cfg : Config) (roots : Array Name) : ToolM R
     fileMap := FileMap.ofString ""
     maxHeartbeats := 0
   }
-  let (result, _) ← tryIO "closure" "walking the closure"
-    (((closure cfg roots).run').toIO ctx { env })
-  return result
+  let (out, _) ← tryIO "closure" "walking the closure"
+    (((closureAndScan cfg roots table?).run').toIO ctx { env })
+  return out
+
+/--
+The `set_option` half of the caveat scan (§A7(f)).
+
+Lexical, over the bytes this tool hashed and elaborated — the whole chain, not only the
+primary Challenge — so what is reported is bound to the same digests as the closure. Only
+the published allowlist is reported, and the copy that renders these says "configuration
+override present" and nothing sharper.
+-/
+def scanChainOptions (sources : Array ChainSource) : Array Informal.JunkValues.OptionOverride :=
+  sources.foldl (init := #[]) fun acc s =>
+    acc ++ Informal.JunkValues.scanSetOptions s.path s.source
 
 unsafe def runJob (job : Job) : ToolM Json := do
   let sources ← job.files.mapM readChainSource
   let parsed ← sources.mapM parseChainHeader
   let (env, provenance) ← elaborateChain parsed job.importsOverride?
   let roots := job.roots.map String.toName
-  let result ← runClosure env job.config roots
-  let report : Report := { provenance, result, declared := chainDeclaredNames env }
+  let (result, scan?) ← runClosure env job.config roots job.caveatTable?
+  -- A job with no table gets the switched-off report rather than no report: a caller that
+  -- omitted the table is told so, instead of reading an absent field as "nothing found".
+  let caveats? : Option Informal.JunkValues.ScanReport :=
+    match scan? with
+    | none => some (Informal.JunkValues.disabled
+        "the job spec carried no caveat table, so no symbols were looked for")
+    | some c => some { c with
+        optionOverrides := scanChainOptions sources
+        optionScanFiles := sources.map (·.path) }
+  let report : Report := { provenance, result, declared := chainDeclaredNames env, caveats? }
   return report.toJson
 
 /-! ## Self-test
@@ -273,14 +298,22 @@ unsafe def runJob (job : Job) : ToolM Json := do
 A chain importing nothing but `Init`, exercising each rule the walk has: a definition
 expanded through its value, an inductive expanded through its constructor types (which
 name the inductive back, so the cycle guard runs), and frontier constants recorded but
-never expanded. Cheap enough to run as a build smoke test.
+never expanded. `gap` additionally hides a table symbol behind a wrapper — the statement
+never mentions truncated subtraction, its meaning closure does — so the caveat scan is
+exercised on the shape it exists for. `set_option maxRecDepth` gives the lexical half
+something to find. Cheap enough to run as a build smoke test.
 -/
 
 def selfTestSource : String :=
-"namespace StatementClosureSelfTest
+"set_option maxRecDepth 512
+
+namespace StatementClosureSelfTest
 
 /-- Expanded through its value, which names a frontier constant. -/
 def wrap (n : Nat) : Nat := Nat.succ n
+
+/-- The statement never mentions subtraction; its meaning closure reaches it here. -/
+def gap (a b : Nat) : Nat := a - b
 
 /-- Expanded through its constructor types, which name it back. -/
 inductive Tag where
@@ -289,7 +322,7 @@ inductive Tag where
 
 def tagValue : Tag → Nat
   | .plain => 0
-  | .wrapped n => wrap n
+  | .wrapped n => wrap (gap n 0)
 
 theorem root : tagValue (Tag.wrapped 0) = 1 := rfl
 
@@ -305,8 +338,12 @@ unsafe def runSelfTest : ToolM (Json × Array String) := do
   let parsed ← parseChainHeader src
   let (env, provenance) ← elaborateChain #[parsed] none
   let cfg : Config := {}
-  let result ← runClosure env cfg #[`StatementClosureSelfTest.root]
-  let report : Report := { provenance, result, declared := chainDeclaredNames env }
+  let table? := (Informal.JunkValues.bundled).toOption
+  let (result, scan?) ← runClosure env cfg #[`StatementClosureSelfTest.root] table?
+  let caveats? := scan?.map fun c => { c with
+    optionOverrides := scanChainOptions #[src]
+    optionScanFiles := #[src.path] }
+  let report : Report := { provenance, result, declared := chainDeclaredNames env, caveats? }
   let originOf (n : String) : Option String :=
     (result.entries.find? (·.name == n)).map (·.origin)
   let mut failures : Array String := #[]
@@ -317,9 +354,20 @@ unsafe def runSelfTest : ToolM (Json × Array String) := do
   if originOf "Nat" != some "core" then
     failures := failures.push "`Nat` was not recorded as a core frontier constant"
   if result.truncated then
-    failures := failures.push "the walk truncated on a chain of four declarations"
+    failures := failures.push "the walk truncated on a chain of five declarations"
   if result.untrusted == 0 then
     failures := failures.push "nothing outside the trusted frontier was recorded"
+  if table?.isNone then
+    failures := failures.push "the bundled caveat table did not parse"
+  match caveats? with
+  | none => failures := failures.push "the caveat scan produced no report"
+  | some c =>
+    if c.status != Informal.JunkValues.statusCompletedWithHits then
+      failures := failures.push s!"the caveat scan reported '{c.status}' rather than a hit"
+    unless c.hits.any (·.symbol == "Nat.sub") do
+      failures := failures.push "truncated subtraction, reached behind a wrapper, was not matched"
+    unless c.optionOverrides.any (·.option == "maxRecDepth") do
+      failures := failures.push "the chain's `set_option maxRecDepth` was not found"
   return (report.toJson, failures)
 
 /-! ## Driver -/

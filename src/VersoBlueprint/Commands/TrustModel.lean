@@ -380,6 +380,31 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
            that has not been done for you. Reaching the site's configured cap is reported as \
            an incomplete list rather than as a count, because a lower bound and a total are \
            not the same claim."]
+  -- The caveat surface belongs in the same section for the same reason: it is about
+  -- reading the statement, and it is emphatically not a check. Rendered only where a scan
+  -- actually ran, and worded so that neither a hit nor a silence reads as a verdict.
+  let caveatProse : Output.Html :=
+    match (trust?.bind (·.comparator)).bind (·.caveats?) with
+    | Option.none => .empty
+    | Option.some scan =>
+      if scan.status.isEmpty then .empty
+      else
+        .seq #[
+          {{ <h3 class="bp_trustmodel_subtitle">"Known caveat patterns"</h3> }},
+          prose
+            "Lean's functions are total, so an expression that looks undefined has a value \
+             anyway: `a - b` on the naturals is `0` when `b` exceeds `a`, `x / 0` is `0`, the \
+             cardinality of an infinite set is `0`. A statement can therefore be true for a \
+             reason its reader did not intend. The comparator page lists the symbols of this \
+             kind that occur in what each certified statement means.",
+          prose
+            s!"That list is not a finding of error, and it is not exhaustive. It is matched \
+               against a partial hand-maintained table (version {scan.tableVersion}, digest \
+               {scan.tableDigest}); a symbol the table does not list is a symbol nobody \
+               looked for, and a scan that matched nothing has established nothing. Where a \
+               row reports that a guard-shaped hypothesis occurs, that is a presence check \
+               over the statement's binders: it did not relate the hypothesis to the flagged \
+               operand, and no row anywhere says a statement is guarded."]
   section' "What is not machine-checked" #[
     {{ <h3 class="bp_trustmodel_subtitle">"The informal ↔ formal correspondence"</h3> }},
     prose
@@ -394,6 +419,7 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
        checks above tell you the theorem is proved. If it is not, they tell you nothing you \
        care about. Reading the formal statement is the step that cannot be delegated.",
     closureProse,
+    caveatProse,
     {{ <h3 class="bp_trustmodel_subtitle">{{.text true edgeSubtitle}}</h3> }},
     edgeProse,
     edgeNote,

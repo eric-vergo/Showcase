@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "updated": "2099-01-01",
+  "entries": [
+    { "symbol": "Local.thing", "aliases": ["instSubNat"], "behavior": "Claims a key the bundled Nat.sub entry already owns." }
+  ]
+}

@@ -6,6 +6,7 @@ Authors: Eric Vergo, Claude Fable 5 (Claude Code)
 
 import Lean
 import VersoBlueprint.Sha256
+import VersoBlueprint.JunkValues
 
 /-!
 # Statement closure — the meaning a certified claim depends on
@@ -410,11 +411,44 @@ def render (cfg : Config) (roots : Array Name) (w : Walk) : MetaM Result := do
     entries
   }
 
-/-- Walk and render in one step, with no visitor. The junk-value scan calls `walk`
-directly with one of its own instead of calling this twice. -/
+/-- Walk and render in one step, with no visitor. -/
 def closure (cfg : Config) (roots : Array Name) : MetaM Result := do
   let w ← walk (← Lean.getEnv) cfg roots
   render cfg roots w
+
+/--
+Walk **once**, rendering the reading list and matching the caveat table on the same
+traversal.
+
+The scan is not a second, shallower pass over the roots' types: it rides this walk, so it
+sees a junk symbol wherever the meaning closure reaches it — including behind a wrapper
+definition whose body names a frontier constant, which is exactly the shape a root-type
+scan misses. Matching happens at every encounter, the trusted frontier included, and the
+walk stops there as it always did: match-then-stop.
+
+Guard presence is scanned over the roots' own telescopes, since a guarding hypothesis on a
+certified statement is the only guard the statement itself can carry. `truncated` becomes
+the scan's `partial` status: a capped walk found what it found, which is a lower bound.
+-/
+def closureAndScan (cfg : Config) (roots : Array Name)
+    (table? : Option Informal.JunkValues.Table) :
+    MetaM (Result × Option Informal.JunkValues.ScanReport) := do
+  let env ← Lean.getEnv
+  match table? with
+  | none =>
+    let w ← walk env cfg roots
+    return (← render cfg roots w, none)
+  | some table =>
+    let ix := table.index
+    let (w, st) := Id.run <|
+      (walk (m := StateM Informal.JunkValues.ScanState) env cfg roots
+        (fun e => Informal.JunkValues.observe ix e.site.name e.site.origin e.depth)).run {}
+    let result ← render cfg roots w
+    let heads := Informal.JunkValues.guardHeadsOfAll
+      (roots.filterMap fun n => (env.find? n).map (·.type))
+    return (result,
+      some (Informal.JunkValues.finish ix st heads w.truncated
+        Informal.JunkValues.coverageMeaningClosure))
 
 /-! ## Wire format
 
@@ -422,9 +456,14 @@ The subprocess boundary. Both sides of it live here so the shape cannot drift: t
 writes `Result.toJson`, the build-time driver reads it back with `Result.ofJson?`.
 -/
 
-/-- Schema version of the job spec and the result document. Version 2 adds each entry's
-`uses`, the edge structure the meaning graph is drawn from. -/
-def schemaVersion : Nat := 2
+/-- Schema version of the job spec and the result document.
+
+Version 2 added each entry's `uses`, the edge structure the meaning graph is drawn from.
+Version 3 adds the caveat scan: a `caveatTable` input on the job and a `caveats` report on
+the output. The scan rides this walk rather than running a second one — a second traversal
+over the same edges would be a second chance to disagree with the first — so it belongs to
+this document rather than to a subprocess run of its own. -/
+def schemaVersion : Nat := 3
 
 def Entry.toJson (e : Entry) : Json :=
   Json.mkObj <|
@@ -540,16 +579,22 @@ structure Report where
   result : Result := {}
   /-- Names the elaborated chain itself declared, in declaration order. -/
   declared : Array String := #[]
+  /-- The caveat scan that rode the same walk. `none` ⇒ the document predates the scan;
+  a job that carried no table gets a `disabled` report rather than an absent one, so
+  absence here means an old tool and nothing else. -/
+  caveats? : Option Informal.JunkValues.ScanReport := none
 deriving Inhabited
 
 def Report.toJson (r : Report) : Json :=
-  Json.mkObj [
-    ("ok", Json.bool true),
-    ("schemaVersion", Json.num schemaVersion),
-    ("chain", r.provenance.toJson),
-    ("declared", Json.arr (r.declared.map Json.str)),
-    ("closure", r.result.toJson)
-  ]
+  Json.mkObj <|
+    [("ok", Json.bool true),
+      ("schemaVersion", Json.num schemaVersion),
+      ("chain", r.provenance.toJson),
+      ("declared", Json.arr (r.declared.map Json.str)),
+      ("closure", r.result.toJson)]
+    ++ (match r.caveats? with
+        | some c => [("caveats", Lean.toJson c)]
+        | none => [])
 
 def Report.ofJson? (j : Json) : Except String Report := do
   match (j.getObjValAs? Bool "ok").toOption with
@@ -563,10 +608,18 @@ def Report.ofJson? (j : Json) : Except String Report := do
     throw s!"closure document is schema version {version}; this build reads version {schemaVersion}"
   let provenance ← Provenance.ofJson? ((j.getObjVal? "chain").toOption.getD (Json.mkObj []))
   let result ← Result.ofJson? ((j.getObjVal? "closure").toOption.getD (Json.mkObj []))
+  let caveats? ←
+    match (j.getObjVal? "caveats").toOption with
+    | none => pure none
+    | some c =>
+      match Lean.fromJson? (α := Informal.JunkValues.ScanReport) c with
+      | .error err => throw s!"closure document's caveat report is unreadable: {err}"
+      | .ok r => pure (some r)
   return {
     provenance
     result
     declared := (j.getObjValAs? (Array String) "declared").toOption.getD #[]
+    caveats?
   }
 
 /-- The document the tool writes when it cannot produce a closure. A half-result is never
@@ -596,6 +649,11 @@ structure Job where
   trustedRoots : Array String := defaultTrustedRoots.map (·.toString)
   subjectRoots : Array String := #[]
   signatureChars : Nat := 200
+  /-- The effective caveat table, sent by value. The driver has already merged any consumer
+  override over the bundled table and refused a bad one as a build error, so what arrives
+  here is what the surface will name by version and digest. `none` ⇒ the caveat surface is
+  off, and the tool reports that state rather than omitting the report. -/
+  caveatTable? : Option Informal.JunkValues.Table := none
 deriving Inhabited
 
 def Job.toJson (job : Job) : Json :=
@@ -608,6 +666,9 @@ def Job.toJson (job : Job) : Json :=
       ("signatureChars", Json.num job.signatureChars)]
     ++ (match job.importsOverride? with
         | some imps => [("imports", Json.arr (imps.map Json.str))]
+        | none => [])
+    ++ (match job.caveatTable? with
+        | some t => [("caveatTable", Lean.toJson t)]
         | none => [])
 
 /-- Parse and validate a job spec. Validation is part of the boundary: a cap below
@@ -628,6 +689,15 @@ def Job.ofJson? (j : Json) : Except String Job := do
     match (j.getObjVal? "trustedRoots").toOption with
     | some v => (Lean.fromJson? (α := Array String) v).toOption.getD #[]
     | none => defaultTrustedRoots.map (·.toString)
+  -- A table that is present but unreadable is a refusal, not a silent fall-through to
+  -- "no scan": the surface would then say the table found nothing.
+  let caveatTable? ←
+    match (j.getObjVal? "caveatTable").toOption with
+    | none => pure none
+    | some t =>
+      match Informal.JunkValues.Table.ofJson? t with
+      | .error err => throw s!"job spec's 'caveatTable' is unusable: {err}"
+      | .ok table => pure (some table)
   return {
     files
     importsOverride? := (j.getObjVal? "imports").toOption.map fun v =>
@@ -637,6 +707,7 @@ def Job.ofJson? (j : Json) : Except String Job := do
     trustedRoots
     subjectRoots := (j.getObjValAs? (Array String) "subjectRoots").toOption.getD #[]
     signatureChars := (j.getObjValAs? Nat "signatureChars").toOption.getD 200
+    caveatTable?
   }
 
 /-! ## §A1 — binding a closure to the recorded run

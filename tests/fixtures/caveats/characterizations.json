@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "characterizations": [
+    {
+      "decl": "Nat.sub",
+      "statement": "On this project's inputs the subtrahend is always bounded, so the truncation never fires.",
+      "reference": "Nat.sub_eq_zero_of_le",
+      "note": "Fixture entry; asserted by the consumer and checked by nobody."
+    }
+  ]
+}

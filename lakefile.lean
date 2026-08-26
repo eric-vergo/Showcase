@@ -99,6 +99,8 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.TrustEvidence,
     `VersoBlueprintTests.BlueprintSummaryLinks,
     `VersoBlueprintTests.BlueprintSummaryStatus,
+    `VersoBlueprintTests.CaveatsFixture,
+    `VersoBlueprintTests.Caveats,
     `VersoBlueprintTests.BlueprintTexMacros,
     `VersoBlueprintTests.BlueprintExternalMarkup,
     `VersoBlueprintTests.ExternalDeclRender,

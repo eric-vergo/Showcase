@@ -792,15 +792,48 @@ def comparatorPanelInner (cmp : TrustComparator) (ciUrl? : Option String)
   -- just read the statement is the reader who wants to know what reading it committed
   -- them to. Renders nothing at all unless the closure surface is configured.
   let closureSection := StatementClosurePanel.render cmp closureCtx
-  .seq #[verdict, kernelSection, claimSection, closureSection, certifiesSection, checkSection,
-    reproSection, solutionSection, configSection]
+  -- The caveats follow the closure for the same reason and in the same voice: having been
+  -- told what the statement means, a reader is told which of those meanings have a
+  -- convention that can be misread. `.empty` when nothing was scanned.
+  let caveatsSection : Output.Html :=
+    match cmp.caveats? with
+    | Option.none => .empty
+    | Option.some r =>
+      if r.status.isEmpty then .empty
+      else trustSection Informal.CaveatsRender.sectionTitle
+        {{ <div class="bp_caveats">{{Informal.CaveatsRender.body r}}</div> }}
+  .seq #[verdict, kernelSection, claimSection, closureSection, caveatsSection, certifiesSection,
+    checkSection, reproSection, solutionSection, configSection]
+
+/--
+The consumer's characterization sidecar, as one page-level section.
+
+Page-level rather than per-panel: a sidecar is a set of statements about the project's
+declarations, not about one verdict, and repeating it under every topic would say the same
+thing more times without saying it about anything more specific. `.empty` when none is
+configured. -/
+def characterizationsSection (cs? : Option Informal.JunkValues.Characterizations)
+    (closureCtx : StatementClosurePanel.Context) : Output.Html :=
+  match cs? with
+  | Option.none => .empty
+  | Option.some cs =>
+    if cs.entries.isEmpty then .empty
+    else
+      trustSection "Consumer-declared characterizations"
+        {{ <div class="bp_caveats">
+             {{Informal.CaveatsRender.characterizationsBody cs closureCtx.siteHref}}
+           </div> }}
 
 /-- The single-comparator page: the panel body inside the page shell. -/
 def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
-    (closureCtx : StatementClosurePanel.Context := {}) : Output.Html :=
+    (closureCtx : StatementClosurePanel.Context := {})
+    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none) :
+    Output.Html :=
   trustPageShell "Statement comparator" ""
-    (comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref? closureCtx)
+    (.seq #[
+      comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref? closureCtx,
+      characterizationsSection characterizations? closureCtx])
 
 /-! ## Multi-config trust surface -/
 
@@ -868,7 +901,9 @@ in a clause that says what they actually are. -/
 def comparatorsPageBody (comparators : List ComparatorTopic)
     (axiomTopics : List AxiomAuditTopic) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
-    (closureCtx : StatementClosurePanel.Context := {}) : Output.Html :=
+    (closureCtx : StatementClosurePanel.Context := {})
+    (characterizations? : Option Informal.JunkValues.Characterizations := Option.none) :
+    Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
   let verified := comparators.filter (·.comparator.status == "verified")
@@ -942,7 +977,8 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
     }}
   let axiomPanels : Array Output.Html := (axiomTopics.map axiomAuditPanel).toArray
   trustPageShell "Statement comparator" ""
-    (.seq (#[header] ++ comparatorPanels ++ axiomPanels))
+    (.seq (#[header] ++ comparatorPanels ++ axiomPanels
+      ++ #[characterizationsSection characterizations? closureCtx]))
 
 /-! ## Emission -/
 
@@ -1023,12 +1059,13 @@ def emitBlueprintComparatorPage : ExtraStep :=
             let ciUrl? :=
               (trust.comparators.head?.map (fun t => ciFor t.comparator)).getD trust.ciRunUrl
             some (comparatorsPageBody trust.comparators trust.axiomAuditTopics ciUrl?
-              theoremLikeTotal trustModelHref? closureCtx)
+              theoremLikeTotal trustModelHref? closureCtx trust.characterizations?)
           else match trust.comparator with
             | Option.none => Option.none
             | Option.some cmp =>
               Option.some
-                (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref? closureCtx)
+                (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref? closureCtx
+                  trust.characterizations?)
         match body? with
         | Option.none => pure ()
         | Option.some body =>
