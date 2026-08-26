@@ -156,6 +156,12 @@ jobs:
       # `lake update`. Fails if Lake reports "manifest out of date", rewrites the committed
       # manifest, or resolves any dependency to a revision/origin other than the committed pin.
       # `--build` additionally compiles the pinned dependency stack to prove the pins build
-      # standalone (cold build; the dependency compile is also covered by the Blueprint Build job).
-      - name: Fresh-repo template resolves the committed pins (no lake update)
+      # standalone (cold build; the dependency compile is also covered by the Blueprint Build job)
+      # and then RENDERS the starter through its own scripts/ci-pages.sh, gating the site on
+      # structure and the off-origin rule. The rendering half is not optional polish: resolution
+      # and dependency-compile checks read the template's pins and never its content, which is how
+      # a starter chapter using a directive no expander registers, and a `uses` graph the
+      # connectivity gate rejects, both shipped past a green check. Elaborating the chapters and
+      # running the graph gates happens only when the site is actually generated.
+      - name: Fresh-repo template resolves the committed pins and renders (no lake update)
         run: python3 ./scripts/check_project_template_fresh_repo.py --build
