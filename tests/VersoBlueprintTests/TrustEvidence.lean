@@ -463,6 +463,52 @@ private def multiConfigHtml : String :=
    hasSubstr multiConfigHtml "PairCeiling axioms" &&
      hasSubstr multiConfigHtml "Zeta23.PairCeiling.bound")
 
+/-! ## The headline counts what was certified, not what was configured
+
+CX-042 on this fork's own page: the aggregate sentence used to sum every topic's theorem
+names, so a project whose configs had all merely been configured — or whose verdicts were
+transcribed from someone else's records — was told it presented that many "independently
+comparator-certified" theorems. The count now uses the same predicate as the aggregate
+badge, and the rest is described as what it is.
+-/
+
+private def mcConfigured (name : String) (thms : List String) : ComparatorTopic :=
+  { name, comparator := { fixtureComparator with status := "configured", theoremNames := thms } }
+
+private def mcUpstream (name : String) (thms : List String) : ComparatorTopic :=
+  { name, comparator := { upstreamComparator with theoremNames := thms } }
+
+private def mixedTopicsHtml : String :=
+  (comparatorsPageBody
+    [mcTopic "Main statements" ["Zeta23.thmA", "Zeta23.thmB"],
+     mcConfigured "Multiplicity" ["Zeta23.thmC"],
+     mcUpstream "Transcribed" ["Zeta23.thmD"]]
+    [] (some "https://ci.example/run/1") (some 20) none).asString
+
+-- One verified topic of three: two certified theorems, and the other two named as what
+-- they are rather than folded into the certified count.
+/-- info: true -/
+#guard_msgs in
+#eval
+  hasSubstr mixedTopicsHtml "2 independently comparator-certified theorems of 20" &&
+  hasSubstr mixedTopicsHtml "across 1 of 3 comparator configs" &&
+  hasSubstr mixedTopicsHtml
+    "A further 2 theorems are configured but not yet run or reported verified upstream" &&
+  hasSubstr mixedTopicsHtml "does not present as certified" &&
+  -- The old, false headline is gone.
+  !hasSubstr mixedTopicsHtml "4 independently comparator-certified"
+
+-- The zeta shape: every topic configured, nothing certified. Said plainly.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := (comparatorsPageBody
+    [mcConfigured "A" ["Zeta23.thmA"], mcConfigured "B" ["Zeta23.thmB", "Zeta23.thmC"]]
+    [] Option.none (some 20) Option.none).asString
+  hasSubstr html "presents no independently comparator-certified theorems of its 20" &&
+  hasSubstr html "Its 2 comparator configs name 3 theorems that are configured but not yet run" &&
+  !hasSubstr html "3 independently comparator-certified"
+
 /-! ## Scale cap (c): the degraded rendering tiers render their honest glyphs -/
 
 -- When the registry skips full re-elaboration above `fullElabMaxDecls`, signatures fall to

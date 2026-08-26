@@ -787,20 +787,60 @@ def axiomAuditPanel (topic : AxiomAuditTopic) : Output.Html :=
 /-- The multi-config comparator page: an aggregate verdict header, then one
 first-class certified panel per comparator topic (reusing the single-panel body)
 plus one panel per config-less axiom-audit topic. `comparatorBody`'s honesty
-rules apply per panel; the header aggregates across them. -/
+rules apply per panel; the header aggregates across them.
+
+**The headline counts `verified` topics only** — the same predicate as the
+dashboard's aggregate badge. It used to sum the theorem names of every topic, so a
+project whose configs had all merely been *configured*, or whose verdicts had been
+transcribed from someone else's records, was told it presented that many
+"independently comparator-certified" theorems. The other topics are still counted,
+in a clause that says what they actually are. -/
 def comparatorsPageBody (comparators : List ComparatorTopic)
     (axiomTopics : List AxiomAuditTopic) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String) : Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
-  let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+  let verified := comparators.filter (·.comparator.status == "verified")
+  let others := comparators.filter (·.comparator.status != "verified")
+  let v := verified.length
+  let k := (verified.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+  let j := (others.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
   let thmNoun := if k == 1 then "theorem" else "theorems"
+  let jNoun := if j == 1 then "theorem" else "theorems"
+  let jVerb := if j == 1 then "is" else "are"
+  -- What the uncertified topics are, in their own words rather than in the
+  -- certified sentence's.
+  let statusPhrase :=
+    let phrases :=
+      (if others.any (·.comparator.status == "configured") then ["configured but not yet run"] else []) ++
+      (if others.any (·.comparator.isReportedUpstream) then ["reported verified upstream"] else []) ++
+      (if others.any (fun t => t.comparator.status != "configured" && !t.comparator.isReportedUpstream)
+       then ["recorded with another status"] else [])
+    if phrases.isEmpty then "not certified here" else String.intercalate " or " phrases
+  let acrossPhrase := if v == m then s!"across {m} {cfgNoun}" else s!"across {v} of {m} {cfgNoun}"
   let scopeText :=
-    match theoremLikeTotal with
-    | some n => s!"This site presents {k} independently comparator-certified {thmNoun} of {n} \
-        theorem-like statements, across {m} {cfgNoun}."
-    | none => s!"This site presents {k} independently comparator-certified {thmNoun}, across \
-        {m} {cfgNoun}."
+    if k == 0 then
+      let lead :=
+        match theoremLikeTotal with
+        | some n => s!"This site presents no independently comparator-certified theorems of its \
+            {n} theorem-like statements."
+        | none => "This site presents no independently comparator-certified theorems."
+      if j == 0 then lead
+      else s!"{lead} Its {m} {cfgNoun} name {j} {jNoun} that {jVerb} {statusPhrase}."
+    else
+      let lead :=
+        match theoremLikeTotal with
+        | some n => s!"This site presents {k} independently comparator-certified {thmNoun} of {n} \
+            theorem-like statements, {acrossPhrase}."
+        | none => s!"This site presents {k} independently comparator-certified {thmNoun}, \
+            {acrossPhrase}."
+      if others.isEmpty then lead
+      else if j == 0 then
+        let oNoun := if others.length == 1 then "config" else "configs"
+        s!"{lead} Its other {others.length} {oNoun} name no theorems."
+      else
+        s!"{lead} A further {j} {jNoun} {jVerb} {statusPhrase}, which this site does not present \
+           as certified."
   let axiomNote :=
     if axiomTopics.isEmpty then Output.Html.empty
     else
