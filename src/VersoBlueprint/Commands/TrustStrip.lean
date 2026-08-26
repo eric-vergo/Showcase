@@ -375,6 +375,12 @@ structure TrustComparator where
   the only thing on a status artifact that can bind a replay row to a program rather than
   to a label. Empty ⇒ the record identifies nothing it ran. -/
   kernelIdentities : Array KernelReplayRecord := #[]
+  /-- Disagreements between the encodings a status artifact used for its run evidence
+  (identity records, a `kernel_replays` map, the legacy `nanoda_replay`/`nanoda_ref`
+  pair). Reported by the parser, thrown by `checkComparatorEncodings` at elaboration; a
+  payload that reaches rendering always has this empty, because a record that contradicts
+  itself fails the build rather than picking a winner. -/
+  encodingConflicts : Array String := #[]
   /-- The ordered challenge chain the verifying run recorded (the status artifact's
   `challenge_chain`): (path, SHA-256) per file, primary Challenge included, in
   elaboration order. Empty ⇒ the record predates the field, so the chain this site
@@ -584,16 +590,11 @@ def configEnablesNanoda (config : Json) : Bool :=
   (config.getObjValAs? Bool "enable_nanoda").toOption.getD false
     || (parseExternalKernels config).any fun e => e.1 == "nanoda"
 
-/-- Per-label run evidence from a *status* artifact, from a `kernel_replays` field or —
-when that is absent — synthesized from the legacy `nanoda_replay`/`nanoda_ref` pair. A
-label with no recorded `replayed` flag contributes a revision but no replay claim. -/
-private def parseKernelRecords (status : Json) : Array (String × Option Bool × String) :=
-  match status.getObjVal? "kernel_replays" with
-  | .ok j => kernelEntries j
-  | .error _ =>
-    let replay := (status.getObjValAs? Bool "nanoda_replay").toOption
-    let ref := (status.getObjValAs? String "nanoda_ref").toOption.getD ""
-    if replay.isNone && ref.isEmpty then #[] else #[("nanoda", replay, ref)]
+/-- Per-label run evidence carried by the legacy `nanoda_replay`/`nanoda_ref` pair. -/
+private def legacyKernelEntries (status : Json) : Array (String × Option Bool × String) :=
+  let replay := (status.getObjValAs? Bool "nanoda_replay").toOption
+  let ref := (status.getObjValAs? String "nanoda_ref").toOption.getD ""
+  if replay.isNone && ref.isEmpty then #[] else #[("nanoda", replay, ref)]
 
 /-- Whether a JSON object carries any of the identity fields — the difference between a
 run that recorded what it invoked and one that recorded only a label. -/
@@ -632,6 +633,95 @@ def parseKernelIdentities (status : Json) : Array KernelReplayRecord :=
     | .ok (.arr items) => if items.any hasIdentityFields then fromArray items else #[]
     | _ => #[]
 
+/-- Whether `kernel_replays` is itself the identity source, in which case it is one
+encoding rather than two: reading the same array twice, once as identities and once
+generically, would compare a record with itself under two different key spellings. -/
+private def kernelReplaysIsIdentitySource (status : Json) : Bool :=
+  match status.getObjVal? "kernel_identities" with
+  | .ok (.arr _) => false
+  | _ =>
+    match status.getObjVal? "kernel_replays" with
+    | .ok (.arr items) => items.any hasIdentityFields
+    | _ => false
+
+/-! ### Canonicalization
+
+A status artifact may spell its run evidence three ways: identity records, a generic
+`kernel_replays` map or array, and the legacy `nanoda_replay`/`nanoda_ref` pair. Earlier
+this parser kept two independent projections of that — the generic one for the semantic
+accessors, the raw legacy fields for whatever read them directly — so a record saying
+`replayed: true` at one revision under one spelling and `false` at another under the other
+loaded happily, and different pages then reported different revisions for the same claimed
+replay.
+
+There is now exactly one canonical record set. Every encoding present is parsed, and the
+encodings must AGREE: for each label, at most one distinct recorded replay boolean and at
+most one distinct non-empty revision across all of them. Disagreement is a build error —
+a machine record that contradicts itself has no reading, and picking a winner would be
+inventing one. Labels named by one encoding and not another are a union, not a conflict:
+an encoding may be partial without being wrong.
+-/
+
+/-- The encodings a status artifact carries, each as (source name, entries). -/
+private def kernelEncodings (status : Json)
+    (identities : Array KernelReplayRecord) : Array (String × Array (String × Option Bool × String)) :=
+  let identityEntries := identities.map fun r =>
+    (r.label, Option.some r.replayed, r.sourceCommit)
+  let identitySourceName :=
+    if kernelReplaysIsIdentitySource status then "kernel_replays" else "kernel_identities"
+  let genericEntries :=
+    if kernelReplaysIsIdentitySource status then #[]
+    else match status.getObjVal? "kernel_replays" with
+      | .ok j => kernelEntries j
+      | .error _ => #[]
+  let legacyEntries := legacyKernelEntries status
+  (if identityEntries.isEmpty then #[] else #[(identitySourceName, identityEntries)]) ++
+  (if genericEntries.isEmpty then #[] else #[("kernel_replays", genericEntries)]) ++
+  (if legacyEntries.isEmpty then #[] else #[("nanoda_replay/nanoda_ref", legacyEntries)])
+
+/-- Merge the encodings into one canonical record set, reporting every disagreement.
+
+Returns the canonical entries — (label, recorded replay, recorded revision), in the order
+labels are first mentioned — and a list of human-readable conflicts. A non-empty conflict
+list is a build error at the point the artifact is read; it is carried on the record rather
+than thrown here so that the parser stays total and the conflicts stay directly testable. -/
+private def canonicalKernelRecords
+    (encodings : Array (String × Array (String × Option Bool × String))) :
+    Array (String × Option Bool × String) × Array String := Id.run do
+  let mut labels : Array String := #[]
+  for (_, entries) in encodings do
+    for e in entries do
+      unless labels.contains e.1 do labels := labels.push e.1
+  let mut canonical : Array (String × Option Bool × String) := #[]
+  let mut conflicts : Array String := #[]
+  for label in labels do
+    let mut replay : Option Bool := Option.none
+    let mut replaySource : String := ""
+    let mut ref : String := ""
+    let mut refSource : String := ""
+    for (source, entries) in encodings do
+      for e in entries do
+        if e.1 != label then continue
+        match e.2.1 with
+        | Option.some b =>
+          match replay with
+          | Option.some b' =>
+            if b != b' then
+              conflicts := conflicts.push
+                s!"'{label}' is recorded as replayed={b'} by {replaySource} and replayed={b} by \
+                   {source}"
+          | Option.none => replay := Option.some b; replaySource := source
+        | Option.none => pure ()
+        let entryRef := e.2.2.trimAscii.toString
+        unless entryRef.isEmpty do
+          if ref.isEmpty then ref := entryRef; refSource := source
+          else if ref != entryRef then
+            conflicts := conflicts.push
+              s!"'{label}' is recorded at revision {ref} by {refSource} and at {entryRef} by \
+                 {source}"
+    canonical := canonical.push (label, replay, ref)
+  return (canonical, conflicts)
+
 /-- The ordered challenge chain a run recorded (`challenge_chain`): (path, SHA-256) per
 file, in elaboration order. Entries without a path are dropped; a missing digest reads as
 empty, i.e. that entry is unbound. Absent ⇒ empty. -/
@@ -654,22 +744,13 @@ an artifact written before the provenance fields existed still loads. The embedd
 Challenge sources are filled in later from their own options (`elabTrustData?`). -/
 def TrustComparator.ofJson (j : Json) : TrustComparator :=
   let identities := parseKernelIdentities j
-  -- Identity records, when the run wrote them, are also the label-level evidence: a
-  -- second, separately parsed copy of the same facts could disagree with them.
-  let kernels : Array (String × Option Bool × String) :=
-    if identities.isEmpty then parseKernelRecords j
-    else identities.map fun r =>
-      (r.label, Option.some r.replayed, if r.sourceCommit.isEmpty then "" else r.sourceCommit)
+  -- ONE canonical record set, merged from every encoding present and required to agree.
+  let (kernels, conflicts) := canonicalKernelRecords (kernelEncodings j identities)
   let kernelOf := fun (name : String) => kernels.find? fun e => e.1 == name
-  -- The nanoda-specific fields stay the one spelling the rest of the fork reads, whether
-  -- the artifact used the legacy pair or the kernel map.
-  let nanodaReplay :=
-    match (j.getObjValAs? Bool "nanoda_replay").toOption with
-    | Option.some b => Option.some b
-    | Option.none => (kernelOf "nanoda").bind (·.2.1)
-  let nanodaRef :=
-    let recorded := (j.getObjValAs? String "nanoda_ref").toOption.getD ""
-    if !recorded.isEmpty then recorded else ((kernelOf "nanoda").map (·.2.2)).getD ""
+  -- The nanoda-specific fields are derived FROM the canonical set, never parsed beside it:
+  -- they are a compatibility spelling of the same fact, not a second opinion about it.
+  let nanodaReplay := (kernelOf "nanoda").bind (·.2.1)
+  let nanodaRef := ((kernelOf "nanoda").map (·.2.2)).getD ""
   {
     status := (j.getObjValAs? String "status").toOption.getD ""
     verifiedAt := (j.getObjValAs? String "verified_at").toOption.getD ""
@@ -695,6 +776,7 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     kernelReplays := kernels.filterMap fun e => e.2.1.map fun b => (e.1, b)
     kernelRefs := kernels.filterMap fun e => if e.2.2.isEmpty then none else some (e.1, e.2.2)
     kernelIdentities := identities
+    encodingConflicts := conflicts
     -- Content binding. Absent ⇒ empty ⇒ the displayed source is bound to this verdict
     -- by name and path shape only.
     configSha256 := (j.getObjValAs? String "config_sha256").toOption.getD ""
@@ -741,6 +823,26 @@ def TrustComparator.configuredKernels (cmp : TrustComparator) : Array String :=
 `kernelIdentityTier` says how much each one is worth. -/
 def TrustComparator.replayedKernels (cmp : TrustComparator) : Array String :=
   (cmp.recordedReplays.filter (·.2)).map (·.1)
+
+/-- Every checker this verdict mentions at all, in a stable order: recorded replays
+first, then labels carrying only a recorded revision or an identity record, then those
+the configuration enables and the record never mentions.
+
+This is the row set of the per-checker table. A label reaches it by being mentioned
+*anywhere*, because each way of being mentioned and not another is itself the state a
+reader needs: a revision with no replay, a replay the configuration has since dropped, a
+configured checker the run never ran. -/
+def TrustComparator.mentionedKernels (cmp : TrustComparator) : Array String := Id.run do
+  let mut out : Array String := #[]
+  let push := fun (acc : Array String) (k : String) =>
+    if k.isEmpty || acc.contains k then acc else acc.push k
+  for e in cmp.recordedReplays do out := push out e.1
+  for e in cmp.kernelRefs do out := push out e.1
+  for r in cmp.kernelIdentities do out := push out r.label
+  -- Records built in source (tests, fixtures) may carry only the legacy fields.
+  if cmp.nanodaReplay.isSome || !cmp.nanodaRef.isEmpty then out := push out "nanoda"
+  for k in cmp.configuredKernels do out := push out k
+  return out
 
 /-! ### Checker identity
 
@@ -1532,6 +1634,27 @@ def checkComparatorDigests (cmp : TrustComparator) (statusPath : String) :
     cmp.configSha256 cmp.configDigest
 
 /--
+Agreement between the encodings a status artifact used for its run evidence.
+
+A record may spell the same replay three ways; it may not spell it three *different* ways.
+When the identity records, the `kernel_replays` map and the legacy
+`nanoda_replay`/`nanoda_ref` pair disagree about whether a checker replayed or at which
+revision, there is no fact to render — one page would say the run used one binary and
+another page a different one — so the build stops with every disagreement named.
+
+Public for the same reason as `checkComparatorDigests`.
+-/
+def checkComparatorEncodings (cmp : TrustComparator) (statusPath : String) :
+    Lean.CoreM Unit := do
+  unless cmp.encodingConflicts.isEmpty do
+    throwError "{statusPath} contradicts itself about what its verifiers did:\\n\\
+      {String.intercalate "\\n" cmp.encodingConflicts.toList}\\n\\
+      The status artifact spells its run evidence in more than one way, and the spellings \\
+      disagree. There is no reading of this record: rendering it would report one revision \\
+      on one page and another elsewhere. Re-run CI so the artifact is regenerated, or \\
+      remove the stale encoding."
+
+/--
 Internal completeness of the status artifact's own run-evidence fields.
 
 A record claiming an independent kernel replay must say *which* kernel: `nanoda_replay:
@@ -1729,6 +1852,9 @@ def attachComparatorSources (cmp0 : TrustComparator)
     if (← System.FilePath.pathExists solPath) then
       let (digest, src) ← readSourceWithDigest solPath
       cmp := { cmp with solutionSource := src, solutionDigest := digest }
+  -- Self-consistency of the record first: a contradictory record has no reading, so
+  -- nothing downstream should get the chance to pick one.
+  liftM (checkComparatorEncodings cmp statusPath)
   liftM (checkComparatorDigests cmp statusPath)
   liftM (checkComparatorRunProvenance cmp statusPath)
   if let some cfgJson := configJson? then

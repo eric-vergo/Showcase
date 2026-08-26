@@ -413,9 +413,12 @@ private def trustingSection (data : TrustModelData) (trust? : Option TrustData) 
         else #[]
       -- Run evidence, not configuration: a project that switches the independent kernel
       -- on today does not thereby add nanoda to what a past verdict rested on.
+      -- The semantic accessor, never the raw compatibility field: one canonical record
+      -- means every surface names the same revision.
+      let nanodaRef := cmp.recordedKernelRef "nanoda"
       let nanodaItem :=
-        if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then
-          #[item "nanoda" s!"at revision {cmp.nanodaRef}, as the independent kernel the run \
+        if cmp.replayedWithNanoda && !nanodaRef.isEmpty then
+          #[item "nanoda" s!"at revision {nanodaRef}, as the independent kernel the run \
               recorded."]
         else #[]
       -- Confinement is claimed only for the step the record covers. Elaborating Lean runs
@@ -483,8 +486,9 @@ private def currencySection (trust? : Option TrustData) : Output.Html :=
   let pinNote :=
     match cmp? with
     | Option.some cmp =>
-      if cmp.replayedWithNanoda && !cmp.nanodaRef.isEmpty then
-        s!"The run behind this verdict used nanoda {cmp.nanodaRef} as its independent kernel. \
+      let nanodaRef := cmp.recordedKernelRef "nanoda"
+      if cmp.replayedWithNanoda && !nanodaRef.isEmpty then
+        s!"The run behind this verdict used nanoda {nanodaRef} as its independent kernel. \
            That pin makes the verification reproducible; it does not make it current."
       else if cmp.enableNanoda then
         "This project's comparator configuration enables an independent kernel, but the \

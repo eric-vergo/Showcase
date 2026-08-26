@@ -334,15 +334,99 @@ private def boundKernel : TrustComparator :=
   hasSubstr html "a checker labeled" &&
   hasSubstr html "<code>lean4lean</code>"
 
--- One authenticated kernel needs no table; more than one checker, or one this site
--- cannot name, does.
-/-- info: (false, true, true) -/
+-- Every checker the verdict mentions gets a row, one or many (CX-070): the one-row
+-- shortcut used to hide exactly the states this table exists to show.
+/-- info: (true, true, true, false) -/
 #guard_msgs in
 #eval
   (hasSubstr (comparatorHtml { fixtureComparator with nanodaReplay := some true })
      "bp_trust_kernel_table",
    hasSubstr (comparatorHtml spoofedKernel) "bp_trust_kernel_table",
-   hasSubstr (comparatorHtml boundKernel) "bp_trust_kernel_table")
+   hasSubstr (comparatorHtml boundKernel) "bp_trust_kernel_table",
+   -- A verdict that mentions no checker at all still renders no table.
+   hasSubstr (comparatorHtml { fixtureComparator with nanodaRef := "" })
+     "bp_trust_kernel_table")
+
+/-! ## Single-checker states stay visible (CX-070)
+
+One checker is the ordinary deployment shape. Suppressing its row dropped the configured
+checker with no run record, the recorded decline, the checker dropped from the
+configuration since, and — behind an authenticated success — the executable digest that
+the "Checked with" row names no part of.
+-/
+
+private def soleChecker (replay? : Option Bool) (configured : Bool) : TrustComparator :=
+  { fixtureComparator with
+    nanodaRef := "", landrunRef := ""
+    externalKernels := if configured then #[("acme", "")] else #[]
+    kernelReplays := match replay? with
+      | some b => #[("acme", b)]
+      | none => #[]
+    kernelRefs := #[("acme", "r1")] }
+
+/-- info: (true, true, true, true) -/
+#guard_msgs in
+#eval
+  let cell := fun (c : TrustComparator) (needle : String) =>
+    hasSubstr (comparatorHtml c) needle
+  -- Configured, no run record: the row says so instead of the page saying nothing.
+  (cell (soleChecker none true) "not recorded" &&
+     cell (soleChecker none true) "external checker labeled",
+   -- A recorded decline is a verdict, and it renders.
+   cell (soleChecker (some false) true) "not replayed",
+   -- Dropped from the configuration since the run: the label survives, and the
+   -- disagreement is shown per checker rather than only for nanoda.
+   cell (soleChecker (some true) false) "changed since this verdict" &&
+     cell (soleChecker (some true) false) "not enabled",
+   -- Enabled after the run that never ran it: drift the other way.
+   cell (soleChecker (some false) true) "changed since this verdict")
+
+-- The sole authenticated success: "Checked with" names the revision, and the digest —
+-- which nothing else on the page renders — is in the table.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let sole : TrustComparator :=
+    { fixtureComparator with
+      nanodaRef := ""
+      kernelIdentities := #[
+        { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
+          sourceCommit := "05055695", executableSha256 := "deadbeefcafebabe"
+          replayed := true }]
+      kernelReplays := #[("nanoda", true)]
+      kernelRefs := #[("nanoda", "05055695")] }
+  let html := comparatorHtml sole
+  hasSubstr html "nanoda 05055695" &&
+  hasSubstr html "bp_trust_kernel_table" &&
+  hasSubstr html "binary <code>deadbeefcafebabe</code>"
+
+-- The legacy a362583 shape — a recorded revision, no recorded replay — gains its row and
+-- loses nothing: the revision is shown as the pin it is, and the run cell says the replay
+-- was never recorded.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml { fixtureComparator with enableNanoda := true }
+  hasSubstr html "bp_trust_kernel_table" &&
+  hasSubstr html "not recorded" &&
+  hasSubstr html "a pin, not a check" &&
+  hasSubstr html "1111111111111111111111111111111111111111" &&
+  -- No replay was recorded, so nothing claims one.
+  !hasSubstr html "independently the nanoda kernel"
+
+/-! ## A record that contradicts itself fails the build (CX-069) -/
+
+-- Two encodings of the same replay that disagree have no reading; the build stops and
+-- names every disagreement rather than letting each surface pick a winner.
+/-- info: (true, true, true, "ok") -/
+#guard_msgs in
+#eval show CoreM (Bool × Bool × Bool × String) from do
+  let contradictory : TrustComparator :=
+    { encodingConflicts := #["'nanoda' is recorded at revision aaa by X and at bbb by Y"] }
+  let msg ← checkOutcome (checkComparatorEncodings contradictory "status.json")
+  let clean ← checkOutcome (checkComparatorEncodings fixtureComparator "status.json")
+  return (hasSubstr msg "contradicts itself", hasSubstr msg "revision aaa",
+          hasSubstr msg "Re-run CI", clean)
 
 -- A claimed replay must still name a revision, and the message says a revision is not
 -- the binding.

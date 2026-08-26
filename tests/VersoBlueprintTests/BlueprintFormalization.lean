@@ -521,6 +521,99 @@ fields have to survive the JSON round trip they are carried by. -/
     back.toolToolchain == next.toolToolchain
   | .error _ => false
 
+/-! ### One canonical record set (CX-069)
+
+A status artifact may spell its run evidence three ways — identity records, a generic
+`kernel_replays` map, the legacy `nanoda_replay`/`nanoda_ref` pair. It may not spell it
+three *different* ways. Every encoding present is merged into one canonical set, and any
+disagreement about a replay boolean or a revision is reported for the elaboration-time
+check to throw: picking a winner is how one page ends up naming a different revision than
+another for the same claimed replay.
+-/
+
+private def dualEncodingStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "identity-cafebabe", "executable_sha256": "deadbeef", "replayed": true }
+  ],
+  "nanoda_replay": false,
+  "nanoda_ref": "legacy-deadbeef"
+}"##
+
+private def genericVsLegacyStatus := r##"{
+  "status": "verified",
+  "kernel_replays": { "nanoda": { "replayed": true, "ref": "generic-rev" } },
+  "nanoda_replay": false,
+  "nanoda_ref": "legacy-rev"
+}"##
+
+private def legacyTrueGenericFalseStatus := r##"{
+  "status": "verified",
+  "kernel_replays": { "nanoda": { "replayed": false, "ref": "same-rev" } },
+  "nanoda_replay": true,
+  "nanoda_ref": "same-rev"
+}"##
+
+private def identityVsGenericStatus := r##"{
+  "status": "verified",
+  "kernel_identities": [
+    { "label": "nanoda", "source_commit": "aaa", "executable_sha256": "d1", "replayed": true }
+  ],
+  "kernel_replays": { "nanoda": { "replayed": true, "ref": "bbb" } }
+}"##
+
+private def agreeingStatus := r##"{
+  "status": "verified",
+  "kernel_replays": { "nanoda": { "replayed": true, "ref": "same-rev" } },
+  "nanoda_replay": true,
+  "nanoda_ref": "same-rev"
+}"##
+
+private def partialEncodingStatus := r##"{
+  "status": "verified",
+  "kernel_replays": { "lean4lean": { "replayed": true, "ref": "ll" } },
+  "nanoda_replay": true,
+  "nanoda_ref": "nn"
+}"##
+
+-- Every contradictory pairing is reported, in both boolean directions and for revisions;
+-- agreement and partial coverage are not contradictions.
+/-- info: (2, 2, 1, 1, 0, 0) -/
+#guard_msgs in
+#eval
+  let conflicts := fun (src : String) =>
+    (TrustComparator.ofJson (parsedJson src)).encodingConflicts.size
+  -- identity vs legacy: both the boolean and the revision disagree.
+  (conflicts dualEncodingStatus,
+   -- generic map vs legacy: likewise.
+   conflicts genericVsLegacyStatus,
+   -- the other boolean direction, with revisions that agree.
+   conflicts legacyTrueGenericFalseStatus,
+   -- identity vs generic map: same replay, different revisions.
+   conflicts identityVsGenericStatus,
+   -- three encodings that agree are one fact spelled three times.
+   conflicts agreeingStatus,
+   -- an encoding may name fewer checkers than another without contradicting it.
+   conflicts partialEncodingStatus)
+
+-- The compatibility fields are derived from the canonical set, never parsed beside it, so
+-- the raw and semantic readings of a record can no longer differ.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let agreeing := TrustComparator.ofJson (parsedJson agreeingStatus)
+  let part := TrustComparator.ofJson (parsedJson partialEncodingStatus)
+  agreeing.nanodaRef == agreeing.recordedKernelRef "nanoda" &&
+  agreeing.nanodaReplay == agreeing.recordedReplay? "nanoda" &&
+  agreeing.nanodaRef == "same-rev" &&
+  -- A partial encoding unions rather than overrides: both checkers survive, each with its
+  -- own revision.
+  part.recordedKernelRef "lean4lean" == "ll" &&
+  part.recordedKernelRef "nanoda" == "nn" &&
+  part.nanodaRef == "nn" &&
+  part.replayedKernels == #["lean4lean", "nanoda"]
+
 /-! ### Checker identity (CX-064)
 
 The comparator's `external_kernels` key is a consumer-chosen label it copies into its

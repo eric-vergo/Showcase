@@ -209,7 +209,8 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
   let metaHtml : Output.Html :=
     if cmp.theoremNames.isEmpty && cmp.permittedAxioms.isEmpty
         && cmp.toolSha.isEmpty && cmp.toolRef.isEmpty && cmp.toolToolchain.isEmpty
-        && cmp.nanodaRef.isEmpty && cmp.kernelRefs.isEmpty && cmp.landrunRef.isEmpty then .empty
+        && (cmp.recordedKernelRef "nanoda").isEmpty && cmp.kernelRefs.isEmpty
+        && cmp.landrunRef.isEmpty then .empty
     else {{ <dl class="bp_trust_verdict_meta">{{.seq #[theoremRow, axiomRow, toolRow, toolchainRow]}}</dl> }}
   {{
     <section class="bp_trust_verdict">
@@ -220,11 +221,6 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     </section>
   }}
 
-/-- Every external checker this verdict involves, in a stable order: those the run
-recorded first, then any the configuration enables and the run never mentioned. -/
-private def kernelRows (cmp : TrustComparator) : Array String :=
-  let recorded := cmp.recordedReplays.map (·.1)
-  recorded ++ cmp.configuredKernels.filter (!recorded.contains ·)
 
 /-- What the run's record authenticates about one labeled checker, as a cell: the
 program, or the fact that nothing names it. -/
@@ -255,8 +251,14 @@ private def kernelIdentityCell (cmp : TrustComparator) (label : String) :
          " · binary " <code>{{.text true digest}}</code>
          " — not a checker this site knows by that name" }})
   | "ci-built" =>
-    ("", {{ "built by the run's CI from " <code>{{.text true ref}}</code>
-            " — the record carries no digest of the binary that ran" }})
+    -- The legacy pair pins a revision. Whether that revision ran is the run cell's
+    -- business, and this cell must not answer it for a record that stayed silent.
+    if cmp.recordedReplay? label == some true then
+      ("", {{ "built by the run's CI from " <code>{{.text true ref}}</code>
+              " — the record carries no digest of the binary that ran" }})
+    else
+      ("", {{ "revision " <code>{{.text true ref}}</code>
+              " recorded — a pin, not a check" }})
   | _ =>
     let refNote : Output.Html :=
       if ref.isEmpty then .empty
@@ -264,20 +266,22 @@ private def kernelIdentityCell (cmp : TrustComparator) (label : String) :
     ("bp_trust_axiom_warn",
       .seq #[{{ "not authenticated" }}, refNote, argvNote])
 
-/-- A compact per-checker table.
+/-- A compact per-checker table, rendered whenever this verdict mentions a checker at all.
 
-Rendered when more than one checker is in play, or when the run claims a replay this
-site cannot name — a single unnamed claim must not be invisible just because it is the
-only one. With one authenticated kernel the "Checked with" row already says everything,
-and a one-row table would be chrome.
+There is no one-row shortcut. A single checker is the ordinary deployment shape, not a
+degenerate case, and every state this table exists to show is invisible without it: that
+the configured checker has no run record, that the run recorded a decline, that a checker
+the configuration has since dropped nonetheless ran, and — behind an authenticated
+success — which executable the "Checked with" row is naming. A one-row table is cheap;
+the states it carries are not recoverable from anywhere else on the page.
 
 Each row states what the *run record* says, which for a checker the configuration merely
-enables is nothing, and for a bare label is nothing about what ran. That distinction is
-the whole content of the table. -/
+enables is nothing, and for a bare label is nothing about what ran. The configuration
+column is the other half: it is where a checker enabled after the fact, or dropped since,
+becomes visible per checker rather than only for nanoda. -/
 private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
-  let kernels := kernelRows cmp
-  if kernels.size ≤ 1 && cmp.unnamedReplayClaims.isEmpty then none
-  else if kernels.isEmpty then none
+  let kernels := cmp.mentionedKernels
+  if kernels.isEmpty then none
   else
     let rows : Array Output.Html := kernels.map fun k =>
       let named := cmp.kernelIdentityTier k == "named" || cmp.kernelIdentityTier k == "ci-built"
@@ -294,11 +298,22 @@ private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
         if verdict.isEmpty then {{ {{.text true replayText}} }}
         else {{ {{.text true replayText}} " — " {{.text true verdict}} }}
       let (identityClass, identityHtml) := kernelIdentityCell cmp k
+      -- Configuration vs run, per checker: the generic drift the nanoda-only prose used
+      -- to be the sole reporter of.
+      let configured := cmp.configuredKernels.contains k
+      let configText := if configured then "enabled" else "not enabled"
+      let (configClass, configHtml) : String × Output.Html :=
+        match cmp.kernelConfigDrift? k with
+        | some _ =>
+          ("bp_trust_axiom_warn",
+            {{ {{.text true configText}} " — changed since this verdict" }})
+        | none => ("", {{ {{.text true configText}} }})
       {{
         <tr>
           <td>{{checkerCell}}</td>
           <td class={{replayClass}}>{{replayHtml}}</td>
           <td class={{identityClass}}>{{identityHtml}}</td>
+          <td class={{configClass}}>{{configHtml}}</td>
         </tr>
       }}
     some <| trustSection "External checkers"
@@ -306,7 +321,8 @@ private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
         {{
           <div class="bp_trust_table_wrap">
             <table class="bp_trust_kernel_table">
-              <thead><tr><th>"Checker"</th><th>"In the linked run"</th><th>"Identity"</th></tr></thead>
+              <thead><tr><th>"Checker"</th><th>"In the linked run"</th><th>"Identity"</th>
+                <th>"In the configuration"</th></tr></thead>
               <tbody>{{.seq rows}}</tbody>
             </table>
           </div>
@@ -318,7 +334,9 @@ private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
             "A label is therefore display text: only a run record that binds a source "
             "revision to the digest of the executable it invoked says which program ran. A "
             "checker the configuration enables but the record does not mention describes the "
-            "next run, and a revision typed beside a label pins nothing."
+            "next run, and a revision typed beside a label pins nothing. Where the two "
+            "columns disagree, the configuration has changed since this verdict: the run "
+            "record is what happened, the configuration is what would happen now."
           </p> }}])
 
 /-- The "Reproduce it yourself" section: up to three tiers, each dropped when its data is
@@ -415,7 +433,7 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
     s!"go install github.com/Zouuup/landrun/cmd/landrun@{ref}"
   let nanodaPinNote : Output.Html :=
     if !cmp.enableNanoda then .empty
-    else if !cmp.nanodaRef.isEmpty then .empty
+    else if !(cmp.recordedKernelRef "nanoda").isEmpty then .empty
     else {{
       <p class="bp_trust_note">
         "The status artifact records no nanoda revision, so the clone above is "
