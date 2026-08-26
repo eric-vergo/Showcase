@@ -330,6 +330,36 @@ def RegistryEntry.isClaimLevel (e : RegistryEntry) : Bool :=
 /-- `id`-`v`-`version`, the way the registry names one record. -/
 def RegistryEntry.label (e : RegistryEntry) : String := s!"{e.id}-v{e.version}"
 
+/-- One record this build could not read, as the page reports it: which record, why, and
+which input it was named by. -/
+structure UnresolvedRecord where
+  /-- `id`-`v`-`version`. -/
+  label : String := ""
+  /-- Why this build could not read it. -/
+  reason : String := ""
+  /-- `cache` (the configured bundle) or `probe`. -/
+  source : String := ""
+deriving Inhabited, FromJson, ToJson, Quote
+
+/--
+What this build had to match against, whatever it went on to match.
+
+Carried apart from any `RegistryEntry` because it is not about one record. A reader has to be
+able to tell "the readable records did not mention this project" from "a row that might have
+mentioned it was skipped unread", and the second is invisible if it can only be reported
+inside a card that a successful match produced — which is precisely the case where there is
+no card. Present only when something *was* skipped: a bundle that read cleanly has nothing to
+report here, and says nothing.
+-/
+structure RegistryBundleReport where
+  /-- `cache` or `probe`. -/
+  source : String := ""
+  /-- `Informal.Palomar.Bundle.provenance`: how many records were read, and from where. -/
+  provenance : String := ""
+  /-- The rows this build could not read, in the order the projection named them. -/
+  unresolved : List UnresolvedRecord := []
+deriving Inhabited, FromJson, ToJson, Quote
+
 /--
 What one run recorded about one external checker it invoked.
 
@@ -654,6 +684,10 @@ structure TrustData where
   this project, or concerns the claim on the page, and the surface that renders it says so
   rather than styling it as a verdict. Empty ⇒ none supplied. -/
   registryLink : String := ""
+  /-- The state of the registry records this build read, independently of whether any of
+  them matched. `none` ⇒ nothing was configured, or every row the projection named was read
+  cleanly; either way there is nothing to report and nothing is rendered. -/
+  registryBundle? : Option RegistryBundleReport := none
   /-- When the kernel-advisory table this build assessed verifier currency against was
   last revised by hand. Carried on the payload rather than only on the currency rows,
   because the self-aging clause is exactly what a page with *no* assessable verifier
@@ -2921,6 +2955,16 @@ def attachRegistry (trust : TrustData) : PartElabM TrustData := do
   if link.isEmpty && bundlePath.isEmpty && !probeOn then return trust
   let trust := { trust with registryLink := link }
   let some bundle ← elabPalomarBundle? trust.projectRepoIdentity | return trust
+  -- Bundle health first, and unconditionally: what this build could not read is a fact about
+  -- the input, not about the outcome, so it must survive every path below — including the
+  -- one where nothing matches and no card is rendered at all.
+  let trust :=
+    if bundle.unresolved.isEmpty then trust
+    else { trust with registryBundle? := Option.some {
+      source := bundle.source
+      provenance := bundle.provenance
+      unresolved := bundle.unresolved.toList.map fun u =>
+        { label := u.label, reason := u.reason, source := u.source } } }
   let entryOf (m : Informal.Palomar.Match) : RegistryEntry :=
     let e := m.entry
     { id := e.id

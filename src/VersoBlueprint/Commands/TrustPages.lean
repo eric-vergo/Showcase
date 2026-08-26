@@ -705,18 +705,70 @@ def registryLinkHtml (url : String) : Output.Html :=
     </p>
   }}
 
+/-- How many unread records are listed before the rest are counted instead. A registry
+projection is bounded but a bundle need not be, and a page that turns into a list of skipped
+files has stopped being a diagnostic. -/
+private def maxUnreadListed : Nat := 8
+
+/-- The records this build could not read, named.
+
+Deliberately not a verdict of any kind, and deliberately not negative: an unread record is
+not an absent one, this build compared nothing against these rows, and a projection that
+does not mention a project is no evidence about whether the registry does. What the section
+establishes is only that matching did *not* consider everything the bundle named — the one
+thing a reader cannot otherwise tell from a page that shows a record, or from one that shows
+none. -/
+def registryBundleReportHtml (r : RegistryBundleReport) : Output.Html :=
+  let listed := r.unresolved.take maxUnreadListed
+  let remaining := r.unresolved.length - listed.length
+  let row (u : UnresolvedRecord) : Output.Html :=
+    let origin := if u.source.isEmpty then Output.Html.empty
+      else {{ " (" {{.text true u.source}} ")" }}
+    {{ <li><code>{{.text true u.label}}</code>{{origin}} " — " {{.text true u.reason}}</li> }}
+  let more : Output.Html :=
+    if remaining == 0 then .empty
+    else
+      {{ <li>{{.text true s!"… and {remaining} further \
+        {if remaining == 1 then "row" else "rows"} this build could not read."}}</li> }}
+  let n := r.unresolved.length
+  {{
+    <div class="bp_trust_registry_bundle" "data-bp-registry-unread"={{toString n}}>
+      <p class="bp_trust_prose">{{.text true
+        s!"This build matched against {r.provenance}."}}</p>
+      <p class="bp_trust_prose">{{.text true
+        s!"{if n == 1 then "The row" else "The rows"} below named a record this build could \
+           not read, so {if n == 1 then "it was" else "they were"} never compared against \
+           anything on this page. That says nothing about whether \
+           {if n == 1 then "it concerns" else "they concern"} this project: an unread record \
+           is not an absent one, and a bounded projection that does not mention a project is \
+           not a registry that does not."}}</p>
+      <ul class="bp_trust_registry_unread">{{.seq ((listed.map row).toArray.push more)}}</ul>
+    </div>
+  }}
+
 /-- The registry section, or nothing at all.
 
 Nothing at all is the ordinary case: a configured bundle that matched nothing renders no
 section, because a bounded projection of a registry that does not mention this project is
-not evidence that the registry does not. -/
-def registrySection? (entry? : Option RegistryEntry) (link : String := "") : Output.Html :=
-  match entry?, link.isEmpty with
-  | Option.none, true => .empty
-  | Option.none, false => trustSection "Registry link" (registryLinkHtml link)
-  | Option.some e, true => trustSection "Registry record" (registryCardHtml e)
-  | Option.some e, false =>
-    trustSection "Registry record" (.seq #[registryCardHtml e, registryLinkHtml link])
+not evidence that the registry does not.
+
+The bundle report is separate from all of that, and appears on its own whenever there is one
+— including under a matched record, and including where nothing matched and there is no card
+to hang it on. -/
+def registrySection? (entry? : Option RegistryEntry) (link : String := "")
+    (bundle? : Option RegistryBundleReport := Option.none) : Output.Html :=
+  let bundleSection : Output.Html :=
+    match bundle? with
+    | Option.none => .empty
+    | Option.some r => trustSection "Registry bundle" (registryBundleReportHtml r)
+  let matched : Output.Html :=
+    match entry?, link.isEmpty with
+    | Option.none, true => .empty
+    | Option.none, false => trustSection "Registry link" (registryLinkHtml link)
+    | Option.some e, true => trustSection "Registry record" (registryCardHtml e)
+    | Option.some e, false =>
+      trustSection "Registry record" (.seq #[registryCardHtml e, registryLinkHtml link])
+  .seq #[matched, bundleSection]
 
 /-- Body of the claim-first `comparator/` page. A verdict header, the challenge statement
 ("the claim"), a plain account of what the comparator does and does not check, the human step
@@ -927,13 +979,14 @@ def comparatorBody (cmp : TrustComparator) (ciUrl? : Option String)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
     (closureCtx : StatementClosurePanel.Context := {})
     (characterizations? : Option Informal.JunkValues.Characterizations := Option.none)
-    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "") :
+    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "")
+    (registryBundle? : Option RegistryBundleReport := Option.none) :
     Output.Html :=
   trustPageShell "Statement comparator" ""
     (.seq #[
       comparatorPanelInner cmp ciUrl? theoremLikeTotal trustModelHref? closureCtx,
       characterizationsSection characterizations? closureCtx,
-      registrySection? projectRegistry? registryLink])
+      registrySection? projectRegistry? registryLink registryBundle?])
 
 /-! ## Multi-config trust surface -/
 
@@ -1003,7 +1056,8 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
     (theoremLikeTotal : Option Nat) (trustModelHref? : Option String)
     (closureCtx : StatementClosurePanel.Context := {})
     (characterizations? : Option Informal.JunkValues.Characterizations := Option.none)
-    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "") :
+    (projectRegistry? : Option RegistryEntry := Option.none) (registryLink : String := "")
+    (registryBundle? : Option RegistryBundleReport := Option.none) :
     Output.Html :=
   let m := comparators.length
   let cfgNoun := if m == 1 then "comparator config" else "comparator configs"
@@ -1080,7 +1134,7 @@ def comparatorsPageBody (comparators : List ComparatorTopic)
   trustPageShell "Statement comparator" ""
     (.seq (#[header] ++ comparatorPanels ++ axiomPanels
       ++ #[characterizationsSection characterizations? closureCtx,
-        registrySection? projectRegistry? registryLink]))
+        registrySection? projectRegistry? registryLink registryBundle?]))
 
 /-! ## Emission -/
 
@@ -1162,13 +1216,14 @@ def emitBlueprintComparatorPage : ExtraStep :=
               (trust.comparators.head?.map (fun t => ciFor t.comparator)).getD trust.ciRunUrl
             some (comparatorsPageBody trust.comparators trust.axiomAuditTopics ciUrl?
               theoremLikeTotal trustModelHref? closureCtx trust.characterizations?
-              trust.registryEntry? trust.registryLink)
+              trust.registryEntry? trust.registryLink trust.registryBundle?)
           else match trust.comparator with
             | Option.none => Option.none
             | Option.some cmp =>
               Option.some
                 (comparatorBody cmp (ciFor cmp) theoremLikeTotal trustModelHref? closureCtx
-                  trust.characterizations? trust.registryEntry? trust.registryLink)
+                  trust.characterizations? trust.registryEntry? trust.registryLink
+                  trust.registryBundle?)
         match body? with
         | Option.none => pure ()
         | Option.some body =>

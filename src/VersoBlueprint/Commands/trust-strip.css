@@ -172,7 +172,8 @@ a.bp_summary_badge:focus-visible {
   padding-inline-start: var(--bp-space-2);
 }
 
-.bp_trust_currency_advisories {
+.bp_trust_currency_advisories,
+.bp_trust_registry_unread {
   margin: var(--bp-space-1) 0 0;
   padding-left: var(--bp-space-4);
   display: flex;

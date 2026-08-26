@@ -276,6 +276,25 @@ def parseRecent? (origin : String) (j : Json) : Except String (Array RecentRow) 
 /-! ## Bundles -/
 
 /--
+A projection row whose record this build could not read.
+
+The identity is kept apart from the reason because the surfaces that report this have to
+*name* the record: "a row was skipped" and "PALOMAR-2026-08-06-000006-v1 was skipped" are
+different things to publish, and only the second lets a reader go and look.
+-/
+structure Unresolved where
+  /-- `id`-`v`-`version`, the way the registry names one record. -/
+  label : String := ""
+  /-- Why this build could not read it: missing, malformed, or not the record it names. -/
+  reason : String := ""
+  /-- Which input the row came from: `cache` or `probe`. -/
+  source : String := ""
+deriving Inhabited, Repr, BEq
+
+/-- The one-line form: which record, and what went wrong reading it. -/
+def Unresolved.line (u : Unresolved) : String := s!"{u.label}: {u.reason}"
+
+/--
 The records a build has to match against, and where they came from.
 
 `unresolved` is the honest half: a projection row whose record this build could not read is
@@ -290,7 +309,7 @@ structure Bundle where
   location : String := ""
   entries : Array Entry := #[]
   /-- Projection rows whose record could not be read, each with the reason. -/
-  unresolved : Array String := #[]
+  unresolved : Array Unresolved := #[]
 deriving Inhabited, Repr
 
 /-- One line saying what this build matched against, for the card's provenance. -/
@@ -357,19 +376,20 @@ def loadBundle (path : String) : IO (Except String Bundle) := do
     | .error e => return .error e
     | .ok rows => pure rows
   let mut entries : Array Entry := #[]
-  let mut unresolved : Array String := #[]
+  let mut unresolved : Array Unresolved := #[]
   for row in rows do
     let entryPath := (fsPath / row.path).toString
     let label := s!"{row.id}-v{row.version}"
+    let skip (reason : String) : Unresolved := { label, reason, source := "cache" }
     unless ← System.FilePath.pathExists entryPath do
-      unresolved := unresolved.push s!"{label}: {row.path} is not in this bundle"
+      unresolved := unresolved.push (skip s!"{row.path} is not in this bundle")
       continue
     match ← loadEntryFile entryPath with
-    | .error e => unresolved := unresolved.push s!"{label}: {e}"
+    | .error e => unresolved := unresolved.push (skip e)
     | .ok entry =>
       if entry.id != row.id || entry.version != row.version then
         unresolved := unresolved.push
-          s!"{label}: {row.path} holds {entry.label}, which is a different record"
+          (skip s!"{row.path} holds {entry.label}, which is a different record")
       else
         entries := entries.push entry
   return .ok { source := "cache", location := path, entries, unresolved }
@@ -545,18 +565,19 @@ def probe (repo : String) (baseUrl : String := dataBaseUrl)
   let wanted := canonicalRepo repo
   let candidates := (rows.filter fun r => canonicalRepo r.repository == wanted).take maxEntries
   let mut entries : Array Entry := #[]
-  let mut unresolved : Array String := #[]
+  let mut unresolved : Array Unresolved := #[]
   for row in candidates do
     let url := s!"{baseUrl}/{row.path}"
     let label := s!"{row.id}-v{row.version}"
+    let skip (reason : String) : Unresolved := { label, reason, source := "probe" }
     match ← curlText? url with
-    | none => unresolved := unresolved.push s!"{label}: {url} could not be fetched"
+    | none => unresolved := unresolved.push (skip s!"{url} could not be fetched")
     | some body =>
       match Json.parse body with
-      | .error err => unresolved := unresolved.push s!"{label}: could not parse {url}: {err}"
+      | .error err => unresolved := unresolved.push (skip s!"could not parse {url}: {err}")
       | .ok ej =>
         match Entry.ofJson? url ej with
-        | .error e => unresolved := unresolved.push s!"{label}: {e}"
+        | .error e => unresolved := unresolved.push (skip e)
         | .ok entry => entries := entries.push entry
   return some { source := "probe", location := baseUrl, entries, unresolved }
 

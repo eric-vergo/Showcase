@@ -158,7 +158,7 @@ private def bundleDir : String := "tests/fixtures/palomar/bundle"
   match ← Informal.Palomar.loadBundle bundleDir with
   | .error _ => return (0, 0, false, false)
   | .ok b =>
-    let unresolved := String.intercalate "\n" b.unresolved.toList
+    let unresolved := String.intercalate "\n" (b.unresolved.map (·.line)).toList
     return (b.entries.size, b.unresolved.size,
       hasSubstr unresolved "PALOMAR-2026-08-05-000005",
       hasSubstr unresolved "PALOMAR-2026-08-06-000006")
@@ -262,6 +262,94 @@ private def claimEntry : RegistryEntry :=
   hasSubstr unbound "provenance about the project" &&
   hasSubstr repoOnly "data-bp-registry-basis=\"repo-only\"" &&
   hasSubstr unbound "data-bp-registry-basis=\"digest-unbound\""
+
+/-! ### Bundle health (CX-073)
+
+What a build could not read is a fact about its *input*. It therefore has to be reportable
+where there is no outcome to hang it on — a page with no matched record is exactly the page
+where "was everything the bundle named actually considered?" cannot be answered any other
+way.
+-/
+
+private def unreadRows : List UnresolvedRecord :=
+  [{ label := "PALOMAR-2026-08-05-000005-v1"
+     reason := "entries/PALOMAR-2026-08-05-000005-v1.json is not in this bundle"
+     source := "cache" },
+   { label := "PALOMAR-2026-08-06-000006-v1"
+     reason := "schema version 4; this build reads entries of version 3"
+     source := "cache" }]
+
+private def bundleReport : RegistryBundleReport :=
+  { source := "cache"
+    provenance := "5 registry records read from the cached bundle at \
+      tests/fixtures/palomar/bundle; 2 further rows named a record this build could not \
+      read, and they were not considered"
+    unresolved := unreadRows }
+
+-- (1) A selected record plus unresolved siblings: the card is there, and so are the names of
+-- the rows matching never saw — with the input each came from.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let out := (registrySection? (Option.some claimEntry) "" (Option.some bundleReport)).asString
+  hasSubstr out "PALOMAR-2026-08-07-000007-v1 records this claim" &&
+  hasSubstr out "PALOMAR-2026-08-05-000005-v1" &&
+  hasSubstr out "PALOMAR-2026-08-06-000006-v1" &&
+  hasSubstr out "is not in this bundle" &&
+  hasSubstr out "(cache)" &&
+  hasSubstr out "data-bp-registry-unread=\"2\""
+
+-- (2) No selected record and the same siblings: the identities are still there, and the
+-- section is explicit about what it is not. An unread row is not an absent registration.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let out := (registrySection? Option.none "" (Option.some bundleReport)).asString
+  hasSubstr out "PALOMAR-2026-08-05-000005-v1" &&
+  hasSubstr out "PALOMAR-2026-08-06-000006-v1" &&
+  hasSubstr out "an unread record is not an absent one" &&
+  hasSubstr out "data-bp-registry-unread=\"2\"" &&
+  -- Not a claim, not a verdict, not a badge, and not a statement that nothing is registered.
+  !hasSubstr out "records this claim" &&
+  !hasSubstr out "registers this repository" &&
+  !hasSubstr out "bp_summary_badge"
+
+-- A bundle every row of which was read reports nothing: this section exists to name what was
+-- skipped, and a clean read has nothing to name.
+/-- info: true -/
+#guard_msgs in
+#eval !hasSubstr (registrySection? Option.none "" Option.none).asString "bp_trust"
+
+-- Bounded: a long list is cut off and the remainder counted, so a broken bundle cannot turn
+-- the page into a directory listing.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let many := (List.range 12).map fun i =>
+    ({ label := s!"PALOMAR-2026-09-{i}-0000{i}-v1", reason := "not in this bundle"
+       source := "cache" } : UnresolvedRecord)
+  let out := (registrySection? Option.none "" (Option.some { bundleReport with
+    unresolved := many })).asString
+  hasSubstr out "data-bp-registry-unread=\"12\"" &&
+  hasSubstr out "and 4 further rows this build could not read" &&
+  countSubstr out "<li>" == 9
+
+-- The report rides the payload into an `.olean` and back, like every other trust field; a
+-- payload from before it existed decodes without one.
+/-- info: (true, true) -/
+#guard_msgs in
+#eval
+  let trust : TrustData := { registryBundle? := Option.some bundleReport }
+  ((match fromJson? (α := TrustData) (toJson trust) with
+    | .error _ => false
+    | .ok back =>
+      let rows : List UnresolvedRecord :=
+        (back.registryBundle?.map RegistryBundleReport.unresolved).getD []
+      rows.length == 2 &&
+      (rows.head?.map UnresolvedRecord.label) == Option.some "PALOMAR-2026-08-05-000005-v1"),
+   (match fromJson? (α := TrustData) (toJson ({} : TrustData)) with
+    | .error _ => false
+    | .ok old => old.registryBundle?.isNone))
 
 -- The consumer link: a link, labelled unverified, with none of the registration language a
 -- matched record earns.
