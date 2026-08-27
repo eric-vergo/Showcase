@@ -754,8 +754,19 @@ private def currencySection (trust? : Option TrustData) : Output.Html :=
       "So the pin is reported, and then measured against a list of soundness advisories this \
        fork maintains by hand. A revision the list resolves as carrying every fix is current; \
        a revision it resolves as predating one is not, whatever date the run carries; and a \
-       revision it cannot place — or a checker the record never bound to a program — is \
-       unknown, which is a fact about this list rather than about the verifier."
+       revision it cannot place — or a checker whose identity this site could not \
+       authenticate — is unknown, which is a fact about this list rather than about the \
+       verifier.",
+    prose
+      "Authenticating an identity here means one specific thing. A comparator status \
+       artifact is written by the party that produced it, so its own account of which binary \
+       ran cannot establish that fact; a well-formed digest is something anyone can type. \
+       This site therefore treats a checker as named only when the run's record *agrees* \
+       with an identity the site's author pinned separately, from the verifying workflow's \
+       own pins (`verso.blueprint.trust.expectedKernelIdentities`). Nothing here re-runs a \
+       checker, fetches a source tree, or hashes a binary; what is checked is that two \
+       sources say the same thing, and a checker with no pin behind it is reported as an \
+       unauthenticated label rather than assessed."
   ] ++ assessed ++ #[
     prose
       "The policy this project follows is to pin for reproducibility and to re-verify against \

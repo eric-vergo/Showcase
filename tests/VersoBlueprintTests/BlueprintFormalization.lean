@@ -694,21 +694,55 @@ private def unknownCheckerStatus := r##"{
   ]
 }"##
 
-/-- info: ("labeled", "named", "bound", "labeled", "bound", "ci-built") -/
+/-! ### The second source: identities the site's author pinned (CX-064)
+
+A well-formed record is still the producer's own word, and well-formedness is a property a
+forger has for free. So a tier that names a checker requires a *pin* — a claim made in the
+consumer's own tree, transcribed from the verifying workflow — and requires the run's record
+to agree with it. Nothing here re-runs a checker or hashes a binary; what is checked is that
+two sources, one of which the producer does not control, say the same thing.
+-/
+
+private def nanodaPin : KernelIdentityPin :=
+  { label := "nanoda"
+    repository := "https://github.com/ammkrn/nanoda_lib"
+    sourceCommit := "05055695"
+    executableSha256 := "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc" }
+
+private def lean4leanPin : KernelIdentityPin :=
+  { label := "lean4lean"
+    repository := "https://github.com/x/lean4lean"
+    sourceCommit := "cc11dd22"
+    executableSha256 := "74252c1798f3db857bbb88b7386c80b2ce812e7e27ed9b2abc1f278f4d85eb84" }
+
+private def sitePins : Array KernelIdentityPin := #[nanodaPin, lean4leanPin]
+
+/-- The legacy pair carries no digest, so all a pin can authenticate is the revision. -/
+private def legacyPins : Array KernelIdentityPin :=
+  #[{ label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib",
+      sourceCommit := "f58f2f6d1c0e4b5a" }]
+
+private def pinned (pins : Array KernelIdentityPin) (raw : String) : TrustComparator :=
+  (TrustComparator.ofJson (parsedJson raw)).withExpectedIdentities pins
+
+/-- info: ("labeled", "named", "labeled", "labeled", "bound", "ci-built") -/
 #guard_msgs in
 #eval
   -- A label the configuration points somewhere of its choosing, with a revision typed
   -- beside it: authenticates nothing.
-  let spoofed := { TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
-    externalKernels := #[("nanoda", "")], enableNanoda := true }
-  let named := TrustComparator.ofJson (parsedJson namedIdentityStatus)
-  let wrongRepo := TrustComparator.ofJson (parsedJson wrongRepoStatus)
-  let noDigest := TrustComparator.ofJson (parsedJson noDigestStatus)
-  let unknown := TrustComparator.ofJson (parsedJson unknownCheckerStatus)
+  let spoofed := ({ TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
+    externalKernels := #[("nanoda", "")], enableNanoda := true
+    } : TrustComparator).withExpectedIdentities sitePins
+  let named := pinned sitePins namedIdentityStatus
+  -- The record says a different repository from the one the site pinned; the pin is the
+  -- half that is not the producer's, so the disagreement demotes the record.
+  let wrongRepo := pinned sitePins wrongRepoStatus
+  let noDigest := pinned sitePins noDigestStatus
+  let unknown := pinned sitePins unknownCheckerStatus
   -- The legacy pair, which no `external_kernels` map can redirect: the run's CI built the
-  -- binary from the recorded revision and wrote both.
-  let legacy := TrustComparator.ofJson
-    (parsedJson r##"{ "status": "verified", "nanoda_replay": true, "nanoda_ref": "f58f2f6d" }"##)
+  -- binary from the recorded revision, and the site pinned that revision.
+  let legacy := pinned legacyPins
+    r##"{ "status": "verified", "nanoda_replay": true, "nanoda_ref": "f58f2f6d" }"##
   (spoofed.kernelIdentityTier "nanoda", named.kernelIdentityTier "nanoda",
    wrongRepo.kernelIdentityTier "nanoda", noDigest.kernelIdentityTier "nanoda",
    unknown.kernelIdentityTier "lean4lean", legacy.kernelIdentityTier "nanoda")
@@ -716,10 +750,11 @@ private def unknownCheckerStatus := r##"{
 /-- info: true -/
 #guard_msgs in
 #eval
-  let spoofed := { TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
-    externalKernels := #[("nanoda", "")], enableNanoda := true }
-  let named := TrustComparator.ofJson (parsedJson namedIdentityStatus)
-  let unknown := TrustComparator.ofJson (parsedJson unknownCheckerStatus)
+  let spoofed := ({ TrustComparator.ofJson (parsedJson spoofedLabelStatus) with
+    externalKernels := #[("nanoda", "")], enableNanoda := true
+    } : TrustComparator).withExpectedIdentities sitePins
+  let named := pinned sitePins namedIdentityStatus
+  let unknown := pinned sitePins unknownCheckerStatus
   -- The run says a replay happened, and this site must not say nanoda performed it.
   spoofed.replayedKernels == #["nanoda"] &&
   spoofed.assuredKernels == #[] &&
@@ -749,11 +784,22 @@ a well-formed digest that is simply not the binary's — remains undetectable, a
 here claims otherwise.
 -/
 
+-- Both records are pinned by the site on every field a pin can carry, so the shape floor
+-- is what decides here and not the absence of a second source.
+private def malformedPin : KernelIdentityPin :=
+  { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
+    sourceCommit := "05055695879dfebb6628a67da88ceca6cd6b0421" }
+
+private def symbolicPin : KernelIdentityPin :=
+  { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
+    sourceCommit := "main"
+    executableSha256 := "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc" }
+
 /-- info: (true, true, "labeled", "labeled") -/
 #guard_msgs in
 #eval
-  let bad := TrustComparator.ofJson (parsedJson malformedDigestStatus)
-  let symbolic := TrustComparator.ofJson (parsedJson symbolicCommitStatus)
+  let bad := pinned #[malformedPin] malformedDigestStatus
+  let symbolic := pinned #[symbolicPin] symbolicCommitStatus
   -- The record parsed, and the fields are there: this is a shape verdict, not a read failure.
   (bad.kernelIdentities.size == 1 && symbolic.kernelIdentities.size == 1,
    ((bad.identityFor? "nanoda").map (·.executableSha256)) == some "arbitrary-producer-string",
@@ -764,7 +810,7 @@ here claims otherwise.
 /-- info: (#[], false, #[("nanoda", "unknown", "identity-unbound")]) -/
 #guard_msgs in
 #eval
-  let bad := (TrustComparator.ofJson (parsedJson malformedDigestStatus)).withCurrency
+  let bad := (pinned #[malformedPin] malformedDigestStatus).withCurrency
     Informal.KernelAdvisories.builtinTable
   (bad.assuredKernels, bad.replayedWithNanoda,
    bad.currency.map fun r => (r.tool, r.verdict, r.reason))
@@ -807,6 +853,76 @@ warning: status.json: the identity record for `nanoda` does not bind that label 
 #eval show CoreM Unit from do
   checkComparatorRunProvenance (TrustComparator.ofJson (parsedJson malformedDigestStatus))
     "status.json"
+
+/-! ### Well-formed is not authenticated (CX-064, the residue)
+
+The record below is well-formed in every respect the shape floor can see: sixty-four
+lowercase hex in the digest field, a real-looking revision, the canonical repository. Every
+one of those characters was typed by the party that produced the file. Without a pin to
+agree with, it establishes nothing, and the tier says so.
+-/
+
+private def forgedIdentityStatus := r##"{
+  "status": "verified",
+  "verified_at": "2026-08-25T00:00:00Z",
+  "kernel_identities": [
+    { "label": "nanoda", "adapter_kind": "unknown-adapter",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695879dfebb6628a67da88ceca6cd6b0421",
+      "command_argv": ["/usr/bin/true"],
+      "executable_sha256": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "replayed": true, "verdict": "accepted" }
+  ]
+}"##
+
+private def forgedPin : KernelIdentityPin :=
+  { label := "nanoda"
+    repository := "https://github.com/ammkrn/nanoda_lib"
+    sourceCommit := "05055695879dfebb6628a67da88ceca6cd6b0421"
+    executableSha256 := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }
+
+-- (1) No pin: unauthenticated, currency `unknown` for the stated reason, and — because
+-- this is a question about a second source and not about self-consistency — both
+-- validators still pass. A record that agrees with itself is exactly what a forgery is.
+/-- info: ("labeled", #[("nanoda", "unknown", "identity-unbound")], true, true) -/
+#guard_msgs(info, drop warning) in
+#eval show CoreM (String × Array (String × String × String) × Bool × Bool) from do
+  let forged := TrustComparator.ofJson (parsedJson forgedIdentityStatus)
+  let cur := (forged.withCurrency Informal.KernelAdvisories.builtinTable).currency
+  let ran : Lean.CoreM Unit → CoreM Bool := fun act => do
+    try act; pure true catch _ => pure false
+  return (forged.kernelIdentityTier "nanoda",
+    cur.map (fun r => (r.tool, r.verdict, r.reason)),
+    ← ran (checkComparatorEncodings forged "status.json"),
+    ← ran (checkComparatorRunProvenance forged "status.json"))
+
+-- (2) The same record, with the site's pin behind it: named, and its revision may now be
+-- assessed for currency at all.
+/-- info: ("named", true, true) -/
+#guard_msgs in
+#eval
+  let ok := pinned #[forgedPin] forgedIdentityStatus
+  let cur := (ok.withCurrency Informal.KernelAdvisories.builtinTable).currency
+  (ok.kernelIdentityTier "nanoda",
+   ok.currencyAssessable "nanoda",
+   cur.all fun r => r.reason != "identity-unbound")
+
+-- (3) A pin that disagrees names the field it disagrees on, and the record falls back to
+-- an unauthenticated label. `elabTrustData?` turns each pair into a build warning; the
+-- pair is what the warning is built from.
+/-- info: ("labeled", #[("nanoda", "executable_sha256")], #[("nanoda", "source_commit")]) -/
+#guard_msgs in
+#eval
+  let wrongDigest := pinned
+    #[{ forgedPin with
+        executableSha256 := "0000000000000000000000000000000000000000000000000000000000000000" }]
+    forgedIdentityStatus
+  let wrongCommit := pinned
+    #[{ forgedPin with sourceCommit := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }]
+    forgedIdentityStatus
+  (wrongDigest.kernelIdentityTier "nanoda",
+   wrongDigest.identityPinConflicts,
+   wrongCommit.identityPinConflicts)
 
 /-! A configuration that migrated `enable_nanoda` into `external_kernels` has not turned
 the kernel off, so a run that replayed is not drift. Dropping the kernel from the map

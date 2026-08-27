@@ -72,6 +72,9 @@ def roleTopics : String := "topics-manifest"
 def roleFormalization : String := "formalization-yaml"
 /-- A consumer kernel-advisory table replacing the built-in one. -/
 def roleAdvisories : String := "kernel-advisories"
+/-- The site author's pinned checker identities, against which a run's own identity
+records are authenticated (`verso.blueprint.trust.expectedKernelIdentities`). -/
+def roleKernelIdentities : String := "kernel-identities"
 /-- The consumer's characterization sidecar. -/
 def roleCharacterizations : String := "characterizations"
 /-- A consumer junk-value (caveat) table override. -/
@@ -93,6 +96,7 @@ def roleNoun (role : String) : String :=
   else if role == roleTopics then "comparator topic manifest"
   else if role == roleFormalization then "formalization.yaml"
   else if role == roleAdvisories then "kernel-advisory table"
+  else if role == roleKernelIdentities then "pinned kernel identities"
   else if role == roleCharacterizations then "characterization sidecar"
   else if role == roleCaveatTable then "caveat table"
   else if role == roleRegistryBundle then "Palomar bundle"

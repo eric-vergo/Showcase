@@ -111,6 +111,11 @@ register_option verso.blueprint.trust.kernelAdvisories : String := {
   descr := "Path (relative to the build CWD) to a JSON advisory table replacing the one this fork ships, for assessing the currency of the verifier revisions a comparator run recorded. Schema: {\"advisoriesUpdated\": \"YYYY-MM-DD\", \"advisories\": [ {\"id\", \"tool\", \"advisoryDate\", \"summary\", \"url\", \"fix\": {\"fixedRevisions\": [...], \"fixedDescendantsOf\", \"ancestry\", \"fixedFromVersion\", \"affectedRevisions\": [...]}}, … ]}. `tool` is `lean4` for the toolchain the comparator was built on, otherwise the checker's canonical name. The override REPLACES the built-in table rather than merging into it (a partial override of a safety table loses entries silently). Empty ⇒ the built-in table; set-but-missing or unparsable ⇒ build error."
 }
 
+register_option verso.blueprint.trust.expectedKernelIdentities : String := {
+  defValue := ""
+  descr := "Path to a JSON array of checker identities this site's author pins from the verifying workflow's own pins: `[{\"label\": \"nanoda\", \"repository\": \"https://github.com/ammkrn/nanoda_lib\", \"source_commit\": \"<40 hex>\", \"executable_sha256\": \"<64 hex>\"}]` (`executable_sha256` optional). A checker identity a run records is authenticated only when it AGREES with a pin here: repository (normalized), source_commit (exact), and the digest when one is pinned. Unset, or unmatched, and every identity renders as an unauthenticated label with currency `unknown` (CX-064)."
+}
+
 register_option verso.blueprint.trust.statementClosure : Bool := {
   defValue := false
   descr := "Whether to compute, for each certified comparator claim, the closure of declarations its STATEMENT depends on — what a reader must read to know what the claim says, as opposed to how it is proved. Off by default. When on, the site build runs the fork's `statement-closure` executable, which elaborates the challenge chain in a FRESH environment holding exactly the chain's declared imports (not this site's environment, where the subject library and Verso are in scope and a short name could resolve to something the verifier never saw). Probe-and-degrade: a tool that is absent or fails records the reason rather than failing the build."
@@ -419,6 +424,56 @@ structure KernelReplayRecord where
   verdict : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
+/--
+One checker identity, pinned by the **site author** from the workflow that produces the
+verdicts this site renders.
+
+This is the second, consumer-controlled input CX-064 asked for, and the reason it has to
+exist. Everything a status artifact says about a checker is written by the party that
+produced it, so a well-formed `executable_sha256` establishes nothing on its own: a
+producer who types sixty-four hex characters into a field with that name earns whatever
+tier reads the field. A pin is a claim made somewhere else — in the consumer's own tree,
+transcribed from the verifying workflow's own pins — and a record that *agrees* with it
+has been checked against something its producer does not control.
+
+What that is not: nothing here re-runs a checker, fetches a source tree, or hashes a
+binary. "Authenticated" on this site means the record agrees with the identity the site's
+author pinned, and every surface that says it says it in those words.
+-/
+structure KernelIdentityPin where
+  /-- The checker label this pin is about: the comparator configuration's key. -/
+  label : String := ""
+  /-- The repository the author expects the checker to have been built from. -/
+  repository : String := ""
+  /-- The exact revision the author pinned in the verifying workflow. -/
+  sourceCommit : String := ""
+  /-- The expected SHA-256 of the executable, when the workflow records one. Empty ⇒ the
+  pin authenticates repository and revision only, which is less, and the tier says so by
+  requiring the record's own digest to be well-formed regardless. -/
+  executableSha256 : String := ""
+deriving Inhabited, Repr, DecidableEq, FromJson, ToJson, Quote
+
+/-- Parse one pin from the consumer's file. Snake-case keys, because the file is written
+beside a CI workflow rather than by this library. -/
+def KernelIdentityPin.ofJson? (j : Json) : Except String KernelIdentityPin := do
+  let label ← j.getObjValAs? String "label"
+  let repository ← j.getObjValAs? String "repository"
+  let sourceCommit ← j.getObjValAs? String "source_commit"
+  let executableSha256 := (j.getObjValAs? String "executable_sha256").toOption.getD ""
+  let label := label.trimAscii.toString
+  let repository := repository.trimAscii.toString
+  let sourceCommit := sourceCommit.trimAscii.toString.toLower
+  let executableSha256 := executableSha256.trimAscii.toString.toLower
+  if label.isEmpty then throw "a pin entry has an empty 'label'"
+  if repository.isEmpty then throw s!"the pin for '{label}' has an empty 'repository'"
+  if sourceCommit.isEmpty then throw s!"the pin for '{label}' has an empty 'source_commit'"
+  return { label, repository, sourceCommit, executableSha256 }
+
+/-- Parse the whole pin file: a JSON array of pin entries. -/
+def parseKernelIdentityPins? (j : Json) : Except String (Array KernelIdentityPin) := do
+  let arr ← j.getArr?
+  arr.mapM KernelIdentityPin.ofJson?
+
 /-- Comparator verdict extracted from the comparator-status artifact.
 
 `runUrl`/`configJson`/`challengeSource` are empty-string sentinels (matching the
@@ -600,6 +655,11 @@ structure TrustComparator where
   in the `reported-upstream` label and tooltip. Empty ⇒ the copy says "the subject
   repository". -/
   reportedSource : String := ""
+  /-- Checker identities this site's author pinned
+  (`verso.blueprint.trust.expectedKernelIdentities`), attached to every verdict on the
+  page so the identity tiers cannot answer differently on two surfaces. Empty ⇒ nothing
+  is pinned, and no identity on this page is authenticated (CX-064). -/
+  expectedIdentities : Array KernelIdentityPin := #[]
   /-- The machine a `verified-local` run happened on (the status artifact's
   `local_host`). Empty ⇒ the copy says "the presenter's own machine". -/
   localHost : String := ""
@@ -1233,25 +1293,81 @@ def TrustComparator.identityFor? (cmp : TrustComparator) (label : String) :
     Option KernelReplayRecord :=
   cmp.kernelIdentities.find? fun r => r.label == label
 
-/--
-How much the run's record *says* about the checker it labels `label` — and no more than
-that. Every tier here is a reading of a producer's own JSON: nothing on this page re-runs a
-checker, fetches a source tree, or hashes a binary, so no tier is an attestation and none of
-them licenses categorical prose about which program checked the proof (CX-064).
+/-- The site author's pin for `label`, if they declared one. -/
+def TrustComparator.identityPinFor? (cmp : TrustComparator) (label : String) :
+    Option KernelIdentityPin :=
+  cmp.expectedIdentities.find? fun p => p.label == label
 
-- `"named"` — the record binds a well-formed executable digest to a well-formed revision of
-  the repository this fork knows that name by. The strongest thing a record can say about
-  itself; the surfaces attribute it to the producing CI rather than asserting it.
-- `"ci-built"` — the legacy `nanoda_replay`/`nanoda_ref` pair, with no `external_kernels`
-  map able to redirect the label: the run's CI supplied the binary it built from the
-  recorded revision, and the record's honesty rests on that CI rather than on a digest.
-- `"bound"` — a well-formed digest and revision, but not a checker this fork knows by name
-  (or a recorded repository that is not the canonical one). A program is identified; which
-  program it *is* is not this site's to say.
-- `"labeled"` — a label, at most a separately typed revision, and nothing binding either
-  to what ran. **Also where a malformed identity record lands**: a producer that typed
-  something other than a digest into `executable_sha256` has bound nothing, and the tier
-  says so rather than reading the field's name as its content.
+/-- Whether two recorded revisions name the same commit: equal, or one an abbreviation of
+the other at seven hex characters or more, which is the shortest form git prints.
+
+Used only for the legacy `*_ref` field, which workflows routinely abbreviate. An identity
+record's `source_commit` is compared **exactly**: it is a field written for machines. -/
+def revisionAgrees (a b : String) : Bool :=
+  let a := a.trimAscii.toString.toLower
+  let b := b.trimAscii.toString.toLower
+  if a.isEmpty || b.isEmpty then false
+  else if a == b then true
+  else if 7 ≤ a.length && b.startsWith a then true
+  else 7 ≤ b.length && a.startsWith b
+
+/-- Which field of a run's identity record disagrees with the site's pin for the same
+label. `none` ⇒ they agree.
+
+Named rather than boolean for the same reason `identityFields` is: a reader of the build
+warning learns *which* field moved, which is the difference between "re-pin this" and
+"someone swapped the binary". -/
+def identityPinMismatch? (pin : KernelIdentityPin) (rec : KernelReplayRecord) :
+    Option String :=
+  if normalizeRepoUrl pin.repository != normalizeRepoUrl rec.repository then
+    Option.some "repository"
+  else if pin.sourceCommit != rec.sourceCommit.trimAscii.toString.toLower then
+    Option.some "source_commit"
+  else if !pin.executableSha256.isEmpty
+      && pin.executableSha256 != rec.executableSha256.trimAscii.toString.toLower then
+    Option.some "executable_sha256"
+  else Option.none
+
+/-- Every disagreement between this verdict's identity records and the site's pins, as
+`(label, field)`. Pure; `elabTrustData?` is where it becomes a build warning. -/
+def TrustComparator.identityPinConflicts (cmp : TrustComparator) : Array (String × String) :=
+  cmp.kernelIdentities.filterMap fun rec =>
+    match cmp.identityPinFor? rec.label with
+    | Option.none => Option.none
+    | Option.some pin => (identityPinMismatch? pin rec).map fun field => (rec.label, field)
+
+/-- Attach the site's pinned identities to a verdict. Applied to every verdict on the
+page, so the single-pair and multi-config surfaces cannot reach different tiers. -/
+def TrustComparator.withExpectedIdentities (cmp : TrustComparator)
+    (pins : Array KernelIdentityPin) : TrustComparator :=
+  { cmp with expectedIdentities := pins }
+
+/--
+How much is established about the checker this run labels `label`.
+
+The tier turns on **two** inputs, and that is the whole point (CX-064). One is the run's own
+record, which its producer wrote. The other is a pin the *site author* declared in this
+repository, from the verifying workflow's own pins
+(`verso.blueprint.trust.expectedKernelIdentities`). A record that is merely well-formed has
+established nothing: well-formedness is a property a forger has for free. A record that
+agrees with a pin has been checked against a claim its producer does not control.
+
+Nothing here re-runs a checker, fetches a source tree, or hashes a binary, so no tier is an
+attestation and no surface may say one is. "Authenticated" on this site means *the record
+agrees with the identity this site's author pinned*.
+
+- `"named"` — the record's identity is well-formed **and** matches a pin, and the pinned
+  repository is the one this fork knows that checker name by.
+- `"ci-built"` — the legacy `nanoda_replay`/`nanoda_ref` pair with no `external_kernels`
+  map able to redirect the label, **and** a pin whose revision the recorded ref agrees
+  with. Without the pin it is a producer label like any other.
+- `"bound"` — well-formed and pin-matched, but the pinned repository is not the canonical
+  one for this name. A program is identified; which program it *is* is not this site's to
+  say.
+- `"labeled"` — everything else, and it is the default rather than the exception: a
+  malformed record, a well-formed record with no pin behind it, and a record that
+  contradicts its pin all land here. Currency then reads `unknown`/`identity-unbound`,
+  which is a statement about what this site knows.
 -/
 def TrustComparator.kernelIdentityTier (cmp : TrustComparator) (label : String) : String :=
   match cmp.identityFor? label with
@@ -1259,24 +1375,36 @@ def TrustComparator.kernelIdentityTier (cmp : TrustComparator) (label : String) 
     if !isExecutableDigest rec.executableSha256 || !isSourceRevision rec.sourceCommit then
       "labeled"
     else
-      match knownKernelRepos.find? fun p => p.1 == label with
-      | Option.some (_, canonical) =>
-        if normalizeRepoUrl rec.repository == normalizeRepoUrl canonical then "named" else "bound"
-      | Option.none => "bound"
+      match cmp.identityPinFor? label with
+      -- Well-formed and unauthenticated. A producer's own JSON agreeing with itself is
+      -- not a second source, so this is the floor, not the ceiling.
+      | Option.none => "labeled"
+      | Option.some pin =>
+        if (identityPinMismatch? pin rec).isSome then "labeled"
+        else
+          match knownKernelRepos.find? fun p => p.1 == label with
+          | Option.some (_, canonical) =>
+            if normalizeRepoUrl pin.repository == normalizeRepoUrl canonical then "named"
+            else "bound"
+          | Option.none => "bound"
   | Option.none =>
-    -- No identity record. The legacy pair is still the tier it always was: a replay the
-    -- run's CI recorded beside the revision that CI built the checker from.
+    -- The legacy pair. It never carried a digest, so all it can be authenticated against
+    -- is the revision the site's author pinned for that checker.
     if cmp.externalKernels.isEmpty && cmp.kernelIdentities.isEmpty
         && (knownKernelRepos.any fun p => p.1 == label)
-        && !(cmp.recordedKernelRef label).isEmpty then "ci-built"
+        && !(cmp.recordedKernelRef label).isEmpty
+        && (match cmp.identityPinFor? label with
+            | Option.some pin => revisionAgrees pin.sourceCommit (cmp.recordedKernelRef label)
+            | Option.none => false) then "ci-built"
     else "labeled"
 
 /-- Checkers whose replay this page may report *under the name the record gives them*: the
-run recorded that they replayed, and their identity tier says the record binds that name to
-something rather than typing it beside a label.
+run recorded that they replayed, and their identity agrees with an identity this site's
+author pinned.
 
-Not "assured" in the sense of attested. What earns a place here is a well-formed record, and
-the copy that reads this attributes it to the run that wrote it — see `TrustPages`. -/
+Not "assured" in the sense of attested. What earns a place here is agreement between two
+sources — the producing run's record and the consumer's pin — and the copy that reads this
+says exactly that, and says what it did not do (CX-064). -/
 def TrustComparator.assuredKernels (cmp : TrustComparator) : Array String :=
   cmp.replayedKernels.filter fun k =>
     let tier := cmp.kernelIdentityTier k
@@ -1784,8 +1912,10 @@ def TrustComparator.currencyKernels (cmp : TrustComparator) : Array String :=
     (cmp.recordedReplay? k).isSome || !(cmp.recordedKernelRef k).isEmpty
       || (cmp.identityFor? k).isSome
 
-/-- Whether a checker's identity tier lets its recorded revision stand for the program
-that ran: a full identity binding, or the legacy pair no configuration can redirect. -/
+/-- Whether a checker's identity tier lets its recorded revision stand for the program that
+ran: an identity that matched the site's pin, or a legacy pair whose revision did. An
+unauthenticated label is `false`, and `currencyVerdict` turns that into
+`unknown`/`identity-unbound` however recent the revision looks (CX-064). -/
 def TrustComparator.currencyAssessable (cmp : TrustComparator) (label : String) : Bool :=
   let tier := cmp.kernelIdentityTier label
   tier == "named" || tier == "ci-built"
@@ -3194,6 +3324,40 @@ The built-in table ships in this fork's source, so it moves only when a Lean mod
 and needs no input record. A consumer override is a file Lake does not track, and comes
 back with one.
 -/
+/--
+Read the site author's pinned checker identities.
+
+The second source CX-064 asked for. It is a consumer file, read like every other trust
+input — configured-but-missing or unparsable is a build error, and the read is recorded in
+the freshness ledger, so the pins a verdict was authenticated against cannot change under a
+warm rebuild without the gate noticing.
+
+Unset ⇒ no pins, which is not an error: it means no identity on the page is authenticated,
+and `elabTrustData?` says so once in a warning rather than letting the tiers go quiet.
+-/
+def elabExpectedKernelIdentities :
+    PartElabM (Array KernelIdentityPin × Array Informal.TrustInputs.Input) := do
+  let opts ← Lean.getOptions
+  let path := opts.get verso.blueprint.trust.expectedKernelIdentities.name
+    verso.blueprint.trust.expectedKernelIdentities.defValue
+  if path.isEmpty then return (#[], #[])
+  unless ← System.FilePath.pathExists path do
+    throwError "option 'verso.blueprint.trust.expectedKernelIdentities' names a missing file \
+      (resolved against the build directory): {path}"
+  let (digest, raw) ← readSourceWithDigest path
+  let j ← match Json.parse raw with
+    | .error err => throwError "could not parse {path}: {err}"
+    | .ok j => pure j
+  match parseKernelIdentityPins? j with
+  | .error err =>
+    throwError "{path} is not a kernel-identity pin list: {err}. Expected a JSON array of \
+      objects, each with 'label', 'repository', 'source_commit', and optionally \
+      'executable_sha256' — see the option's description."
+  | .ok pins =>
+    return (pins,
+      #[Informal.TrustInputs.Input.ofDigest
+          Informal.TrustInputs.roleKernelIdentities path digest])
+
 def elabKernelAdvisories :
     PartElabM (Informal.KernelAdvisories.Table × Array Informal.TrustInputs.Input) := do
   let opts ← Lean.getOptions
@@ -3558,6 +3722,34 @@ def elabTrustData? : PartElabM (Option TrustData) := do
   -- Layer on the comparator-source enrichment (syntax highlighting + source links).
   -- Runs in `CoreM`; degrades to empty fields, never a build error.
   trust := (← liftM (enrichTrustData opts trust))
+  -- Identity pins BEFORE currency: currency reads the identity tier, and the tier now
+  -- turns on whether the run's record agrees with what this site's author pinned.
+  let (identityPins, identityInputs) ← elabExpectedKernelIdentities
+  projectInputs := projectInputs ++ identityInputs
+  trust := { trust with
+    comparator := trust.comparator.map (·.withExpectedIdentities identityPins)
+    comparators := trust.comparators.map fun t =>
+      { t with comparator := t.comparator.withExpectedIdentities identityPins } }
+  let allVerdicts : List TrustComparator :=
+    trust.comparator.toList ++ trust.comparators.map (·.comparator)
+  -- A record that contradicts its pin is the interesting case, so it is named field by
+  -- field. It is a warning rather than an error: the honest rendering (an unauthenticated
+  -- label, currency `unknown`) is already what the tier produces, and a site whose pins
+  -- have drifted should still build and say so.
+  for verdict in allVerdicts do
+    for (label, field) in verdict.identityPinConflicts do
+      logWarning s!"the run's identity record for checker '{label}' disagrees with the \
+        identity pinned in 'verso.blueprint.trust.expectedKernelIdentities' on '{field}'. \
+        The record is rendered as an unauthenticated label and its currency reads unknown; \
+        re-pin it, or find out why the two disagree."
+  if identityPins.isEmpty && allVerdicts.any (fun c => !c.currencyKernels.isEmpty) then
+    logWarning "no 'verso.blueprint.trust.expectedKernelIdentities' is configured, so no \
+      checker identity on this page is authenticated: each one renders as an \
+      unauthenticated label and its currency reads unknown. A status artifact is written by \
+      the party that produced it, so its own identity fields cannot establish what ran; \
+      point the option at a small JSON file pinning label / repository / source_commit \
+      (and executable_sha256 where the workflow records one) from the verifying workflow's \
+      own pins."
   -- Currency of the verifier builds each record names, against the advisory table. Pure
   -- once the table is read, and computed for every verdict on the page so the
   -- single-pair and multi-config surfaces cannot answer differently.

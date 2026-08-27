@@ -304,7 +304,8 @@ private def kernelIdentityCell (cmp : TrustComparator) (label : String) :
     let record? := cmp.identityFor? label
     let commit := (record?.map (·.sourceCommit)).getD ""
     let digest := (record?.map (·.executableSha256)).getD ""
-    ("", {{ <code>{{.text true commit}}</code> " · binary " <code>{{.text true digest}}</code> }})
+    ("", {{ <code>{{.text true commit}}</code> " · binary " <code>{{.text true digest}}</code>
+            " · agrees with the identity this site pinned" }})
   | "bound" =>
     let record? := cmp.identityFor? label
     let repo := (record?.map (·.repository)).getD ""
@@ -623,10 +624,12 @@ private def recordedKernelNote (cmp : TrustComparator) : Output.Html :=
     let subject := if assured.size == 1 then "a replay by" else "replays by"
     {{ <p class="bp_trust_note">
          {{.text true s!"The linked run's record additionally names {subject} \
-            {andList (assured.map phrase).toList}. That is what the producing CI recorded, \
-            not something this site attested: nothing here re-ran the checker, fetched that \
-            revision, or hashed the binary against it. Read it as the run's account of what \
-            it invoked."}}
+            {andList (assured.map phrase).toList}, and each of those identities agrees with \
+            one this site's author pinned from the verifying workflow. That agreement is \
+            what \"authenticated\" means here, and it is all it means: nothing on this page \
+            re-ran the checker, fetched that revision, or hashed the binary against it. \
+            Read it as two sources agreeing about what was invoked, not as an attestation \
+            that it ran."}}
        </p> }}
 
 /--

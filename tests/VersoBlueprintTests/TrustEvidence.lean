@@ -41,6 +41,7 @@ set_option verso.blueprint.trust.comparatorStatus "tests/fixtures/trust/comparat
 set_option verso.blueprint.trust.comparatorConfig "tests/fixtures/trust/comparator.json"
 set_option verso.blueprint.trust.challengeFile "tests/fixtures/trust/Challenge.lean"
 set_option verso.blueprint.trust.solutionFile "tests/fixtures/trust/Solution.lean"
+set_option verso.blueprint.trust.expectedKernelIdentities "tests/fixtures/trust/kernel-identities.json"
 
 -- A document carrying the two surfaces under test: the dashboard (which loads the trust
 -- payload and runs the axiom audit) and the trust-model page. The node's `(lean := …)`
@@ -100,15 +101,24 @@ Addition on the naturals commutes.
 Absence of `nanoda_replay` is `false`, and is never filled in from `enable_nanoda`.
 -/
 
-/-- info: (false, false, true, false) -/
+/-- info: (false, false, true, false, false) -/
 #guard_msgs in
 #eval
+  -- The site's own pin: the second source the label has to agree with (CX-064).
+  let pins : Array KernelIdentityPin :=
+    #[{ label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib",
+        sourceCommit := "05055695879dfebb6628a67da88ceca6cd6b0421" }]
   -- Configuration on, a pinned revision recorded, and no run record: still `false`.
-  let unrecorded : TrustComparator := { enableNanoda := true, nanodaRef := "abc" }
+  let unrecorded : TrustComparator :=
+    ({ enableNanoda := true, nanodaRef := "05055695" } : TrustComparator).withExpectedIdentities pins
   (unrecorded.replayedWithNanoda,
    unrecorded.nanodaReplayRecorded,
    { unrecorded with nanodaReplay := some true : TrustComparator }.replayedWithNanoda,
-   { unrecorded with nanodaReplay := some false : TrustComparator }.replayedWithNanoda)
+   { unrecorded with nanodaReplay := some false : TrustComparator }.replayedWithNanoda,
+   -- The same record with nothing pinned behind it establishes nothing: a label and a
+   -- revision typed beside it are the producer's own word.
+   { unrecorded with nanodaReplay := some true, expectedIdentities := #[]
+     : TrustComparator }.replayedWithNanoda)
 
 -- Drift is reported only when there is a record to disagree with, and carries which way
 -- it went (`some true` ⇒ the configuration now enables what the run did not do).
@@ -195,8 +205,17 @@ private def boundComparator : TrustComparator :=
 
 /-! ## The comparator page states only what the run recorded -/
 
+/-- The pin file beside the fixture, as a value: the consumer half of the identity check.
+The status artifact's `nanoda_ref` agrees with it, which is what lets the currency rows
+below assess the revision at all (CX-064). -/
+private def fixtureKernelPin : KernelIdentityPin :=
+  { label := "nanoda"
+    repository := "https://github.com/ammkrn/nanoda_lib"
+    sourceCommit := "1111111111111111111111111111111111111111" }
+
 private def fixtureComparator : TrustComparator :=
   {
+    expectedIdentities := #[fixtureKernelPin]
     status := "verified"
     verifiedAt := "2026-08-04T00:00:00Z"
     theoremNames := ["TrustFixture.add_comm_claim"]
@@ -235,7 +254,9 @@ private def comparatorHtml (cmp : TrustComparator) : String :=
   hasSubstr html "record additionally names a nanoda replay" &&
   hasSubstr html "The linked run's record additionally names a replay by nanoda, built by \
     the run's CI from 1111111111111111111111111111111111111111" &&
-  hasSubstr html "not something this site attested" &&
+  -- What "authenticated" means here, said where the claim is: two sources agree.
+  hasSubstr html "agrees with one this site's author pinned" &&
+  hasSubstr html "not as an attestation that it ran" &&
   -- and no tier, this one included, licenses the categorical sentence
   !hasSubstr html "independently the nanoda kernel" &&
   hasSubstr html "nanoda 1111111111111111111111111111111111111111" &&

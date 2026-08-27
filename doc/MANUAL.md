@@ -1180,6 +1180,19 @@ Set `verso.blueprint.subNumberingPrefix first` together with
 `verso.blueprint.subNumberingCounter document` to recover chapter-only
 prefixes with document-order block counts.
 
+- `verso.blueprint.trust.expectedKernelIdentities`
+  - default: unset
+  - path to a JSON array of checker identities the site author pins from the
+    verifying workflow's own pins:
+    `[{"label": "nanoda", "repository": "https://github.com/ammkrn/nanoda_lib",
+    "source_commit": "<40 hex>", "executable_sha256": "<64 hex>"}]`
+    (`executable_sha256` optional). A checker identity a comparator run records is
+    treated as *authenticated* only when it agrees with a pin here — repository
+    normalized, `source_commit` exact, and the digest when one is pinned. Unset, or
+    unmatched, and the identity renders as an unauthenticated label and its verifier
+    currency reads `unknown`, because a status artifact's own account of which binary
+    ran is written by the party that produced it.
+
 - `verso.blueprint.overview.witnessViaProjectDecls`
   - default: `true`
   - lets `blueprint_overview` corroborate a milestone edge through the wider

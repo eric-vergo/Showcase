@@ -48,6 +48,7 @@ set_option verso.blueprint.trust.comparatorStatus "tests/fixtures/trust/comparat
 set_option verso.blueprint.trust.comparatorConfig "tests/fixtures/trust/comparator.json"
 set_option verso.blueprint.trust.challengeFile "tests/fixtures/trust/Challenge.lean"
 set_option verso.blueprint.trust.solutionFile "tests/fixtures/trust/Solution.lean"
+set_option verso.blueprint.trust.expectedKernelIdentities "tests/fixtures/trust/kernel-identities.json"
 
 -- The dashboard block is what caches the trust payload, so it is the whole document
 -- needed here.
@@ -83,8 +84,10 @@ def stopFor (inputs : Array Informal.TrustInputs.Tagged) : IO String := do
 
 /-! ## The capture records the files it was read from -/
 
--- Four option-named files, four records, each with the path the option named and a real
--- digest. Nothing before this round carried any of it.
+-- Five option-named files, five records, each with the path the option named and a real
+-- digest. Nothing before this round carried any of it. The pinned identities are in the
+-- ledger for the same reason the status artifact is: a verdict authenticated against a pin
+-- that has since moved is a verdict authenticated against nothing (CX-064).
 /-- info: true -/
 #guard_msgs(info, drop warning) in
 #eval show IO Bool from do
@@ -92,11 +95,12 @@ def stopFor (inputs : Array Informal.TrustInputs.Tagged) : IO String := do
   let has := fun (role path : String) =>
     inputs.any fun (topic, i) =>
       topic.isEmpty && i.role == role && i.path == path && i.sha256.length == 64
-  return inputs.size == 4 &&
+  return inputs.size == 5 &&
     has Informal.TrustInputs.roleStatus "tests/fixtures/trust/comparator-status.json" &&
     has Informal.TrustInputs.roleConfig "tests/fixtures/trust/comparator.json" &&
     has Informal.TrustInputs.roleChallenge "tests/fixtures/trust/Challenge.lean" &&
-    has Informal.TrustInputs.roleSolution "tests/fixtures/trust/Solution.lean"
+    has Informal.TrustInputs.roleSolution "tests/fixtures/trust/Solution.lean" &&
+    has Informal.TrustInputs.roleKernelIdentities "tests/fixtures/trust/kernel-identities.json"
 
 -- The recorded digests are of the bytes on disk, not of something else that happens to be
 -- 64 hex characters: recomputing them here reproduces them exactly.
@@ -138,7 +142,9 @@ def stopFor (inputs : Array Informal.TrustInputs.Tagged) : IO String := do
       (Informal.TrustInputs.roleChallenge,
         "tests/fixtures/trust/Challenge.lean", "Challenge source"),
       (Informal.TrustInputs.roleSolution,
-        "tests/fixtures/trust/Solution.lean", "Solution source")] do
+        "tests/fixtures/trust/Solution.lean", "Solution source"),
+      (Informal.TrustInputs.roleKernelIdentities,
+        "tests/fixtures/trust/kernel-identities.json", "pinned kernel identities")] do
     let findings ← Informal.TrustInputs.recheck (staleOn inputs role)
     let stop ← stopFor (staleOn inputs role)
     unless findings.size == 1 && findings[0]!.changed

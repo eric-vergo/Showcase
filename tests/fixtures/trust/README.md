@@ -22,6 +22,12 @@ CX-011 / CX-014 audit findings produced:
   order. The digest is the same one as `challenge_sha256`, so the refresh command below
   covers both.
 
+- **Pinned identities.** `kernel-identities.json` is the *consumer* half of the
+  identity check (CX-064): it pins the nanoda revision this fixture's workflow would
+  have built, and the status record's `nanoda_ref` is authenticated by agreeing with
+  it. Drop the pin and the same record renders as an unauthenticated label with
+  currency `unknown`, which is the degradation the option is documented to have.
+
 - **Run evidence.** It records `nanoda_ref` but *no* `nanoda_replay`, while
   `comparator.json` sets `enable_nanoda: true`. That is the legacy shape CX-011 is
   about: configuration says a future run will replay, the run record says nothing,
