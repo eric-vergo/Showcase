@@ -24,6 +24,9 @@ import VersoBlueprint.Macros
 import VersoBlueprint.Math
 import VersoBlueprint.Rust
 import VersoBlueprint.Environment
+import VersoBlueprint.Milestones.Data
+import VersoBlueprint.Milestones.Audit
+import VersoBlueprint.Milestones.Render
 import VersoBlueprint.DependencyAnalysis
 import VersoBlueprint.Attribute
 import VersoBlueprint.Cite
@@ -44,6 +47,7 @@ import VersoBlueprint.Commands.Bibliography
 import VersoBlueprint.Commands.Formalization
 import VersoBlueprint.Commands.TrustStrip
 import VersoBlueprint.Commands.TrustModel
+import VersoBlueprint.Commands.Overview
 import VersoBlueprint.AxiomAudit
 import VersoBlueprint.GraphGate
 import VersoBlueprint.TrustInputs
@@ -62,6 +66,7 @@ import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Informal.LeanCodePreview
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.Group
+import VersoBlueprint.Informal.Milestone
 import VersoBlueprint.Informal.Author
 import VersoBlueprint.Informal.Uses
 import VersoBlueprint.ExternalDeclRender

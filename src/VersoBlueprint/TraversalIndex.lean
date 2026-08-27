@@ -10,6 +10,7 @@ import VersoBlueprint.Informal.Block.Model
 import VersoBlueprint.Informal.GroupData
 import VersoBlueprint.Informal.LeanDeclPreviewKey
 import VersoBlueprint.Graph
+import VersoBlueprint.Milestones.Data
 import VersoBlueprint.PreviewCache
 import VersoBlueprint.Resolve
 import VersoBlueprint.Rust
@@ -544,6 +545,88 @@ def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState
 
 end SummaryPage
 
+namespace Milestones
+
+def spec : StoreSpec := {
+  name := Resolve.milestonesDomainName
+  kind := .runtimeCache
+  key := "milestone label"
+  value := "Milestones.SketchData: the milestone's title and its elaborated sketch blocks"
+  summary := "Traversal-cached sketch prose for `:::milestone`, read back by the proof-overview surface."
+}
+
+def domainName : Name := spec.name
+
+def data? (state : TraverseState) (label : Name) : Option _root_.Informal.Milestones.SketchData :=
+  objectData? state domainName label.toString
+
+def saveData (state : TraverseState) (label : Name) (data : Json) : TraverseState :=
+  saveObjectData state domainName label.toString data
+
+def domain? (state : TraverseState) : Option Verso.Multi.Domain :=
+  state.domains.get? domainName
+
+/-- Decode every stored milestone sketch, preserving per-entry decode errors. -/
+def entries (state : TraverseState) :
+    Array (Except DecodeError (StoredEntry _root_.Informal.Milestones.SketchData)) :=
+  decodeStoreEntries state domainName
+
+end Milestones
+
+namespace MilestoneAudit
+
+/-- Singleton key under which the proof-overview layer's witness audit is cached. -/
+def auditKey : String := "Audit"
+
+def spec : StoreSpec := {
+  name := Resolve.milestoneAuditDomainName
+  kind := .runtimeCache
+  key := "singleton milestone-audit key"
+  value := "Milestones.Audit: milestone / edge / witness-tier counts for this build"
+  summary := "Carries the proof-overview witness audit from `blueprint_overview` to the \"Trust model\" page, which reports the counts without rebuilding any graph."
+}
+
+def domainName : Name := spec.name
+
+def saveData (state : TraverseState) (audit : _root_.Informal.Milestones.Audit) : TraverseState :=
+  saveObjectData state domainName auditKey (toJson audit)
+
+/-- The cached milestone audit, if a `blueprint_overview` block saved one. -/
+def audit? (state : TraverseState) : Option _root_.Informal.Milestones.Audit :=
+  objectData? state domainName auditKey
+
+end MilestoneAudit
+
+namespace OverviewPage
+
+/--
+Singleton key under which the "Proof overview" page anchor is indexed.
+
+`Block.proofOverview`'s traversal saves the block's anchor id here (mirroring
+`TrustModelPage`) so the PM hub and the dashboard reading map can cross-link the
+overview without guessing its slug — and omit the link entirely when the document
+carries no overview.
+-/
+def pageKey : String := "proofOverview"
+
+def spec : StoreSpec := {
+  name := Resolve.overviewPageDomainName
+  kind := .semanticDomain
+  key := "singleton proof-overview key"
+  value := "proof-overview page/block anchor id"
+  summary := "Anchor index for the proof-overview surface (PM-hub and reading-map cross-links)."
+}
+
+def domainName : Name := spec.name
+
+def href? (state : TraverseState) : Option String :=
+  Resolve.resolveDomainHref? state domainName pageKey
+
+def saveId (state : TraverseState) (id : Verso.Multi.InternalId) : TraverseState :=
+  saveObjectId state domainName pageKey id
+
+end OverviewPage
+
 namespace CitationUsages
 
 def spec : StoreSpec := {
@@ -725,6 +808,9 @@ def allSpecs : Array StoreSpec := #[
   FormalizationPage.spec,
   TrustModelPage.spec,
   SummaryPage.spec,
+  Milestones.spec,
+  MilestoneAudit.spec,
+  OverviewPage.spec,
   CitationUsages.spec,
   Summary.spec,
   DeclRegistry.spec,

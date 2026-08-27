@@ -59,6 +59,14 @@ def curatedTestBlueprintMetas : Array CuratedTestBlueprintMeta := #[
     kind := "curated_doc"
   },
   {
+    slug := "proof-overview"
+    title := "Proof Overview"
+    category := "Graph"
+    summary := "Hand-authored milestones over the node graph: witnessed and author-asserted edges, laid-out overview diagram, and per-milestone cards."
+    tags := #["overview", "milestones", "graph", "trust"]
+    kind := "curated_doc"
+  },
+  {
     slug := "metadata-panel"
     title := "Blueprint Metadata Panel"
     category := "Metadata"

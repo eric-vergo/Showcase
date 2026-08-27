@@ -562,6 +562,16 @@ def dashboardReadingMap (state : TraverseState) : Output.Html :=
         {{<p class="bp_readingmap_col_hint">"No critical path in the current graph."</p>}}
       else
         {{ <ol class="bp_readingmap_spine">{{spine.map (fun l => {{<li>{{spineItem l}}</li>}})}}</ol> }}
+    -- A blueprint that carries a proof overview has a better first step than the
+    -- foundations: the shape of the argument. Omitted entirely when there is none.
+    let overviewHint : Output.Html :=
+      match Informal.TraversalIndex.OverviewPage.href? state with
+      | Option.some href =>
+        {{ <p class="bp_readingmap_intro">
+             "For the shape of the whole argument before its parts, start from the "
+             <a href={{href}}>"proof overview"</a> "."
+           </p> }}
+      | Option.none => .empty
     if foundationLabels.isEmpty && goalLabels.isEmpty && spine.isEmpty then .empty
     else {{
       <section class="bp_readingmap">
@@ -570,6 +580,7 @@ def dashboardReadingMap (state : TraverseState) : Output.Html :=
           "A guided reading path through the blueprint: start from the foundations, \
            follow the critical-path spine, and aim for the goals."
         </p>
+        {{overviewHint}}
         <div class="bp_readingmap_cols">
           <div>
             <h3 class="bp_readingmap_col_title">"Foundations"</h3>

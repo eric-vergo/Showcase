@@ -50,6 +50,19 @@ def bibliographyDomainName : Name := Name.mkSimple "Informal.Block.bpCitations"
 def formalizationDomainName : Name := Name.mkSimple "Informal.Block.formalization"
 def summaryPageDomainName : Name := Name.mkSimple "Informal.Block.summaryPage"
 def trustModelDomainName : Name := Name.mkSimple "Informal.Block.trustModel"
+/--
+Store for authored milestone sketches, keyed by milestone label.
+
+Deliberately *not* a semantic domain: a `:::milestone` renders nothing where it is
+written, so there is no anchor to publish, and publishing the sketch prose would
+put a proof sketch into `xref.json`. The overview surface reads it back at render
+time.
+-/
+def milestonesDomainName : Name := Name.mkSimple "Informal.Block.milestones"
+/-- Store for the proof-overview layer's witness audit (a singleton). -/
+def milestoneAuditDomainName : Name := Name.mkSimple "Informal.Block.milestoneAudit"
+/-- Anchor index for the standalone "Proof overview" page (a singleton). -/
+def overviewPageDomainName : Name := Name.mkSimple "Informal.Block.overviewPage"
 def citationPreviewDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.previews"
 def citationUsageDomainName : Name := Name.mkSimple "Informal.Inline.bpCite.usages"
 /--

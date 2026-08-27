@@ -1139,6 +1139,45 @@ That mix is intentional, but the roles should stay explicit:
 Callers should prefer its typed APIs over reaching into raw domain names and
 ad hoc JSON payloads directly.
 
+### The Proof-Overview Layer
+
+The milestone layer adds three traversal stores, and which store each one is
+carries the whole argument:
+
+- `TraversalIndex.Milestones` (`Informal.Block.milestones`, a **runtime cache**):
+  one `Milestones.SketchData` per milestone label, carrying the elaborated sketch
+  blocks. A `:::milestone` renders nothing where it is written, so its prose has to
+  reach the overview surface some other way; a semantic domain would be the wrong
+  way, because it would publish a proof sketch into `xref.json`.
+- `TraversalIndex.MilestoneAudit` (`Informal.Block.milestoneAudit`, a **runtime
+  cache**, singleton): the witness counts, carried from the `blueprint_overview`
+  block to the "Trust model" page. Deliberately not a `TrustData` field: the trust
+  payload is assembled by `blueprint_dashboard`, and putting the audit there would
+  make the dashboard rebuild the declaration graph a second time to fill a field
+  one page reads.
+- `TraversalIndex.OverviewPage` (`Informal.Block.overviewPage`, a **semantic
+  domain**, singleton): the overview's anchor id, so the project-management hub and
+  the dashboard reading map link it by resolved anchor rather than by a guessed
+  slug — and omit the link when the document has no overview.
+
+The witness check runs at `{blueprint_overview}` **elaboration**, not in
+`Informal.GraphGate`. Only during elaboration does the Lean environment exist, and
+the second witness tier is `Commands.buildProjectDeclGraph`, which is built on
+demand and deliberately never enters the traversal-cached master graph. Elaborating
+the check there also means a phantom member fails `lake build` early, with a message
+that names the milestone, and it keeps the renderer pure: every verdict is baked
+into the block payload, so what the page shows and what the build checked cannot
+drift.
+
+The policy is `DependencyAnalysis`'s edge-audit policy. Structural defects — a
+member that is not a node, a `uses` that is not a milestone, a self-edge, a pinned
+row that contradicts a dependency — are `logErrorAt` plus recovery, so one build
+reports all of them and a `#guard_msgs` test can capture the message. An
+uncorroborated edge is not a defect: a proof sketch may record a mathematical
+dependency the Lean proof reaches by another route, so it warns, draws dashed,
+badges itself, and is counted. A member two milestones *share* is never a witness;
+overlapping membership says the waypoints touch, not that one rests on the other.
+
 ### Process-Local Runtime Cache
 
 `RuntimeCache` owns process-local facts that are expensive enough to avoid

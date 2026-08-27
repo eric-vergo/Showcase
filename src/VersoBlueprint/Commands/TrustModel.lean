@@ -349,7 +349,8 @@ private def tierLegendRow (glyph label explanation : String) : Output.Html :=
     </tr>
   }}
 
-private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool) :
+private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool)
+    (milestoneAudit? : Option Informal.Milestones.Audit) :
     Output.Html :=
   -- CX-033: the edge-provenance subsection tells the truth for this build's graph
   -- mode. With autoDeps (`includeAllDecls`) the rendered edges are machine-derived
@@ -391,6 +392,37 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
                  appear in the code (informal-level edges — a mathematical dependency the \
                  Lean proof reaches by another route)."}}
           </p> }}
+  -- The proof-overview layer belongs in this section and nowhere else. Its witness
+  -- check establishes a fact about the declaration graph, which is emphatically not a
+  -- fact about the mathematics; nothing about it belongs beside the kernel and the
+  -- comparator in the machine-checked table. Rendered only where a document actually
+  -- declares milestones.
+  let overviewSubsection : Output.Html :=
+    match milestoneAudit? with
+    | Option.none => .empty
+    | Option.some a =>
+      if a.milestones == 0 then .empty
+      else
+        let assertedClause : Output.Html :=
+          if a.asserted == 0 then .empty
+          else
+            prose
+              s!"{a.asserted} of those edges have no such path. They are drawn dashed on the                  overview and badged there as author-asserted, and they rest on the author's                  reading of the proof alone."
+        let projectClause : Output.Html :=
+          if !a.projectDeclsConsulted || a.witnessedProjectDecls == 0 then .empty
+          else
+            prose
+              s!"A further {a.witnessedProjectDecls} were corroborated only through project                  declarations this blueprint does not present as nodes. That is a weaker                  statement than a path between presented nodes, and the overview labels it                  separately."
+        .seq #[
+          {{ <h3 class="bp_trustmodel_subtitle">"The proof-overview layer"</h3> }},
+          prose
+            "The proof overview groups this blueprint's nodes into hand-authored milestones              and draws edges between them. Those edges are the author's account of the              argument's shape. The build corroborates an edge where it can — an edge counts              as witnessed when some node of the dependent milestone transitively depends on              some node of the milestone it uses — but a witnessed edge is a fact about the              declaration graph, not about the mathematics: it says a dependency path exists,              not that the reason the author gives for the dependency is the right one.",
+          {{ <p class="bp_trust_note">
+               {{.text true
+                 s!"This build laid out {a.milestones} milestones covering {a.coveredNodes} of                     {a.graphNodes} nodes, with {a.edges} milestone edge(s):                     {a.witnessedPresented} witnessed in the presented graph,                     {a.witnessedProjectDecls} witnessed only through project declarations,                     {a.asserted} author-asserted."}}
+             </p> }},
+          assertedClause,
+          projectClause]
   -- The closure surface does not move the unmovable step; it measures it. Said here, in
   -- the section that admits the step exists, and only when a closure was actually
   -- computed — a site without the surface reads exactly as it did before.
@@ -473,6 +505,7 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
     {{ <h3 class="bp_trustmodel_subtitle">{{.text true edgeSubtitle}}</h3> }},
     edgeProse,
     edgeNote,
+    overviewSubsection,
     {{ <h3 class="bp_trustmodel_subtitle">"How the Lean code on this page was rendered"</h3> }},
     prose
       "Code blocks are produced by different pipelines, and they do not carry the same \
@@ -773,6 +806,10 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
   -- sees is machine-derived, so the provenance wording must not call it
   -- "author-asserted".
   let autoDepsActive := (Informal.TraversalIndex.DeclRegistry.raw? st).isSome
+  -- Read from the traversal store rather than from `TrustData`: putting it on the trust
+  -- payload would make `blueprint_dashboard` rebuild the declaration graph a second time
+  -- just to fill a field this page is the only reader of.
+  let milestoneAudit? := Informal.TraversalIndex.MilestoneAudit.audit? st
   {{
     <div class="bp_trustmodel">
       <p class="bp_trustmodel_lead">
@@ -781,7 +818,7 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
          This is the separation."
       </p>
       {{machineCheckedSection data trust? checks autoDepsActive}}
-      {{notMachineCheckedSection trust? autoDepsActive}}
+      {{notMachineCheckedSection trust? autoDepsActive milestoneAudit?}}
       {{trustingSection data trust?}}
       {{independenceSection}}
       {{currencySection trust?}}

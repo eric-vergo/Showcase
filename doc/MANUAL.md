@@ -20,6 +20,7 @@ If you are starting a first project, read
 - [Attached Rust Code](#attached-rust-code)
 - [Math, TeX, and external markup](#math-tex-and-external-markup)
 - [Groups, Authors, and Metadata](#groups-authors-and-metadata)
+- [Proof Overview (Milestones)](#proof-overview-milestones)
 - [Rendering Surface](#rendering-surface)
 - [Metadata Export and Preview Data](#metadata-export-and-preview-data)
 - [Reusing Blueprint Nodes and Previews](#reusing-blueprint-nodes-and-previews)
@@ -591,6 +592,65 @@ Statement-like directives can carry:
 These fields are primarily used by rendered overview pages and project triage
 views.
 
+## Proof Overview (Milestones)
+
+A large blueprint has a shape its node graph does not show: a dozen waypoints the
+argument passes through, each made of many nodes. `:::milestone` records one such
+waypoint, and `{blueprint_overview}` renders them all as a compact diagram plus
+one card per milestone.
+
+```md
+:::milestone "ms:period-family" (title := "The period family") (paper := "§3")
+    (paper_url := "https://example.org/paper.pdf") (row := 2)
+    (uses := "ms:lattice, ms:uniformization")
+    (members := "def:period-point, thm:exists-period-functions")
+Three to six sentences of informal proof sketch, in ordinary Verso prose.
+:::
+```
+
+Arguments:
+
+- positional label, e.g. `"ms:period-family"`
+- `(title := "…")` — the display title (the label is used when it is omitted)
+- `(paper := "§3")` — a reference into the write-up. It is `paper`, not `section`,
+  because `section` is a Lean keyword.
+- `(paper_url := "https://…")` — makes the reference a link
+- `(row := n)` — a layout override for the overview diagram, and nothing else. The
+  default row is the milestone's longest-path depth over milestone edges. A pin
+  that would place a milestone at or above one of its dependencies is a build
+  error, so a hand-laid layout stays checkable.
+- `(uses := "ms:a, ms:b")` — the milestones this one rests on
+- `(members := "def:x, thm:y")` — the blueprint nodes this milestone is made of
+
+**A milestone renders nothing where it is written.** It may be declared in any
+document module, it is not tied to a chapter or to a position within one, and no
+marker is left behind. Its sketch appears only on the overview surface, which
+assembles every milestone in declaration order. Chapters are unaffected.
+
+### What the build checks
+
+A member label that names no blueprint node, a `uses` that names no milestone, a
+self-edge, and a pinned row that contradicts a dependency are **build errors**.
+Each is reported and then recovered from, so one build reports every defect.
+
+A milestone edge is a claim about the mathematics, and the build corroborates it
+where it can. An edge counts as **witnessed** when some node of the dependent
+milestone transitively depends on some node of the milestone it uses; a member the
+two milestones merely *share* is not a witness. Two tiers are tried:
+
+1. the presented blueprint graph;
+2. failing that, and only when `verso.blueprint.graph.includeAllDecls` and
+   `verso.blueprint.overview.witnessViaProjectDecls` are both on, the wider
+   project-declaration graph — a weaker statement, labelled separately.
+
+An edge nothing corroborates is **author-asserted**: it warns once, draws dashed,
+carries a badge on its card, and is counted on the "Trust model" page. It is never
+rejected — a proof sketch is allowed to record a dependency the Lean terms reach
+by another route.
+
+Milestones declared without a `{blueprint_overview}` anywhere in the document are
+not validated at all: no surface, no check.
+
 ## Rendering Surface
 
 ### Rendered statement blocks
@@ -720,6 +780,24 @@ Warning markers are reserved for structural or resolution issues such as:
 - unresolved Blueprint references
 - missing external Lean declarations
 - Lean-owned entries that have code but no informal statement body
+
+### Proof overview
+
+`blueprint_overview` renders the milestone layer described in
+[Proof Overview (Milestones)](#proof-overview-milestones).
+
+```lean
+{blueprint_overview}                     -- its own page, titled "Proof overview"
+{blueprint_overview (page := false)}     -- a block in the current part
+{blueprint_overview (title := "…")}      -- a different page/section title
+```
+
+The page form splits off a numberless part, exactly like `blueprint_summary` and
+`blueprint_trust_model`; the block form renders into the current part, which is
+what a document that wants the overview inside an introductory chapter uses. The
+diagram is server-rendered SVG and the surface ships no JavaScript at all. A
+document with no `:::milestone` declarations emits nothing: no page, no
+project-management hub link, no trust-model paragraph.
 
 ### Progress summary
 
@@ -1083,6 +1161,17 @@ Current options:
 Set `verso.blueprint.subNumberingPrefix first` together with
 `verso.blueprint.subNumberingCounter document` to recover chapter-only
 prefixes with document-order block counts.
+
+- `verso.blueprint.overview.witnessViaProjectDecls`
+  - default: `true`
+  - lets `blueprint_overview` corroborate a milestone edge through the wider
+    project-declaration graph when the presented blueprint graph has no dependency
+    path for it. Requires `verso.blueprint.graph.includeAllDecls`; the extra graph
+    is built only when at least one edge failed the presented-graph check.
+- `verso.blueprint.overview.maxMembersShown`
+  - default: `24`
+  - how many member nodes a milestone card lists before folding the rest into a
+    `<details>` (`0` lists every member)
 
 - `verso.blueprint.foldProofs`
   - default: `true`

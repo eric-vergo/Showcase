@@ -8,6 +8,7 @@ import Lean.CoreM
 import Lean.EnvExtension
 import VersoManual
 import VersoBlueprint.Data
+import VersoBlueprint.Milestones.Data
 
 namespace Informal.Environment
 
@@ -40,6 +41,7 @@ inductive ImportedConflictKind where
   | node
   | group
   | author
+  | milestone
 deriving Inhabited, Repr, DecidableEq
 
 structure ImportedConflict where
@@ -62,6 +64,14 @@ structure State where
   localGroups : NameMap String := {}
   authors : NameMap AuthorInfo := {}
   localAuthors : NameMap AuthorInfo := {}
+  /-- Proof-overview milestones, in declaration order across the whole import
+  closure. An `Array` rather than a `NameMap` because that order is load-bearing:
+  the overview lays each row out in author order, so a hand-laid narrative reads
+  the way it was written. -/
+  milestones : Array Milestones.Milestone := #[]
+  /-- The milestones declared by *this* module, in declaration order (the export
+  set). -/
+  localMilestones : Array Milestones.Milestone := #[]
   leanNameLabels : NameMap (Array Label) := {}
   importedConflicts : Array ImportedConflict := #[]
   importedConflictsReported : Bool := false
@@ -72,12 +82,14 @@ private def ImportedConflictKind.rank : ImportedConflictKind → Nat
   | .node => 0
   | .group => 1
   | .author => 2
+  | .milestone => 3
 
 def ImportedConflict.message (conflict : ImportedConflict) : String :=
   match conflict.kind with
   | .node => s!"Duplicate imported blueprint node label '{conflict.label}'"
   | .group => s!"Duplicate imported blueprint group label '{conflict.label}'"
   | .author => s!"Duplicate imported blueprint author id '{conflict.label}'"
+  | .milestone => s!"Duplicate imported blueprint milestone label '{conflict.label}'"
 
 private def pushImportedConflict (conflicts : Array ImportedConflict)
     (kind : ImportedConflictKind) (label : Name) : Array ImportedConflict :=
@@ -94,6 +106,7 @@ inductive Entry where
   | node (label : Name) (node : Node)
   | group (label : Name) (header : String)
   | author (label : Name) (info : AuthorInfo)
+  | milestone (label : Name) (info : Milestones.Milestone)
 deriving Inhabited, Repr
 
 private def pushLabelUnique (labels : Array Label) (label : Label) : Array Label :=
@@ -163,34 +176,56 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
           authors := state.authors.insert label info
           localAuthors := state.localAuthors.insert label info
         }
+      | .milestone _label info =>
+        { state with
+          milestones := state.milestones.push info
+          localMilestones := state.localMilestones.push info
+        }
     addImportedFn entries := do
-      let (data, groups, authors, leanNameLabels, importedConflicts) := entries.foldl
+      let (data, groups, authors, milestoneList, leanNameLabels, importedConflicts) := entries.foldl
           (init := (
             ({} : NameMap Node),
             ({} : NameMap String),
             ({} : NameMap AuthorInfo),
+            (#[] : Array Milestones.Milestone),
             ({} : NameMap (Array Label)),
             (#[] : Array ImportedConflict)
           )) fun acc entry =>
-        entry.foldl (init := acc) fun (dataAcc, groupAcc, authorAcc, leanNameAcc, conflictsAcc) item =>
+        entry.foldl (init := acc)
+            fun (dataAcc, groupAcc, authorAcc, milestoneAcc, leanNameAcc, conflictsAcc) item =>
           match item with
           | .node label node =>
             if dataAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .node label)
+              (dataAcc, groupAcc, authorAcc, milestoneAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .node label)
             else
               let leanNameAcc := addNodeLeanDeclLabels leanNameAcc label node
-              (dataAcc.insert label node, groupAcc, authorAcc, leanNameAcc, conflictsAcc)
+              (dataAcc.insert label node, groupAcc, authorAcc, milestoneAcc, leanNameAcc, conflictsAcc)
           | .group label header =>
             if groupAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .group label)
+              (dataAcc, groupAcc, authorAcc, milestoneAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .group label)
             else
-              (dataAcc, groupAcc.insert label header, authorAcc, leanNameAcc, conflictsAcc)
+              (dataAcc, groupAcc.insert label header, authorAcc, milestoneAcc, leanNameAcc, conflictsAcc)
           | .author label info =>
             if authorAcc.contains label then
-              (dataAcc, groupAcc, authorAcc, leanNameAcc, pushImportedConflict conflictsAcc .author label)
+              (dataAcc, groupAcc, authorAcc, milestoneAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .author label)
             else
-              (dataAcc, groupAcc, authorAcc.insert label info, leanNameAcc, conflictsAcc)
-      pure { data, groups, authors, leanNameLabels, importedConflicts := sortImportedConflicts importedConflicts }
+              (dataAcc, groupAcc, authorAcc.insert label info, milestoneAcc, leanNameAcc, conflictsAcc)
+          | .milestone label info =>
+            if milestoneAcc.any (fun existing => existing.label == label) then
+              (dataAcc, groupAcc, authorAcc, milestoneAcc, leanNameAcc,
+                pushImportedConflict conflictsAcc .milestone label)
+            else
+              (dataAcc, groupAcc, authorAcc, milestoneAcc.push info, leanNameAcc, conflictsAcc)
+      -- Declaration order is a property of the whole import closure, not of any one
+      -- module, so it is renumbered here: each module exported its own milestones
+      -- numbered from zero, and the overview needs one total order.
+      let milestones := milestoneList.mapIdx fun i m => { m with declOrder := i }
+      pure {
+        data, groups, authors, milestones, leanNameLabels,
+        importedConflicts := sortImportedConflicts importedConflicts }
     -- Prefer typed preview blocks and strip redundant term syntax before export.
     exportEntriesFnEx env := fun state =>
       let nodeEntries := state.localData.toArray.map fun (name, node) =>
@@ -203,7 +238,9 @@ initialize informalExt : PersistentEnvExtension Entry Entry State ←
         Entry.group label header
       let authorEntries := state.localAuthors.toArray.map fun (label, info) =>
         Entry.author label info
-      OLeanEntries.uniform (nodeEntries ++ groupEntries ++ authorEntries)
+      let milestoneEntries := state.localMilestones.map fun m =>
+        Entry.milestone m.label m
+      OLeanEntries.uniform (nodeEntries ++ groupEntries ++ authorEntries ++ milestoneEntries)
   }
 
 section EnvOps
@@ -412,5 +449,36 @@ def registerAuthor (label : AuthorId) (info : AuthorInfo) : m Unit := do
       else
         logError m!"Author {label} has conflicting metadata definitions"
       return state
+
+/-- Every milestone visible here, in declaration order. -/
+def milestones : m (Array Milestones.Milestone) := do
+  return (informalExt.getState (← getEnv)).milestones
+
+/--
+Register one `:::milestone`, modelled on `registerGroup`.
+
+Returns the small block payload on success and `none` when the directive was
+rejected, so the expander can fall back to a plain content block. Two rejections:
+a milestone nested inside an open node directive (a milestone is a document-level
+declaration, not part of a node), and a duplicate label.
+-/
+def registerMilestone (stx : Syntax) (milestone : Milestones.Milestone) :
+    m (Option Milestones.MilestoneBlockData) := do
+  reportImportedConflicts
+  let state := informalExt.getState (← getEnv)
+  if !state.stack.isEmpty then
+    logErrorAt stx m!"Cannot declare a milestone inside a blueprint node directive"
+    return none
+  if state.milestones.any (fun existing => existing.label == milestone.label) then
+    logErrorAt stx
+      m!"Milestone {Milestones.displayLabel milestone.label} is already declared"
+    return none
+  let declOrder := state.milestones.size
+  let milestone := { milestone with declOrder }
+  modify fun state =>
+    { state with
+      milestones := state.milestones.push milestone
+      localMilestones := state.localMilestones.push milestone }
+  return some { label := milestone.label, title := milestone.title, declOrder }
 
 end EnvOps

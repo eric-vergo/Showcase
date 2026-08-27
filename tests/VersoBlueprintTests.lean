@@ -1,6 +1,7 @@
 import VersoBlueprintTests.Blueprint
 import VersoBlueprintTests.BlueprintFormalization
 import VersoBlueprintTests.BlueprintMainWrapper
+import VersoBlueprintTests.BlueprintProofOverview
 import VersoBlueprintTests.ExternalDeclRender
 import VersoBlueprintTests.RuntimeCache
 import VersoBlueprintTests.SourceLinkRevision

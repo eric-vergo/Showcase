@@ -302,7 +302,9 @@ These are useful ideas, but they should not displace the active workstreams
 above until the semantics are clearer.
 
 1. split `blueprint_summary` into a user-facing overview/work-queue page and a
-   maintainer-oriented audit/dashboard page
+   maintainer-oriented audit/dashboard page. Note that "Proof overview" is taken:
+   `blueprint_overview` owns that title and the `Proof-overview/` route, so the
+   split needs other names for its two pages.
 2. keep the default summary focused on progress, blockers, and next ready work;
    move owner/tag rollups, dependency insights, and metadata audit to the
    maintainer view

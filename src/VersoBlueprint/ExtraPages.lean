@@ -948,6 +948,13 @@ Comparator links are omitted when the document carries no such page (their trave
 anchors / trust payload resolve to `none`), so an unconfigured consumer degrades
 gracefully rather than dead-linking. -/
 private def pmHubLinks (state : TraverseState) : Output.Html :=
+  -- The proof overview leads: it is the one page that says what the argument *is*
+  -- before the reader meets any of its parts. Omitted when the document declares no
+  -- milestones, like every other conditional link here.
+  let overviewLink : Output.Html :=
+    match Informal.TraversalIndex.OverviewPage.href? state with
+    | some href => {{ <a href={{href}}>"Proof overview"</a> }}
+    | none => .empty
   let summaryLink : Output.Html :=
     match Informal.TraversalIndex.SummaryPage.href? state with
     | some href => {{ <a href={{href}}>"Showcase summary"</a> }}
@@ -966,6 +973,7 @@ private def pmHubLinks (state : TraverseState) : Output.Html :=
     else .empty
   {{
     <nav class="bp_pm_links" "aria-label"="Showcase sections">
+      {{overviewLink}}
       <a href={{Informal.NodeRoute.defsHref}}>"Definitions"</a>
       <a href={{Informal.NodeRoute.theoremsHref}}>"Theorems"</a>
       <a href={{Informal.NodeRoute.worklistHref}}>"Worklist"</a>

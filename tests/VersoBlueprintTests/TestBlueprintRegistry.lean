@@ -12,6 +12,7 @@ import VersoBlueprintTests.BlueprintLinkHover
 import VersoBlueprintTests.BlueprintMetadataPanel
 import VersoBlueprintTests.BlueprintPreviewSource.Provider
 import VersoBlueprintTests.BlueprintPreviewWiring.Shared
+import VersoBlueprintTests.BlueprintProofOverview
 import VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase
 import VersoBlueprintTests.BlueprintRustCode
 import VersoBlueprintTests.BlueprintSummaryLinks.Shared
@@ -40,6 +41,7 @@ private def curatedTestBlueprintDoc? (slug : String) : Option (Doc.VersoDoc Genr
   | "imported-preview-source" => some Verso.VersoBlueprintTests.BlueprintPreviewSource.Provider.importedPreviewSourceDoc
   | "lean-auto-deps" => some Verso.VersoBlueprintTests.BlueprintAutoDeps.Preview.autoDepsPreviewDoc
   | "blueprint-grafts" => some Verso.VersoBlueprintTests.BlueprintGraft.manualSideBySideGraftDoc
+  | "proof-overview" => some Verso.VersoBlueprintTests.BlueprintProofOverview.proofOverviewDoc
   | "state-showcase" => some Verso.VersoBlueprintTests.BlueprintPreviewWiring.StateShowcase.stateShowcaseDoc
   | "external-summary-links" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.externalSummaryLinksDoc
   | "summary-blockers" => some Verso.VersoBlueprintTests.BlueprintSummaryLinks.Shared.summaryBlockersDoc
