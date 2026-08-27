@@ -799,6 +799,24 @@ diagram is server-rendered SVG and the surface ships no JavaScript at all. A
 document with no `:::milestone` declarations emits nothing: no page, no
 project-management hub link, no trust-model paragraph.
 
+### Comparator status vocabulary
+
+A site that configures `verso.blueprint.trust.comparatorStatus` renders a verdict
+badge, a `comparator/` page, and a row on the "Trust model" page. The artifact's
+`status` field picks the tier, and the tiers are not degrees of the same claim —
+they are different claims, so only one of them is a success:
+
+| `status` | Rendered as | What it means |
+|---|---|---|
+| `verified` | success — "comparator: CI-verified ⟨date⟩" | This project's CI ran the comparator and recorded the result. The only tier that counts towards a success aggregate. |
+| `verified-local` | accent — "comparator: verified locally ⟨date⟩ — not CI" | The checkers really ran, on the presenter's own machine: no sandbox isolated the run and no run record links it. Counted separately from the CI count, never inside it. Reads `local_host` and `local_toolchain` and says both. |
+| `reported-upstream` | neutral — "comparator: reported upstream ⟨date⟩" | Somebody else's record, transcribed. Dated by `reported_at`, never by `verified_at`. |
+| `configured` | warn — "comparator: configured — not yet run" | The configuration exists; nothing has run. |
+| anything else | warn — the raw status | An unrecognised or failing record, shown as it is. |
+
+No tier is inferred from the configuration: an artifact that does not record a
+run says nothing about one, and the pages say so rather than filling the gap.
+
 ### Progress summary
 
 `blueprint_summary` renders a summary page for the current Blueprint document.

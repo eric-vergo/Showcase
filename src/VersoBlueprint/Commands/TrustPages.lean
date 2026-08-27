@@ -165,6 +165,13 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
       trustBadgeHtml label "success"
         (Option.some "Recorded by the project's CI run; this page reads that run's artifact back, it does not re-run the check.")
     else if cmp.status == "configured" then trustBadgeHtml "Configured — not yet run" "warn"
+    else if cmp.isLocalVerdict then
+      -- The checkers ran, so not the warning tier; nowhere near CI, so not the success
+      -- tier. The date is this project's own `verified_at` and means the run happened.
+      let label :=
+        if cmp.verifiedAt.isEmpty then "Verified locally — not CI"
+        else s!"Verified locally {isoDateOnly cmp.verifiedAt} — not CI"
+      trustBadgeHtml label "accent" (Option.some cmp.localVerdictNote)
     else if cmp.isReportedUpstream then
       -- Neutral tier and the upstream's own date, if it recorded one. Nothing here was
       -- verified by this site's CI, so nothing here may borrow `verified_at`'s meaning.
@@ -179,7 +186,10 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     else {{ <time class="bp_trust_verdict_date" datetime={{dateSource}}>{{.text true (isoDateOnly dateSource)}}</time> }}
   let ci : Output.Html :=
     match ciUrl? with
-    | some u => trustOutLink u "CI verification record"
+    -- A locally-run verdict has no run record, and the site-wide CI URL is not one:
+    -- offering it here would let a reader follow a link that did not produce this
+    -- verdict and conclude that something did.
+    | some u => if cmp.isLocalVerdict then .empty else trustOutLink u "CI verification record"
     | none => .empty
   -- Scope, stated where the verdict is: the comparator certifies the named
   -- theorems, not the development.
@@ -198,6 +208,18 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
                upstream. Nothing on this site re-checked them."
           | none =>
             s!"Names {k} {noun} as verified upstream. Nothing on this site re-checked them."
+        else if cmp.isLocalVerdict then
+          -- Something was certified; the sentence has to say by whom, because the party
+          -- that ran the checkers is the party publishing this page.
+          match theoremLikeTotal with
+          | some n =>
+            s!"A run on the presenter's own machine certified {k} {noun} of the {n} \
+               theorem-like results presented here. No CI run re-checked it, and everything \
+               else on this site is built and axiom-audited but not comparator-certified."
+          | none =>
+            s!"A run on the presenter's own machine certified {k} named {noun}. No CI run \
+               re-checked it, and everything else on this site is built and axiom-audited \
+               but not comparator-certified."
         else
           match theoremLikeTotal with
           | some n =>
@@ -207,6 +229,11 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
             s!"Certifies {k} named {noun}. Everything else on this site is built and \
                axiom-audited, but not comparator-certified."
       {{ <p class="bp_trust_verdict_scope">{{.text true text}}</p> }}
+  let localNote : Output.Html :=
+    if !cmp.isLocalVerdict then .empty
+    else {{ <p class="bp_trust_note">{{.text true cmp.localVerdictNote}}
+              " The kernels really ran; what is absent is the provenance a CI record carries — \
+               an isolated environment, and a run anyone can open."</p> }}
   let reportedNote : Output.Html :=
     if !cmp.isReportedUpstream then .empty
     else {{ <p class="bp_trust_note">{{.text true cmp.reportedUpstreamNote}}
@@ -252,6 +279,7 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     <section class="bp_trust_verdict">
       <div class="bp_trust_verdict_row">{{.seq #[pill, date, ci]}}</div>
       {{scope}}
+      {{localNote}}
       {{reportedNote}}
       {{metaHtml}}
       {{currencyNote cmp}}

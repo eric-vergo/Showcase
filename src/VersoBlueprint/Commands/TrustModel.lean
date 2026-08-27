@@ -280,17 +280,28 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
       let m := comparators.length
       let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
       let verifiedCount := (comparators.filter (·.comparator.status == "verified")).length
+      -- Counted beside the CI count, never inside it: a locally-run verdict is machine
+      -- evidence produced by the party publishing the page.
+      let localCount := (comparators.filter (·.comparator.isLocalVerdict)).length
       let verdict :=
         if verifiedCount == m then
           trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success"
+        else if verifiedCount == 0 && localCount == m then
+          trustBadgeHtml s!"{m} locally verified" "accent"
         else trustBadgeHtml s!"{verifiedCount}/{m} configs" "warn"
+      let localClause :=
+        if localCount == 0 then ""
+        else
+          s!" {localCount} of those {if localCount == 1 then "config was" else "configs were"} \
+             verified locally rather than in CI: the checkers ran, but on the presenter's own \
+             machine, with no sandbox and no run record to follow."
       checkRow "Independent statement comparator" verdict
-        s!"A CI run reported that each solution proves exactly its named challenge \
+        (s!"A CI run reported that each solution proves exactly its named challenge \
            statement(s), across {m} comparator {if m == 1 then "config" else "configs"} \
            ({k} certified {if k == 1 then "theorem" else "theorems"} in total). This page reads \
            those runs' artifacts back; it does not re-run the checks. Scope is the named \
            theorems only — everything else here is built and audited but not \
-           comparator-certified."
+           comparator-certified." ++ localClause)
     else match cmp? with
     | Option.none =>
       checkRow "Independent statement comparator" notCheckedBadge
@@ -301,16 +312,26 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
       let verdict :=
         if cmp.status == "verified" then
           trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success"
+        else if cmp.isLocalVerdict then
+          trustBadgeHtml
+            (if k == 1 then "1 theorem, locally" else s!"{k} theorems, locally") "accent"
         else trustBadgeHtml cmp.status "warn"
       let toolNote :=
         if !cmp.toolSha.isEmpty then s!" using comparator {cmp.toolSha}"
         else if !cmp.toolRef.isEmpty then s!" using comparator {cmp.toolRef} (a mutable tag)"
         else ""
-      checkRow "Independent statement comparator" verdict
-        s!"A CI run{toolNote} reported that the solution proves exactly the named challenge \
-           statement(s). This page reads that run's artifact back; it does not re-run the \
-           check. Scope is the named theorems only — everything else here is built and \
-           audited but not comparator-certified."
+      let detail :=
+        if cmp.isLocalVerdict then
+          s!"A run{toolNote} on the presenter's own machine reported that the solution proves \
+             exactly the named challenge statement(s). The checkers ran; CI did not. \
+             {cmp.localVerdictNote} Scope is the named theorems only — everything else here \
+             is built and audited but not comparator-certified."
+        else
+          s!"A CI run{toolNote} reported that the solution proves exactly the named challenge \
+             statement(s). This page reads that run's artifact back; it does not re-run the \
+             check. Scope is the named theorems only — everything else here is built and \
+             audited but not comparator-certified."
+      checkRow "Independent statement comparator" verdict detail
   -- Math lint.
   let lintRow :=
     if data.mathLintEnabled then

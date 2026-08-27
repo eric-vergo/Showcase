@@ -529,6 +529,59 @@ private def upstreamComparator : TrustComparator :=
    hasSubstr strip "reported verified upstream: 1 theorem of 9",
    hasSubstr badge "1/2 configs verified" && hasSubstr badge "badge_warn")
 
+/-! ## A local run is machine evidence; it is not CI -/
+
+-- The presenter ran the comparator on their own machine. The kernels really ran, so
+-- this is not a transcription — but the party that ran them is the party publishing
+-- the page, under no sandbox, with no run record anyone can open. Its own tier.
+private def localComparator : TrustComparator :=
+  { fixtureComparator with
+    status := "verified-local"
+    localHost := "a maintainer workstation"
+    localToolchain := "leanprover/lean4:v4.33.0" }
+
+-- The page wears the accent pill, names the machine and the toolchain, says what is
+-- missing, and never offers the site's CI link as this verdict's record.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml localComparator
+  hasSubstr html "Verified locally 2026-08-04 — not CI" &&
+  hasSubstr html "bp_summary_badge_accent" &&
+  hasSubstr html "a maintainer workstation" &&
+  hasSubstr html "leanprover/lean4:v4.33.0" &&
+  hasSubstr html "no sandbox isolated the run" &&
+  !hasSubstr html "CI verification record" &&
+  !hasSubstr html "CI-verified" &&
+  !hasSubstr html "bp_summary_badge_success"
+
+-- On the strip: accent, a scope line that says where the run happened, and no
+-- contribution to the success aggregate.
+/-- info: (true, true, true) -/
+#guard_msgs in
+#eval
+  let strip := (trustStripHtml { comparator := some localComparator }
+    Option.none Option.none Option.none (some 9)).asString
+  let badge := (trustAggregateComparatorBadge
+    [{ name := "A", comparator := fixtureComparator },
+     { name := "B", comparator := localComparator }]).asString
+  (hasSubstr strip "comparator: verified locally 2026-08-04 — not CI" &&
+     !hasSubstr strip "badge_success",
+   hasSubstr strip "verified locally, not in CI: 1 theorem of 9",
+   hasSubstr badge "1/2 configs verified (1 locally)" && hasSubstr badge "badge_warn")
+
+-- The CI tier is untouched: a `verified` record renders exactly what it rendered
+-- before this tier existed.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let html := comparatorHtml fixtureComparator
+  hasSubstr html "CI-verified 2026-08-04" &&
+  hasSubstr html "bp_summary_badge_success" &&
+  hasSubstr html "CI verification record" &&
+  !hasSubstr html "verified locally" &&
+  !hasSubstr html "not CI"
+
 /-! ## Multi-config trust surface: N topics render N panels plus an aggregate -/
 
 private def mcTopic (name : String) (thms : List String) : ComparatorTopic :=

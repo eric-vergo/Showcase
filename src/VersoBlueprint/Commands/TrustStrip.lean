@@ -600,6 +600,13 @@ structure TrustComparator where
   in the `reported-upstream` label and tooltip. Empty ⇒ the copy says "the subject
   repository". -/
   reportedSource : String := ""
+  /-- The machine a `verified-local` run happened on (the status artifact's
+  `local_host`). Empty ⇒ the copy says "the presenter's own machine". -/
+  localHost : String := ""
+  /-- The Lean toolchain a `verified-local` run used (the status artifact's
+  `local_toolchain`). Empty ⇒ the copy names no toolchain rather than guessing this
+  build's. -/
+  localToolchain : String := ""
   /-- Chain files beyond the primary Challenge, in elaboration order (a topic manifest's
   `challenge_deps`). Reserved for the statement-closure surface. -/
   challengeDeps : Array String := #[]
@@ -1111,6 +1118,11 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
     -- made; it never stands in for `verified_at`.
     reportedAt := (j.getObjValAs? String "reported_at").toOption.getD ""
     reportedSource := (j.getObjValAs? String "reported_source").toOption.getD ""
+    -- Local-run provenance. A local run happened *here*, so it keeps `verified_at`;
+    -- what it lacks is the chain a CI record carries, and these two fields are what
+    -- the surfaces say instead of pretending it has one.
+    localHost := (j.getObjValAs? String "local_host").toOption.getD ""
+    localToolchain := (j.getObjValAs? String "local_toolchain").toOption.getD ""
   }
 
 /-! ### Run evidence -/
@@ -1698,6 +1710,35 @@ success badge or bind a registration to one (CX-065). -/
 def TrustComparator.isSuccessVerdict (cmp : TrustComparator) : Bool :=
   cmp.status == "verified"
 
+/-! ### Locally-run verdicts
+
+A presenter may run the comparator on their own machine. The kernels really run, so
+this is machine evidence and not a transcription — but it is produced by the same
+party that publishes the page, under no sandbox, with no run record anyone else can
+follow. That is a different claim from a CI verdict, so it gets its own tier: it
+never wears the CI pill, never joins the success aggregate, and says on every
+surface where it ran and what is missing.
+-/
+
+/-- Whether this verdict came from a run the presenter performed locally rather than
+from CI. -/
+def TrustComparator.isLocalVerdict (cmp : TrustComparator) : Bool :=
+  cmp.status == "verified-local"
+
+/-- Where a local run happened, for the label and tooltip; the generic "the
+presenter's own machine" when the artifact does not say. -/
+def TrustComparator.localHostName (cmp : TrustComparator) : String :=
+  if cmp.localHost.isEmpty then "the presenter's own machine" else cmp.localHost
+
+/-- The one sentence every `verified-local` surface says: where it ran, and what a
+CI record would have added. -/
+def TrustComparator.localVerdictNote (cmp : TrustComparator) : String :=
+  let toolchain :=
+    if cmp.localToolchain.isEmpty then "" else s!" on toolchain {cmp.localToolchain}"
+  s!"Run on {cmp.localHostName}{toolchain}, not in CI: no sandbox isolated the run and no run \
+     record links it, so what the checkers established rests on the presenter's report of \
+     their own machine."
+
 /-- Who published the transcribed record, for the label and tooltip; the generic
 "the subject repository" when the artifact does not say. -/
 def TrustComparator.reportedSourceName (cmp : TrustComparator) : String :=
@@ -1923,6 +1964,16 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
     let title := if cmp.note.isEmpty then s!"Comparator configured{theoremsTitle}" else cmp.note
     trustBadgeHtml "comparator: configured — not yet run" "warn" (Option.some title)
       (Option.some Informal.NodeRoute.comparatorHref)
+  else if cmp.isLocalVerdict then
+    -- Accent, not success: the checkers ran, so this is not a warning, but nothing
+    -- about it may read as the CI verdict beside which it would otherwise sit. The
+    -- date is `verified_at` and means what it says — the run happened, here.
+    let label :=
+      if cmp.verifiedAt.isEmpty then "comparator: verified locally — not CI"
+      else s!"comparator: verified locally {isoDate cmp.verifiedAt} — not CI"
+    trustBadgeHtml label "accent"
+      (Option.some s!"{cmp.localVerdictNote}{theoremsTitle}")
+      (Option.some Informal.NodeRoute.comparatorHref)
   else if cmp.isReportedUpstream then
     -- Neutral, not success and not warning: the record is someone else's, which is
     -- information about provenance rather than a fault. The date, when there is one, is
@@ -1947,8 +1998,12 @@ def trustScopeHtml (cmp? : Option TrustComparator) (theoremLikeTotal : Option Na
     else
       let k := cmp.theoremNames.length
       let noun := if k == 1 then "theorem" else "theorems"
-      -- A transcribed verdict reports; it does not certify.
-      let verb := if cmp.isReportedUpstream then "reported verified upstream:" else "certifies"
+      -- A transcribed verdict reports; it does not certify. A local run certified
+      -- something, but not where anyone else can see it happen.
+      let verb :=
+        if cmp.isReportedUpstream then "reported verified upstream:"
+        else if cmp.isLocalVerdict then "verified locally, not in CI:"
+        else "certifies"
       let text :=
         match theoremLikeTotal with
         | Option.some n => s!"{verb} {k} {noun} of {n}"
@@ -1967,7 +2022,11 @@ def uncertifiedStatusPhrase (others : List ComparatorTopic) : String :=
      else []) ++
     (if others.any (·.comparator.isReportedUpstream) then ["reported verified upstream"]
      else []) ++
-    (if others.any (fun t => t.comparator.status != "configured" && !t.comparator.isReportedUpstream)
+    (if others.any (·.comparator.isLocalVerdict) then ["verified locally rather than in CI"]
+     else []) ++
+    (if others.any (fun t =>
+        t.comparator.status != "configured" && !t.comparator.isReportedUpstream &&
+          !t.comparator.isLocalVerdict)
      then ["recorded with another status"] else [])
   if phrases.isEmpty then "not certified here" else String.intercalate " or " phrases
 
@@ -2032,11 +2091,20 @@ def trustAggregateComparatorBadge (comparators : List ComparatorTopic) : Output.
   let m := comparators.length
   let cfgNoun := if m == 1 then "config" else "configs"
   let verified := (comparators.filter (·.comparator.isSuccessVerdict)).length
+  let localRuns := (comparators.filter (·.comparator.isLocalVerdict)).length
   if verified == m then
     trustBadgeHtml s!"comparator: {m} {cfgNoun} verified" "success"
       (href? := Option.some Informal.NodeRoute.comparatorHref)
+  else if verified == 0 && localRuns == m then
+    -- Every config ran, none of them in CI. A warn pill would misdescribe that as a
+    -- shortfall; the accent tier says what it is.
+    trustBadgeHtml s!"comparator: {m} {cfgNoun} verified locally — not CI" "accent"
+      (href? := Option.some Informal.NodeRoute.comparatorHref)
   else
-    trustBadgeHtml s!"comparator: {verified}/{m} {cfgNoun} verified" "warn"
+    -- Locally-verified configs are counted where they are, beside the CI count and
+    -- never inside it. A site with none renders exactly what it did before.
+    let localClause := if localRuns == 0 then "" else s!" ({localRuns} locally)"
+    trustBadgeHtml s!"comparator: {verified}/{m} {cfgNoun} verified{localClause}" "warn"
       (href? := Option.some Informal.NodeRoute.comparatorHref)
 
 /-- Badges for the structural `uses`-graph gates the build already ran. The gate itself
