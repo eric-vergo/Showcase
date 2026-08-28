@@ -422,7 +422,7 @@ private def nodeSvg (m : OverviewMilestone) (p : Placement) : Output.Html :=
 
 /-- One dependency edge, drawn top-to-bottom as a cubic curve. An edge no graph
 witnessed is dashed and says so in its tooltip. -/
-private def edgeSvg (idBase : String) (byLabel : NameMap Placement)
+private def edgeSvg (idBase : String) (byLabel : Lean.NameMap Placement)
     (titleOf : Name → String) (e : EdgeVerdict) : Output.Html :=
   match byLabel.get? e.source, byLabel.get? e.target with
   | some sp, some tp =>
@@ -449,10 +449,11 @@ def overviewSvg (d : OverviewData) (idBase : String) : Output.Html :=
   let (places, width, height) := placements d
   if places.isEmpty then .empty
   else
-    let byLabel : NameMap Placement :=
-      places.foldl (init := ({} : NameMap Placement)) fun acc p => acc.insert p.label p
-    let titles : NameMap String :=
-      d.milestones.foldl (init := ({} : NameMap String)) fun acc m => acc.insert m.label m.title
+    let byLabel : Lean.NameMap Placement :=
+      places.foldl (init := ({} : Lean.NameMap Placement)) fun acc p => acc.insert p.label p
+    let titles : Lean.NameMap String :=
+      d.milestones.foldl (init := ({} : Lean.NameMap String)) fun acc m =>
+        acc.insert m.label m.title
     let titleOf := fun (n : Name) => (titles.get? n).getD (displayLabel n)
     let nodes := d.milestones.map fun m =>
       match byLabel.get? m.label with
@@ -531,10 +532,12 @@ badge saying so, right where the claim is made. -/
 private def depsHtml (d : OverviewData) (m : OverviewMilestone) : Output.Html :=
   if m.uses.isEmpty then .empty
   else
-    let anchors : NameMap String :=
-      d.milestones.foldl (init := ({} : NameMap String)) fun acc x => acc.insert x.label x.anchor
-    let titles : NameMap String :=
-      d.milestones.foldl (init := ({} : NameMap String)) fun acc x => acc.insert x.label x.title
+    let anchors : Lean.NameMap String :=
+      d.milestones.foldl (init := ({} : Lean.NameMap String)) fun acc x =>
+        acc.insert x.label x.anchor
+    let titles : Lean.NameMap String :=
+      d.milestones.foldl (init := ({} : Lean.NameMap String)) fun acc x =>
+        acc.insert x.label x.title
     let chip := fun (e : EdgeVerdict) =>
       let title := (titles.get? e.source).getD (displayLabel e.source)
       let assertedTip :=

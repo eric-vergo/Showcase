@@ -3312,19 +3312,6 @@ def elabComparatorTopics? :
 
 open Verso Doc Elab in
 /--
-The advisory table currency is assessed against: the one this fork ships, or the one
-`verso.blueprint.trust.kernelAdvisories` names. A set option pointing at a missing or
-unparsable file is a build error — a configured safety table must not degrade into the
-default without saying so, since the two differ exactly in what they would have caught.
-
-The override replaces the built-in table rather than merging into it: a merge would let
-a consumer drop an advisory by omission, which is the one edit nobody would notice.
-
-The built-in table ships in this fork's source, so it moves only when a Lean module does
-and needs no input record. A consumer override is a file Lake does not track, and comes
-back with one.
--/
-/--
 Read the site author's pinned checker identities.
 
 The second source CX-064 asked for. It is a consumer file, read like every other trust
@@ -3358,6 +3345,20 @@ def elabExpectedKernelIdentities :
       #[Informal.TrustInputs.Input.ofDigest
           Informal.TrustInputs.roleKernelIdentities path digest])
 
+open Verso Doc Elab in
+/--
+The advisory table currency is assessed against: the one this fork ships, or the one
+`verso.blueprint.trust.kernelAdvisories` names. A set option pointing at a missing or
+unparsable file is a build error — a configured safety table must not degrade into the
+default without saying so, since the two differ exactly in what they would have caught.
+
+The override replaces the built-in table rather than merging into it: a merge would let
+a consumer drop an advisory by omission, which is the one edit nobody would notice.
+
+The built-in table ships in this fork's source, so it moves only when a Lean module does
+and needs no input record. A consumer override is a file Lake does not track, and comes
+back with one.
+-/
 def elabKernelAdvisories :
     PartElabM (Informal.KernelAdvisories.Table × Array Informal.TrustInputs.Input) := do
   let opts ← Lean.getOptions

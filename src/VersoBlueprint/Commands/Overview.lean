@@ -128,31 +128,31 @@ def buildOverviewData (stx : Syntax) (title : String) :
         uses := uses.push u
     sanitized := sanitized.push { m with members, uses }
   -- Rows: longest-path depth over milestone edges, with author pins honored.
-  let rowOf : NameMap Nat ←
+  let rowOf : Lean.NameMap Nat ←
     match Milestones.rows sanitized with
     | .ok rowOf => pure rowOf
     | .error msg =>
       logErrorAt stx m!"{msg}"
       -- Recover with a flat layout so the cards still render and the remaining
       -- diagnostics still reach the author in one build.
-      pure (sanitized.foldl (init := ({} : NameMap Nat)) fun acc m => acc.insert m.label 0)
+      pure (sanitized.foldl (init := ({} : Lean.NameMap Nat)) fun acc m => acc.insert m.label 0)
   -- Witness tier 1: a dependency path in the presented graph.
   let memberLabels := allMemberLabels sanitized
   let presentedAnc := Milestones.ancestorIndex presented memberLabels
-  let byLabel : NameMap Milestone :=
-    sanitized.foldl (init := ({} : NameMap Milestone)) fun acc m => acc.insert m.label m
+  let byLabel : Lean.NameMap Milestone :=
+    sanitized.foldl (init := ({} : Lean.NameMap Milestone)) fun acc m => acc.insert m.label m
   let mut verdicts : Array EdgeVerdict := #[]
   for m in sanitized do
     for u in m.uses do
       match byLabel.get? u with
-      | none => pure ()
+      | Option.none => pure ()
       | some src =>
         match Milestones.witness? presentedAnc m src with
         | some (a, b) =>
           verdicts := verdicts.push
             { source := u, target := m.label, tier := .presented,
               witnessFrom := some a, witnessTo := some b }
-        | none =>
+        | Option.none =>
           verdicts := verdicts.push { source := u, target := m.label, tier := .asserted }
   -- Witness tier 2: the wider project-declaration graph, built lazily and only for
   -- the edges tier 1 could not corroborate. It is opt-in twice over, because it is
@@ -176,7 +176,7 @@ def buildOverviewData (stx : Syntax) (title : String) :
             match Milestones.witness? projectAnc tgt src with
             | some (a, b) =>
               { e with tier := .projectDecls, witnessFrom := some a, witnessTo := some b }
-            | none => e
+            | Option.none => e
           | _, _ => e
   -- Unwitnessed edges warn, once, naming them. They are never rejected.
   let asserted := verdicts.filter (·.isAsserted)
