@@ -36,75 +36,6 @@ open Verso.Code.Hover (State)
 open Informal.PreviewManifest (Entry)
 
 /--
-Inline styling for the node-page breadcrumb trail (Book › Chapter › node) and the
-header action row that holds it.
-
-Emitted once inside each node page header. Colors / fonts come from the
-`--bp-color-*` and `--font-mono-ui` design tokens, with light literal fallbacks,
-so the trail themes correctly in dark mode.
--/
-def nodeBreadcrumbCss : String := r##"
-.bp_node_page_topbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.9rem;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 0.6rem;
-}
-
-.bp_node_breadcrumb {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.1rem 0.35rem;
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-caption, 0.78rem);
-  letter-spacing: 0.02em;
-  color: var(--bp-color-text-muted, #4d5e6d);
-}
-
-.bp_node_breadcrumb a {
-  color: var(--bp-color-accent, #1c5fb8);
-  text-decoration: none;
-}
-
-.bp_node_breadcrumb a:hover {
-  text-decoration: underline;
-}
-
-.bp_node_breadcrumb_sep {
-  color: var(--bp-color-text-faint, #5f6f7e);
-}
-
-.bp_node_breadcrumb_current {
-  color: var(--bp-color-text, #15212b);
-  font-weight: 600;
-}
-
-.bp_node_page_group {
-  color: var(--bp-color-text-muted, #4d5e6d);
-  font-size: var(--bp-fs-small, 0.875rem);
-  margin: 0.25rem 0 0;
-}
-
-.bp_node_page_graph_note {
-  margin: 0 0 var(--bp-space-2, 8px);
-  color: var(--bp-color-text-muted, #4d5e6d);
-  font-size: var(--bp-fs-small, 0.875rem);
-}
-
-.bp_node_page h2 {
-  font-size: 1.15rem;
-  font-weight: 600;
-}
-
-.bp_node_page > section {
-  margin-top: var(--bp-space-5, 1.5rem);
-}
-"##
-
-/--
 Emit one standalone Blueprint HTML page at `<outDir>/<path…>/index.html`,
 reusing the same page chrome (sidebar ToC, global head assets, nav) as the
 regular multi-page output.
@@ -116,13 +47,17 @@ The minimal emit context is rebuilt exactly like core `emitFindHtml` /
 Absolute links are then made `<base>`-relative via `relativizeLinks`, and the
 page's own `<base href>` is derived from `path` by the core `page` renderer.
 
-Signature is fixed by the cross-cluster contract (Wave 3 PM pages call this).
+`withSidebarToc := false` renders the page without the book's chapter ToC — the frame
+`verso.blueprint.declPage.sidebarToc` drops from declaration pages, which are reached
+from a catalog row, a graph node or the palette and carry their own breadcrumb. It is a
+trailing default so the cross-cluster contract (Wave 3 PM pages call this) is unchanged:
+every existing caller keeps the sidebar.
 -/
 def emitStaticBlueprintPage
     (mode : Verso.Genre.Manual.Mode) (cfg : Verso.Genre.Manual.Config)
     (state : TraverseState)
     (text : Part Manual) (path : Verso.Multi.Path) (title : String)
-    (contents : Output.Html) : IO Unit := do
+    (contents : Output.Html) (withSidebarToc : Bool := true) : IO Unit := do
   let extensionImpls : ExtensionImpls := extension_impls%
   let logger ← Verso.Logger.new
   let remotes : Verso.Multi.AllRemotes := {}
@@ -140,8 +75,13 @@ def emitStaticBlueprintPage
         (List Html.Toc) :=
     text.subParts.toList.mapM fun p =>
       Verso.Genre.Manual.toc cfg.htmlDepth opts (ctxt.inPart p) state definitionIds linkTargets p
-  let (sidebarToc, _) ←
-    tocAction.run {} |>.run remotes |>.run extensionImpls |>.run logger
+  let sidebarToc : List Html.Toc ←
+    if withSidebarToc then
+      (·.1) <$> (tocAction.run {} |>.run remotes |>.run extensionImpls |>.run logger)
+    else
+      -- Not merely hidden: the ToC is rebuilt per page and serialized into it, so the
+      -- page that does not show one should not carry one either.
+      pure []
   -- Match the chapter-page header band exactly: core `emitContent` shows the
   -- book's `shortTitle` as the header/ToC title when present, falling back to the
   -- full title. Mirror that here so the static (node / worklist / owner / tag /
@@ -294,7 +234,6 @@ private def renderNodePageBody
   {{
     <div class="bp_node_page">
       <header class="bp_node_page_header">
-        <style>{{.text false nodeBreadcrumbCss}}</style>
         <div class="bp_node_page_topbar">
           {{breadcrumb}}
         </div>

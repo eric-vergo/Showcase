@@ -1348,8 +1348,12 @@ consumer that does not need one sees byte-identical output.
 | `verso.blueprint.nodePage.localGraphRadius` (default `2`) | the localized page graph, in `NodePage.lean` and `DeclPage.lean` | the radius-*k* neighborhood instead of the full closure, which at scale is most of the library and is neither fast to draw nor useful to read |
 | `verso.blueprint.nodePage.localGraphMaxNodes` (default `0`) | how many declarations the localized page graph draws, in `NodePage.lean` and `DeclPage.lean` | the breadth-first nearest slice of the radius-*k* neighborhood, with a line under the heading saying how many of the declarations within the radius were left out — at scale a hub declaration's radius-2 neighborhood is a multi-megabyte page |
 | `verso.blueprint.declRegistry.maxDeclPages` (default `0`) | how many `decl/<slug>/` pages are emitted, in `DeclRegistry.lean` | pages for the highest-fan-in declarations no node presents; the rest stay in the registry, the catalogs, and the rail, marked `no page (over cap)` wherever a link would have been |
+| `verso.blueprint.declRegistry.pageExcludeInstances` (default `false`) | which declarations are page *candidates* at all, in `DeclRegistry.lean` — applied before the cap ranks anything | instances keep every other surface (registry, audit, index, module tree, rail, graph) and lose only the page, marked `no page (instance)` wherever a link would have been |
+| `verso.blueprint.declRegistry.pageExcludePrivate` (default `false`) | the same, for `private` declarations | as above, marked `no page (private)`; a private declaration's page was already the thinnest on the site, since private declarations are kept out of every graph |
+| `verso.blueprint.declPage.localGraphCompleteOnly` (default `false`) | the localized graph on a **declaration** page when the node cap truncated it, in `DeclPage.lean` | no graph section at all rather than a breadth-first prefix — the largest payload on the page, showing an arbitrary slice of a relation the rail's Uses / Used by lists carry in full. Node pages are unaffected |
+| `verso.blueprint.declPage.sidebarToc` (default `true`) | the chapter ToC in a **declaration** page's frame, in `NodePage.emitStaticBlueprintPage` | the page keeps the top nav and its own breadcrumb; the ToC is not built rather than hidden, so its entries are not in the file (the sidebar shell and its home link remain) |
 
-The page cap is the one with a link-integrity obligation, and it is the reason
+The page policy and the page cap share a link-integrity obligation, and it is the reason
 `DeclRoute.hasDeclPage` / `DeclRoute.canonicalHref?` exist. Before it, "is there a page
 for this declaration" was the same question as "is it unwired", and several surfaces
 open-coded that test or composed a slug from a name. With the cap those are different
@@ -1357,6 +1361,13 @@ questions, and a surface that guesses produces a confident link to a page that w
 written — the one failure worse than no link. So the question has exactly one answer, the
 registry's `declHref?` is the only thing that carries it, and
 `scripts/check_decl_page_links.py` is the site-level gate that nothing went around it.
+
+The policy and the cap answer different questions and are reported separately: the cap
+says there was no room for a page, the policy says this kind of declaration does not get
+one here. Only the second is a decision about what is worth reading, and a reader who
+meets a page-less declaration is told which of the two applies — in the pill on its
+catalog row, in one sentence on the project-management hub, and in its own subsection of
+the trust-model page. Each surface stays silent about a rule that took nothing away.
 
 Two things the page cap deliberately does *not* do. It does not touch declarations a
 Blueprint node presents: their canonical page is their node page, so they are not page

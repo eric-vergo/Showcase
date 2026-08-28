@@ -695,9 +695,9 @@ namespace DeclRegistry
 def spec : StoreSpec := {
   name := `VersoBlueprint.TraversalIndex.DeclRegistry
   kind := .accumulator
-  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\" / \"localGraphRadius\" / \"localGraphMaxNodes\" / \"declPageCap\""
-  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, the configured decl-name prefix string, the local-graph radius and node cap, or the per-declaration-page cap record"
-  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names. `declPageCap` records what the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped, and is present only when it dropped something."
+  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\" / \"localGraphRadius\" / \"localGraphMaxNodes\" / \"localGraphCompleteOnly\" / \"declPageSidebarToc\" / \"declPageCap\" / \"declPagePolicy\""
+  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, the configured decl-name prefix string, the local-graph radius and node cap, the two declaration-page frame settings, or the per-declaration-page cap / policy records"
+  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names. `declPageCap` records what the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped and `declPagePolicy` what the `pageExcludeInstances`/`pageExcludePrivate` page policy excluded; each is present only when it actually took a page away."
 }
 
 def domainName : Name := spec.name
@@ -768,6 +768,28 @@ def localGraphMaxNodes? (state : TraverseState) : Option Nat := do
   let obj ← state.getDomainObject? domainName "localGraphMaxNodes"
   obj.data.getNat?.toOption
 
+/-- Stash the configured `verso.blueprint.declPage.localGraphCompleteOnly` (captured at
+elaboration) for the generation-time decl-page emitter. -/
+def saveLocalGraphCompleteOnly (state : TraverseState) (completeOnly : Bool) : TraverseState :=
+  saveObjectData state domainName "localGraphCompleteOnly" (toJson completeOnly)
+
+/-- Whether declaration pages draw only complete local graphs, if a `blueprint_graph`
+block stored the setting (`false` ⇒ draw the truncated graph, the pre-option behavior). -/
+def localGraphCompleteOnly? (state : TraverseState) : Option Bool := do
+  let obj ← state.getDomainObject? domainName "localGraphCompleteOnly"
+  obj.data.getBool?.toOption
+
+/-- Stash the configured `verso.blueprint.declPage.sidebarToc` (captured at elaboration)
+for the generation-time decl-page emitter. -/
+def saveDeclPageSidebarToc (state : TraverseState) (sidebarToc : Bool) : TraverseState :=
+  saveObjectData state domainName "declPageSidebarToc" (toJson sidebarToc)
+
+/-- Whether declaration pages carry the sidebar ToC, if a `blueprint_graph` block stored
+the setting (`true` ⇒ the sidebar, the pre-option behavior). -/
+def declPageSidebarToc? (state : TraverseState) : Option Bool := do
+  let obj ← state.getDomainObject? domainName "declPageSidebarToc"
+  obj.data.getBool?.toOption
+
 /-- Stash what the per-declaration-page scale cap dropped, for the surfaces that
 report it (the PM hub, the trust model). Saved only when the cap actually bound, so a
 build below it stores nothing. -/
@@ -775,9 +797,21 @@ def saveDeclPageCap (state : TraverseState) (cap : Json) : TraverseState :=
   saveObjectData state domainName "declPageCap" cap
 
 /-- The per-declaration-page cap record, if a `blueprint_graph` block stored one.
-`none` ⇒ every unwired declaration got its page. -/
+`none` ⇒ every unwired declaration the policy left eligible got its page. -/
 def declPageCap? (state : TraverseState) : Option Json := do
   let obj ← state.getDomainObject? domainName "declPageCap"
+  some obj.data
+
+/-- Stash what the per-declaration-page policy excluded, for the surfaces that report it
+(the catalog rows, the PM hub, the trust model). Saved only when the policy actually
+excluded something, so a build without it stores nothing. -/
+def saveDeclPagePolicy (state : TraverseState) (policy : Json) : TraverseState :=
+  saveObjectData state domainName "declPagePolicy" policy
+
+/-- The per-declaration-page policy record, if a `blueprint_graph` block stored one.
+`none` ⇒ no declaration lost its page to the policy. -/
+def declPagePolicy? (state : TraverseState) : Option Json := do
+  let obj ← state.getDomainObject? domainName "declPagePolicy"
   some obj.data
 
 end DeclRegistry

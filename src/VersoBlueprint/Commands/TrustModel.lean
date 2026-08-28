@@ -364,7 +364,8 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
 
 private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool)
     (milestoneAudit? : Option Informal.Milestones.Audit)
-    (declPageCap? : Option Informal.DeclRegistry.PageCap) :
+    (declPageCap? : Option Informal.DeclRegistry.PageCap)
+    (declPagePolicy? : Option Informal.DeclRegistry.PagePolicy) :
     Output.Html :=
   -- CX-033: the edge-provenance subsection tells the truth for this build's graph
   -- mode. With autoDeps (`includeAllDecls`) the rendered edges are machine-derived
@@ -516,6 +517,28 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
                row reports that a guard-shaped hypothesis occurs, that is a presence check \
                over the statement's binders: it did not relate the hypothesis to the flagged \
                operand, and no row anywhere says a statement is guarded."]
+  -- The page policy, reported beside the cap and separately from it: "no room for this
+  -- page" and "this kind of declaration does not get a page here" are different facts,
+  -- and only the second is a decision about what is worth reading.
+  let declPagePolicySubsection : Output.Html :=
+    match declPagePolicy? with
+    | Option.none => .empty
+    | Option.some policy =>
+      .seq #[
+        {{ <h3 class="bp_trustmodel_subtitle">"Declarations this site gives no page"</h3> }},
+        prose
+          s!"This site does not emit a page for every declaration it records. \
+             {policy.instancesExcluded} instances and {policy.privateExcluded} `private` \
+             declarations have none, by configuration \
+             (`verso.blueprint.declRegistry.pageExcludeInstances` / \
+             `pageExcludePrivate`); {policy.pages} declarations no blueprint node \
+             presents remain eligible for one. Every one of them is still enumerated in \
+             the registry, still audited for axioms, still listed in the index and the \
+             module tree, and still drawn in the dependency graph — the policy removes a \
+             reading surface, not a declaration.",
+        prose
+          "Nothing above measures fewer declarations because of it, and a declaration \
+           without a page is neither less checked nor more suspect than one with a page."]
   -- The per-declaration-page scale cap. Rendered only where it actually bound: on a
   -- site that gave every unwired declaration a page there is nothing to disclose, and a
   -- paragraph explaining a degradation that did not happen is its own kind of noise.
@@ -559,6 +582,7 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
     edgeProse,
     edgeNote,
     overviewSubsection,
+    declPagePolicySubsection,
     declPageCapSubsection,
     {{ <h3 class="bp_trustmodel_subtitle">"How the Lean code on this page was rendered"</h3> }},
     prose
@@ -867,6 +891,11 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
   let declPageCap? : Option Informal.DeclRegistry.PageCap :=
     (Informal.TraversalIndex.DeclRegistry.declPageCap? st).bind fun j =>
       (fromJson? (α := Informal.DeclRegistry.PageCap) j).toOption
+  -- Same discipline for the page policy: present only when it actually excluded
+  -- something.
+  let declPagePolicy? : Option Informal.DeclRegistry.PagePolicy :=
+    (Informal.TraversalIndex.DeclRegistry.declPagePolicy? st).bind fun j =>
+      (fromJson? (α := Informal.DeclRegistry.PagePolicy) j).toOption
   {{
     <div class="bp_trustmodel">
       <p class="bp_trustmodel_lead">
@@ -875,7 +904,8 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
          This is the separation."
       </p>
       {{machineCheckedSection data trust? checks autoDepsActive}}
-      {{notMachineCheckedSection trust? autoDepsActive milestoneAudit? declPageCap?}}
+      {{notMachineCheckedSection trust? autoDepsActive milestoneAudit? declPageCap?
+          declPagePolicy?}}
       {{trustingSection data trust?}}
       {{independenceSection}}
       {{currencySection trust?}}

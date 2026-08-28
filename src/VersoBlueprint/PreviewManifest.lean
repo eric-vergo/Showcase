@@ -17,6 +17,8 @@ import VersoBlueprint.Commands.CommandPalette
 import VersoBlueprint.Commands.BannerNav
 import VersoBlueprint.Commands.MetadataRail
 import VersoBlueprint.Commands.DocsChrome
+import VersoBlueprint.Commands.PageChrome
+import VersoBlueprint.CaveatsRender
 import VersoBlueprint.Informal.Block
 import VersoBlueprint.Informal.Block.Store
 import VersoBlueprint.Informal.Group
@@ -194,6 +196,24 @@ def docsChromeHtmlAssets : HtmlAssets where
     ([Informal.DocsChrome.topNavCss, Informal.DocsChrome.pageOutlineCss] : List String)
 
 /--
+Static page-frame assets (node pages, declaration pages), applied to *every* page.
+
+These three stylesheets used to be emitted as an inline `<style>` in each page's own
+header — correct, and repeated once per page, which on a site of tens of thousands of
+declaration pages is the frame costing more than some of the content. On this channel
+they are written once into the shared `-verso-data/bp-chrome.css` with the rest of the
+design system. The rules themselves are unchanged, and nothing here depended on being
+late in the cascade (see `Commands/PageChrome.lean`).
+
+The caveat stylesheet rides along because the declaration page is one of its two
+surfaces; where a site also carries the trust strip, the identical chunk deduplicates.
+-/
+def pageChromeHtmlAssets : HtmlAssets where
+  extraCss :=
+    ([Informal.PageChrome.nodePageCss, Informal.PageChrome.declPageCss,
+      Informal.CaveatsRender.css] : List String)
+
+/--
 Print / PDF stylesheet, applied to *every* page via the global `extraCss` channel.
 
 Everything is scoped inside `@media print`, so it never affects on-screen
@@ -344,9 +364,10 @@ def vendoredLicensesHtmlAssets : HtmlAssets where
   licenseInfo := Std.HashSet.ofArray #[d3LicenseInfo, d3GraphvizLicenseInfo]
 
 def blueprintHtmlAssets : HtmlAssets :=
-  (((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+  ((((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
     colorSchemeHtmlAssets).combine commandPaletteHtmlAssets).combine
     bannerNavHtmlAssets).combine metadataRailHtmlAssets).combine docsChromeHtmlAssets).combine
+    pageChromeHtmlAssets).combine
     printHtmlAssets).combine vendoredLicensesHtmlAssets
 
 def pageRuntimeModuleFilename : String := "blueprint-page-runtime.mjs"

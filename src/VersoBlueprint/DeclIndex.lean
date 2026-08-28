@@ -336,19 +336,44 @@ private def rowMeta (e : Entry) : String :=
     (e.range?.map (·.pos.line)) (e.range?.map (·.endPos.line)) e.nodeHref?
     (shortName := shortName?) (declHref := e.declHref?)
 
+/-- The pill text and its explanation for a declaration with no page of its own. The
+reason is named, not generalized: "there was no room for this page" and "this kind of
+declaration does not get a page here" are different facts about the site, and a reader
+who meets the pill is entitled to the one that applies. -/
+private def noPageLabel : Informal.DeclRegistry.DeclRoute.NoPage → String × String
+  | .overCap =>
+    ("no page (over cap)",
+     "This site is above verso.blueprint.declRegistry.maxDeclPages, so this declaration \
+      is indexed without a page of its own.")
+  | .isInstance =>
+    ("no page (instance)",
+     "This site does not emit pages for instances \
+      (verso.blueprint.declRegistry.pageExcludeInstances); this declaration is indexed, \
+      audited and graphed without a page of its own.")
+  | .isPrivate =>
+    ("no page (private)",
+     "This site does not emit pages for private declarations \
+      (verso.blueprint.declRegistry.pageExcludePrivate); this declaration is indexed and \
+      audited without a page of its own.")
+
 /--
 One catalog/index row: a selection-bus-wired list item. The declaration name is the
 row's single interactive control — a link to the declaration's canonical page (node
 page for wired declarations, `decl/{slug}/` page for unwired ones; a plain select
-button when there is no page, which is a declaration the `maxDeclPages` scale cap
-dropped, marked as such with a neutral pill and a source link when one resolves) — so the row is
+button when there is no page, which is a declaration the page policy excluded or the
+`maxDeclPages` scale cap dropped, marked as such — with the reason — by a neutral pill
+and a source link when one resolves) — so the row is
 keyboard-operable with no nested interactives. Displays the short name with the
 fully-qualified name as the hover `title`. The whole row is rail-selectable via the
 delegated handler in `metadata-rail.mjs` (it matches `.bp_decl_row[data-bp-decl]`
 and reads the inline `bp-decl-meta` payload). `showSig` includes the truncated
 signature column.
+
+`policy` is the page policy this build ran, read from the traversal store; the default
+(no rule on) is a site where the only reason a declaration has no page is the cap.
 -/
-private def declRow (showSig : Bool) (e : Entry) : Html :=
+private def declRow (policy : Informal.DeclRegistry.PagePolicy) (showSig : Bool)
+    (e : Entry) : Html :=
   let metaJson := rowMeta e
   let href? := Informal.DeclRegistry.DeclRoute.canonicalHref? e
   let nameNode : Html :=
@@ -361,19 +386,20 @@ private def declRow (showSig : Bool) (e : Entry) : Html :=
     if showSig && !e.signatureText.isEmpty then
       {{ <code class="bp_decl_row_sig" title={{e.signatureText}}>{{.text true e.signatureText}}</code> }}
     else .empty
-  -- Over the `maxDeclPages` scale cap this declaration has no page of its own. Say so
-  -- in place of the link rather than leaving a bare unexplained name, and offer the
-  -- source instead when this build could resolve one.
-  let overCap := Informal.DeclRegistry.DeclRoute.pageOmittedOverCap e
+  -- No page of its own — the policy excluded it, or it fell outside the `maxDeclPages`
+  -- budget. Say which in place of the link rather than leaving a bare unexplained name,
+  -- and offer the source instead when this build could resolve one.
+  let noPage? := Informal.DeclRegistry.DeclRoute.noPageReason? policy e
   let capNode : Html :=
-    if overCap then
-      {{ <span class="bp_summary_badge bp_decl_row_nopage"
-            title="This site is above verso.blueprint.declRegistry.maxDeclPages, so this declaration is indexed without a page of its own.">
-           "no page (over cap)"
+    match noPage? with
+    | none => .empty
+    | some reason =>
+      let (label, why) := noPageLabel reason
+      {{ <span class="bp_summary_badge bp_decl_row_nopage" title={{why}}>
+           {{.text true label}}
          </span> }}
-    else .empty
   let sourceNode : Html :=
-    match (if overCap then e.sourceHref? else none) with
+    match (if noPage?.isSome then e.sourceHref? else none) with
     | some href =>
       {{ <a class="bp_decl_row_source" href={{href}} title={{s!"Source of {e.name}"}}>"source"</a> }}
     | none => .empty
@@ -391,10 +417,11 @@ private def declRow (showSig : Bool) (e : Entry) : Html :=
 
 /-- One catalog row, as the pages render it.
 
-Public only as a test seam: the `maxDeclPages` scale cap's contract is a property of this
-markup — the dropped declaration's row must carry the pill and no `decl/` href — and
-asserting it here costs a unit test instead of a generated site. -/
-def declRowHtml (showSig : Bool) (e : Entry) : Html := declRow showSig e
+Public only as a test seam: the page cap's and the page policy's contract is a property
+of this markup — the dropped declaration's row must carry the pill that names why, and no
+`decl/` href — and asserting it here costs a unit test instead of a generated site. -/
+def declRowHtml (showSig : Bool) (e : Entry)
+    (policy : Informal.DeclRegistry.PagePolicy := {}) : Html := declRow policy showSig e
 
 /-! ## Sorting + grouping -/
 
@@ -433,22 +460,24 @@ private def modulesSorted (es : Array Entry) : Array String :=
 
 /-! ## Definitions / Theorems pages (grouped by module, source order) -/
 
-private def moduleSection (pfx modName : String) (es : Array Entry) : Html :=
+private def moduleSection (policy : Informal.DeclRegistry.PagePolicy) (pfx modName : String)
+    (es : Array Entry) : Html :=
   {{
     <section class="bp_decl_module_group">
       <h2 class="bp_decl_module_head" title={{modName}}>
         {{.text true (Informal.NodeCard.shortModuleName pfx modName)}}
       </h2>
-      <ul class="bp_decl_list">{{(bySource es).map (declRow true)}}</ul>
+      <ul class="bp_decl_list">{{(bySource es).map (declRow policy true)}}</ul>
     </section>
   }}
 
 /-- Body shared by the Definitions and Theorems pages: rows grouped by module,
 each module in source order. Module group headers show the project-prefix-stripped
 name (`pfx`, the registry `namePrefix`), keeping the fully-qualified name on hover. -/
-private def catalogBody (pfx title intro : String) (entries : Array Entry) : Html :=
+private def catalogBody (policy : Informal.DeclRegistry.PagePolicy) (pfx title intro : String)
+    (entries : Array Entry) : Html :=
   let sections := (modulesSorted entries).map fun m =>
-    moduleSection pfx m (entries.filter (·.moduleName == m))
+    moduleSection policy pfx m (entries.filter (·.moduleName == m))
   {{
     <div class="bp_decl_catalog bp_pm_page">
       <style>{{.text false catalogCss}}</style>
@@ -466,7 +495,8 @@ private def catalogBody (pfx title intro : String) (entries : Array Entry) : Htm
 
 /-! ## Alphabetical index page -/
 
-private def indexBody (entries : Array Entry) : Html :=
+private def indexBody (policy : Informal.DeclRegistry.PagePolicy) (entries : Array Entry) :
+    Html :=
   let sorted := byName entries
   -- Distinct first letters, in sorted order (matches the sorted rows).
   let letters := sorted.foldl (init := (#[] : Array String)) fun acc e =>
@@ -480,7 +510,7 @@ private def indexBody (entries : Array Entry) : Html :=
             {{ <a href={{s!"{Informal.NodeRoute.declIndexHref}#letter-{l}"}}>{{.text true l}}</a> }}}}
       </nav> }}
   let sections := letters.map fun l =>
-    let rows := (sorted.filter (fun e => letterOf e.name == l)).map (declRow false)
+    let rows := (sorted.filter (fun e => letterOf e.name == l)).map (declRow policy false)
     {{
       <section class="bp_decl_module_group">
         <h2 class="bp_decl_letter_head" id={{s!"letter-{l}"}}>{{.text true l}}</h2>
@@ -537,10 +567,11 @@ private partial def insertModule (forest : Array ModNode) (segs : List String)
         else ModNode.node seg full #[] (insertModule #[] rest full decls)
       forest.push child
 
-private partial def renderModNode (n : ModNode) : Html :=
+private partial def renderModNode (policy : Informal.DeclRegistry.PagePolicy) (n : ModNode) :
+    Html :=
   let sortedChildren := n.children.qsort (fun a b => a.segment < b.segment)
-  let childHtml := sortedChildren.map renderModNode
-  let declRows := (bySource n.decls).map (declRow false)
+  let childHtml := sortedChildren.map (renderModNode policy)
+  let declRows := (bySource n.decls).map (declRow policy false)
   {{
     <details class="bp_mod_node" open="open">
       <summary class="bp_mod_summary">
@@ -553,7 +584,8 @@ private partial def renderModNode (n : ModNode) : Html :=
     </details>
   }}
 
-private def modulesBody (pfx : String) (entries : Array Entry) : Html :=
+private def modulesBody (policy : Informal.DeclRegistry.PagePolicy) (pfx : String)
+    (entries : Array Entry) : Html :=
   let forest := (modulesSorted entries).foldl (init := (#[] : Array ModNode)) fun f m =>
     let decls := entries.filter (·.moduleName == m)
     -- Drop a redundant single root segment equal to the project prefix so the tree
@@ -562,7 +594,7 @@ private def modulesBody (pfx : String) (entries : Array Entry) : Html :=
       | root :: rest => if !pfx.isEmpty && root == pfx && !rest.isEmpty then rest else root :: rest
       | [] => []
     insertModule f segs "" decls
-  let roots := (forest.qsort (fun a b => a.segment < b.segment)).map renderModNode
+  let roots := (forest.qsort (fun a b => a.segment < b.segment)).map (renderModNode policy)
   {{
     <div class="bp_decl_catalog bp_pm_page">
       <style>{{.text false catalogCss}}</style>
@@ -609,19 +641,27 @@ def emitBlueprintDeclIndexPages : ExtraStep :=
         | .ok registry =>
           let entries := registry.decls
           let pfx := registry.namePrefix
+          -- The page policy this build ran, so a row with no page can say which rule
+          -- took it away. Absent ⇒ no rule excluded anything, and the only reason a row
+          -- can be page-less is the scale cap.
+          let policy : Informal.DeclRegistry.PagePolicy :=
+            match Informal.TraversalIndex.DeclRegistry.declPagePolicy? state with
+            | none => {}
+            | some raw =>
+              (fromJson? (α := Informal.DeclRegistry.PagePolicy) raw).toOption.getD {}
           let defs := entries.filter (·.kind == "Definition")
           let thms := entries.filter (·.kind != "Definition")
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             Informal.NodeRoute.defsPath "Definitions"
-            (catalogBody pfx "Definitions"
+            (catalogBody policy pfx "Definitions"
               "definitions, grouped by module (source order). Wired declarations link to their node page." defs)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
             Informal.NodeRoute.theoremsPath "Theorems"
-            (catalogBody pfx "Theorems"
+            (catalogBody policy pfx "Theorems"
               "theorems and lemmas, grouped by module (source order). Wired declarations link to their node page." thms)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            Informal.NodeRoute.declIndexPath "Index" (indexBody entries)
+            Informal.NodeRoute.declIndexPath "Index" (indexBody policy entries)
           Informal.NodePage.emitStaticBlueprintPage mode cfg state text
-            Informal.NodeRoute.modulesPath "Modules" (modulesBody pfx entries)
+            Informal.NodeRoute.modulesPath "Modules" (modulesBody policy pfx entries)
 
 end Informal.DeclIndex

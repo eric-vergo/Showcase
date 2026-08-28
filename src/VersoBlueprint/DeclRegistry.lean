@@ -97,6 +97,26 @@ def configuredMaxDeclPages (opts : Lean.Options) : Nat :=
   opts.get verso.blueprint.declRegistry.maxDeclPages.name
     verso.blueprint.declRegistry.maxDeclPages.defValue
 
+register_option verso.blueprint.declRegistry.pageExcludeInstances : Bool := {
+  defValue := false
+  descr := "Whether instance declarations are denied a per-declaration (`decl/<slug>/`) page. Of everything a library-scale registry enumerates, an instance's page is the one that carries the least: a generated name nobody looks up, a signature the reader meets through the class it instantiates, and thousands of them. This is a policy on the reading surface, not on the registry: excluded instances stay enumerated, audited, indexed, in the module tree, in the properties rail and in the dependency graph exactly as they were — what they lose is a page of their own, and every surface that would have linked to one says why instead of dead-linking. Declarations a blueprint node presents are never affected. `false` ⇒ a page for every unwired instance (the pre-policy behavior)."
+}
+
+/-- The configured `verso.blueprint.declRegistry.pageExcludeInstances`. -/
+def configuredPageExcludeInstances (opts : Lean.Options) : Bool :=
+  opts.get verso.blueprint.declRegistry.pageExcludeInstances.name
+    verso.blueprint.declRegistry.pageExcludeInstances.defValue
+
+register_option verso.blueprint.declRegistry.pageExcludePrivate : Bool := {
+  defValue := false
+  descr := "Whether `private` declarations are denied a per-declaration (`decl/<slug>/`) page. A private declaration is one the library itself does not export, and its page is a reading surface for something the project has said is internal; it also already has the thinnest page of any declaration, since private declarations are kept out of every dependency graph and so their pages carry no local graph at all. Like the instance rule, this is a policy on the reading surface only: excluded declarations stay in the registry, the catalogs, the module tree, the audit counts and the rail. `false` ⇒ a page for every unwired private declaration (the pre-policy behavior)."
+}
+
+/-- The configured `verso.blueprint.declRegistry.pageExcludePrivate`. -/
+def configuredPageExcludePrivate (opts : Lean.Options) : Bool :=
+  opts.get verso.blueprint.declRegistry.pageExcludePrivate.name
+    verso.blueprint.declRegistry.pageExcludePrivate.defValue
+
 register_option verso.blueprint.nodePage.localGraphRadius : Nat := {
   defValue := 2
   descr := "Radius (in dependency hops) of the localized dependency graph drawn on each node/decl page. The page graph is the radius-k neighborhood of the focus declaration in both directions (ancestors and descendants), not the full transitive closure — at large scale a headline declaration's full ancestor closure is most of the library, which is both slow to render and useless to read. `0` ⇒ unlimited (the full closure, the pre-cap behavior). Neighborhoods whose full closure already lies within the radius render identically."
@@ -118,6 +138,26 @@ every declaration within the radius). -/
 def configuredLocalGraphMaxNodes (opts : Lean.Options) : Nat :=
   opts.get verso.blueprint.nodePage.localGraphMaxNodes.name
     verso.blueprint.nodePage.localGraphMaxNodes.defValue
+
+register_option verso.blueprint.declPage.localGraphCompleteOnly : Bool := {
+  defValue := false
+  descr := "Whether a DECLARATION page draws its localized dependency graph only when it can draw the whole neighborhood the radius admits. Under `verso.blueprint.nodePage.localGraphMaxNodes` a hub declaration's graph is a breadth-first prefix of its neighborhood: the largest single payload on the page, and an arbitrary slice of a relation the properties rail's Uses / Used by lists already carry in full and exactly. With this on, such a page omits the graph section entirely rather than drawing the prefix; a page whose neighborhood fits draws it as before. NODE pages are unaffected — they are the curated surface and their graphs are the point. `false` ⇒ draw the truncated graph under the line that says how much it left out (the pre-option behavior)."
+}
+
+/-- The configured `verso.blueprint.declPage.localGraphCompleteOnly`. -/
+def configuredLocalGraphCompleteOnly (opts : Lean.Options) : Bool :=
+  opts.get verso.blueprint.declPage.localGraphCompleteOnly.name
+    verso.blueprint.declPage.localGraphCompleteOnly.defValue
+
+register_option verso.blueprint.declPage.sidebarToc : Bool := {
+  defValue := true
+  descr := "Whether declaration pages carry the book's sidebar table of contents. A `decl/<slug>/` page is reached from a catalog row, a graph node or the command palette, and it already carries the top nav and its own breadcrumb; the chapter ToC beside it is the part of its frame its readers do not use, and it is rebuilt into every one of the pages. Node, chapter and project-management pages are unaffected. `true` ⇒ the sidebar on declaration pages too (the pre-option behavior)."
+}
+
+/-- The configured `verso.blueprint.declPage.sidebarToc`. -/
+def configuredDeclPageSidebarToc (opts : Lean.Options) : Bool :=
+  opts.get verso.blueprint.declPage.sidebarToc.name
+    verso.blueprint.declPage.sidebarToc.defValue
 
 -- The subject-module machinery (`verso.blueprint.subjectModuleRoots`) lives in
 -- `ExternalRefSnapshot`, which needs it for dependency source resolution and which
@@ -190,6 +230,14 @@ structure Entry where
   /-- Whether the declaration is `private` (de-mangled for display; kept out of
   every dependency graph, including the synthesized decl-page local graphs). -/
   isPrivate : Bool := false
+  /-- Whether the declaration is registered as an instance (`Meta.isInstanceCore`
+  over the environment's instance extension, asked of the canonical name).
+
+  Recorded for every declaration whether or not the site excludes instances from
+  the page policy: the registry describes the library, and the policy
+  (`verso.blueprint.declRegistry.pageExcludeInstances`) reads it. The catalog rows
+  and the graph are unchanged by it. -/
+  isInstance : Bool := false
   /-- Rendered docstring HTML (markdown + `$…$` math, raw HTML disabled — safe
   for the metadata rail's `innerHTML`); `none` when the declaration has no
   docstring. -/
@@ -199,8 +247,11 @@ structure Entry where
   declarations' canonical page stays their node page.
 
   So an entry has *at most* one of `nodeHref?`/`declHref?`, and exactly one unless
-  the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped its page: an
-  unwired entry with neither is a declaration the cap left indexed but page-less.
+  this site gave it no page: an unwired entry with neither is a declaration left
+  indexed but page-less, either by the page policy
+  (`pageExcludeInstances`/`pageExcludePrivate`) or by the
+  `verso.blueprint.declRegistry.maxDeclPages` scale cap. `DeclRoute.noPageReason?`
+  says which.
   Ask `DeclRoute.hasDeclPage` / `DeclRoute.canonicalHref?` rather than reading this
   field or recomputing a slug — a guessed href is a confident link to a page that
   was never emitted. -/
@@ -259,16 +310,22 @@ deriving Inhabited, Repr, ToJson, FromJson
 
 /-- The full declaration registry artifact.
 
-Schema v3 adds each entry's optional `scan` (the caveat report). An entry that was not
-scanned omits the key, so a v3 artifact from a build with the caveat surface off is
+Schema v3 added each entry's optional `scan` (the caveat report). An entry that was not
+scanned omits the key, so a v3 artifact from a build with the caveat surface off was
 byte-identical to a v2 one apart from this number.
+
+Schema v4 adds each entry's `isInstance`, which — like `isPrivate` beside it — is always
+written. That is what the version number is for: the key is present on every entry of a
+v4 artifact and on none of a v3 one, and a reader can tell which it has without probing.
+The page policy that reads it (`pageExcludeInstances`) changes no other key: an entry it
+denies a page loses `declHref`, exactly as the scale cap's does.
 
 The published shape is unchanged by the CX-066 source-link binding: `sourceHref` is
 still one resolved URL per entry, composed at emission rather than at elaboration, and
 the internal `sourceRepoPath` it is composed from is cleared before serialization. A
 clean build at one revision therefore emits exactly the bytes it emitted before. -/
 structure Registry where
-  schemaVersion : Nat := 3
+  schemaVersion : Nat := 4
   /-- The configured `verso.blueprint.declNamePrefix`, for client-side (runtime)
   name shortening of names that arrive outside the registry. Empty ⇒ none. -/
   namePrefix : String := ""
@@ -299,6 +356,72 @@ deriving Inhabited, Repr, ToJson, FromJson, DecidableEq, Quote
 
 /-- Declarations that lost their page to the cap. -/
 def PageCap.omitted (cap : PageCap) : Nat := cap.candidates - cap.emitted
+
+/--
+What the per-declaration-page *policy*
+(`verso.blueprint.declRegistry.pageExcludeInstances` /
+`pageExcludePrivate`) did, when it did anything.
+
+The policy runs before the scale cap and is a different kind of decision: the cap is a
+budget that ranks declarations against each other, the policy is a statement about which
+declarations are worth a page at all. The two compose in one direction — a declaration
+the policy excluded is not a candidate the cap ranks — and are reported separately,
+because "there was no room for this page" and "this kind of declaration does not get a
+page here" are not the same disclosure.
+
+Carried through the traversal store beside `PageCap`, for the same reason: what it did
+is already visible in `decl-registry.json` as the absent `declHref`, so the public
+artifact needs no new key for it. Present only when the policy actually excluded
+something, so a build that turned it on and matched nothing stores nothing and the
+surfaces stay word-for-word what they were.
+-/
+structure PagePolicy where
+  /-- The configured `verso.blueprint.declRegistry.pageExcludeInstances`. -/
+  excludeInstances : Bool := false
+  /-- The configured `verso.blueprint.declRegistry.pageExcludePrivate`. -/
+  excludePrivate : Bool := false
+  /-- Unwired declarations denied a page because they are instances. -/
+  instancesExcluded : Nat := 0
+  /-- Unwired declarations denied a page because they are `private`. Disjoint from
+  `instancesExcluded`: a private instance is counted once, under the instance rule. -/
+  privateExcluded : Nat := 0
+  /-- Declaration pages the policy leaves — the unwired declarations still eligible for
+  one, which is exactly the set `applyDeclPageCap` then ranks. -/
+  pages : Nat := 0
+deriving Inhabited, Repr, ToJson, FromJson, DecidableEq, Quote
+
+/-- Declarations the policy denied a page, by either rule. -/
+def PagePolicy.excluded (p : PagePolicy) : Nat := p.instancesExcluded + p.privateExcluded
+
+/-- Whether the page policy denies a declaration with these two properties a page of its
+own. The decision itself, shared by `buildEntry` (which applies it per declaration) and
+by the surfaces that explain it. -/
+def policyExcludesPage (excludeInstances excludePrivate isInstance isPrivate : Bool) : Bool :=
+  (excludeInstances && isInstance) || (excludePrivate && isPrivate)
+
+/--
+Record what the page policy did to a finished entry array — the entries as `buildEntry`
+left them, *before* the scale cap runs.
+
+`none` when neither rule is on, and also when both are on and neither matched: the
+surfaces that report this exist to disclose a degradation, and there is nothing to
+disclose about a policy that took nothing away. The counts are read back off the entries
+rather than accumulated during the build so that they describe the artifact that shipped.
+-/
+def summarizePagePolicy (excludeInstances excludePrivate : Bool) (entries : Array Entry) :
+    Option PagePolicy :=
+  if !excludeInstances && !excludePrivate then none
+  else
+    let policy := entries.foldl (init := { excludeInstances, excludePrivate : PagePolicy })
+      fun p e =>
+        if e.declHref?.isSome then { p with pages := p.pages + 1 }
+        else if !e.nodeLabels.isEmpty then p
+        else if excludeInstances && e.isInstance then
+          { p with instancesExcluded := p.instancesExcluded + 1 }
+        else if excludePrivate && e.isPrivate then
+          { p with privateExcluded := p.privateExcluded + 1 }
+        else p
+    if policy.excluded == 0 then none else some policy
 
 /-- One captured proof/value body (the source after the top-level `:=`) for a
 project declaration, keyed by its (de-mangled) fully-qualified name. `html?` is
@@ -347,6 +470,10 @@ Which declarations keep a page:
   name blueprint *labels*, whose declarations are wired by construction. So the cap
   cannot take a page away from anything the blueprint presents — not because it
   filters them out, but because they were never in the set it filters.
+* **Not excluded by the page policy.** Same mechanism: a declaration the policy
+  (`pageExcludeInstances` / `pageExcludePrivate`) denied a page arrives here with
+  `declHref?` already cleared, so it is not a candidate and does not count toward
+  what the cap reports.
 * **The rest of the budget, by fan-in.** The remaining `limit` pages go to the
   candidates the most other declarations depend on (`usedBy` size, computed in the
   registry's pass 1), ties broken by name so the selection is deterministic across
@@ -387,17 +514,44 @@ namespace DeclRoute
 /-- Whether this declaration has a page of its own at `decl/<slug>/`.
 
 False both for a declaration a blueprint node presents (its canonical page is that
-node page) and for one the scale cap dropped. `pageOmittedOverCap` separates the two. -/
+node page) and for one this site gave no page. `pageOmitted` separates the two. -/
 def hasDeclPage (e : Entry) : Bool := e.declHref?.isSome
 
 /-- The page this declaration lives on: its blueprint node page when it has one, else
-its own `decl/` page, else nothing at all — which is exactly the over-cap case. -/
+its own `decl/` page, else nothing at all — which is exactly the page-less case. -/
 def canonicalHref? (e : Entry) : Option String := e.nodeHref? <|> e.declHref?
 
-/-- Whether this declaration has no page *because the scale cap dropped it*: unwired
-(so its page would have been a `decl/` page) and without one. Distinguishes the
-degradation from a wired declaration, which has a node page and needs no `decl/` one. -/
-def pageOmittedOverCap (e : Entry) : Bool := e.nodeLabels.isEmpty && e.declHref?.isNone
+/-- Whether this declaration has no page of its own: unwired (so its page would have
+been a `decl/` page) and without one. Distinguishes the degradation from a wired
+declaration, which has a node page and needs no `decl/` one.
+
+*Why* there is no page — the page policy or the scale cap — is `noPageReason?`, which
+needs the policy record the entry alone does not carry. -/
+def pageOmitted (e : Entry) : Bool := e.nodeLabels.isEmpty && e.declHref?.isNone
+
+/-- Why an unwired declaration has no page of its own on this site. -/
+inductive NoPage where
+  /-- The `maxDeclPages` scale cap ranked it out of the budget. -/
+  | overCap
+  /-- Policy: it is an instance and this site excludes instances. -/
+  | isInstance
+  /-- Policy: it is `private` and this site excludes private declarations. -/
+  | isPrivate
+deriving Inhabited, Repr, DecidableEq
+
+/-- Why this declaration has no page, or `none` when it has one (or is wired and needs
+none).
+
+The policy is checked first and in the order the two rules are applied, so the answer is
+the rule that actually removed the page: with `excludeInstances` on, an instance never
+reached the cap, and reporting it as over-cap would name a decision that was never made
+about it. Everything left over is the cap, which is the only other way `declHref?` gets
+cleared. -/
+def noPageReason? (policy : PagePolicy) (e : Entry) : Option NoPage :=
+  if !pageOmitted e then none
+  else if policy.excludeInstances && e.isInstance then some .isInstance
+  else if policy.excludePrivate && e.isPrivate then some .isPrivate
+  else some .overCap
 
 end DeclRoute
 
@@ -726,10 +880,24 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
   let nodeHref? : Option String :=
     labels[0]?.map fun l => s!"node/{Informal.NodeRoute.nodePageSlug (l : Name)}/"
   let displayName := display name
+  -- Instance-hood, from the environment's instance extension. Asked of the canonical
+  -- (possibly `_private.…`-mangled) name, which is what the extension is keyed by.
+  let isInstance := Lean.Meta.isInstanceCore (← getEnv) name
+  let isPrivate := isPrivateName name
   -- Unwired declarations get their own `decl/{slug}/` page (see `DeclPage`); wired
   -- ones keep their node page as the canonical page, so exactly one href is set.
+  -- The page policy subtracts from the unwired set before the scale cap ever sees it:
+  -- an excluded declaration keeps every other field it has — it is in the registry, the
+  -- catalogs, the audit and the graph — and loses only the page, which is what
+  -- `declHref?` is.
+  let opts ← getOptions
+  let excludedByPolicy :=
+    policyExcludesPage (configuredPageExcludeInstances opts) (configuredPageExcludePrivate opts)
+      isInstance isPrivate
   let declHref? : Option String :=
-    if nodeLabels.isEmpty then some (Informal.NodeRoute.declPageHref displayName) else none
+    if nodeLabels.isEmpty && !excludedByPolicy then
+      some (Informal.NodeRoute.declPageHref displayName)
+    else none
   -- Docstring, rendered once here (markdown + math, raw HTML disabled) so the
   -- metadata rail can inject it without a client-side renderer.
   let docs? ← findDocString? (← getEnv) name
@@ -738,7 +906,7 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
   -- project's own repository keeps only its repository-relative path: this registry is
   -- replayed from `.lake` across commits, and the revision is emission's to supply.
   let sourceLink? ←
-    liftM <| sourceLinkFor? (← getOptions) workspaceRoot (some moduleName) sourcePath?
+    liftM <| sourceLinkFor? opts workspaceRoot (some moduleName) sourcePath?
       (ranges?.map (·.range))
   let sourceRepoPath? : Option String :=
     match sourceLink? with
@@ -765,7 +933,8 @@ private def buildEntry (workspaceRoot : System.FilePath) (namePrefix : String)
     status := provedStatusTag status
     authored := !nodeLabels.isEmpty
     shortName := Informal.NodeCard.shortDeclName namePrefix displayName
-    isPrivate := isPrivateName name
+    isPrivate
+    isInstance
     docstringHtml?
     declHref?
     sourceHref?
@@ -796,16 +965,19 @@ caps (`rawBodyCap`/`highlightBodyCap`) so a pathological body can never balloon
 the store.
 -/
 def buildDeclRegistry :
-    CoreM (Registry × Bodies × Array Informal.TrustInputs.Input × Option PageCap) := do
+    CoreM (Registry × Bodies × Array Informal.TrustInputs.Input × Option PageCap ×
+      Option PagePolicy) := do
   let env ← getEnv
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
   let namePrefix := configuredNamePrefix (← getOptions)
   let fullElabMaxDecls := configuredFullElabMaxDecls (← getOptions)
   let maxDeclPages := configuredMaxDeclPages (← getOptions)
+  let pageExcludeInstances := configuredPageExcludeInstances (← getOptions)
+  let pageExcludePrivate := configuredPageExcludePrivate (← getOptions)
   let roots ← projectModuleRoots
   if roots.isEmpty then
-    return ({}, {}, #[], none)
+    return ({}, {}, #[], none, none)
   -- The caveat table, read once for the whole registry. A configured override that is
   -- unusable is a build error here as it is on the trust path: the two surfaces answer to
   -- one switch and one table, and a registry that silently fell back to the bundled table
@@ -1005,6 +1177,15 @@ def buildDeclRegistry :
       full re-elaboration (signatures on the signature tier, proof bodies syntactic)"
   else if fullDeclAttempts > 0 then
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
+  -- Page policy: which declarations are worth a page at all. Applied per entry in
+  -- `buildEntry` (it is a property of the declaration, not of the set), summarized here
+  -- over the finished entries — before the cap, whose candidate set it has already
+  -- narrowed.
+  let declPagePolicy? := summarizePagePolicy pageExcludeInstances pageExcludePrivate entries
+  if let some policy := declPagePolicy? then
+    logInfo s!"declaration pages: policy excluded {policy.instancesExcluded} instances \
+      and {policy.privateExcluded} private declarations; {policy.pages} declarations \
+      remain eligible for a page of their own"
   -- Scale cap (e): above `maxDeclPages` only the highest-fan-in unwired declarations
   -- keep a `decl/` page of their own. The registry itself still carries every
   -- declaration — the index is cheap, the per-declaration page is not — so the catalog
@@ -1017,9 +1198,10 @@ def buildDeclRegistry :
       for the {cap.emitted} with the highest fan-in and indexing the other \
       {cap.omitted} without a page"
   return (
-    { schemaVersion := 3, namePrefix, declCount := cappedEntries.size, decls := cappedEntries },
+    { schemaVersion := 4, namePrefix, declCount := cappedEntries.size, decls := cappedEntries },
     { bodies },
     registryInputs,
-    declPageCap?)
+    declPageCap?,
+    declPagePolicy?)
 
 end Informal.DeclRegistry

@@ -989,27 +989,44 @@ private def pmHubLinks (state : TraverseState) : Output.Html :=
     </nav>
   }}
 
-/-- One sentence stating what the per-declaration-page scale cap dropped, under the hub
-links it qualifies — the catalog pages those links point at are the surfaces where a
-reader meets a declaration with no page of its own.
+/-- One sentence per rule stating what the per-declaration-page policy excluded and what
+the scale cap dropped, under the hub links they qualify — the catalog pages those links
+point at are the surfaces where a reader meets a declaration with no page of its own.
 
-`.empty` unless the cap actually bound: a site emitting a page for every unwired
+`.empty` for a rule that took nothing away: a site emitting a page for every unwired
 declaration says nothing, because there is nothing to disclose. -/
 private def pmDeclPageCapNote (state : TraverseState) : Output.Html :=
-  match Informal.TraversalIndex.DeclRegistry.declPageCap? state with
-  | none => .empty
-  | some raw =>
-    match (FromJson.fromJson? raw : Except String Informal.DeclRegistry.PageCap) with
-    | .error _ => .empty
-    | .ok cap =>
-      {{
-        <p class="bp_pm_section_intro">
-          {{.text true s!"Declaration pages: {cap.emitted} of the {cap.candidates} \
-            declarations this blueprint does not present as nodes; the other \
-            {cap.omitted} are indexed without a page of their own \
-            (verso.blueprint.declRegistry.maxDeclPages = {cap.limit})."}}
-        </p>
-      }}
+  let policyNote : Output.Html :=
+    match Informal.TraversalIndex.DeclRegistry.declPagePolicy? state with
+    | none => .empty
+    | some raw =>
+      match (FromJson.fromJson? raw : Except String Informal.DeclRegistry.PagePolicy) with
+      | .error _ => .empty
+      | .ok policy =>
+        {{
+          <p class="bp_pm_section_intro">
+            {{.text true s!"Declaration pages: {policy.instancesExcluded} instances and \
+              {policy.privateExcluded} private declarations have no page of their own by \
+              policy; they are still enumerated, audited and listed in the index and the \
+              module tree."}}
+          </p>
+        }}
+  let capNote : Output.Html :=
+    match Informal.TraversalIndex.DeclRegistry.declPageCap? state with
+    | none => .empty
+    | some raw =>
+      match (FromJson.fromJson? raw : Except String Informal.DeclRegistry.PageCap) with
+      | .error _ => .empty
+      | .ok cap =>
+        {{
+          <p class="bp_pm_section_intro">
+            {{.text true s!"Declaration pages: {cap.emitted} of the {cap.candidates} \
+              declarations this blueprint does not present as nodes; the other \
+              {cap.omitted} are indexed without a page of their own \
+              (verso.blueprint.declRegistry.maxDeclPages = {cap.limit})."}}
+          </p>
+        }}
+  .seq #[policyNote, capNote]
 
 /-- The next few actionable ("ready") worklist items as a compact preview; empty when
 nothing is ready. The worklist page carries the full, filterable list. -/

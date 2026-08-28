@@ -118,12 +118,27 @@ structure GraphBlockData where
   page emitters via the traversal store. `0` ⇒ unlimited; the field default is `0` so
   block data serialized before this field decodes to the pre-cap behavior. -/
   localGraphMaxNodes : Nat := 0
+  /-- Whether declaration pages draw their local graph only when it is complete,
+  captured at elaboration from `verso.blueprint.declPage.localGraphCompleteOnly` and
+  carried to the generation-time decl-page emitter via the traversal store. The field
+  default is `false`, the pre-option behavior. -/
+  localGraphCompleteOnly : Bool := false
+  /-- Whether declaration pages carry the sidebar ToC, captured at elaboration from
+  `verso.blueprint.declPage.sidebarToc` and carried to the generation-time decl-page
+  emitter via the traversal store. The field default is `true`, the pre-option
+  behavior. -/
+  declPageSidebarToc : Bool := true
   /-- What the per-declaration-page scale cap
   (`verso.blueprint.declRegistry.maxDeclPages`) dropped, captured at elaboration and
   carried to the traversal store for the surfaces that report it. `none` when the cap
   dropped nothing, which is also what block data serialized before this field decodes
   to — so a build below the cap serializes exactly the bytes it did before. -/
   declPageCap? : Option Informal.DeclRegistry.PageCap := none
+  /-- What the per-declaration-page policy
+  (`verso.blueprint.declRegistry.pageExcludeInstances` / `pageExcludePrivate`)
+  excluded, captured at elaboration and carried to the traversal store for the surfaces
+  that report it. `none` when the policy excluded nothing. -/
+  declPagePolicy? : Option Informal.DeclRegistry.PagePolicy := none
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
 deriving Inhabited, FromJson, ToJson, Quote
@@ -739,8 +754,19 @@ block_extension Block.graph (graphDataJson : String) where
             Informal.TraversalIndex.DeclRegistry.saveLocalGraphMaxNodes state
               graphData.localGraphMaxNodes
           let state :=
+            Informal.TraversalIndex.DeclRegistry.saveLocalGraphCompleteOnly state
+              graphData.localGraphCompleteOnly
+          let state :=
+            Informal.TraversalIndex.DeclRegistry.saveDeclPageSidebarToc state
+              graphData.declPageSidebarToc
+          let state :=
             match graphData.declPageCap? with
             | some cap => Informal.TraversalIndex.DeclRegistry.saveDeclPageCap state (toJson cap)
+            | Option.none => state
+          let state :=
+            match graphData.declPagePolicy? with
+            | some policy =>
+              Informal.TraversalIndex.DeclRegistry.saveDeclPagePolicy state (toJson policy)
             | Option.none => state
           match graphData.declNamePrefix? with
           | some pfx => Informal.TraversalIndex.DeclRegistry.savePrefix state pfx
@@ -1036,24 +1062,28 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   -- serialized here at elaboration time (env available). The registry is emitted
   -- as `-verso-data/decl-registry.json` at generation time; the bodies stay in
   -- the traversal store for the decl-page emitter only.
-  let (declRegistryJson?, declBodiesJson?, declRegistryInputsJson?, declPageCap?, declPageNames?) ← do
+  let (declRegistryJson?, declBodiesJson?, declRegistryInputsJson?, declPageCap?,
+      declPagePolicy?, declPageNames?) ← do
     if verso.blueprint.graph.includeAllDecls.get (← Lean.getOptions) then
-      let (registry, bodies, inputs, cap?) ← Informal.DeclRegistry.buildDeclRegistry
-      if registry.decls.isEmpty then pure (none, none, none, none, none)
+      let (registry, bodies, inputs, cap?, policy?) ← Informal.DeclRegistry.buildDeclRegistry
+      if registry.decls.isEmpty then pure (none, none, none, none, none, none)
       else
-        -- Only needed when the cap bound: below it every supporting node's href is a
-        -- page that exists, and the whole graph is left byte-identical.
+        -- Only needed when something actually lost a page — the cap or the policy:
+        -- otherwise every supporting node's href is a page that exists, and the whole
+        -- graph is left byte-identical.
         let pageNames? : Option (Std.HashSet String) :=
-          cap?.map fun _ =>
+          if cap?.isNone && policy?.isNone then none
+          else some <|
             registry.decls.foldl (init := ({} : Std.HashSet String)) fun acc e =>
               if Informal.DeclRegistry.DeclRoute.hasDeclPage e then acc.insert e.name else acc
         pure (some (toJson registry).compress, some (toJson bodies).compress,
-          (if inputs.isEmpty then none else some (toJson inputs).compress), cap?, pageNames?)
+          (if inputs.isEmpty then none else some (toJson inputs).compress), cap?, policy?,
+          pageNames?)
     else
-      pure (none, none, none, none, none)
-  -- Scale cap (e), graph side: a supporting node for a declaration whose page the cap
-  -- dropped keeps its label and tooltip but loses its href. The alternative — leaving
-  -- the href — is a graph that navigates to pages this build did not write.
+      pure (none, none, none, none, none, none)
+  -- Scale cap (e) and the page policy, graph side: a supporting node for a declaration
+  -- with no page keeps its label and tooltip but loses its href. The alternative —
+  -- leaving the href — is a graph that navigates to pages this build did not write.
   let renderGraphData? : Option Informal.Graph.GraphData :=
     match declPageNames? with
     | none => renderGraphData?
@@ -1078,12 +1108,20 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   -- Local-graph node cap (e): same capture path as the radius. The two compose — the
   -- radius bounds how far the page looks, the cap bounds how much it draws.
   let localGraphMaxNodes := Informal.DeclRegistry.configuredLocalGraphMaxNodes (← Lean.getOptions)
+  -- The two declaration-page frame settings, captured on the same path: whether a
+  -- decl page draws a truncated local graph at all, and whether it carries the
+  -- sidebar ToC.
+  let localGraphCompleteOnly :=
+    Informal.DeclRegistry.configuredLocalGraphCompleteOnly (← Lean.getOptions)
+  let declPageSidebarToc :=
+    Informal.DeclRegistry.configuredDeclPageSidebarToc (← Lean.getOptions)
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
     { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?,
       declRegistryInputsJson?, declNamePrefix?,
-      options, maxFlatVariantNodes, localGraphRadius, localGraphMaxNodes, declPageCap?,
+      options, maxFlatVariantNodes, localGraphRadius, localGraphMaxNodes,
+      localGraphCompleteOnly, declPageSidebarToc, declPageCap?, declPagePolicy?,
       previewMode, previewPlacement }
   -- Carry the block payload as a flat, pre-compressed JSON string rather than the
   -- structured `GraphBlockData`: `quote`ing the full node/edge structure overflows

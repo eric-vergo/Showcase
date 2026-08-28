@@ -108,8 +108,11 @@ private def has (haystack needle : String) : Bool :=
 /-! ## The real bundle -/
 
 -- Applied to the site-wide bundle every page carries, the whole design system ends
--- up in the one stylesheet: tokens, build metadata, palette, rail, docs chrome and
--- the print rules all present, and nothing left inline.
+-- up in the one stylesheet: tokens, build metadata, palette, rail, docs chrome, the
+-- node/declaration page frame and the print rules all present, and nothing left inline.
+-- The page-frame rules are here rather than in each page's own `<style>` — that is the
+-- move, and on a site of tens of thousands of declaration pages it is most of what the
+-- frame used to cost.
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -120,6 +123,9 @@ private def has (haystack needle : String) : Bool :=
     has css ".bp_build_metadata" &&
     has css ".bp_command_palette" &&
     has css "#bp-metadata-rail" &&
+    has css ".bp_node_breadcrumb" &&
+    has css ".bp_decl_page_fq" &&
+    has css ".bp_caveats" &&
     has css "@media print"
 
 end Verso.VersoBlueprintTests.BlueprintSharedChrome

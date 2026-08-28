@@ -19,12 +19,21 @@ Per-declaration pages: one standalone page (`decl/<slug>/index.html`) for every
 supporting node on the all-declarations graph links somewhere. Wired
 declarations' canonical page stays their node page — no duplicate pages.
 
-Above `verso.blueprint.declRegistry.maxDeclPages` the registry keeps only the
-highest-fan-in unwired declarations' pages (see `DeclRegistry.applyDeclPageCap`);
-this emitter follows it by asking `DeclRoute.hasDeclPage`, and the surfaces that
-would have linked to a dropped page say so instead. The registry itself, the catalog
-pages, the module tree and the properties rail still carry every declaration: the
-index is cheap, the page is not.
+Which declarations get one is decided in the registry, not here: the page policy
+(`verso.blueprint.declRegistry.pageExcludeInstances` / `pageExcludePrivate`) removes the
+kinds of declaration a site does not want pages for, and above
+`verso.blueprint.declRegistry.maxDeclPages` the scale cap keeps only the highest-fan-in
+of what is left (see `DeclRegistry.applyDeclPageCap`). This emitter follows both by
+asking `DeclRoute.hasDeclPage`, and the surfaces that would have linked to a page that
+was not written say why instead. The registry itself, the catalog pages, the module tree
+and the properties rail still carry every declaration: the index is cheap, the page is
+not.
+
+The page's own frame is configurable for the same reason — at scale it is paid tens of
+thousands of times. `verso.blueprint.declPage.localGraphCompleteOnly` drops the local
+graph on the pages where it would be a truncated prefix (the largest payload here), and
+`verso.blueprint.declPage.sidebarToc := false` drops the chapter ToC. Both default to
+today's behavior, and neither touches node pages.
 
 Each page reuses the node-page chrome and card family: a breadcrumb
 (Book › Modules › module › shortName), the standard two-column `NodeCard` with the
@@ -53,36 +62,6 @@ open Verso Verso.Output Verso.Doc
 open Verso.Genre Manual
 open Verso.Output.Html
 open Informal.DeclRegistry (Entry Registry Body Bodies)
-
-/-- Extra styling for decl pages: the muted fully-qualified-name subtitle under
-the clean card header. Design tokens only, so light + dark come for free. -/
-def declPageCss : String := r##"
-.bp_decl_page_fq {
-  margin-top: var(--bp-space-1);
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-caption, 0.78rem);
-  font-style: normal;
-  font-weight: 400;
-  color: var(--bp-color-text-muted);
-  overflow-wrap: anywhere;
-}
-
-/* Quiet provenance marker for the informal-statement cell: notes that the shown
-   prose is derived from the declaration's docstring. A restrained hairline chip in
-   the status-dot register (small, muted); tokens only, so both themes come for
-   free. */
-.bp_decl_provenance {
-  display: inline-flex;
-  align-items: center;
-  margin-top: var(--bp-space-3);
-  padding: 0.05rem var(--bp-space-2);
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-pill);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  line-height: 1.5;
-  color: var(--bp-color-text-faint);
-}
-"##
 
 /-- Short display name for a registry entry (falls back to the FQ name). -/
 private def displayShort (e : Entry) : String :=
@@ -216,15 +195,30 @@ private def registryGraph (entries : Array Entry) : Informal.Graph.GraphData := 
   let data : Informal.Graph.GraphData := { key := "decl-local", nodes }
   return { data with edges := Informal.Graph.edgesForGraph data.toGraph }
 
+/-- Whether a declaration page draws its local dependency graph at all, given what the
+node cap left out of the neighborhood.
+
+Under `verso.blueprint.declPage.localGraphCompleteOnly` a truncated graph is not drawn:
+it is the largest single payload on the page, and what it shows is a breadth-first prefix
+of the neighborhood — a slice with no meaning of its own, of a relation the properties
+rail's Uses / Used by lists carry in full and exactly. A page whose neighborhood fits
+within the radius draws it as before, which is why "complete" here means complete *for
+the configured radius*, not the full transitive closure.
+
+Public only as a test seam: this is the whole of the option's behavior. -/
+def drawsLocalGraph (completeOnly : Bool) (omitted : Nat) : Bool :=
+  !(completeOnly && omitted > 0)
+
 open Verso.Output.Html in
 /-- Assemble the body of one decl page: the breadcrumb topbar, the
 two-column card, and the localized dependency graph (ancestors ∪ self ∪
 descendants over the registry graph; quietly absent for private declarations
-and single-node neighborhoods — the same section structure as node pages). -/
+and single-node neighborhoods — the same section structure as node pages, plus the
+`localGraphCompleteOnly` gate, which is this page's alone). -/
 private def renderDeclPageBody (master : Informal.Graph.GraphData)
     (bodies : Std.HashMap String Body)
     (bookTitle : String) (e : Entry) (slug : String)
-    (localGraphRadius localGraphMaxNodes : Nat) :
+    (localGraphRadius localGraphMaxNodes : Nat) (localGraphCompleteOnly : Bool) :
     Output.Html :=
   let short := displayShort e
   let card := Informal.NodeCard.render (declCardParts bodies e slug) {}
@@ -252,7 +246,8 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
       let (labelSet, omittedNodes) :=
         master.cappedNeighborhood nm localGraphRadius localGraphMaxNodes
       let sub := master.restrictTo labelSet
-      if sub.nodes.size ≤ 1 then .empty
+      if !drawsLocalGraph localGraphCompleteOnly omittedNodes then .empty
+      else if sub.nodes.size ≤ 1 then .empty
       else
         let localVariant : Informal.Graph.GraphRenderVariant := {
           key := "local"
@@ -287,8 +282,6 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
   {{
     <div class="bp_node_page bp_decl_page">
       <header class="bp_node_page_header">
-        <style>{{.text false (Informal.NodePage.nodeBreadcrumbCss ++ declPageCss
-          ++ (if e.scan?.isSome then Informal.CaveatsRender.css else ""))}}</style>
         <div class="bp_node_page_topbar">
           {{breadcrumb}}
         </div>
@@ -362,6 +355,12 @@ def emitBlueprintDeclPages : ExtraStep :=
           let localGraphRadius := (Informal.TraversalIndex.DeclRegistry.localGraphRadius? state).getD 0
           let localGraphMaxNodes :=
             (Informal.TraversalIndex.DeclRegistry.localGraphMaxNodes? state).getD 0
+          let localGraphCompleteOnly :=
+            (Informal.TraversalIndex.DeclRegistry.localGraphCompleteOnly? state).getD false
+          -- The frame these pages carry: without the option, the same sidebar ToC every
+          -- other page has.
+          let withSidebarToc :=
+            (Informal.TraversalIndex.DeclRegistry.declPageSidebarToc? state).getD true
           let mut usedSlugs : Std.HashSet String := {}
           let mut searchRecords : Array Json := #[]
           for e in entries do
@@ -377,9 +376,10 @@ def emitBlueprintDeclPages : ExtraStep :=
             usedSlugs := usedSlugs.insert slug
             let body :=
               renderDeclPageBody master bodies text.titleString e slug localGraphRadius
-                localGraphMaxNodes
+                localGraphMaxNodes localGraphCompleteOnly
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               (Informal.NodeRoute.declPagePath e.name) (displayShort e) body
+              (withSidebarToc := withSidebarToc)
             searchRecords := searchRecords.push (declSearchRecord e registry.namePrefix)
           writeDeclSearchIndex mode cfg searchRecords
 

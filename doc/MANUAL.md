@@ -819,6 +819,52 @@ surface that would have linked to one says so instead:
   gains a short section saying what the cap did — both only when it actually did
   something.
 
+#### Which declarations get a page: the page policy
+
+The cap is a budget. The two page-policy options are a statement about which declarations
+are worth a page at all, applied *before* the cap ranks anything:
+
+```lean
+leanOptions := #[
+  ⟨`verso.blueprint.graph.includeAllDecls, true⟩,
+  ⟨`verso.blueprint.declRegistry.pageExcludeInstances, true⟩,
+  ⟨`verso.blueprint.declRegistry.pageExcludePrivate, true⟩
+]
+```
+
+An excluded declaration keeps everything else it had: it is enumerated in the registry,
+audited for axioms, listed in the index and the module tree, selectable in the properties
+rail, and drawn in the dependency graph. What it loses is a page of its own — and the
+surfaces say which rule took it, with a `no page (instance)` / `no page (private)` pill in
+place of the `no page (over cap)` one. Both rules default to `false`, so a site that sets
+neither is unchanged.
+
+The two rules are worth different things on different projects. Instances are the larger
+win by count on a Mathlib-style library; private declarations are the more defensible
+one, since a private declaration is a helper the project itself does not export (and its
+page was already the thinnest on the site, because private declarations are kept out of
+every dependency graph).
+
+#### What a declaration page carries
+
+Two more options trim the frame of the declaration pages themselves — the frame is paid
+once per page, which at library scale is most of what the pages cost:
+
+- `verso.blueprint.declPage.localGraphCompleteOnly` (default `false`) — draw the local
+  dependency graph only when the page can draw the whole neighborhood the radius admits.
+  Under `nodePage.localGraphMaxNodes` a hub declaration's graph is a breadth-first prefix
+  of its neighborhood: the largest single payload on the page, showing an arbitrary slice
+  of a relation the properties rail's Uses / Used by lists already carry in full. With
+  this on, such a page omits the graph section; a page whose neighborhood fits draws it as
+  before. **Node pages are unaffected** — they are the curated surface and their graphs
+  are the point.
+- `verso.blueprint.declPage.sidebarToc` (default `true`) — whether declaration pages carry
+  the book's chapter ToC. They are reached from a catalog row, a graph node or the command
+  palette and carry the top nav and their own breadcrumb. With this off the ToC is not
+  built for those pages rather than hidden by CSS, so its entries are not in the file at
+  all; the sidebar shell and its home link stay. Node, chapter and project-management
+  pages keep theirs.
+
 `0` (the default) is unlimited, and leaves the generated site byte-identical to what it
 was before the cap existed. A cap the declaration count exceeds but the *page candidates*
 do not is also a no-op, so the reported counts never describe a degradation that did not
@@ -1269,6 +1315,21 @@ states rather than hides:
     highest-fan-in declarations no Blueprint node presents; the rest stay indexed
     without a page, marked as such on every surface that would have linked to one.
     See [Declaration pages and the page cap](#declaration-pages-and-the-page-cap).
+- `verso.blueprint.declRegistry.pageExcludeInstances`
+  - default: `false`
+  - denies instance declarations a `decl/<slug>/` page. They stay in the registry, the
+    audit, the catalogs, the module tree, the rail and the graph; only the page goes, and
+    the catalog row says so with a `no page (instance)` pill.
+- `verso.blueprint.declRegistry.pageExcludePrivate`
+  - default: `false`
+  - the same for `private` declarations (`no page (private)`).
+- `verso.blueprint.declPage.localGraphCompleteOnly`
+  - default: `false`
+  - a declaration page draws its local dependency graph only when nothing within the
+    radius was left out of it. Node pages are unaffected.
+- `verso.blueprint.declPage.sidebarToc`
+  - default: `true`
+  - whether declaration pages carry the book's sidebar table of contents.
 - `verso.blueprint.declRegistry.fullElabMaxDecls`
   - default: `1500`
   - declaration count above which the registry skips the per-entry full

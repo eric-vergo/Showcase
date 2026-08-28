@@ -613,8 +613,8 @@ private def renderedStatus (scanValue : String) : String :=
     "does not recognize the caveat-scan state 'completed-elsewhere'"
 
 -- A whole v2 registry document still reads, with every entry not-scanned; this build
--- writes v3.
-/-- info: (2, 3, true) -/
+-- writes v4 (v3 added the optional `scan`, v4 each entry's `isInstance`).
+/-- info: (2, 4, true) -/
 #guard_msgs in
 #eval
   let v2 : Json := Json.mkObj [
