@@ -21,13 +21,16 @@ import VersoBlueprint.TraversalIndex
 The `:::milestone` directive.
 
 ```
-:::milestone "ms:period-family" (title := "The period family") (paper := "§3")
-    (paper_url := "https://example.org/paper.pdf") (row := 2)
-    (uses := "ms:lattice, ms:uniformization")
-    (members := "def:period-point, thm:exists-period-functions")
+:::milestone "ms:period-family" (title := "The period family") (paper := "§3") (paper_url := "…") (row := 2) (uses := "ms:lattice, ms:uniformization") (members := "def:period-point, thm:exists-period-functions")
 An informal sketch of this waypoint, in ordinary Verso prose.
 :::
 ```
+
+Every argument goes on the opening line. A Verso directive reads its arguments from
+that line alone, so one wrapped onto a continuation line becomes the body's first
+line instead — silently, and with consequences the author would not connect to a
+line break: a milestone whose `members` were wrapped covers no nodes, and every
+edge incident to it therefore comes out author-asserted.
 
 **A milestone renders nothing where it is written.** It may be declared in any
 document module, it is not tied to a chapter or to a position within one, and no

@@ -600,15 +600,16 @@ waypoint, and `{blueprint_overview}` renders them all as a compact diagram plus
 one card per milestone.
 
 ```md
-:::milestone "ms:period-family" (title := "The period family") (paper := "§3")
-    (paper_url := "https://example.org/paper.pdf") (row := 2)
-    (uses := "ms:lattice, ms:uniformization")
-    (members := "def:period-point, thm:exists-period-functions")
+:::milestone "ms:period-family" (title := "The period family") (paper := "§3") (paper_url := "https://example.org/paper.pdf") (row := 2) (uses := "ms:lattice, ms:uniformization") (members := "def:period-point, thm:exists-period-functions")
 Three to six sentences of informal proof sketch, in ordinary Verso prose.
 :::
 ```
 
-Arguments:
+Arguments — **all of them on the directive's opening line**. A Verso directive reads
+its arguments from that line only: an argument wrapped onto a continuation line is
+read as the first line of the body instead, and a milestone whose `(members := …)`
+was wrapped silently covers no nodes, which in turn makes every edge incident to it
+author-asserted. The line is long; that is the price.
 
 - positional label, e.g. `"ms:period-family"`
 - `(title := "…")` — the display title (the label is used when it is omitted)
