@@ -320,6 +320,12 @@ private def spoofedKernel : TrustComparator :=
 
 private def boundKernel : TrustComparator :=
   { fixtureComparator with
+    -- The site pins the nanoda identity this record states, and pins nothing for the
+    -- second checker: since CX-064 that difference is what separates a name from a label.
+    expectedIdentities := #[
+      { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
+        sourceCommit := "05055695"
+        executableSha256 := "f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc" }]
     kernelIdentities := #[
       { label := "nanoda", adapterKind := "nanoda"
         repository := "https://github.com/ammkrn/nanoda_lib"
@@ -355,14 +361,15 @@ private def boundKernel : TrustComparator :=
   !hasSubstr html "independently the nanoda kernel" &&
   hasSubstr html "The linked run's record additionally names a replay by nanoda, built \
     from 05055695, binary" &&
-  hasSubstr html "nothing here re-ran the checker, fetched that revision, or hashed the \
-    binary against it" &&
+  hasSubstr html "nothing on this page re-ran the checker, fetched that revision, or hashed \
+    the binary against it" &&
   hasSubstr html "nanoda 05055695" &&
   hasSubstr html "binary <code>f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc</code>" &&
-  -- The second checker is identified but not one this site knows by name, so it is
-  -- reported as an external checker rather than as a kernel.
+  -- The second checker's identity is well formed, but this site pinned nothing for it, so
+  -- since CX-064 it is reported as an external checker rather than as a kernel, and the
+  -- page says what it therefore does not establish.
   hasSubstr html "external checker labeled" &&
-  hasSubstr html "not a checker this site knows by that name" &&
+  hasSubstr html "so what ran is not established here" &&
   !hasSubstr html "lean4lean and nanoda kernels" &&
   !hasSubstr html "checkers labeled" &&
   hasSubstr html "a checker labeled" &&
@@ -423,6 +430,9 @@ private def soleChecker (replay? : Option Bool) (configured : Bool) : TrustCompa
   let sole : TrustComparator :=
     { fixtureComparator with
       nanodaRef := ""
+      expectedIdentities := #[
+        { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
+          sourceCommit := "05055695" }]
       kernelIdentities := #[
         { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib"
           sourceCommit := "05055695", executableSha256 := "71aec9373ce521f160a4db531c6a865a1d6f236b3b9f99c958313bfaee639303"
@@ -572,6 +582,8 @@ private def localComparator : TrustComparator :=
   hasSubstr html "a maintainer workstation" &&
   hasSubstr html "leanprover/lean4:v4.33.0" &&
   hasSubstr html "no sandbox isolated the run" &&
+  -- Not in the header and not in "Reproduce it yourself": the site's CI url did not
+  -- produce this verdict, so no part of the page may offer it as the run that did.
   !hasSubstr html "CI verification record" &&
   !hasSubstr html "CI-verified" &&
   !hasSubstr html "bp_summary_badge_success"

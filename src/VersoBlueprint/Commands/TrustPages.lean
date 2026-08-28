@@ -409,7 +409,8 @@ private def kernelTableSection? (cmp : TrustComparator) : Option Output.Html :=
 
 /-- The "Reproduce it yourself" section: up to three tiers, each dropped when its data is
 absent. Tier 1 opens the challenge in the Lean playground (needs `playgroundUrl`); tier 2
-links the CI verification record (needs a CI url); tier 3 is always present — the local shell
+links the CI verification record (needs a CI url, and never for a locally-run verdict, which
+that url did not produce); tier 3 is always present — the local shell
 commands from `reproCommands`, with fallback notes when the tool version or config path are
 unknown, and always the Landlock-sandbox caveat. -/
 private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option String) : Output.Html :=
@@ -422,7 +423,11 @@ private def comparatorReproSection (cmp : TrustComparator) (ciUrl? : Option Stri
         "Mathlib. This checks the challenge statement only, not its comparison against the solution."
       </li> }}
   let tier2 : Option Output.Html :=
-    match ciUrl? with
+    -- The same reason the verdict header withholds it: a locally-run verdict has no run
+    -- record, and the site-wide CI URL did not produce this one. Calling it "the exact run
+    -- that produced this verdict" here would contradict, elsewhere on the same page, the
+    -- sentence saying no run record links it.
+    match (if cmp.isLocalVerdict then none else ciUrl?) with
     | some u =>
       -- What the *linked run* did, from its own record. The current configuration's
       -- `enable_nanoda` describes the next run and says nothing about this one.

@@ -492,12 +492,16 @@ private def nextGenStatus := r##"{
   -- the rest of the fork uses.
   legacy.kernelReplays == #[("nanoda", true)] &&
   legacy.recordedKernelRef "nanoda" == "aa11" &&
-  legacy.replayedWithNanoda &&
+  legacy.nanodaReplayRecorded &&
   -- New shape ⇒ both kernels, and the nanoda fields still resolve from the map.
   next.replayedKernels == #["lean4lean", "nanoda"] &&
   next.recordedKernelRef "lean4lean" == "bb22" &&
   next.nanodaRef == "aa11" &&
-  next.replayedWithNanoda &&
+  next.nanodaReplayRecorded &&
+  -- Reading a shape is not authenticating it. Neither record has a pin behind it, so
+  -- neither may be reported as a nanoda replay this site vouches for (CX-064); what the
+  -- record *says* is above, what it establishes is here.
+  !legacy.replayedWithNanoda && !next.replayedWithNanoda &&
   next.toolToolchain == "leanprover/lean4:v4.33.1" &&
   next.challengeChain
     == #[("comparator/ChallengeDeps.lean", "dd44"), ("comparator/Challenge.lean", "ee55")] &&
@@ -1324,18 +1328,31 @@ second-kernel assurance to call dated, an unrecorded one is a pin and nothing mo
 /-! Rows are built from what the *run* recorded. A checker the configuration merely
 enables has no build to assess, and gets no row rather than a neutral one. -/
 
+/-- A site pin for the legacy `nanoda_replay`/`nanoda_ref` pair. That pair never carried a
+digest, so the revision is the only field a pin can authenticate — and since CX-064 it is
+the pin, not the pair's unredirectability, that makes the revision assessable. -/
+private def legacyNanodaPin (rev : String) : KernelIdentityPin :=
+  { label := "nanoda", repository := "https://github.com/ammkrn/nanoda_lib", sourceCommit := rev }
+
 /-- info: true -/
 #guard_msgs in
 #eval
   let legacy : TrustComparator :=
-    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", nanodaRef := affectedRev }
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", nanodaRef := affectedRev
+      expectedIdentities := #[legacyNanodaPin affectedRev] }
   let configOnly : TrustComparator :=
     { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", enableNanoda := true }
   let withToolchain : TrustComparator :=
     { legacy with toolToolchain := "leanprover/lean4:v4.33.1" }
+  -- The same record with nothing behind it: assessed as `unknown`, not as stale, however
+  -- old the revision looks (CX-064).
+  let unpinned : TrustComparator :=
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z", nanodaRef := affectedRev }
   let legacyRows := legacy.currencyRows testTable
   let toolchainRows := withToolchain.currencyRows testTable
-  -- The legacy pair is assessable (no configuration can redirect it) and stale here.
+  (unpinned.currencyRows testTable).map (fun r => (r.verdict, r.reason))
+    == #[("unknown", "identity-unbound")] &&
+  -- The legacy pair, pinned by the site, is assessable and stale here.
   legacyRows.size == 1 &&
   (legacyRows[0]!).tool == "nanoda" && (legacyRows[0]!).verdict == "stale" &&
   (legacyRows[0]!).advisoriesUpdated == "2026-08-25" &&
@@ -1454,8 +1471,16 @@ option documents. -/
 #eval
   let real : TrustComparator :=
     { status := "verified", verifiedAt := "2026-08-04T02:15:05Z"
+      nanodaRef := "f58f2f6d535e189a40fcb02ede8eb95f97a92d37"
+      expectedIdentities := #[legacyNanodaPin "f58f2f6d535e189a40fcb02ede8eb95f97a92d37"] }
+  let unpinned : TrustComparator :=
+    { status := "verified", verifiedAt := "2026-08-04T02:15:05Z"
       nanodaRef := "f58f2f6d535e189a40fcb02ede8eb95f97a92d37" }
   let rows := real.currencyRows Informal.KernelAdvisories.builtinTable
+  -- Unpinned, the very same revision is not assessed at all: this site has no second
+  -- source for which binary ran, and says so rather than grading the producer's word.
+  (unpinned.currencyRows Informal.KernelAdvisories.builtinTable).map
+      (fun r => (r.verdict, r.reason)) == #[("unknown", "identity-unbound")] &&
   rows.size == 1 && (rows[0]!).verdict == "stale" &&
   hasSubstr (rows[0]!).detail "pins nanoda at f58f2f6d535e189a40fcb02ede8eb95f97a92d37" &&
   !hasSubstr (rows[0]!).detail "second-kernel assurance" &&
@@ -1819,11 +1844,16 @@ private def duplicateIdentitiesStatus := r##"{
 
 -- The identical-duplicate control passes with a single record, and the checker keeps the
 -- name its identity earns: deduplication must not cost the assurance it is protecting.
-/-- info: (1, "named", true, 0) -/
+-- The name is earned against the site's pin, so the pin is what the surviving record is
+-- matched against — dropping it would test nothing, since an unpinned record is `labeled`
+-- whether or not it survived a merge.
+/-- info: (1, "named", true, 0, "labeled") -/
 #guard_msgs in
 #eval
-  let dup := TrustComparator.ofJson (parsedJson duplicateIdentitiesStatus)
+  let dup := (TrustComparator.ofJson (parsedJson duplicateIdentitiesStatus)).withExpectedIdentities
+    sitePins
+  let unpinned := TrustComparator.ofJson (parsedJson duplicateIdentitiesStatus)
   (dup.kernelIdentities.size, dup.kernelIdentityTier "nanoda", dup.replayedWithNanoda,
-   dup.encodingConflicts.size)
+   dup.encodingConflicts.size, unpinned.kernelIdentityTier "nanoda")
 
 end Verso.VersoBlueprintTests.BlueprintFormalization

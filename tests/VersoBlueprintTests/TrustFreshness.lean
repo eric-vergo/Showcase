@@ -260,7 +260,7 @@ def pendingInputs : IO (Array Informal.TrustInputs.Tagged) := do
   let recordedAbsent := fun (role path : String) =>
     inputs.any fun (topic, i) =>
       topic.isEmpty && i.role == role && i.path == path && !i.wasPresent && i.sha256.isEmpty
-  return inputs.size == 4 &&
+  return inputs.size == 5 &&
     recordedAbsent Informal.TrustInputs.roleConfig missingConfig &&
     recordedAbsent Informal.TrustInputs.roleSolution missingSolution &&
     -- and the two files that were there are recorded the way they always were
@@ -367,7 +367,7 @@ def sideInputs : IO (Array Informal.TrustInputs.Tagged) := do
     for (_, i) in inputs do
       unless (← Informal.TrustInputs.digestOfFile i.path) == i.sha256 do ok := false
     pure ok
-  return inputs.size == 6 && matchesDisk &&
+  return inputs.size == 7 && matchesDisk &&
     has Informal.TrustInputs.roleCaveatTable tableOverride &&
     has Informal.TrustInputs.roleCharacterizations sidecar
 
