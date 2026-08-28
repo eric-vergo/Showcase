@@ -116,7 +116,7 @@ private def check (ok : Bool) (what : String) : CoreM Unit :=
 #guard_msgs(drop info, drop warning) in
 set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 #eval show CoreM Unit from do
-  let (registry, bodies, _inputs) ← buildDeclRegistry
+  let (registry, bodies, _inputs, _cap?) ← buildDeclRegistry
   check (registry.declCount > 0) "registry is empty"
   check (registry.decls.size == registry.declCount) "declCount disagrees with decls"
   check (registry.decls.all fun e => e.moduleName == "SubVerso.Module")
@@ -140,7 +140,7 @@ set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 #guard_msgs(drop info, drop warning) in
 set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 #eval show CoreM Unit from do
-  let (_, _, inputs) ← buildDeclRegistry
+  let (_, _, inputs, _) ← buildDeclRegistry
   check inputs.isEmpty "the registry recorded an input with no override configured"
 
 -- With one configured, the registry records the path and the digest of the bytes its
@@ -151,7 +151,7 @@ set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 set_option verso.blueprint.subjectModuleRoots "SubVerso.Module" in
 set_option verso.blueprint.trust.junkValueTable "tests/fixtures/caveats/table-override.json" in
 #eval show CoreM Unit from do
-  let (_, _, inputs) ← buildDeclRegistry
+  let (_, _, inputs, _) ← buildDeclRegistry
   check (inputs.size == 1) s!"expected one recorded input, got {inputs.size}"
   let some i := inputs[0]? | check false "no input record"
   check (i.role == Informal.TrustInputs.roleCaveatTable) s!"wrong role: {i.role}"

@@ -19,6 +19,13 @@ Per-declaration pages: one standalone page (`decl/<slug>/index.html`) for every
 supporting node on the all-declarations graph links somewhere. Wired
 declarations' canonical page stays their node page — no duplicate pages.
 
+Above `verso.blueprint.declRegistry.maxDeclPages` the registry keeps only the
+highest-fan-in unwired declarations' pages (see `DeclRegistry.applyDeclPageCap`);
+this emitter follows it by asking `DeclRoute.hasDeclPage`, and the surfaces that
+would have linked to a dropped page say so instead. The registry itself, the catalog
+pages, the module tree and the properties rail still carry every declaration: the
+index is cheap, the page is not.
+
 Each page reuses the node-page chrome and card family: a breadcrumb
 (Book › Modules › module › shortName), the standard two-column `NodeCard` with the
 declaration's docstring (or a quiet placeholder when it has none) on the informal
@@ -205,7 +212,7 @@ private def registryGraph (entries : Array Entry) : Informal.Graph.GraphData := 
     let node := Informal.Graph.mkSupportingNodeData (nodeKindOf e.kind) e.name.toName
       (autoRefs e.statementDeps) (autoRefs e.proofDeps)
     { node with
-        href := e.nodeHref? <|> e.declHref?
+        href := Informal.DeclRegistry.DeclRoute.canonicalHref? e
         title := displayShort e }
   let data : Informal.Graph.GraphData := { key := "decl-local", nodes }
   return { data with edges := Informal.Graph.edgesForGraph data.toGraph }
@@ -360,8 +367,10 @@ def emitBlueprintDeclPages : ExtraStep :=
           let mut usedSlugs : Std.HashSet String := {}
           let mut searchRecords : Array Json := #[]
           for e in entries do
-            -- Wired declarations keep their node page as the canonical page.
-            if e.declHref?.isNone then continue
+            -- Wired declarations keep their node page as the canonical page; over the
+            -- `maxDeclPages` scale cap, so do the declarations the registry left
+            -- page-less. `hasDeclPage` is the one place that decision is read.
+            if !Informal.DeclRegistry.DeclRoute.hasDeclPage e then continue
             let slug := Informal.NodeRoute.declPageSlug e.name
             if usedSlugs.contains slug then
               logger.reportError <|

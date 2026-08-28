@@ -958,9 +958,10 @@ function renderRail(name, hintMeta) {
   }
 
   // --- Open node / declaration page ----------------------------------------
-  // Every registry decl has exactly one canonical page: the node page when
-  // wired, its own decl page otherwise. Suppress the CTA when that page is the
-  // one already being viewed (the target would be a no-op self-link).
+  // A registry decl has at most one canonical page: the node page when wired, its
+  // own decl page otherwise — and neither when the `maxDeclPages` scale cap left it
+  // indexed without a page, in which case there is no CTA to offer. Suppress the CTA
+  // too when that page is the one already being viewed (a no-op self-link).
   const pageHref = vm.nodeHref || vm.declHref;
   if (pageHref && !isCurrentPage(pageHref)) {
     const link = el("a", {

@@ -782,6 +782,52 @@ Warning markers are reserved for structural or resolution issues such as:
 - missing external Lean declarations
 - Lean-owned entries that have code but no informal statement body
 
+### Declaration pages and the page cap
+
+With `verso.blueprint.graph.includeAllDecls` on, the build records every declaration in
+the project's own modules in a registry, and emits one `decl/<slug>/` page for each
+declaration no Blueprint node presents. (A declaration a node *does* present keeps its
+node page as its one canonical page; there is never a page of each kind for the same
+declaration.) Those pages back the catalog surfaces — `defs/`, `theorems/`,
+`decl-index/`, `modules/` — the properties rail's dependency links, and the supporting
+nodes on the all-declarations graph.
+
+The registry INDEX is cheap and the per-declaration PAGE is not: each page carries its
+own localized dependency graph, which at library scale is by far the largest thing on it.
+On a project with tens of thousands of declarations, emitting a page for every one of
+them can dominate a whole site generation. `verso.blueprint.declRegistry.maxDeclPages`
+caps how many are emitted:
+
+```lean
+leanOptions := #[
+  ⟨`verso.blueprint.graph.includeAllDecls, true⟩,
+  ⟨`verso.blueprint.declRegistry.maxDeclPages, (2000 : Nat)⟩
+]
+```
+
+Above the cap the pages go to the declarations the most of the library depends on
+(highest `usedBy` fan-in, ties broken by name so two builds of one commit agree). Every
+other declaration is still enumerated, still audited, and still listed in the index, the
+module tree, and the properties rail — it simply has no page of its own, and every
+surface that would have linked to one says so instead:
+
+- catalog rows render the name as a plain (rail-selectable) control with a neutral
+  `no page (over cap)` pill, plus a source link when the build resolved one;
+- the graph's supporting nodes keep their labels and tooltips but lose their href;
+- the properties rail's dependency rows and open-page link degrade to plain text;
+- the project-management hub states the counts in one sentence, and the trust-model page
+  gains a short section saying what the cap did — both only when it actually did
+  something.
+
+`0` (the default) is unlimited, and leaves the generated site byte-identical to what it
+was before the cap existed. A cap the declaration count exceeds but the *page candidates*
+do not is also a no-op, so the reported counts never describe a degradation that did not
+happen.
+
+`scripts/check_decl_page_links.py <site-root>` is the gate: it fails when any
+`decl/<slug>/` reference in the generated HTML or in the `-verso-data` payloads has no
+page behind it.
+
 ### Proof overview
 
 `blueprint_overview` renders the milestone layer described in
@@ -1204,6 +1250,40 @@ prefixes with document-order block counts.
   - default: `24`
   - how many member nodes a milestone card lists before folding the rest into a
     `<details>` (`0` lists every member)
+
+The all-declarations registry and its scale caps. All four are no-ops on a consumer
+without `verso.blueprint.graph.includeAllDecls`, and each degrades in a way the site
+states rather than hides:
+
+- `verso.blueprint.graph.includeAllDecls`
+  - default: `false`
+  - records every declaration in the project's own modules, derives the dependency
+    graph's edges from the Lean terms, and emits the catalog and declaration pages
+- `verso.blueprint.declNamePrefix`
+  - default: `""` (no shortening)
+  - project namespace stripped wherever declaration names display; the
+    fully-qualified name is kept on hover titles and declaration pages
+- `verso.blueprint.declRegistry.maxDeclPages`
+  - default: `0` (unlimited)
+  - caps how many `decl/<slug>/` pages the site emits. Above it the pages go to the
+    highest-fan-in declarations no Blueprint node presents; the rest stay indexed
+    without a page, marked as such on every surface that would have linked to one.
+    See [Declaration pages and the page cap](#declaration-pages-and-the-page-cap).
+- `verso.blueprint.declRegistry.fullElabMaxDecls`
+  - default: `1500`
+  - declaration count above which the registry skips the per-entry full
+    (statement + proof) re-elaboration from source — the dominant time and memory
+    cost at scale. Signatures then render on the signature (`≈`) tier and proof
+    bodies syntactically, both marked on the page. `0` never skips.
+- `verso.blueprint.nodePage.localGraphRadius`
+  - default: `2`
+  - radius, in dependency hops, of the localized graph on each node and declaration
+    page. `0` draws the full ancestor ∪ self ∪ descendant closure, which at scale is
+    most of the library.
+- `verso.blueprint.graph.maxFlatVariantNodes`
+  - default: `0` (unlimited)
+  - node count above which the whole-graph `Full`/`Essential` graph variants are
+    skipped in favour of a group-overview-first variant set
 
 - `verso.blueprint.foldProofs`
   - default: `true`

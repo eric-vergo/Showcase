@@ -695,9 +695,9 @@ namespace DeclRegistry
 def spec : StoreSpec := {
   name := `VersoBlueprint.TraversalIndex.DeclRegistry
   kind := .accumulator
-  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\""
-  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, or the configured decl-name prefix string"
-  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names."
+  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\" / \"localGraphRadius\" / \"declPageCap\""
+  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, the configured decl-name prefix string, the local-graph radius, or the per-declaration-page cap record"
+  summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names. `declPageCap` records what the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped, and is present only when it dropped something."
 }
 
 def domainName : Name := spec.name
@@ -756,6 +756,18 @@ def saveLocalGraphRadius (state : TraverseState) (radius : Nat) : TraverseState 
 def localGraphRadius? (state : TraverseState) : Option Nat := do
   let obj ← state.getDomainObject? domainName "localGraphRadius"
   obj.data.getNat?.toOption
+
+/-- Stash what the per-declaration-page scale cap dropped, for the surfaces that
+report it (the PM hub, the trust model). Saved only when the cap actually bound, so a
+build below it stores nothing. -/
+def saveDeclPageCap (state : TraverseState) (cap : Json) : TraverseState :=
+  saveObjectData state domainName "declPageCap" cap
+
+/-- The per-declaration-page cap record, if a `blueprint_graph` block stored one.
+`none` ⇒ every unwired declaration got its page. -/
+def declPageCap? (state : TraverseState) : Option Json := do
+  let obj ← state.getDomainObject? domainName "declPageCap"
+  some obj.data
 
 end DeclRegistry
 

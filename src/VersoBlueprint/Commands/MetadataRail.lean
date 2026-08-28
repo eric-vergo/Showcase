@@ -37,6 +37,12 @@ The rail sits above the fixed ToC (z 10-12) but below the graph node modal
 (z 9500), so the Wave-2 modal always layers over it. It honors
 `prefers-reduced-motion` and every dependency item is a real button.
 
+Every href the rail offers comes from the registry, never from a slug it composed:
+a declaration the `verso.blueprint.declRegistry.maxDeclPages` scale cap left without
+a page of its own carries no `declHref`, and the rail's dependency rows and
+open-page CTA degrade to plain text rather than linking somewhere that was never
+written.
+
 The pinned footer (`.bp-rail-footer`) carries the absorbed page-level controls
 (the old floating widget): an Auto | Light | Dark theme radiogroup driving
 `window.VersoBlueprint.colorScheme`, a three-`A` text-size radiogroup driving

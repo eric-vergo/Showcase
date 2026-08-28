@@ -5,6 +5,7 @@ Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code
 -/
 
 import Std.Data.HashSet
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.NodePage
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.Resolve
@@ -988,6 +989,28 @@ private def pmHubLinks (state : TraverseState) : Output.Html :=
     </nav>
   }}
 
+/-- One sentence stating what the per-declaration-page scale cap dropped, under the hub
+links it qualifies — the catalog pages those links point at are the surfaces where a
+reader meets a declaration with no page of its own.
+
+`.empty` unless the cap actually bound: a site emitting a page for every unwired
+declaration says nothing, because there is nothing to disclose. -/
+private def pmDeclPageCapNote (state : TraverseState) : Output.Html :=
+  match Informal.TraversalIndex.DeclRegistry.declPageCap? state with
+  | none => .empty
+  | some raw =>
+    match (FromJson.fromJson? raw : Except String Informal.DeclRegistry.PageCap) with
+    | .error _ => .empty
+    | .ok cap =>
+      {{
+        <p class="bp_pm_section_intro">
+          {{.text true s!"Declaration pages: {cap.emitted} of the {cap.candidates} \
+            declarations this blueprint does not present as nodes; the other \
+            {cap.omitted} are indexed without a page of their own \
+            (verso.blueprint.declRegistry.maxDeclPages = {cap.limit})."}}
+        </p>
+      }}
+
 /-- The next few actionable ("ready") worklist items as a compact preview; empty when
 nothing is ready. The worklist page carries the full, filterable list. -/
 private def pmSuggestedTasks (state : TraverseState) (summary : Summary) : Output.Html :=
@@ -1075,6 +1098,7 @@ private def pmBody (state : TraverseState) (summary : Summary)
       </section>
       {{dashboardReadingMap state}}
       {{pmHubLinks state}}
+      {{pmDeclPageCapNote state}}
       {{pmSuggestedTasks state summary}}
       <section class="bp_pm_section">
         <div class="bp_dashboard_charts">

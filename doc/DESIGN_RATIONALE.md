@@ -1330,6 +1330,42 @@ proof-fill track so the graph can distinguish "not started", "started but
 incomplete", "locally complete", and "complete with dependencies" directly in
 the node fill.
 
+### Scale Caps
+
+A blueprint over a library-sized formalization asks the generator to do several things
+whose cost is superlinear in the declaration count, and each of them was first met as a
+build that did not finish rather than as a design decision. The genre's answer is a
+family of caps that share one rule: **degrade, label, never hide the degradation.** A
+capped build produces a smaller artifact and says on the page which part of it is
+smaller; it never produces the uncapped artifact's claims over the capped artifact's
+data. Each cap is off (`0` ⇒ unlimited) or set to the pre-cap behavior by default, so a
+consumer that does not need one sees byte-identical output.
+
+| Option | Caps | Degrades to |
+|---|---|---|
+| `verso.blueprint.declRegistry.fullElabMaxDecls` (default `1500`) | the per-entry full statement + proof re-elaboration from source, in `DeclRegistry.lean` — one real elaboration per declaration, the dominant time and memory cost | signatures on the signature (`≈`) tier and proof bodies on the syntactic tier, both marked with their tier on the page and explained in the trust model's rendering-tier legend |
+| `verso.blueprint.graph.maxFlatVariantNodes` (default `0`) | the whole-graph `Full`/`Essential` DOT variants, in `Commands/Graph.lean` | a group-overview-first variant set; the reader gets the graph by parts instead of one unreadable sheet |
+| `verso.blueprint.nodePage.localGraphRadius` (default `2`) | the localized page graph, in `NodePage.lean` and `DeclPage.lean` | the radius-*k* neighborhood instead of the full closure, which at scale is most of the library and is neither fast to draw nor useful to read |
+| `verso.blueprint.declRegistry.maxDeclPages` (default `0`) | how many `decl/<slug>/` pages are emitted, in `DeclRegistry.lean` | pages for the highest-fan-in declarations no node presents; the rest stay in the registry, the catalogs, and the rail, marked `no page (over cap)` wherever a link would have been |
+
+The page cap is the one with a link-integrity obligation, and it is the reason
+`DeclRoute.hasDeclPage` / `DeclRoute.canonicalHref?` exist. Before it, "is there a page
+for this declaration" was the same question as "is it unwired", and several surfaces
+open-coded that test or composed a slug from a name. With the cap those are different
+questions, and a surface that guesses produces a confident link to a page that was never
+written — the one failure worse than no link. So the question has exactly one answer, the
+registry's `declHref?` is the only thing that carries it, and
+`scripts/check_decl_page_links.py` is the site-level gate that nothing went around it.
+
+Two things the page cap deliberately does *not* do. It does not touch declarations a
+Blueprint node presents: their canonical page is their node page, so they are not page
+candidates at all, and the same holds transitively for everything named in a milestone
+member list, in `featured` dashboard cards, or in a `formalization.yaml` alignment row —
+those all name blueprint *labels*, whose declarations are wired by construction. And it
+does not shrink the registry: the index is cheap, so the catalog pages, module tree, and
+properties rail still carry every declaration. What a capped declaration loses is a page,
+not its record.
+
 ## Active Tension Points
 
 These are the current architectural fault lines that still deserve care:

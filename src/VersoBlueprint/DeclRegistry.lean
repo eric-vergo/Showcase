@@ -6,6 +6,7 @@ Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code
 
 import Lean
 import Std.Data.HashMap
+import Std.Data.HashSet
 import VersoManual
 import VersoBlueprint.Data
 import VersoBlueprint.ProvedStatus
@@ -85,6 +86,16 @@ register_option verso.blueprint.declRegistry.fullElabMaxDecls : Nat := {
 def configuredFullElabMaxDecls (opts : Lean.Options) : Nat :=
   opts.get verso.blueprint.declRegistry.fullElabMaxDecls.name
     verso.blueprint.declRegistry.fullElabMaxDecls.defValue
+
+register_option verso.blueprint.declRegistry.maxDeclPages : Nat := {
+  defValue := 0
+  descr := "Cap on how many per-declaration (`decl/<slug>/`) pages this site emits. The registry INDEX is cheap and always covers every declaration; the per-declaration PAGE is not, so at large scale emitting one for every unwired declaration dominates a whole site generation. Above the cap the pages go to the declarations most of the library depends on (highest `usedBy` fan-in, ties by name); the rest stay in the registry, the catalog pages, the module tree, and the properties rail, but get no page of their own — and every surface that would have linked to one says so instead of dead-linking. Declarations a blueprint node presents are never affected: their canonical page is their node page, which this cap does not touch. `0` ⇒ unlimited (a page for every unwired declaration, the pre-cap behavior)."
+}
+
+/-- The configured `verso.blueprint.declRegistry.maxDeclPages` (0 ⇒ unlimited). -/
+def configuredMaxDeclPages (opts : Lean.Options) : Nat :=
+  opts.get verso.blueprint.declRegistry.maxDeclPages.name
+    verso.blueprint.declRegistry.maxDeclPages.defValue
 
 register_option verso.blueprint.nodePage.localGraphRadius : Nat := {
   defValue := 2
@@ -172,9 +183,16 @@ structure Entry where
   for the metadata rail's `innerHTML`); `none` when the declaration has no
   docstring. -/
   docstringHtml? : Option String := none
-  /-- Root-relative href of this declaration's own page (`decl/{slug}/`), set
-  **iff unwired** — wired declarations' canonical page stays their node page, so
-  every entry has exactly one of `nodeHref?`/`declHref?`. -/
+  /-- Root-relative href of this declaration's own page (`decl/{slug}/`), set for
+  an **unwired** declaration whose page this build actually emits — wired
+  declarations' canonical page stays their node page.
+
+  So an entry has *at most* one of `nodeHref?`/`declHref?`, and exactly one unless
+  the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped its page: an
+  unwired entry with neither is a declaration the cap left indexed but page-less.
+  Ask `DeclRoute.hasDeclPage` / `DeclRoute.canonicalHref?` rather than reading this
+  field or recomputing a slug — a guessed href is a confident link to a page that
+  was never emitted. -/
   declHref? : Option String := none
   /-- Source link (consumer template or automatic GitHub blob URL, the same builder as
   `Data.ExternalRef.sourceHref?`); `none` when underivable.
@@ -247,6 +265,30 @@ structure Registry where
   decls : Array Entry := #[]
 deriving Inhabited, Repr, ToJson, FromJson
 
+/--
+What the per-declaration-page scale cap
+(`verso.blueprint.declRegistry.maxDeclPages`) did, when it did anything.
+
+Carried through the traversal store rather than through `decl-registry.json`: the
+public artifact needs no new key for this, because the cap is already visible in it
+as the absent `declHref` on the declarations that lost their page. Present only when
+the cap actually dropped pages, so a build below the cap stores nothing and the
+surfaces stay word-for-word what they were.
+-/
+structure PageCap where
+  /-- The configured `verso.blueprint.declRegistry.maxDeclPages`. -/
+  limit : Nat := 0
+  /-- Declaration pages this build emitted (equal to `limit` whenever the cap bound). -/
+  emitted : Nat := 0
+  /-- Declarations whose canonical page would be a `decl/` page — the unwired ones.
+  Declarations a blueprint node presents are not counted: their canonical page is
+  their node page, which the cap never touches. -/
+  candidates : Nat := 0
+deriving Inhabited, Repr, ToJson, FromJson, DecidableEq, Quote
+
+/-- Declarations that lost their page to the cap. -/
+def PageCap.omitted (cap : PageCap) : Nat := cap.candidates - cap.emitted
+
 /-- One captured proof/value body (the source after the top-level `:=`) for a
 project declaration, keyed by its (de-mangled) fully-qualified name. `html?` is
 the syntactically-highlighted token markup, `text?` the raw source fallback. -/
@@ -276,6 +318,77 @@ def rawBodyCap : Nat := 100_000
 /-- Cap (in characters) on a body eligible for syntactic highlighting; larger
 bodies keep only the escaped raw source. -/
 def highlightBodyCap : Nat := 40_000
+
+/-! ## The per-declaration-page scale cap -/
+
+/--
+Apply the per-declaration-page cap to a finished entry array, returning the entries
+with `declHref?` cleared on everything that lost its page, plus the record of what
+was dropped (`none` when nothing was).
+
+Which declarations keep a page:
+
+* **Presented by a blueprint node.** Vacuously safe, and deliberately so: a presented
+  declaration's canonical page is its *node* page, so it is never a `decl/` page
+  candidate in the first place (`buildEntry` sets `declHref?` only when `nodeLabels`
+  is empty). The same holds for every declaration named in a milestone member list,
+  in `featured` dashboard cards, or in a `formalization.yaml` alignment row: those all
+  name blueprint *labels*, whose declarations are wired by construction. So the cap
+  cannot take a page away from anything the blueprint presents — not because it
+  filters them out, but because they were never in the set it filters.
+* **The rest of the budget, by fan-in.** The remaining `limit` pages go to the
+  candidates the most other declarations depend on (`usedBy` size, computed in the
+  registry's pass 1), ties broken by name so the selection is deterministic across
+  builds.
+
+The cap binds only when it would actually drop something: a registry larger than
+`limit` whose *candidates* still fit under it is left alone, so the reported counts
+never describe a degradation that did not happen.
+-/
+def applyDeclPageCap (limit : Nat) (entries : Array Entry) :
+    Array Entry × Option PageCap :=
+  if limit == 0 || entries.size ≤ limit then (entries, none)
+  else
+    let candidates := entries.filter (·.declHref?.isSome)
+    if candidates.size ≤ limit then (entries, none)
+    else
+      let ranked := candidates.qsort fun a b =>
+        if a.usedBy.size == b.usedBy.size then a.name < b.name
+        else a.usedBy.size > b.usedBy.size
+      let keep : Std.HashSet String :=
+        (ranked.extract 0 limit).foldl (fun s e => s.insert e.name) {}
+      let capped := entries.map fun e =>
+        if e.declHref?.isSome && !keep.contains e.name then { e with declHref? := none } else e
+      (capped, some { limit, emitted := limit, candidates := candidates.size })
+
+/-!
+## Where a declaration's page is
+
+The single place every surface asks whether a declaration has a page of its own, and
+which page to link to. Before the scale cap, `declHref?.isSome` was the same thing as
+"unwired", and several surfaces open-coded it; with the cap it is not, and a surface
+that guesses a `decl/<slug>/` href from a name will confidently link to a page that
+was never emitted. So the question has one answer, here.
+-/
+
+namespace DeclRoute
+
+/-- Whether this declaration has a page of its own at `decl/<slug>/`.
+
+False both for a declaration a blueprint node presents (its canonical page is that
+node page) and for one the scale cap dropped. `pageOmittedOverCap` separates the two. -/
+def hasDeclPage (e : Entry) : Bool := e.declHref?.isSome
+
+/-- The page this declaration lives on: its blueprint node page when it has one, else
+its own `decl/` page, else nothing at all — which is exactly the over-cap case. -/
+def canonicalHref? (e : Entry) : Option String := e.nodeHref? <|> e.declHref?
+
+/-- Whether this declaration has no page *because the scale cap dropped it*: unwired
+(so its page would have been a `decl/` page) and without one. Distinguishes the
+degradation from a wired declaration, which has a node page and needs no `decl/` one. -/
+def pageOmittedOverCap (e : Entry) : Bool := e.nodeLabels.isEmpty && e.declHref?.isNone
+
+end DeclRoute
 
 /-! ## Binding source links to the build's revision -/
 
@@ -671,15 +784,17 @@ and slices every declaration's `:= …` body out of the cached content, with siz
 caps (`rawBodyCap`/`highlightBodyCap`) so a pathological body can never balloon
 the store.
 -/
-def buildDeclRegistry : CoreM (Registry × Bodies × Array Informal.TrustInputs.Input) := do
+def buildDeclRegistry :
+    CoreM (Registry × Bodies × Array Informal.TrustInputs.Input × Option PageCap) := do
   let env ← getEnv
   let st := informalExt.getState env
   let workspaceRoot ← Informal.workspaceRoot
   let namePrefix := configuredNamePrefix (← getOptions)
   let fullElabMaxDecls := configuredFullElabMaxDecls (← getOptions)
+  let maxDeclPages := configuredMaxDeclPages (← getOptions)
   let roots ← projectModuleRoots
   if roots.isEmpty then
-    return ({}, {}, #[])
+    return ({}, {}, #[], none)
   -- The caveat table, read once for the whole registry. A configured override that is
   -- unusable is a build error here as it is on the trust path: the two surfaces answer to
   -- one switch and one table, and a registry that silently fell back to the bundled table
@@ -879,9 +994,21 @@ def buildDeclRegistry : CoreM (Registry × Bodies × Array Informal.TrustInputs.
       full re-elaboration (signatures on the signature tier, proof bodies syntactic)"
   else if fullDeclAttempts > 0 then
     logInfo s!"full-decl re-elaboration: {fullDeclOk}/{fullDeclAttempts} succeeded"
+  -- Scale cap (e): above `maxDeclPages` only the highest-fan-in unwired declarations
+  -- keep a `decl/` page of their own. The registry itself still carries every
+  -- declaration — the index is cheap, the per-declaration page is not — so the catalog
+  -- pages, module tree, and properties rail are unchanged; what the dropped entries
+  -- lose is `declHref?`, which is what every linking surface reads.
+  let (cappedEntries, declPageCap?) := applyDeclPageCap maxDeclPages entries
+  if let some cap := declPageCap? then
+    logInfo s!"declaration pages: {cap.candidates} declarations have no blueprint node, \
+      which exceeds verso.blueprint.declRegistry.maxDeclPages={cap.limit}; emitting pages \
+      for the {cap.emitted} with the highest fan-in and indexing the other \
+      {cap.omitted} without a page"
   return (
-    { schemaVersion := 3, namePrefix, declCount := entries.size, decls := entries },
+    { schemaVersion := 3, namePrefix, declCount := cappedEntries.size, decls := cappedEntries },
     { bodies },
-    registryInputs)
+    registryInputs,
+    declPageCap?)
 
 end Informal.DeclRegistry

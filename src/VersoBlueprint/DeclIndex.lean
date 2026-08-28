@@ -230,6 +230,28 @@ button.bp_decl_row_name:hover { color: var(--bp-color-text); text-decoration: un
   border-color: var(--bp-color-status-warning-border-soft);
 }
 
+/* ---- Over-cap rows -------------------------------------------------------- */
+/* A declaration whose `decl/` page the `maxDeclPages` scale cap dropped. The pill is
+   the shared neutral `.bp_summary_badge`, restated here because summary.css ships with
+   the dashboard block's bundle and these catalog pages carry their own stylesheet —
+   tokens only, so both themes come for free either way. */
+.bp_decl_row_nopage,
+.bp_decl_row_source {
+  flex: 0 0 auto;
+  display: inline-block;
+  border: 1px solid var(--bp-color-border);
+  border-radius: var(--bp-radius-pill);
+  padding: 0.05rem 0.35rem;
+  background: var(--bp-color-surface-muted);
+  color: var(--bp-color-text-muted);
+  font-size: var(--bp-fs-caption, 0.78rem);
+  white-space: nowrap;
+}
+
+a.bp_decl_row_source { color: var(--bp-color-link); text-decoration: none; }
+a.bp_decl_row_source:hover,
+a.bp_decl_row_source:focus-visible { text-decoration: underline; }
+
 /* ---- Module tree ---------------------------------------------------------- */
 .bp_mod_tree { margin: 0; }
 
@@ -318,7 +340,8 @@ private def rowMeta (e : Entry) : String :=
 One catalog/index row: a selection-bus-wired list item. The declaration name is the
 row's single interactive control — a link to the declaration's canonical page (node
 page for wired declarations, `decl/{slug}/` page for unwired ones; a plain select
-button only for legacy registries with neither href) — so the row is
+button when there is no page, which is a declaration the `maxDeclPages` scale cap
+dropped, marked as such with a neutral pill and a source link when one resolves) — so the row is
 keyboard-operable with no nested interactives. Displays the short name with the
 fully-qualified name as the hover `title`. The whole row is rail-selectable via the
 delegated handler in `metadata-rail.mjs` (it matches `.bp_decl_row[data-bp-decl]`
@@ -327,7 +350,7 @@ signature column.
 -/
 private def declRow (showSig : Bool) (e : Entry) : Html :=
   let metaJson := rowMeta e
-  let href? := e.nodeHref? <|> e.declHref?
+  let href? := Informal.DeclRegistry.DeclRoute.canonicalHref? e
   let nameNode : Html :=
     match href? with
     | some href =>
@@ -338,15 +361,40 @@ private def declRow (showSig : Bool) (e : Entry) : Html :=
     if showSig && !e.signatureText.isEmpty then
       {{ <code class="bp_decl_row_sig" title={{e.signatureText}}>{{.text true e.signatureText}}</code> }}
     else .empty
+  -- Over the `maxDeclPages` scale cap this declaration has no page of its own. Say so
+  -- in place of the link rather than leaving a bare unexplained name, and offer the
+  -- source instead when this build could resolve one.
+  let overCap := Informal.DeclRegistry.DeclRoute.pageOmittedOverCap e
+  let capNode : Html :=
+    if overCap then
+      {{ <span class="bp_summary_badge bp_decl_row_nopage"
+            title="This site is above verso.blueprint.declRegistry.maxDeclPages, so this declaration is indexed without a page of its own.">
+           "no page (over cap)"
+         </span> }}
+    else .empty
+  let sourceNode : Html :=
+    match (if overCap then e.sourceHref? else none) with
+    | some href =>
+      {{ <a class="bp_decl_row_source" href={{href}} title={{s!"Source of {e.name}"}}>"source"</a> }}
+    | none => .empty
   {{
     <li class="bp_decl_row" "data-bp-decl"={{e.name}}>
       <script type="application/json" class="bp-decl-meta" "data-bp-decl"={{e.name}}>{{.text false metaJson}}</script>
       <span class="bp_decl_row_kind" "data-kind"={{e.kind}}>{{.text true (kindShort e.kind)}}</span>
       {{nameNode}}
       {{sigNode}}
+      {{capNode}}
+      {{sourceNode}}
       <span class="bp_decl_row_status" "data-status"={{e.status}}>{{.text true (statusLabel e.kind e.status)}}</span>
     </li>
   }}
+
+/-- One catalog row, as the pages render it.
+
+Public only as a test seam: the `maxDeclPages` scale cap's contract is a property of this
+markup — the dropped declaration's row must carry the pill and no `decl/` href — and
+asserting it here costs a unit test instead of a generated site. -/
+def declRowHtml (showSig : Bool) (e : Entry) : Html := declRow showSig e
 
 /-! ## Sorting + grouping -/
 

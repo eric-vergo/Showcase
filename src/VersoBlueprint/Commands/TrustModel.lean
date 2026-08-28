@@ -9,6 +9,7 @@ import Verso
 import VersoManual
 import VersoBlueprint.Commands.Common
 import VersoBlueprint.Commands.TrustStrip
+import VersoBlueprint.DeclRegistry
 import VersoBlueprint.GraphApi
 import VersoBlueprint.GraphChecks
 import VersoBlueprint.Lib.ExtensionDecode
@@ -371,7 +372,8 @@ private def tierLegendRow (glyph label explanation : String) : Output.Html :=
   }}
 
 private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool)
-    (milestoneAudit? : Option Informal.Milestones.Audit) :
+    (milestoneAudit? : Option Informal.Milestones.Audit)
+    (declPageCap? : Option Informal.DeclRegistry.PageCap) :
     Output.Html :=
   -- CX-033: the edge-provenance subsection tells the truth for this build's graph
   -- mode. With autoDeps (`includeAllDecls`) the rendered edges are machine-derived
@@ -523,6 +525,30 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
                row reports that a guard-shaped hypothesis occurs, that is a presence check \
                over the statement's binders: it did not relate the hypothesis to the flagged \
                operand, and no row anywhere says a statement is guarded."]
+  -- The per-declaration-page scale cap. Rendered only where it actually bound: on a
+  -- site that gave every unwired declaration a page there is nothing to disclose, and a
+  -- paragraph explaining a degradation that did not happen is its own kind of noise.
+  -- What the cap changes is coverage of the *presentation*, never of the registry or of
+  -- what was checked, and the wording has to keep those apart.
+  let declPageCapSubsection : Output.Html :=
+    match declPageCap? with
+    | Option.none => .empty
+    | Option.some cap =>
+      .seq #[
+        {{ <h3 class="bp_trustmodel_subtitle">"Declarations without a page of their own"</h3> }},
+        prose
+          s!"This site is above its configured page cap \
+             (`verso.blueprint.declRegistry.maxDeclPages` = {cap.limit}), so it emits a \
+             page for {cap.emitted} of the {cap.candidates} declarations no blueprint node \
+             presents, chosen by how much of the library depends on them. The other \
+             {cap.omitted} are still enumerated, still audited, and still listed in the \
+             index, the module tree and the properties rail — what they lack is a page, \
+             and every surface that would have linked to one says so instead of linking \
+             somewhere that was never written.",
+        prose
+          "This is a limit on the reading surface, not on the checking. Nothing above \
+           measures fewer declarations because of it, and a declaration without a page is \
+           neither less checked nor more suspect than one with a page."]
   section' "What is not machine-checked" #[
     {{ <h3 class="bp_trustmodel_subtitle">"The informal ↔ formal correspondence"</h3> }},
     prose
@@ -542,6 +568,7 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
     edgeProse,
     edgeNote,
     overviewSubsection,
+    declPageCapSubsection,
     {{ <h3 class="bp_trustmodel_subtitle">"How the Lean code on this page was rendered"</h3> }},
     prose
       "Code blocks are produced by different pipelines, and they do not carry the same \
@@ -857,6 +884,11 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
   -- payload would make `blueprint_dashboard` rebuild the declaration graph a second time
   -- just to fill a field this page is the only reader of.
   let milestoneAudit? := Informal.TraversalIndex.MilestoneAudit.audit? st
+  -- Present only when the per-declaration-page scale cap actually dropped pages, which is
+  -- exactly when the store carries the record.
+  let declPageCap? : Option Informal.DeclRegistry.PageCap :=
+    (Informal.TraversalIndex.DeclRegistry.declPageCap? st).bind fun j =>
+      (fromJson? (α := Informal.DeclRegistry.PageCap) j).toOption
   {{
     <div class="bp_trustmodel">
       <p class="bp_trustmodel_lead">
@@ -865,7 +897,7 @@ def renderTrustModel (st : TraverseState) (data : TrustModelData) : Output.Html 
          This is the separation."
       </p>
       {{machineCheckedSection data trust? checks autoDepsActive}}
-      {{notMachineCheckedSection trust? autoDepsActive milestoneAudit?}}
+      {{notMachineCheckedSection trust? autoDepsActive milestoneAudit? declPageCap?}}
       {{trustingSection data trust?}}
       {{independenceSection}}
       {{currencySection trust?}}

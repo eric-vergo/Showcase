@@ -1266,8 +1266,9 @@ Where this site publishes each declaration it knows about, read from the travers
 registry.
 
 The registry is the only thing that knows which page a declaration has — wired
-declarations keep their node page, unwired ones get a `decl/` page — so a name it does not
-carry resolves to nothing and the reading list renders that row unlinked. Guessing a decl
+declarations keep their node page, unwired ones get a `decl/` page unless the
+`maxDeclPages` scale cap dropped it — so a name it does not carry, or carries without a
+page, resolves to nothing and the reading list renders that row unlinked. Guessing a decl
 slug from a name would produce a confident link to a page that was never emitted, which is
 the one outcome worse than no link. Empty when the all-declarations registry is off. -/
 private def registrySiteHrefs (state : TraverseState) : String → Option String :=
@@ -1281,7 +1282,7 @@ private def registrySiteHrefs (state : TraverseState) : String → Option String
       | .error _ => {}
       | .ok registry =>
         registry.decls.foldl (init := {}) fun m e =>
-          match e.nodeHref? <|> e.declHref? with
+          match Informal.DeclRegistry.DeclRoute.canonicalHref? e with
           | some href => m.insert e.name href
           | none => m
   fun name => table[name]?

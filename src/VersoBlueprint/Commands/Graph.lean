@@ -113,6 +113,12 @@ structure GraphBlockData where
   closure); the field default is `0` so block data serialized before this field
   decodes to the pre-cap behavior. -/
   localGraphRadius : Nat := 0
+  /-- What the per-declaration-page scale cap
+  (`verso.blueprint.declRegistry.maxDeclPages`) dropped, captured at elaboration and
+  carried to the traversal store for the surfaces that report it. `none` when the cap
+  dropped nothing, which is also what block data serialized before this field decodes
+  to — so a build below the cap serializes exactly the bytes it did before. -/
+  declPageCap? : Option Informal.DeclRegistry.PageCap := none
   previewMode : Informal.HoverRender.PreviewMode := .pinned
   previewPlacement : Informal.HoverRender.PreviewPlacement := .docked
 deriving Inhabited, FromJson, ToJson, Quote
@@ -724,6 +730,10 @@ block_extension Block.graph (graphDataJson : String) where
             | Option.none => state
           let state :=
             Informal.TraversalIndex.DeclRegistry.saveLocalGraphRadius state graphData.localGraphRadius
+          let state :=
+            match graphData.declPageCap? with
+            | some cap => Informal.TraversalIndex.DeclRegistry.saveDeclPageCap state (toJson cap)
+            | Option.none => state
           match graphData.declNamePrefix? with
           | some pfx => Informal.TraversalIndex.DeclRegistry.savePrefix state pfx
           | Option.none => state
@@ -862,8 +872,10 @@ def buildProjectDeclGraph (base : Informal.Graph.GraphData) : CoreM Informal.Gra
     if baseLabels.contains decl then continue
     let kind := (Informal.Data.ConstantInfo.blueprintNodeKind? cinfo).getD Data.NodeKind.definition
     -- Supporting nodes are exactly the unwired public project declarations, which
-    -- all have a `decl/{slug}/` page (see `DeclPage`); linking them costs no
-    -- runtime change (the graph runtime already follows node hrefs).
+    -- have a `decl/{slug}/` page (see `DeclPage`); linking them costs no runtime
+    -- change (the graph runtime already follows node hrefs). Above the
+    -- `maxDeclPages` scale cap some of those pages are not emitted, and `mkGraphPart`
+    -- clears the href on exactly those nodes once the registry has decided.
     let node := Informal.Graph.mkSupportingNodeData kind decl
       (autoRefs (stmtDepsByKey.getD decl #[])) (autoRefs (proofDepsByKey.getD decl #[]))
     supportingNodes := supportingNodes.push
@@ -1016,14 +1028,34 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   -- serialized here at elaboration time (env available). The registry is emitted
   -- as `-verso-data/decl-registry.json` at generation time; the bodies stay in
   -- the traversal store for the decl-page emitter only.
-  let (declRegistryJson?, declBodiesJson?, declRegistryInputsJson?) ← do
+  let (declRegistryJson?, declBodiesJson?, declRegistryInputsJson?, declPageCap?, declPageNames?) ← do
     if verso.blueprint.graph.includeAllDecls.get (← Lean.getOptions) then
-      let (registry, bodies, inputs) ← Informal.DeclRegistry.buildDeclRegistry
-      if registry.decls.isEmpty then pure (none, none, none)
-      else pure (some (toJson registry).compress, some (toJson bodies).compress,
-        if inputs.isEmpty then none else some (toJson inputs).compress)
+      let (registry, bodies, inputs, cap?) ← Informal.DeclRegistry.buildDeclRegistry
+      if registry.decls.isEmpty then pure (none, none, none, none, none)
+      else
+        -- Only needed when the cap bound: below it every supporting node's href is a
+        -- page that exists, and the whole graph is left byte-identical.
+        let pageNames? : Option (Std.HashSet String) :=
+          cap?.map fun _ =>
+            registry.decls.foldl (init := ({} : Std.HashSet String)) fun acc e =>
+              if Informal.DeclRegistry.DeclRoute.hasDeclPage e then acc.insert e.name else acc
+        pure (some (toJson registry).compress, some (toJson bodies).compress,
+          (if inputs.isEmpty then none else some (toJson inputs).compress), cap?, pageNames?)
     else
-      pure (none, none, none)
+      pure (none, none, none, none, none)
+  -- Scale cap (e), graph side: a supporting node for a declaration whose page the cap
+  -- dropped keeps its label and tooltip but loses its href. The alternative — leaving
+  -- the href — is a graph that navigates to pages this build did not write.
+  let renderGraphData? : Option Informal.Graph.GraphData :=
+    match declPageNames? with
+    | none => renderGraphData?
+    | some pageNames =>
+      renderGraphData?.map fun g =>
+        { g with
+          nodes := g.nodes.map fun node =>
+            if node.supporting && node.href.isSome && !pageNames.contains node.label.toString then
+              { node with href := none }
+            else node }
   -- The short-name prefix rides the same block-data channel (captured here, where
   -- `Lean.Options` exist) but is independent of `includeAllDecls`.
   let declNamePrefix? :=
@@ -1040,7 +1072,8 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   let graphData : GraphBlockData :=
     { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?,
       declRegistryInputsJson?, declNamePrefix?,
-      options, maxFlatVariantNodes, localGraphRadius, previewMode, previewPlacement }
+      options, maxFlatVariantNodes, localGraphRadius, declPageCap?,
+      previewMode, previewPlacement }
   -- Carry the block payload as a flat, pre-compressed JSON string rather than the
   -- structured `GraphBlockData`: `quote`ing the full node/edge structure overflows
   -- the LCNF code generator's recursion ceiling on large blueprints (thousands of
