@@ -20,6 +20,7 @@ Its own module for the same reason as the phantom-member fixture.
 
 open Verso
 open Verso.Genre.Manual
+open Informal
 
 set_option doc.verso true
 
@@ -28,7 +29,7 @@ namespace Verso.VersoBlueprintTests.BlueprintProofOverview.Cycle
 /--
 error: Milestone dependencies contain a cycle; the proof overview cannot be laid out in rows
 -/
-#guard_msgs(drop info, drop warning) in
+#guard_msgs(error, drop info, drop warning) in
 #docs (Genre.Manual) proofOverviewCycleDoc "Proof Overview Cycle" :=
 :::::::
 

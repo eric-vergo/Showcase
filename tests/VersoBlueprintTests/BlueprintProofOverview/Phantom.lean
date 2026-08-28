@@ -22,6 +22,7 @@ itself from the good one's overview too.
 
 open Verso
 open Verso.Genre.Manual
+open Informal
 
 set_option doc.verso true
 
@@ -30,7 +31,7 @@ namespace Verso.VersoBlueprintTests.BlueprintProofOverview.Phantom
 /--
 error: Milestone ms:phantom lists member 'def:phantom.nope', which is not a blueprint node label
 -/
-#guard_msgs(drop info, drop warning) in
+#guard_msgs(error, drop info, drop warning) in
 #docs (Genre.Manual) proofOverviewPhantomDoc "Proof Overview Phantom Member" :=
 :::::::
 

@@ -40,7 +40,7 @@ private def sliceAfter (s needle : String) : String :=
   | _ :: rest@(_ :: _) => String.intercalate needle rest
   | _ => s
 
-/-!
+/-
 Eight nodes in a dependency chain plus an auxiliary side branch, grouped into four
 milestones:
 
@@ -50,7 +50,7 @@ milestones:
 * `thm:po.shared` belongs to two milestones, which must NOT count as a witness.
 -/
 -- The one author-asserted edge warns by design; the guard keeps errors visible.
-#guard_msgs(drop info, drop warning) in
+#guard_msgs(error, drop info, drop warning) in
 #docs (Genre.Manual) proofOverviewDoc "Proof Overview" :=
 :::::::
 
@@ -90,18 +90,15 @@ A fact about the auxiliary construction.
 The base object and the first fact about it.
 :::
 
-:::milestone "ms:po.b" (title := "The middle") (paper := "§3") (uses := "ms:po.a")
-    (members := "thm:po.step2, thm:po.shared")
+:::milestone "ms:po.b" (title := "The middle") (paper := "§3") (uses := "ms:po.a") (members := "thm:po.step2, thm:po.shared")
 Everything the argument needs before the final ascent.
 :::
 
-:::milestone "ms:po.c" (title := "The summit") (row := 2) (uses := "ms:po.b")
-    (members := "thm:po.step3, thm:po.shared, thm:po.top")
+:::milestone "ms:po.c" (title := "The summit") (row := 2) (uses := "ms:po.b") (members := "thm:po.step3, thm:po.shared, thm:po.top")
 The headline result and the step that reaches it.
 :::
 
-:::milestone "ms:po.d" (title := "Auxiliary machinery") (uses := "ms:po.a")
-    (members := "def:po.aux, thm:po.aux1")
+:::milestone "ms:po.d" (title := "Auxiliary machinery") (uses := "ms:po.a") (members := "def:po.aux, thm:po.aux1")
 Machinery the write-up leans on, whose Lean development is independent.
 :::
 
@@ -110,7 +107,7 @@ Machinery the write-up leans on, whose Lean development is independent.
 {blueprint_overview}
 :::::::
 
-/-! ## The rendered surface -/
+/- ## The rendered surface -/
 
 private def overviewHtml : IO String := do
   let out ← renderManualDocHtmlString manualImpls proofOverviewDoc
@@ -127,7 +124,9 @@ private def overviewHtml : IO String := do
     let surface := sliceAfter out "class=\"bp_overview\""
     return (
       countSubstr out "class=\"bp_overview_node\"",
-      countSubstr out "bp_overview_edge_asserted",
+      -- Counted on the surface, not on the whole page: the class also names a rule in
+      -- the stylesheet, which every emitted page carries.
+      countSubstr surface "bp_overview_edge_asserted",
       hasSubstr out "id=\"ms-po-a\"" && hasSubstr out "id=\"ms-po-d\"",
       !hasSubstr surface "<script")
 
@@ -141,7 +140,7 @@ private def overviewHtml : IO String := do
     return (
       hasSubstr out "author-asserted",
       hasSubstr out "1 author-asserted.",
-      hasSubstr out "4 milestones cover")
+      hasSubstr out "4 milestones cover 8 of this blueprint's 8 nodes")
 
 -- Author-supplied metadata reaches the card: title, paper reference, and the
 -- three-segment member meter.
@@ -163,7 +162,7 @@ private def overviewHtml : IO String := do
     let (_html, st) ← renderManualDocHtmlStringAndState manualImpls proofOverviewDoc
     return (hasExtraCss st ".bp_overview_node_box", !hasExtraJs st "bp_overview")
 
-/-! ## Rows -/
+/- ## Rows -/
 
 private def ms (label : String) (uses : Array String) (row? : Option Nat := none) : Milestone :=
   { label := Name.mkSimple label
@@ -195,7 +194,7 @@ private def ms (label : String) (uses : Array String) (row? : Option Nat := none
   | .ok _ => false
   | .error msg => (msg.splitOn "cycle").length > 1
 
-/-! ## Witnesses -/
+/- ## Witnesses -/
 
 private def gnode (label : Name) : Informal.Graph.NodeData :=
   { label, title := label.toString, displayLabel := label.toString, previewKey := ""
