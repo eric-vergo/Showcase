@@ -695,8 +695,8 @@ namespace DeclRegistry
 def spec : StoreSpec := {
   name := `VersoBlueprint.TraversalIndex.DeclRegistry
   kind := .accumulator
-  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\" / \"localGraphRadius\" / \"declPageCap\""
-  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, the configured decl-name prefix string, the local-graph radius, or the per-declaration-page cap record"
+  key := "one of the fixed keys \"registry\" / \"bodies\" / \"inputs\" / \"namePrefix\" / \"localGraphRadius\" / \"localGraphMaxNodes\" / \"declPageCap\""
+  value := "compressed registry JSON, compressed internal proof/value-bodies JSON, the configured decl-name prefix string, the local-graph radius and node cap, or the per-declaration-page cap record"
   summary := "Carries the elaboration-time all-declarations registry (built by `blueprint_graph` when `includeAllDecls` is on) plus the internal proof/value bodies and the configured `verso.blueprint.declNamePrefix` to generation-time ExtraSteps: `emitBlueprintPreviewData` writes `-verso-data/decl-registry.json` (registry only — bodies never ship in the public JSON), `DeclPage` bakes the bodies into static decl pages, and the render surfaces read the prefix for short display names. `declPageCap` records what the `verso.blueprint.declRegistry.maxDeclPages` scale cap dropped, and is present only when it dropped something."
 }
 
@@ -755,6 +755,17 @@ def saveLocalGraphRadius (state : TraverseState) (radius : Nat) : TraverseState 
 (`0` ⇒ unlimited / full closure). -/
 def localGraphRadius? (state : TraverseState) : Option Nat := do
   let obj ← state.getDomainObject? domainName "localGraphRadius"
+  obj.data.getNat?.toOption
+
+/-- Stash the configured `verso.blueprint.nodePage.localGraphMaxNodes` (captured at
+elaboration) for the generation-time node/decl-page graph emitters. -/
+def saveLocalGraphMaxNodes (state : TraverseState) (maxNodes : Nat) : TraverseState :=
+  saveObjectData state domainName "localGraphMaxNodes" (toJson maxNodes)
+
+/-- The configured local-graph node cap, if a `blueprint_graph` block stored one
+(`0` ⇒ unlimited). -/
+def localGraphMaxNodes? (state : TraverseState) : Option Nat := do
+  let obj ← state.getDomainObject? domainName "localGraphMaxNodes"
   obj.data.getNat?.toOption
 
 /-- Stash what the per-declaration-page scale cap dropped, for the surfaces that

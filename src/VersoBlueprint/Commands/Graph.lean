@@ -113,6 +113,11 @@ structure GraphBlockData where
   closure); the field default is `0` so block data serialized before this field
   decodes to the pre-cap behavior. -/
   localGraphRadius : Nat := 0
+  /-- Node-count cap on the localized node/decl-page graphs, captured at elaboration
+  from `verso.blueprint.nodePage.localGraphMaxNodes` and carried to the generation-time
+  page emitters via the traversal store. `0` ⇒ unlimited; the field default is `0` so
+  block data serialized before this field decodes to the pre-cap behavior. -/
+  localGraphMaxNodes : Nat := 0
   /-- What the per-declaration-page scale cap
   (`verso.blueprint.declRegistry.maxDeclPages`) dropped, captured at elaboration and
   carried to the traversal store for the surfaces that report it. `none` when the cap
@@ -731,6 +736,9 @@ block_extension Block.graph (graphDataJson : String) where
           let state :=
             Informal.TraversalIndex.DeclRegistry.saveLocalGraphRadius state graphData.localGraphRadius
           let state :=
+            Informal.TraversalIndex.DeclRegistry.saveLocalGraphMaxNodes state
+              graphData.localGraphMaxNodes
+          let state :=
             match graphData.declPageCap? with
             | some cap => Informal.TraversalIndex.DeclRegistry.saveDeclPageCap state (toJson cap)
             | Option.none => state
@@ -1067,12 +1075,15 @@ def mkGraphPart (stx : Syntax) (endPos : String.Pos.Raw) (options : GraphOptions
   -- Local-graph radius (d): captured here, carried through block data + the traversal
   -- store to the generation-time node/decl-page emitters.
   let localGraphRadius := Informal.DeclRegistry.configuredLocalGraphRadius (← Lean.getOptions)
+  -- Local-graph node cap (e): same capture path as the radius. The two compose — the
+  -- radius bounds how far the page looks, the cap bounds how much it draws.
+  let localGraphMaxNodes := Informal.DeclRegistry.configuredLocalGraphMaxNodes (← Lean.getOptions)
   if verso.blueprint.debug.commands.get (← Lean.getOptions) then
     logInfo m!"Adding {semanticGraphData.nodes.size} blueprint graph nodes (rendered graph: {renderGraphData.nodes.size} nodes, {renderGraphData.edges.size} edges)"
   let graphData : GraphBlockData :=
     { semanticGraphData, renderGraphData?, declRegistryJson?, declBodiesJson?,
       declRegistryInputsJson?, declNamePrefix?,
-      options, maxFlatVariantNodes, localGraphRadius, declPageCap?,
+      options, maxFlatVariantNodes, localGraphRadius, localGraphMaxNodes, declPageCap?,
       previewMode, previewPlacement }
   -- Carry the block payload as a flat, pre-compressed JSON string rather than the
   -- structured `GraphBlockData`: `quote`ing the full node/edge structure overflows

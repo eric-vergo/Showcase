@@ -223,7 +223,8 @@ descendants over the registry graph; quietly absent for private declarations
 and single-node neighborhoods — the same section structure as node pages). -/
 private def renderDeclPageBody (master : Informal.Graph.GraphData)
     (bodies : Std.HashMap String Body)
-    (bookTitle : String) (e : Entry) (slug : String) (localGraphRadius : Nat) :
+    (bookTitle : String) (e : Entry) (slug : String)
+    (localGraphRadius localGraphMaxNodes : Nat) :
     Output.Html :=
   let short := displayShort e
   let card := Informal.NodeCard.render (declCardParts bodies e slug) {}
@@ -246,8 +247,10 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
     else
       let nm := e.name.toName
       -- Radius-k neighborhood (both directions), bounded by
-      -- `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ full closure).
-      let labelSet : Lean.NameSet := master.boundedNeighborhood nm localGraphRadius
+      -- `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ full closure) and then by
+      -- `verso.blueprint.nodePage.localGraphMaxNodes` (0 ⇒ every declaration in it).
+      let (labelSet, omittedNodes) :=
+        master.cappedNeighborhood nm localGraphRadius localGraphMaxNodes
       let sub := master.restrictTo labelSet
       if sub.nodes.size ≤ 1 then .empty
       else
@@ -259,6 +262,8 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
         {{
           <section class="bp_node_page_graph">
             <h2>"Local dependency graph"</h2>
+            {{Informal.NodePage.localGraphCapNote labelSet.toList.length omittedNodes
+                localGraphRadius}}
             {{Informal.Commands.renderGraphFullwidth sub #[localVariant] {}
                 s!"bp-decl-graph-{slug}" (static := true) (zoomControls := true)}}
           </section>
@@ -355,6 +360,8 @@ def emitBlueprintDeclPages : ExtraStep :=
           let entries := registry.decls
           let master := registryGraph entries
           let localGraphRadius := (Informal.TraversalIndex.DeclRegistry.localGraphRadius? state).getD 0
+          let localGraphMaxNodes :=
+            (Informal.TraversalIndex.DeclRegistry.localGraphMaxNodes? state).getD 0
           let mut usedSlugs : Std.HashSet String := {}
           let mut searchRecords : Array Json := #[]
           for e in entries do
@@ -368,7 +375,9 @@ def emitBlueprintDeclPages : ExtraStep :=
                 s!"Showcase decl pages: slug collision for {e.name} (slug {slug}); " ++
                 "decl page may overwrite another declaration's page"
             usedSlugs := usedSlugs.insert slug
-            let body := renderDeclPageBody master bodies text.titleString e slug localGraphRadius
+            let body :=
+              renderDeclPageBody master bodies text.titleString e slug localGraphRadius
+                localGraphMaxNodes
             Informal.NodePage.emitStaticBlueprintPage mode cfg state text
               (Informal.NodeRoute.declPagePath e.name) (displayShort e) body
             searchRecords := searchRecords.push (declSearchRecord e registry.namePrefix)

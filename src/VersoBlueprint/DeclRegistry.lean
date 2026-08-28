@@ -108,6 +108,17 @@ def configuredLocalGraphRadius (opts : Lean.Options) : Nat :=
   opts.get verso.blueprint.nodePage.localGraphRadius.name
     verso.blueprint.nodePage.localGraphRadius.defValue
 
+register_option verso.blueprint.nodePage.localGraphMaxNodes : Nat := {
+  defValue := 0
+  descr := "Node-count cap on the localized dependency graph drawn on each node/decl page. The radius-k neighborhood is expanded breadth-first, hop by hop, and stops admitting declarations once it holds this many (the focus declaration counts); the page then says how many declarations within the radius were left out. `0` ⇒ unlimited. At scale a hub declaration's radius-2 neighborhood is thousands of nodes and a multi-megabyte page; this bounds the page without changing the registry or the whole-site graph."
+}
+
+/-- The configured `verso.blueprint.nodePage.localGraphMaxNodes` (0 ⇒ unlimited, i.e.
+every declaration within the radius). -/
+def configuredLocalGraphMaxNodes (opts : Lean.Options) : Nat :=
+  opts.get verso.blueprint.nodePage.localGraphMaxNodes.name
+    verso.blueprint.nodePage.localGraphMaxNodes.defValue
+
 -- The subject-module machinery (`verso.blueprint.subjectModuleRoots`) lives in
 -- `ExternalRefSnapshot`, which needs it for dependency source resolution and which
 -- this module imports; re-exported here, where its main consumers are.

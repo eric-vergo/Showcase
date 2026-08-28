@@ -2112,6 +2112,58 @@ def GraphData.boundedNeighborhood (data : GraphData) (label : Name) (radius : Na
     return visited
 
 /--
+The radius-`k` neighborhood of `label`, capped at `maxNodes` declarations.
+
+Returns the kept labels together with the number of declarations *within the
+radius* the cap left out. The count is honest: the breadth-first walk keeps
+visiting (and counting) the whole neighborhood after it stops admitting, so
+`kept + omitted` is exactly what `boundedNeighborhood` would have returned.
+
+`label` itself is always kept, and declarations are admitted in breadth-first
+order — nearest hop first, forward adjacency before reverse within a hop — so the
+kept set is deterministic and biased toward the focus declaration's immediate
+neighborhood. `maxNodes = 0` ⇒ no cap, i.e. `boundedNeighborhood` with an
+omitted count of `0`.
+
+At scale this is what makes a hub declaration's page servable: its radius-2
+neighborhood can be thousands of nodes and several megabytes of embedded graph.
+Neither the registry nor the whole-site graph is affected — only what this one
+page draws, and the page says so.
+-/
+def GraphData.cappedNeighborhood (data : GraphData) (label : Name) (radius maxNodes : Nat) :
+    Lean.NameSet × Nat :=
+  let inRadius := data.boundedNeighborhood label radius
+  if maxNodes == 0 then (inRadius, 0)
+  else Id.run do
+    let fwd := data.forwardAdj
+    let rev := data.reverseAdj
+    -- Membership in `inRadius` is the hop bound: it holds exactly the declarations
+    -- within `radius`, and every one of them is reachable from `label` by a path that
+    -- stays inside it, so the walk visits the whole neighborhood and nothing beyond.
+    -- The loop bound is a safe ceiling on the number of hops, not the radius itself
+    -- (`radius = 0` means the full closure).
+    let mut visited : Lean.NameSet := ({} : Lean.NameSet).insert label
+    let mut kept : Lean.NameSet := ({} : Lean.NameSet).insert label
+    let mut keptSize := 1
+    let mut omitted := 0
+    let mut frontier : Array Name := #[label]
+    for _ in [0:data.edges.size + 1] do
+      let mut next : Array Name := #[]
+      for n in frontier do
+        for m in (fwd.getD n #[]) ++ (rev.getD n #[]) do
+          if !visited.contains m && inRadius.contains m then
+            visited := visited.insert m
+            next := next.push m
+            if keptSize < maxNodes then
+              kept := kept.insert m
+              keptSize := keptSize + 1
+            else
+              omitted := omitted + 1
+      if next.isEmpty then break
+      frontier := next
+    return (kept, omitted)
+
+/--
 Restrict graph data to the given label set.
 
 Mirrors `subgraphForParent`: nodes are filtered to the set, edges are kept only

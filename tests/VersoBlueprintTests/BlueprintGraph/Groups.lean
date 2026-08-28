@@ -176,4 +176,30 @@ def chainNeighborhoodData : Informal.Graph.GraphData :=
   (r1.contains `n_a && r1.contains `n_b && r1.contains `n_c && !r1.contains `n_d,
    r0.contains `n_a && r0.contains `n_b && r0.contains `n_c && r0.contains `n_d)
 
+/-! ## (e) `cappedNeighborhood`: the same neighborhood, bounded by node count. -/
+
+def starNeighborhoodData : Informal.Graph.GraphData :=
+  {
+    nodes := #[]
+    edges := #[
+      { source := `hub, target := `t1 },
+      { source := `hub, target := `t2 },
+      { source := `hub, target := `t3 },
+      { source := `hub, target := `t4 },
+      { source := `hub, target := `t5 }]
+    groups := #[]
+  }
+
+-- A 3-node cap over `hub`'s six-node radius-1 neighborhood keeps the focus declaration
+-- plus two neighbors, and reports the other three as omitted — the omitted count is over
+-- everything within the radius, not over where the walk stopped. `0` ⇒ no cap at all,
+-- which must be exactly `boundedNeighborhood` with nothing omitted.
+/-- info: (3, true, 3, 6, 0) -/
+#guard_msgs in
+#eval
+  let (kept, omitted) := starNeighborhoodData.cappedNeighborhood `hub 1 3
+  let (uncapped, uncappedOmitted) := starNeighborhoodData.cappedNeighborhood `hub 1 0
+  (kept.toList.length, kept.contains `hub, omitted,
+   uncapped.toList.length, uncappedOmitted)
+
 end Verso.VersoBlueprintTests.BlueprintGraph.Groups

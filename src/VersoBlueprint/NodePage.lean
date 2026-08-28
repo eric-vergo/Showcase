@@ -88,6 +88,12 @@ def nodeBreadcrumbCss : String := r##"
   margin: 0.25rem 0 0;
 }
 
+.bp_node_page_graph_note {
+  margin: 0 0 var(--bp-space-2, 8px);
+  color: var(--bp-color-text-muted, #4d5e6d);
+  font-size: var(--bp-fs-small, 0.875rem);
+}
+
 .bp_node_page h2 {
   font-size: 1.15rem;
   font-weight: 600;
@@ -170,6 +176,26 @@ private def repointEntryRelations (state : TraverseState) (entry : Entry) : Entr
     group := entry.group.map (fun g => { g with entries := g.entries.map repoint }) }
 
 open Verso.Output.Html in
+/-- The muted line under a local dependency graph's heading when
+`verso.blueprint.nodePage.localGraphMaxNodes` left declarations out: how many of the
+declarations within the radius this page draws, and that the page's node cap is why.
+
+`.empty` when nothing was omitted, so a build under the cap (the default `0` included)
+renders exactly the bytes it did before the cap existed. Shared with `DeclPage`, whose
+graph section is the same section. -/
+def localGraphCapNote (kept omitted radius : Nat) : Output.Html :=
+  if omitted == 0 then .empty
+  else
+    let scope :=
+      if radius == 0 then "within the full dependency closure"
+      else if radius == 1 then "within 1 dependency hop"
+      else s!"within {radius} dependency hops"
+    let text :=
+      s!"Showing {kept} of the {kept + omitted} declarations {scope}; the rest are left \
+         out by the page's node cap (verso.blueprint.nodePage.localGraphMaxNodes)."
+    {{ <p class="bp_node_page_graph_note">{{.text true text}}</p> }}
+
+open Verso.Output.Html in
 /-- Assemble the body of a single node page from manifest + rendered-HTML cache. -/
 private def renderNodePageBody
     (state : TraverseState)
@@ -209,9 +235,13 @@ private def renderNodePageBody
       { declNamePrefix := namePrefix }
   -- Localized dependency graph: the radius-k neighborhood of this node (both
   -- directions), bounded by `verso.blueprint.nodePage.localGraphRadius` (0 ⇒ full
-  -- ancestor ∪ self ∪ descendant closure — the pre-cap behavior).
+  -- ancestor ∪ self ∪ descendant closure — the pre-cap behavior) and then by
+  -- `verso.blueprint.nodePage.localGraphMaxNodes` (0 ⇒ every declaration in it).
   let localGraphRadius := (Informal.TraversalIndex.DeclRegistry.localGraphRadius? state).getD 0
-  let labelSet : Lean.NameSet := master.boundedNeighborhood entry.label localGraphRadius
+  let localGraphMaxNodes := (Informal.TraversalIndex.DeclRegistry.localGraphMaxNodes? state).getD 0
+  let (labelSet, omittedNodes) :=
+    master.cappedNeighborhood entry.label localGraphRadius localGraphMaxNodes
+  let graphNote := localGraphCapNote labelSet.toList.length omittedNodes localGraphRadius
   let sub := master.restrictTo labelSet
   let slug := Informal.NodeRoute.nodePageSlug entry.label
   let localVariant : Informal.Graph.GraphRenderVariant := {
@@ -273,6 +303,7 @@ private def renderNodePageBody
       <section class="bp_node_page_statement bp_node_page_card2">{{nodeCard}}</section>
       <section class="bp_node_page_graph">
         <h2>"Local dependency graph"</h2>
+        {{graphNote}}
         {{graphHtml}}
       </section>
     </div>

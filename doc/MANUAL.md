@@ -1251,7 +1251,7 @@ prefixes with document-order block counts.
   - how many member nodes a milestone card lists before folding the rest into a
     `<details>` (`0` lists every member)
 
-The all-declarations registry and its scale caps. All four are no-ops on a consumer
+The all-declarations registry and its scale caps. All five are no-ops on a consumer
 without `verso.blueprint.graph.includeAllDecls`, and each degrades in a way the site
 states rather than hides:
 
@@ -1281,6 +1281,12 @@ states rather than hides:
   - radius, in dependency hops, of the localized graph on each node and declaration
     page. `0` draws the full ancestor ∪ self ∪ descendant closure, which at scale is
     most of the library.
+- `verso.blueprint.nodePage.localGraphMaxNodes`
+  - default: `0` (unlimited)
+  - how many declarations that localized graph may draw. The neighborhood is expanded
+    breadth-first and stops admitting at the cap; the page then says how many
+    declarations within the radius it left out. At scale a hub declaration's radius-2
+    neighborhood is thousands of nodes and a multi-megabyte page.
 - `verso.blueprint.graph.maxFlatVariantNodes`
   - default: `0` (unlimited)
   - node count above which the whole-graph `Full`/`Essential` graph variants are
