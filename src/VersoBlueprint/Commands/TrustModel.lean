@@ -428,19 +428,34 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
           if a.asserted == 0 then .empty
           else
             prose
-              s!"{a.asserted} of those edges have no such path. They are drawn dashed on the                  overview and badged there as author-asserted, and they rest on the author's                  reading of the proof alone."
+              s!"{a.asserted} of those edges have no such path. They are drawn dashed on the \
+                 overview and badged there as author-asserted, and they rest on the author's \
+                 reading of the proof alone."
         let projectClause : Output.Html :=
           if !a.projectDeclsConsulted || a.witnessedProjectDecls == 0 then .empty
           else
             prose
-              s!"A further {a.witnessedProjectDecls} were corroborated only through project                  declarations this blueprint does not present as nodes. That is a weaker                  statement than a path between presented nodes, and the overview labels it                  separately."
+              s!"A further {a.witnessedProjectDecls} were corroborated only through project \
+                 declarations this blueprint does not present as nodes. That is a weaker \
+                 statement than a path between presented nodes, and the overview labels it \
+                 separately."
         .seq #[
           {{ <h3 class="bp_trustmodel_subtitle">"The proof-overview layer"</h3> }},
           prose
-            "The proof overview groups this blueprint's nodes into hand-authored milestones              and draws edges between them. Those edges are the author's account of the              argument's shape. The build corroborates an edge where it can — an edge counts              as witnessed when some node of the dependent milestone transitively depends on              some node of the milestone it uses — but a witnessed edge is a fact about the              declaration graph, not about the mathematics: it says a dependency path exists,              not that the reason the author gives for the dependency is the right one.",
+            "The proof overview groups this blueprint's nodes into hand-authored milestones \
+             and draws edges between them. Those edges are the author's account of the \
+             argument's shape. The build corroborates an edge where it can — an edge counts \
+             as witnessed when some node of the dependent milestone transitively depends on \
+             some node of the milestone it uses — but a witnessed edge is a fact about the \
+             declaration graph, not about the mathematics: it says a dependency path exists, \
+             not that the reason the author gives for the dependency is the right one.",
           {{ <p class="bp_trust_note">
                {{.text true
-                 s!"This build laid out {a.milestones} milestones covering {a.coveredNodes} of                     {a.graphNodes} nodes, with {a.edges} milestone edge(s):                     {a.witnessedPresented} witnessed in the presented graph,                     {a.witnessedProjectDecls} witnessed only through project declarations,                     {a.asserted} author-asserted."}}
+                 s!"This build laid out {a.milestones} milestones covering {a.coveredNodes} of \
+                    {a.graphNodes} nodes, with {a.edges} milestone edge(s): \
+                    {a.witnessedPresented} witnessed in the presented graph, \
+                    {a.witnessedProjectDecls} witnessed only through project declarations, \
+                    {a.asserted} author-asserted."}}
              </p> }},
           assertedClause,
           projectClause]

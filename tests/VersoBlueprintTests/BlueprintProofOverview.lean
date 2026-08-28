@@ -46,7 +46,10 @@ milestones:
 
 * `ms:po.a` → `ms:po.b` → `ms:po.c` is witnessed at every step by the node chain;
 * `ms:po.d` also declares `uses := "ms:po.a"`, and its nodes depend on nothing in
-  `ms:po.a` — that edge is the deliberately author-asserted one;
+  `ms:po.a` — that edge is the deliberately author-asserted one. The headline node
+  depends on the auxiliary branch, which is what keeps the `uses` graph connected
+  (the graph gate requires that of a generated site) while leaving the milestone
+  edge pointing the other way, and so still unwitnessed;
 * `thm:po.shared` belongs to two milestones, which must NOT count as a witness.
 -/
 -- The one author-asserted edge warns by design; the guard keeps errors visible.
@@ -74,8 +77,8 @@ The third consequence.
 A result two milestones both claim.
 :::
 
-:::theorem "thm:po.top" (uses := "thm:po.step3, thm:po.shared")
-The headline result.
+:::theorem "thm:po.top" (uses := "thm:po.step3, thm:po.shared, thm:po.aux1")
+The headline result, which also leans on the auxiliary construction.
 :::
 
 :::definition "def:po.aux"
