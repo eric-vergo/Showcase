@@ -12,10 +12,10 @@ Styling for the fixed-banner Back / Home controls.
 The controls' DOM is injected at runtime by `Commands/banner-nav.mjs` into the
 site banner's `.header-logo-wrapper` slot; this module only carries their
 stylesheet. The CSS rides the global `blueprintHtmlAssets` `extraCss` channel
-(the same channel as the dark-mode, copy-button, and command-palette styling) so
-the controls are themed on every page. Colors reuse the existing `--bp-color-*`
-design tokens (no new color is introduced), so light + dark come for free; no
-CDN / network dependency.
+(the same channel as the dark-mode and command-palette styling) so the controls
+are themed on every page. Colors reuse the existing `--bp-color-*` design tokens
+(no new color is introduced), so light + dark come for free; no CDN / network
+dependency.
 
 Note: the core banner hides `.header-logo-wrapper` below 700px
 (`@media (max-width: 700px)` in verso `Html/Style.lean`), so these controls are

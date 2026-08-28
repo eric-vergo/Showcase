@@ -74,10 +74,12 @@ Addition on the naturals commutes.
     -- The unconditional claim is gone.
     !hasSubstr html ">every declaration<" &&
     !hasSubstr html "Every Lean declaration presented here" &&
-    -- The exclusion, cross-referencing the tier legend on the same page.
+    -- The exclusion, cross-referencing the rendering disclosure on the same page by
+    -- its section title (the tiers are recorded in the registry, not marked on the block).
     hasSubstr html "is source text this build read" &&
     hasSubstr html "claim and solution blocks" &&
-    hasSubstr html "rendering-tier legend"
+    hasSubstr html "code the registry records as syntactic or raw" &&
+    hasSubstr html "How the Lean code on this page was rendered"
 
 /-! ## No nanoda claim without a run record -/
 
@@ -774,16 +776,5 @@ page says that without claiming the replay the record never recorded.
     -- The record names no toolchain, so the gap is stated instead of assessed.
     hasSubstr html "no verdict here records which Lean release the comparator was built on" &&
     !hasSubstr html "Lean toolchain:"
-
-/-! ## Scale cap (c): the degraded rendering tiers render their honest glyphs -/
-
--- When the registry skips full re-elaboration above `fullElabMaxDecls`, signatures fall to
--- the `signature` tier and proof bodies to `syntactic`; both must render a visible marker so
--- the page shows the code was not re-elaborated (never a silent downgrade).
-/-- info: (true, true) -/
-#guard_msgs in
-#eval
-  (hasSubstr (Informal.NodeCard.tierMarker (some "signature")).asString "bp_tier_marker",
-   hasSubstr (Informal.NodeCard.tierMarker (some "syntactic")).asString "bp_tier_marker")
 
 end Verso.VersoBlueprintTests.TrustEvidence

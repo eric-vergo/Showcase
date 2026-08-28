@@ -479,8 +479,8 @@ structure ExternalRef where
   `"reelab"` (the whole declaration was re-elaborated from source),
   `"signature"` (only the signature was re-elaborated, as a bodyless `opaque`),
   or `"delaborated"` (pretty-printed from the compiled environment, not from the
-  author's source text). `none` ⇒ unknown/not recorded. See
-  `Informal.NodeCard.tierMarker` for the reader-facing glyph and wording.
+  author's source text). `none` ⇒ unknown/not recorded. Recorded in the
+  declaration registry as `sigTier`; not marked on the page.
   -/
   sigTier? : Option String := none
   /--

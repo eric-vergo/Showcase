@@ -81,7 +81,6 @@ import VersoBlueprint.Resolve
 import VersoBlueprint.TraversalIndex
 import VersoBlueprint.ProofReveal
 import VersoBlueprint.ColorScheme
-import VersoBlueprint.CopyButton
 import VersoBlueprint.Tikz
 import VersoBlueprint.Main
 import VersoBlueprint.Profiling

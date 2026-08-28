@@ -1343,7 +1343,7 @@ consumer that does not need one sees byte-identical output.
 
 | Option | Caps | Degrades to |
 |---|---|---|
-| `verso.blueprint.declRegistry.fullElabMaxDecls` (default `1500`) | the per-entry full statement + proof re-elaboration from source, in `DeclRegistry.lean` — one real elaboration per declaration, the dominant time and memory cost | signatures on the signature (`≈`) tier and proof bodies on the syntactic tier, both marked with their tier on the page and explained in the trust model's rendering-tier legend |
+| `verso.blueprint.declRegistry.fullElabMaxDecls` (default `1500`) | the per-entry full statement + proof re-elaboration from source, in `DeclRegistry.lean` — one real elaboration per declaration, the dominant time and memory cost | signatures on the `signature` tier and proof bodies on the `syntactic` tier, both recorded in the registry (`sigTier` / `proofTier`) and described on the trust-model page |
 | `verso.blueprint.graph.maxFlatVariantNodes` (default `0`) | the whole-graph `Full`/`Essential` DOT variants, in `Commands/Graph.lean` | a group-overview-first variant set; the reader gets the graph by parts instead of one unreadable sheet |
 | `verso.blueprint.nodePage.localGraphRadius` (default `2`) | the localized page graph, in `NodePage.lean` and `DeclPage.lean` | the radius-*k* neighborhood instead of the full closure, which at scale is most of the library and is neither fast to draw nor useful to read |
 | `verso.blueprint.declRegistry.maxDeclPages` (default `0`) | how many `decl/<slug>/` pages are emitted, in `DeclRegistry.lean` | pages for the highest-fan-in declarations no node presents; the rest stay in the registry, the catalogs, and the rail, marked `no page (over cap)` wherever a link would have been |

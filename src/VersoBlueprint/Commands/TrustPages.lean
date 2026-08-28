@@ -67,18 +67,15 @@ private def trustPageShell (heading intro : String) (body : Output.Html) : Outpu
 `<code class="hl lean">` so the shared `--verso-code-*` colors apply in both themes),
 else escaped plain text.
 
-Both branches carry a rendering-tier marker, because both are weaker than a
-re-elaborated node card: the Lean blocks here are highlighted *syntactically* (the
-module highlighter runs with empty info trees), and the fallback is raw text. A
-reader comparing this page against a node card should be able to see that. -/
+Both branches are weaker than a re-elaborated node card: the Lean blocks here are
+highlighted *syntactically* (the module highlighter runs with empty info trees),
+and the fallback is raw text. That distinction is not marked on the block; the
+trust-model page states it in prose. -/
 private def trustCodeBlock (extraClass htmlMarkup fallback : String) : Output.Html :=
   if htmlMarkup.isEmpty then
-    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>
-         {{Informal.NodeCard.tierMarker (some "raw")}}{{.text true fallback}}
-       </pre> }}
+    {{ <pre class={{s!"bp_trust_code {extraClass}"}}>{{.text true fallback}}</pre> }}
   else
     {{ <pre class={{s!"bp_trust_code {extraClass}"}}>
-         {{Informal.NodeCard.tierMarker (some "syntactic")}}
          <code class="hl lean">{{.text false htmlMarkup}}</code>
        </pre> }}
 

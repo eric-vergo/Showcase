@@ -1106,7 +1106,8 @@ def externalRefSnapshot (opts : Lean.Options) (workspaceRoot : System.FilePath)
         | none => pure none
     -- Rendering tiers, decided exactly where the fallback chain above resolved. A
     -- silent downgrade (heartbeat cap, unparsable source, module `open`s out of
-    -- scope) therefore becomes a *visible* tier change rather than an invisible one.
+    -- scope) is therefore recorded as a tier change in the declaration registry,
+    -- even though it is not marked on the page.
     let sigTier? : Option String :=
       if fullDecl?.isSome then some "reelab"
       else if sourceSig?.isSome then some "signature"

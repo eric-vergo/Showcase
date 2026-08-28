@@ -115,60 +115,6 @@ private def wrapperClass (opts : Options) : String :=
   else
     s!"bp_card2 {opts.wrapperClass}"
 
-/-!
-## Rendering-tier markers
-
-Every Lean code block on the site is produced by one of a handful of pipelines,
-and they do not all carry the same evidence. A block that was *re-elaborated from
-the project's source text* has been type-checked again, tokens and all; a block
-that was merely *pretty-printed from the compiled environment*, or *coloured
-syntactically without elaboration*, has not. The fallback between those tiers is
-silent by construction (a heartbeat cap, an out-of-scope `open`, an unparsable
-slice), so the tier is recorded where it is decided (`ExternalRefSnapshot`,
-`DeclRegistry`) and marked here with a small corner glyph and an honest tooltip.
-
-Keys are plain strings so this foundational module stays independent of the
-blueprint data model; the CSS lives with the design tokens in
-`Commands/Common.lean` (`blueprintTokensCss`), which every page bundle carries.
--/
-
-/-- Glyph + reader-facing explanation for a rendering-tier key. `none` for an
-unknown key, so an unrecognized tier renders no marker rather than a wrong one. -/
-def tierGlyph? (tier : String) : Option (String × String) :=
-  match tier with
-  | "reelab" =>
-    some ("⟲",
-      "Re-elaborated from source: this code was elaborated again from the project's \
-       source text, so its tokens carry checked semantic information.")
-  | "signature" =>
-    some ("≈",
-      "Signature re-elaborated from source: the statement was elaborated again (as a \
-       bodyless declaration); the proof was not re-run.")
-  | "delaborated" =>
-    some ("⌁",
-      "Pretty-printed from the compiled declaration, not from the author's source \
-       text: layout, notation, and implicit arguments may differ from the file.")
-  | "syntactic" =>
-    some ("≈",
-      "Highlighted syntactically: parsed and coloured from the source text without \
-       elaboration, so token meanings are not checked.")
-  | "raw" =>
-    some ("⌁",
-      "Raw source text: neither elaborated nor highlighted.")
-  | _ => none
-
-/-- The corner marker for a rendering-tier key, or `.empty` when the tier is
-unknown/absent. Rendered inside the code block it describes; positioned by
-`.bp_tier_marker` (see `blueprintTokensCss`). -/
-def tierMarker (tier? : Option String) : Html :=
-  match tier?.bind tierGlyph? with
-  | none => .empty
-  | some (glyph, explanation) =>
-    {{
-      <span class="bp_tier_marker" "data-bp-tier"={{tier?.getD ""}}
-          title={{explanation}} "aria-label"={{explanation}}>{{Html.ofString glyph}}</span>
-    }}
-
 /--
 Render prose containing `` `backtick` `` spans as real `<code>` elements.
 
@@ -191,8 +137,9 @@ code block per associated declaration, in source order.
 Each item is the `(proofHtml?, proofSource?, tier?)` triple snapshotted for one
 `(lean := …)` reference (see `Data.ExternalRef`): the syntactically-highlighted
 token markup is preferred, falling back to escaped raw source when highlighting
-was unavailable, and `tier?` records which pipeline produced it (marked with
-`tierMarker`). `.empty` when there are no items (inline-authored theorems and
+was unavailable. `tier?` records which pipeline produced the body; it is carried
+here for the declaration registry (`proofTier`) and is deliberately not rendered
+on the page. `.empty` when there are no items (inline-authored theorems and
 no-Lean nodes).
 
 Kept Data-free (plain `String` triples) so this foundational module stays
@@ -209,14 +156,13 @@ def formalSourceBody (items : Array (Option String × Option String × Option St
     (assignPrefix : Bool := false) : Html :=
   let assignTok : Html :=
     if assignPrefix then {{ <span class="built-in delim token">":= "</span> }} else .empty
-  let bodies : Array Html := items.filterMap fun (proofHtml?, proofSource?, tier?) =>
-    let marker := tierMarker tier?
+  let bodies : Array Html := items.filterMap fun (proofHtml?, proofSource?, _tier?) =>
     match proofHtml? with
     | some html =>
-      some {{ <pre class="bp_card2_proof_source">{{marker}}<code class="hl lean block">{{assignTok}}{{Html.text false html}}</code></pre> }}
+      some {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{assignTok}}{{Html.text false html}}</code></pre> }}
     | none =>
       proofSource?.map fun src =>
-        {{ <pre class="bp_card2_proof_source">{{marker}}<code class="hl lean block">{{assignTok}}{{Html.text true src}}</code></pre> }}
+        {{ <pre class="bp_card2_proof_source"><code class="hl lean block">{{assignTok}}{{Html.text true src}}</code></pre> }}
   if bodies.isEmpty then .empty else .seq bodies
 
 /-- Does this HTML render as nothing but whitespace? Used to decide whether a card

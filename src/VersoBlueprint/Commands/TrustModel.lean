@@ -38,7 +38,7 @@ Six sections:
    registration establishes (a digest identity) and what it does not (a verification).
 2. **What is not machine-checked** — chiefly the informal↔formal correspondence,
    which is a human obligation no part of this stack discharges, plus the
-   rendering-tier legend and the source-link caveats.
+   rendering-tier disclosure and the source-link caveats.
 3. **What you are trusting** — the concrete artifacts, by revision where known.
 4. **Why independent verification, and its limits** — including the 2026 Lean
    kernel soundness bug and the fact that a stale second checker shared it.
@@ -192,11 +192,11 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
   -- claim the build does not support. The row is now measured from the same audit data as
   -- the axiom row, and names its own exclusions.
   let kernelExclusion :=
-    " Excluded: code shown with the `≈` (syntactic) or `⌁` (raw) marker — including the \
-      statement comparator page's claim and solution blocks — is source text this build read \
-      and coloured, not source it elaborated. Nothing in this row covers those blocks; their \
-      evidence is the comparator verdict, with its own date. See the rendering-tier legend \
-      below."
+    " Excluded: code the registry records as syntactic or raw — including the statement \
+      comparator page's claim and solution blocks — is source text this build read and \
+      coloured, not source it elaborated. Nothing in this row covers those blocks; their \
+      evidence is the comparator verdict, with its own date. See \"How the Lean code on this \
+      page was rendered\" below."
   let kernelNotMeasured :=
     checkRow "Kernel type-checking" notCheckedBadge
       ("This build enumerated no declarations (no dashboard block, so nothing walked the \
@@ -361,15 +361,6 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
   ]
 
 /-! ### Section 2 — the limits -/
-
-private def tierLegendRow (glyph label explanation : String) : Output.Html :=
-  {{
-    <tr>
-      <td class="bp_trustmodel_glyph">{{.text true glyph}}</td>
-      <td class="bp_trustmodel_what">{{.text true label}}</td>
-      <td class="bp_trustmodel_detail">{{Informal.NodeCard.withCodeSpans explanation}}</td>
-    </tr>
-  }}
 
 private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive : Bool)
     (milestoneAudit? : Option Informal.Milestones.Audit)
@@ -572,34 +563,21 @@ private def notMachineCheckedSection (trust? : Option TrustData) (autoDepsActive
     {{ <h3 class="bp_trustmodel_subtitle">"How the Lean code on this page was rendered"</h3> }},
     prose
       "Code blocks are produced by different pipelines, and they do not carry the same \
-       evidence. Each block is marked in its top-right corner:",
-    {{
-      <div class="bp_trustmodel_table_wrap">
-        <table class="bp_trustmodel_table">
-          <tbody>{{.seq #[
-            tierLegendRow "⟲" "Re-elaborated from source"
-              "The declaration was elaborated again from the project's source text during the \
-               site build, so its tokens carry checked semantic information and its layout is \
-               exactly what the author wrote.",
-            tierLegendRow "≈" "Signature-only, or syntactic"
-              "Either the statement alone was re-elaborated (the proof was not re-run), or the \
-               text was parsed and coloured without elaboration. Token meanings are not \
-               checked.",
-            tierLegendRow "⌁" "Pretty-printed or raw"
-              "Rendered from the compiled declaration rather than the source file, or shown as \
-               plain text. Layout, notation, and implicit arguments may differ from the file \
-               you would read on GitHub.",
-            tierLegendRow "!" "Source newer than the compiled build"
-              "The source file changed after the artifact the status was read from was \
-               compiled, so the displayed text and the reported status may disagree."]}}
-          </tbody>
-        </table>
-      </div>
-    }},
+       evidence. A declaration re-elaborated from the project's source text during the site \
+       build was type-checked again, tokens and all. A signature-only re-elaboration ran the \
+       statement but not the proof. A syntactic highlight parsed and coloured the text without \
+       elaborating it, so its token meanings are unchecked. A pretty-print came from the \
+       compiled declaration rather than the file, so layout, notation, and implicit arguments \
+       may differ from the source you would read on GitHub. Raw text was neither elaborated \
+       nor highlighted.",
     prose
       "A downgrade between tiers happens silently — a re-elaboration can exceed its time \
-       budget, or reference names that are not in scope outside their module. Marking the \
-       tier is what makes that visible.",
+       budget, or reference names that are not in scope outside their module — and it is not \
+       marked on the block. Which pipeline produced each declaration's signature and body is \
+       recorded per declaration in the build's declaration registry where the site emits one \
+       (`-verso-data/decl-registry.json`, the `sigTier` and `proofTier` fields), together with \
+       whether the source file was newer than the compiled artifact the reported status was \
+       read from.",
     {{ <h3 class="bp_trustmodel_subtitle">"Source links"</h3> }},
     prose
       "\"View source\" links point at the commit the site was built from. They are constructed \

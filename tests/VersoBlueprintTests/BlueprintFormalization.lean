@@ -1152,22 +1152,6 @@ comparator a binary through the environment, still gets the real nanoda flow. -/
   -- No raw spaces survive into the fragment.
   !hasSubstr url "theorem t :"
 
-/-! ### Rendering-tier markers -/
-
-/-- info: true -/
-#guard_msgs in
-#eval
-  let reelab := (Informal.NodeCard.tierMarker (some "reelab")).asString
-  let delab := (Informal.NodeCard.tierMarker (some "delaborated")).asString
-  let unknown := (Informal.NodeCard.tierMarker (some "not-a-tier")).asString
-  let absent := (Informal.NodeCard.tierMarker none).asString
-  hasSubstr reelab "bp_tier_marker" &&
-  hasSubstr reelab "data-bp-tier=\"reelab\"" &&
-  hasSubstr reelab "Re-elaborated from source" &&
-  hasSubstr delab "data-bp-tier=\"delaborated\"" &&
-  -- An unrecognized tier renders NO marker rather than a wrong one.
-  unknown.isEmpty && absent.isEmpty
-
 /-! ### Verifier currency
 
 The three-way judgement (`Informal.KernelAdvisories.currencyVerdict`) against a forced

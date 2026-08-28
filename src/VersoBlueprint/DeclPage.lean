@@ -133,12 +133,11 @@ available (for `private` declarations this is the syntactic type highlight — t
 `_private.…` mangling never reaches the page), degrading to an escaped `<pre>`
 of the pretty-printed type. -/
 private def signatureCell (e : Entry) : Html :=
-  let marker := Informal.NodeCard.tierMarker e.sigTier?
   match e.signatureHtml? with
   | some inner =>
-    {{ <pre class="bp_external_decl_signature signature hl lean block">{{marker}}{{Html.text false inner}}</pre> }}
+    {{ <pre class="bp_external_decl_signature signature hl lean block">{{Html.text false inner}}</pre> }}
   | none =>
-    {{ <pre class="bp_external_decl_signature signature">{{marker}}{{Html.text true e.signatureText}}</pre> }}
+    {{ <pre class="bp_external_decl_signature signature">{{Html.text true e.signatureText}}</pre> }}
 
 /-- Quiet provenance marker shown under the informal-statement prose: notes that
 it is derived from the declaration's docstring. -/
@@ -218,7 +217,7 @@ private def registryGraph (entries : Array Entry) : Informal.Graph.GraphData := 
   return { data with edges := Informal.Graph.edgesForGraph data.toGraph }
 
 open Verso.Output.Html in
-/-- Assemble the body of one decl page: breadcrumb + copy-link topbar, the
+/-- Assemble the body of one decl page: the breadcrumb topbar, the
 two-column card, and the localized dependency graph (ancestors ∪ self ∪
 descendants over the registry graph; quietly absent for private declarations
 and single-node neighborhoods — the same section structure as node pages). -/
@@ -280,13 +279,6 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
         <span class="bp_node_breadcrumb_current">{{.text true short}}</span>
       </nav>
     }}
-  let copyLink : Output.Html :=
-    {{
-      <button type="button" class="bp-permalink-button" data-bp-permalink=""
-          data-bp-label="Copy link" aria-label="Copy a link to this page">
-        "Copy link"
-      </button>
-    }}
   {{
     <div class="bp_node_page bp_decl_page">
       <header class="bp_node_page_header">
@@ -294,7 +286,6 @@ private def renderDeclPageBody (master : Informal.Graph.GraphData)
           ++ (if e.scan?.isSome then Informal.CaveatsRender.css else ""))}}</style>
         <div class="bp_node_page_topbar">
           {{breadcrumb}}
-          {{copyLink}}
         </div>
       </header>
       <section class="bp_node_page_statement bp_node_page_card2">{{card}}</section>

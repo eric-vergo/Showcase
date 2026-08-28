@@ -79,7 +79,7 @@ def configuredNamePrefix (opts : Lean.Options) : String :=
 
 register_option verso.blueprint.declRegistry.fullElabMaxDecls : Nat := {
   defValue := 1500
-  descr := "Declaration-count cap above which the registry SKIPS the per-entry full (statement + proof) re-elaboration from source — the dominant time/memory cost at large scale. Above the cap the cheaper source paths still run: signatures re-elaborate to the `signature` (≈) tier and proof bodies fall back to syntactic (`syntactic`, ≈) highlighting, both honestly marked on the page rather than the re-elaborated (`reelab`, ⟲) tier. `0` ⇒ unlimited (never skip). Below the cap behavior is unchanged."
+  descr := "Declaration-count cap above which the registry SKIPS the per-entry full (statement + proof) re-elaboration from source — the dominant time/memory cost at large scale. Above the cap the cheaper source paths still run: signatures re-elaborate to the `signature` tier and proof bodies fall back to `syntactic` highlighting, both recorded in the registry as such rather than as the re-elaborated (`reelab`) tier. `0` ⇒ unlimited (never skip). Below the cap behavior is unchanged."
 }
 
 /-- The configured `verso.blueprint.declRegistry.fullElabMaxDecls` (0 ⇒ unlimited). -/
@@ -226,8 +226,8 @@ structure Entry where
   carries a literal `sorry`. -/
   axioms : Array String := #[]
   /-- Which pipeline produced `signatureHtml?` — `"reelab"` / `"signature"` /
-  `"delaborated"`; `none` when no signature was rendered. See
-  `Informal.NodeCard.tierMarker`. -/
+  `"delaborated"`; `none` when no signature was rendered. Emitted in the registry
+  JSON as `sigTier`; not marked on the page. -/
   sigTier? : Option String := none
   /-- Which pipeline produced this declaration's proof/value body HTML —
   `"reelab"` / `"syntactic"` / `"raw"`; `none` when no body was captured. -/
@@ -841,7 +841,7 @@ def buildDeclRegistry :
   -- re-elaboration from source — ~one real elaboration per theorem/def, the dominant
   -- time/memory cost — is skipped. The signature then re-elaborates on the cheaper
   -- signature-only path (`signature` tier) and the proof body falls back to syntactic
-  -- highlighting (`syntactic` tier), both honestly marked. `0` ⇒ never skip.
+  -- highlighting (`syntactic` tier), both recorded as such. `0` ⇒ never skip.
   let skipFullElab := fullElabMaxDecls > 0 && decls.size > fullElabMaxDecls
   let projectDeclSet : NameSet := decls.foldl (init := {}) fun acc (n, _, _) => acc.insert n
   let leanNameLabels := st.leanNameLabels

@@ -251,26 +251,13 @@ private def externalDeclRenderedMeta
     </div>
   }}
 
-/-- Rendering-tier corner marker for a declaration's *signature* block, plus the
-"source newer than the compiled build" annotation when the snapshot detected one.
-Both degrade to `.empty`. -/
-private def externalDeclTierMarkers (item : LinkedExternalDecl) : Output.Html :=
-  open Verso.Output.Html in
-  let stale : Output.Html :=
-    if item.decl.sourceStale then
-      {{ <span class="bp_tier_marker bp_tier_marker_stale" "data-bp-tier"="stale"
-            title="Source newer than the compiled build: the code shown is read from the source file, while the proved/axiom status comes from the compiled environment. Rebuild to make them agree."
-            "aria-label"="Source newer than the compiled build">"!"</span> }}
-    else .empty
-  .seq #[Informal.NodeCard.tierMarker item.decl.sigTier?, stale]
-
 private def externalDeclRendered (item : LinkedExternalDecl) : Output.Html :=
   open Verso.Output.Html in
   match item.decl.render with
   | .ok renderedHtml =>
     {{
       <div class="bp_external_decl_rendered">
-        {{externalDeclTierMarkers item}}{{.text false renderedHtml.selfContained}}
+        {{.text false renderedHtml.selfContained}}
       </div>
     }}
   | .error err =>
@@ -315,7 +302,7 @@ private def externalDeclRenderedWithPageHovers [Monad m]
   | .ok renderedHtml =>
     let renderedHtml ← renderedHtmlWithPageHovers renderedHtml
     pure <| .tag "div" #[("class", "bp_external_decl_rendered")]
-      (.seq #[externalDeclTierMarkers item, .text false renderedHtml])
+      (.text false renderedHtml)
   | .error err =>
     pure <| .tag "pre"
       #[("class", "bp_external_decl_stmt bp_external_decl_render_error")]

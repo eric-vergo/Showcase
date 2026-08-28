@@ -13,7 +13,7 @@ and the per-page declaration outline.
 Both DOMs are injected at runtime by ES modules (`Commands/top-nav.mjs`,
 `Commands/page-outline.mjs`) — no verso-core template edit — and only their
 stylesheets ride here. The CSS rides the global `blueprintHtmlAssets` `extraCss`
-channel (the same channel as the banner nav, metadata rail, and copy button) so
+channel (the same channel as the banner nav and the metadata rail) so
 it is present on every page, and it reuses the existing `--bp-*` / `--verso-*`
 design tokens exclusively, so light + dark and AA contrast come for free with no
 CDN / network dependency.

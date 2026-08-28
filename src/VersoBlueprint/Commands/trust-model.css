@@ -95,14 +95,6 @@
   color: var(--bp-color-text-muted);
 }
 
-/* The tier legend's glyph column mirrors the in-code corner markers. */
-.bp_trustmodel_glyph {
-  width: 2.5rem;
-  color: var(--bp-color-text-faint);
-  font-size: 1.1rem;
-  text-align: center;
-}
-
 @media (max-width: 45rem) {
   .bp_trustmodel_what {
     min-width: 0;

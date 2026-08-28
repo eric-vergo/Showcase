@@ -91,12 +91,14 @@ The fork's feature program, layered over upstream's genre:
   badge. Configured through `verso.blueprint.trust.*` / `declNamePrefix` /
   `graph.includeAllDecls` / `math.lint` / `externalCode.strictResolve` lakefile
   options.
-- **Verbatim-source signatures & marked rendering tiers.** Node signatures are the
+- **Verbatim-source signatures & recorded rendering tiers.** Node signatures are the
   author's verbatim source, re-elaborated in the declaration's own namespace (with a
   delaborated fallback); proof bodies render without inline proof-state toggles so
-  per-token type hovers work; build-time TikZ → SVG offline figures. Every code block
-  carries a corner marker recording which pipeline produced it, so a silent fallback
-  from "re-elaborated and checked" to "coloured text" is visible to the reader.
+  per-token type hovers work; build-time TikZ → SVG offline figures. Which pipeline
+  produced each declaration's signature and body is recorded in the declaration
+  registry (`sigTier` / `proofTier`) and described in prose on the trust-model page,
+  so a silent fallback from "re-elaborated and checked" to "coloured text" is on the
+  record.
 - **Full light/dark theming.** Everything themes via `data-bp-color-scheme` with the
   `--bp-color-*` / `--bp-space-*` / `--bp-duration-*` / `--bp-fs-*` token scales, a
   restrained dev-tool-docs visual identity, and **offline / self-contained** emitted

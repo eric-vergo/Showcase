@@ -13,7 +13,6 @@ import VersoManual.HighlightedCode
 import VersoBlueprint.Cite
 import VersoBlueprint.ColorScheme
 import VersoBlueprint.TextSize
-import VersoBlueprint.CopyButton
 import VersoBlueprint.Commands.CommandPalette
 import VersoBlueprint.Commands.BannerNav
 import VersoBlueprint.Commands.MetadataRail
@@ -142,18 +141,6 @@ def colorSchemeHtmlAssets : HtmlAssets where
   extraJs := ([Informal.ColorScheme.applierJs, Informal.TextSize.applierJs] : List String)
 
 /--
-Global copy-to-clipboard assets for Lean code blocks, applied to *every* page.
-
-The CSS rides `extraCss` and the dependency-free installer rides `extraJs` (the same
-inline-`<head>` channel as the dark-mode applier), so the button targets every
-`code.hl.lean.block` site-wide while skipping `.lean-output` blocks. No CDN/network
-dependency; the styling uses `--bp-color-*` tokens so it themes in dark mode.
--/
-def copyButtonHtmlAssets : HtmlAssets where
-  extraCss := ([Informal.CopyButton.css] : List String)
-  extraJs := ([Informal.CopyButton.js] : List String)
-
-/--
 Global command-palette assets, applied to *every* page.
 
 Only the stylesheet rides this global `extraCss` channel; the palette behavior is
@@ -213,7 +200,7 @@ Everything is scoped inside `@media print`, so it never affects on-screen
 rendering. It (1) forces the light design tokens (so a page saved in dark mode
 still prints on white paper), (2) hides interactive chrome that is meaningless on
 paper — the ToC sidebar, prev/next nav, theme switcher, graph controls/legend,
-copy buttons, command palette, and dashboard CTAs — and (3) expands collapsed
+command palette, and dashboard CTAs — and (3) expands collapsed
 `<details>` so their content is included in the printout. No network dependency.
 -/
 def printCss : String := r##"
@@ -250,7 +237,6 @@ def printCss : String := r##"
   #toggle-toc-click,
   label[for="toggle-toc"],
   .prev-next-buttons,
-  .bp-copy-button,
   .bp_graph_controls,
   .bp_graph_legend,
   .bp_command_palette {
@@ -358,8 +344,8 @@ def vendoredLicensesHtmlAssets : HtmlAssets where
   licenseInfo := Std.HashSet.ofArray #[d3LicenseInfo, d3GraphvizLicenseInfo]
 
 def blueprintHtmlAssets : HtmlAssets :=
-  ((((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
-    colorSchemeHtmlAssets).combine copyButtonHtmlAssets).combine commandPaletteHtmlAssets).combine
+  (((((((Verso.Genre.Manual.highlightAssets.combine buildMetadataHtmlAssets).combine
+    colorSchemeHtmlAssets).combine commandPaletteHtmlAssets).combine
     bannerNavHtmlAssets).combine metadataRailHtmlAssets).combine docsChromeHtmlAssets).combine
     printHtmlAssets).combine vendoredLicensesHtmlAssets
 

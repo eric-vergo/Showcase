@@ -11,11 +11,10 @@ Styling for the command palette (Ctrl/Cmd-K fuzzy jump-to-node overlay).
 
 The palette overlay DOM is created at runtime by `Commands/command-palette.mjs`;
 this module only carries its stylesheet. The CSS rides the global
-`blueprintHtmlAssets` `extraCss` channel (the same channel as the dark-mode and
-copy-button styling) so the palette is themed on every page, including node
-pages. Colors come from the `--bp-color-*` design tokens (with light literal
-fallbacks) so the overlay follows the dark-mode color scheme; no CDN / network
-dependency.
+`blueprintHtmlAssets` `extraCss` channel (the same channel as the dark-mode
+styling) so the palette is themed on every page, including node pages. Colors
+come from the `--bp-color-*` design tokens (with light literal fallbacks) so the
+overlay follows the dark-mode color scheme; no CDN / network dependency.
 -/
 
 namespace Informal.CommandPalette

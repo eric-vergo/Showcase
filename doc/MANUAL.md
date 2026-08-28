@@ -1273,8 +1273,9 @@ states rather than hides:
   - default: `1500`
   - declaration count above which the registry skips the per-entry full
     (statement + proof) re-elaboration from source — the dominant time and memory
-    cost at scale. Signatures then render on the signature (`≈`) tier and proof
-    bodies syntactically, both marked on the page. `0` never skips.
+    cost at scale. Signatures then render on the `signature` tier and proof bodies
+    syntactically, both recorded as such in the registry (`sigTier` / `proofTier`).
+    `0` never skips.
 - `verso.blueprint.nodePage.localGraphRadius`
   - default: `2`
   - radius, in dependency hops, of the localized graph on each node and declaration

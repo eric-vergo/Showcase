@@ -6,7 +6,6 @@ Authors: Eric Vergo, Claude Fable 5, Claude Opus 4.8, Claude Opus 5 (Claude Code
 
 import Std.Data.HashSet
 import VersoBlueprint.Commands.Graph
-import VersoBlueprint.CopyButton
 import VersoBlueprint.GraphApi
 import VersoBlueprint.NodeRoute
 import VersoBlueprint.PreviewManifest
@@ -38,7 +37,7 @@ open Informal.PreviewManifest (Entry)
 
 /--
 Inline styling for the node-page breadcrumb trail (Book › Chapter › node) and the
-header action row that holds it alongside the copy-permalink button.
+header action row that holds it.
 
 Emitted once inside each node page header. Colors / fonts come from the
 `--bp-color-*` and `--font-mono-ui` design tokens, with light literal fallbacks,
@@ -260,13 +259,6 @@ private def renderNodePageBody
         <span class="bp_node_breadcrumb_current">{{.text true entry.title}}</span>
       </nav>
     }}
-  let copyLink : Output.Html :=
-    {{
-      <button type="button" class="bp-permalink-button" data-bp-permalink=""
-          data-bp-label="Copy link" aria-label="Copy a link to this page">
-        "Copy link"
-      </button>
-    }}
   -- No separate H1 (1F): the clean card header is the visual page title; the
   -- breadcrumb's final crumb and the document `<title>` still carry the node name.
   {{
@@ -275,7 +267,6 @@ private def renderNodePageBody
         <style>{{.text false nodeBreadcrumbCss}}</style>
         <div class="bp_node_page_topbar">
           {{breadcrumb}}
-          {{copyLink}}
         </div>
         {{parentContext}}
       </header>
