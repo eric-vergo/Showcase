@@ -103,6 +103,16 @@ def buildOverviewData (stx : Syntax) (title : String) :
   -- so the rest of the overview still builds.
   let mut sanitized : Array Milestone := #[]
   for m in declared do
+    -- A milestone with no members covers nothing and can never witness an edge, so every
+    -- edge incident to it comes out author-asserted. That is also exactly what a wrapped
+    -- `(members := …)` looks like — a Verso directive reads its arguments from its opening
+    -- line, and a continuation line becomes body prose — so the warning names the trap
+    -- rather than leaving the author to explain a page of plausible, wrong numbers.
+    if m.members.isEmpty then
+      logWarningAt stx
+        m!"Milestone {displayLabel m.label} lists no members — its edges can never be \
+           witnessed; if the `(members := …)` argument was wrapped onto a continuation \
+           line, put it on the directive's opening line"
     let mut members : Array Data.Label := #[]
     for mem in m.members do
       if members.contains mem then

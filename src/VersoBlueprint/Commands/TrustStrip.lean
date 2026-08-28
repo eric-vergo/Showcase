@@ -1411,9 +1411,39 @@ def TrustComparator.assuredKernels (cmp : TrustComparator) : Array String :=
     tier == "named" || tier == "ci-built"
 
 /-- Replay claims this page must present as *unnamed* external checkers: the run says
-something ran and accepted, and nothing says what. -/
+something ran and accepted, and nothing this site can check says what. -/
 def TrustComparator.unnamedReplayClaims (cmp : TrustComparator) : Array String :=
   cmp.replayedKernels.filter fun k => !(cmp.assuredKernels.contains k)
+
+/--
+Why one unnamed replay claim is unnamed. Since CX-064 the `labeled` tier covers three
+different situations, and a page that describes only the first says something false about
+the other two — so the reason is computed here, beside `kernelIdentityTier`, rather than
+assumed by the copy.
+
+- `"unbound"` — the record binds nothing: no identity entry, or one whose `source_commit`
+  or `executable_sha256` is not of the right shape.
+- `"unpinned"` — the record names a well-formed revision and digest, but this site pinned
+  no identity for that checker, so they are the producer's own statement.
+- `"pin-mismatch"` — the record names well-formed ones and they *disagree* with the
+  identity this site pinned. `identityPinConflicts` names the field; the build warns.
+-/
+def TrustComparator.unnamedReplayReason (cmp : TrustComparator) (label : String) : String :=
+  match cmp.identityFor? label with
+  | Option.none => "unbound"
+  | Option.some rec =>
+    if !isExecutableDigest rec.executableSha256 || !isSourceRevision rec.sourceCommit then
+      "unbound"
+    else
+      match cmp.identityPinFor? label with
+      | Option.none => "unpinned"
+      | Option.some pin =>
+        if (identityPinMismatch? pin rec).isSome then "pin-mismatch" else "unbound"
+
+/-- The unnamed replay claims that are unnamed for `reason`, in record order. -/
+def TrustComparator.unnamedReplayClaimsFor (cmp : TrustComparator) (reason : String) :
+    Array String :=
+  cmp.unnamedReplayClaims.filter fun k => cmp.unnamedReplayReason k == reason
 
 /--
 Whether the run that produced this verdict **recorded** a nanoda replay in a form this site

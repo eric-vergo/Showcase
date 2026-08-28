@@ -86,6 +86,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.BlueprintPreviewPanels,
     `VersoBlueprintTests.BlueprintProofOverview,
     `VersoBlueprintTests.BlueprintProofOverview.Cycle,
+    `VersoBlueprintTests.BlueprintProofOverview.NoMembers,
     `VersoBlueprintTests.BlueprintProofOverview.Phantom,
     `VersoBlueprintTests.BlueprintPreviewSchema,
     `VersoBlueprintTests.BlueprintPreviewSource,

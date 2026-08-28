@@ -638,25 +638,49 @@ private def recordedKernelNote (cmp : TrustComparator) : Output.Html :=
        </p> }}
 
 /--
-Replay claims the record cannot name: the run says something ran and accepted, and
-nothing in the record says what program that was.
+Replay claims this page must present as unnamed: the run says something ran and accepted,
+and nothing this site can check says what program that was.
 
 Stated rather than dropped, because the comparator's own output will have called it by
 whatever name the configuration chose.
+
+One sentence per *reason*, because since CX-064 there are three of them and they are not
+the same statement. Describing a well-formed-but-unpinned record as one that "does not
+bind the label to a source revision and executable digest" would be false of the record on
+the page — the digest is right there — so each group says what is actually the matter with
+it. `unnamedReplayReason` computes the split beside `kernelIdentityTier`, so the copy
+cannot drift from the tier.
 -/
 private def unnamedCheckerNote (cmp : TrustComparator) : Output.Html :=
   let claims := cmp.unnamedReplayClaims
   if claims.isEmpty then .empty
   else
-    let subject := if claims.size == 1 then "a checker labeled" else "checkers labeled"
-    {{ <p class="bp_trust_note">
-         "The run also reports that " {{.text true subject}} " " {{inlineCodeList claims.toList}}
-         {{.text true " accepted the solution. The comparator takes that label from its \
-            configuration and runs whatever command the label points at, treating exit status \
-            zero as acceptance, and this record does not bind the label to a source revision \
-            and executable digest — so what ran is not established here. Nothing above \
-            counts it as a second kernel."}}
-       </p> }}
+    let subject := fun (ks : Array String) =>
+      if ks.size == 1 then "a checker labeled" else "checkers labeled"
+    -- Shared by all three: the label is display text the configuration chose.
+    let lead := " accepted the solution. The comparator takes that label from its \
+       configuration and runs whatever command the label points at, treating exit status \
+       zero as acceptance, and "
+    let note := fun (ks : Array String) (tail : String) =>
+      if ks.isEmpty then Output.Html.empty
+      else
+        {{ <p class="bp_trust_note">
+             "The run also reports that " {{.text true (subject ks)}} " "
+             {{inlineCodeList ks.toList}}
+             {{.text true (lead ++ tail ++ " Nothing above counts it as a second kernel.")}}
+           </p> }}
+    .seq #[
+      note (cmp.unnamedReplayClaimsFor "unbound")
+        "this record does not bind the label to a source revision and executable digest — \
+         so what ran is not established here.",
+      note (cmp.unnamedReplayClaimsFor "unpinned")
+        "the record names a source revision and executable digest, but this site holds no \
+         pinned identity for that checker, so they are the producer's own statement and \
+         what ran is not established here.",
+      note (cmp.unnamedReplayClaimsFor "pin-mismatch")
+        "the record names a source revision and executable digest that disagree with the \
+         identity this site's author pinned, so what ran is not established here — the \
+         build reports which field disagrees."]
 
 /--
 What the linked run recorded about the independent kernel replay, and whether the

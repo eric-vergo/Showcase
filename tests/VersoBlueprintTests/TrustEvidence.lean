@@ -366,10 +366,16 @@ private def boundKernel : TrustComparator :=
   hasSubstr html "nanoda 05055695" &&
   hasSubstr html "binary <code>f035ee955e00221ee35fe819ac1ea5818edce8a459fffd380120a450373be6dc</code>" &&
   -- The second checker's identity is well formed, but this site pinned nothing for it, so
-  -- since CX-064 it is reported as an external checker rather than as a kernel, and the
-  -- page says what it therefore does not establish.
+  -- since CX-064 it is reported as an external checker rather than as a kernel. The page
+  -- has to say *that* rather than the sentence it used to reach for: this record does bind
+  -- the label to a revision and a digest, and both are printed above, so describing it as
+  -- one that does not would be false about the page it is on.
   hasSubstr html "external checker labeled" &&
-  hasSubstr html "so what ran is not established here" &&
+  hasSubstr html "the record names a source revision and executable digest, but this site \
+    holds no pinned identity for that checker, so they are the producer's own statement and \
+    what ran is not established here." &&
+  !hasSubstr html "this record does not bind the label to a source revision and executable \
+    digest" &&
   !hasSubstr html "lean4lean and nanoda kernels" &&
   !hasSubstr html "checkers labeled" &&
   hasSubstr html "a checker labeled" &&
