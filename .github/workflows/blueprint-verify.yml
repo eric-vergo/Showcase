@@ -32,8 +32,9 @@ name: Blueprint Verify
 #                  what dissolves CX-079 structurally.
 #   site-contents  contents: read. The elaboration pass (`lake build Contents`)
 #   site-generate  contents: read. Rendering, every gate, and packaging.
-#   site-release   contents: write + actions: write. Cuts the release the pin
-#                  names, commits the pin back, and dispatches the deploy.
+#   site-release   contents: write. Cuts the release the pin names, commits the
+#                  pin back, and signals the deploy with a repository_dispatch --
+#                  which needs no scope beyond the one it already holds.
 #
 # Deploying is a SEPARATE workflow (blueprint-deploy.yml, called from the
 # consumer's `deploy.yml`), so this file holds no `pages:` scope and no OIDC at
@@ -233,11 +234,14 @@ on:
         default: 900000000
       source_link_gate:
         description: >-
-          Whether every project-local `sourceHref` in the declaration registry
-          must name the revision the site was generated from (CX-066). A
-          capability the caller declares, never file presence: a gate that skips
-          because a file is missing is the probe-and-degrade weakness the audit
-          rejected. When on, a vacuous result is a FAILURE.
+          Whether every project-local source link must name the revision the site
+          was generated from (CX-066) -- both the declaration registry's
+          `sourceHref` values and the `blob/<rev>/` links in the rendered HTML,
+          which are baked at elaboration and can be a commit behind. A capability
+          the caller declares, never file presence: a gate that skips because a
+          file is missing is the probe-and-degrade weakness the audit rejected.
+          When on, an empty REGISTRY result is a FAILURE; an empty HTML result is
+          reported, since a consumer may legitimately render no such link.
         type: boolean
         default: true
       trust_provenance_gate:
@@ -1816,64 +1820,35 @@ jobs:
           build_rev="$(git rev-parse HEAD)"
 
           # --- Source-link revision gate (codex-audit CX-066) ------------------
-          # The declaration registry bakes its "View source" URLs at ELABORATION
-          # time; the build stamp on the project-management page is probed at
-          # GENERATION time. Those are two independently sampled revisions, and a
-          # warm site build carried across commits can replay a registry whose
-          # links all name an older commit under a clean current-HEAD stamp. The
-          # trust-model page promises, verbatim, that the source links point at
-          # the commit the site was built from; this gate is what makes that
-          # promise checkable before anything is uploaded. Byte-identical sources
-          # at the two revisions do not satisfy it: the published contract is
-          # revision identity.
+          # The site publishes project-local `blob/<rev>/` links on two surfaces,
+          # and BOTH are sampled at a revision that is not necessarily the one
+          # the site is generated at:
+          #
+          #   * the declaration registry's `sourceHref`, bound late (at emission,
+          #     from the same value the build stamp reads) but replayed wholesale
+          #     when a warm `.lake` carries a registry across commits;
+          #   * the rendered HTML -- the comparator page's "View on GitHub" links
+          #     -- composed at ELABORATION from the repository HEAD of that
+          #     moment and baked into an `.olean`, so a contents build one commit
+          #     behind this job publishes links to the previous commit under a
+          #     clean current-HEAD stamp. Measured during the lean_quine
+          #     adoption: three stale links on comparator/index.html, thirteen
+          #     current registry links, registry-only gate green.
+          #
+          # The trust-model page promises, verbatim, that the source links point
+          # at the commit the site was built from; this is what makes the promise
+          # checkable before anything is uploaded. Byte-identical sources at the
+          # two revisions do not satisfy it: the published contract is revision
+          # identity.
+          #
+          # ONE implementation, invoked here and again at deploy time: the gate
+          # that ran registry-only for a release is exactly what happens when a
+          # workflow keeps its own copy of a script's logic.
           if [ "$SOURCE_LINK_GATE" = "true" ]; then
-            registry="${SITE_OUT}/-verso-data/decl-registry.json"
-            test -f "$registry"
-            python3 - "$registry" "$GITHUB_REPOSITORY" "$build_rev" <<'PY'
-          import json, re, sys
-
-          path, repository, sha = sys.argv[1:4]
-          pattern = re.compile(
-              r"\Ahttps://github\.com/" + re.escape(repository) + r"/blob/([0-9a-f]{40})/"
-          )
-          with open(path, encoding="utf-8") as handle:
-              registry = json.load(handle)
-
-          checked = 0
-          stale = {}
-
-          def visit(node):
-              global checked
-              if isinstance(node, dict):
-                  href = node.get("sourceHref")
-                  if isinstance(href, str):
-                      found = pattern.match(href)
-                      if found:
-                          checked += 1
-                          if found.group(1) != sha:
-                              stale[found.group(1)] = stale.get(found.group(1), 0) + 1
-                  for value in node.values():
-                      visit(value)
-              elif isinstance(node, list):
-                  for value in node:
-                      visit(value)
-
-          visit(registry)
-
-          if checked == 0:
-              print("source-link gate: no project-local sourceHref in the registry — the gate is vacuous,")
-              print("which means either the registry moved or the links stopped naming this repository.")
-              sys.exit(1)
-          if stale:
-              print("source-link gate: {} of {} project-local source links do not name this run's commit {}".format(
-                  sum(stale.values()), checked, sha))
-              for revision, occurrences in sorted(stale.items()):
-                  print("  {} link(s) name {}".format(occurrences, revision))
-              print("the registry was replayed from a build cache warmed at another revision;")
-              print("rebuild it under this commit rather than publishing a stamp it does not match.")
-              sys.exit(1)
-          print("source-link gate: {} project-local source links all name {}".format(checked, sha))
-          PY
+            python3 "$CI_DIR/scripts/check_site_release.py" --links-only \
+              --site-root "$SITE_OUT" \
+              --repository "$GITHUB_REPOSITORY" \
+              --revision "$build_rev"
           else
             echo "source-link gate: off by caller declaration (source_link_gate: false)"
           fi
@@ -1958,8 +1933,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
-      contents: write   # the release, and the pin commit-back (push events only)
-      actions: write    # dispatch the consumer's deploy.yml
+      # The release, the pin commit-back (push events only), AND the deploy
+      # signal: `POST /repos/{repo}/dispatches` is a contents-scope call. No job
+      # in this workflow asks for `actions: write`, and no caller grants it --
+      # lean_quine's first live run failed at startup on exactly that ("The
+      # nested job 'site-release' is requesting 'actions: write', but is only
+      # allowed 'actions: read'"), which is the permission model working.
+      contents: write
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       asset: ${{ steps.release.outputs.asset }}
@@ -2044,6 +2024,7 @@ jobs:
             echo "tag=$tag"
             echo "asset=$asset"
             echo "sha256=$sha256"
+            echo "generation_revision=$rev"
           } >> "$GITHUB_OUTPUT"
           echo "release: $tag"
 
@@ -2073,12 +2054,42 @@ jobs:
             "HEAD:${PUBLISH_BRANCH}"
 
       # A GITHUB_TOKEN push does not fire `push:`, so the pin commit above will
-      # not trigger the consumer's deploy workflow on its own; a workflow_dispatch
-      # it creates DOES run. The consumer's deploy.yml checks out the publish
+      # not trigger the consumer's deploy workflow on its own. `repository_dispatch`
+      # and `workflow_dispatch` are the documented exception to that rule: GitHub
+      # DOES start runs for those two event types even when the event was created
+      # with a GITHUB_TOKEN. The consumer's deploy.yml then checks out the publish
       # branch, reads the pin just pushed, and is the only path to Pages.
-      - name: Dispatch the deploy
+      #
+      # A repository_dispatch rather than `gh workflow run` because the latter is
+      # the Actions API and needs `actions: write` -- a scope no caller grants and
+      # none should: "may start any workflow in this repository" is a far larger
+      # grant than "may say the pin moved". `POST /repos/{repo}/dispatches` is a
+      # contents-scope call, and this job already holds `contents: write` for the
+      # release and the commit-back.
+      #
+      # The payload is PROVENANCE, not input. blueprint-deploy.yml reads the
+      # COMMITTED pin and never the event, so a dispatch cannot name a release the
+      # publish branch does not vouch for; the fields are carried so a deploy run
+      # can be matched to the release that signalled it without re-reading the pin.
+      #
+      # One constraint this trades for the permission: a repository_dispatch run
+      # always uses the repository's DEFAULT branch -- for which workflow file
+      # runs, and for the ref it runs on. So this signal reaches a consumer whose
+      # `publish_branch` IS the default branch. Where it is not, blueprint-deploy's
+      # `deploy` job (`github.ref_name == inputs.publish_branch`) skips rather than
+      # publishing the wrong tree, and that consumer deploys by workflow_dispatch.
+      - name: Signal the deploy
         if: steps.release_needed.outputs.needed == 'true' && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          PUBLISH_BRANCH: ${{ inputs.publish_branch }}
-        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref "$PUBLISH_BRANCH"
+          GENERATION_REVISION: ${{ steps.release.outputs.generation_revision }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA256: ${{ steps.release.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
+            -f event_type=blueprint-site-pin \
+            -f "client_payload[generation_revision]=${GENERATION_REVISION}" \
+            -f "client_payload[release_tag]=${RELEASE_TAG}" \
+            -f "client_payload[sha256]=${RELEASE_SHA256}"
+          echo "signalled blueprint-site-pin for ${RELEASE_TAG} (${GENERATION_REVISION})"

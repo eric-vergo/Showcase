@@ -56,6 +56,10 @@ jobs:
     permissions:
       contents: write   # the status / kernel-identity / site-pin commit-backs
       actions: read     # the step-level CI deep link
+      # Exactly these two. A reusable workflow cannot raise its caller's grant:
+      # a job that asks for a scope the caller lacks fails the run at STARTUP,
+      # before any step. Nothing in the pipeline needs `actions: write` — the
+      # deploy signal is a repository_dispatch, which is a contents-scope call.
     uses: eric-vergo/Showcase/.github/workflows/blueprint-verify.yml@<SHOWCASE_SHA>
     with:
       showcase_sha: "<SHOWCASE_SHA>"   # asserted == job.workflow_sha in every job
@@ -84,6 +88,11 @@ on:
     # re-verified by hand, not by a run that would refuse an unchanged release.
     paths:
       - 'site/trust/site-build.json'
+  # How the pin commit-back actually reaches this workflow: a GITHUB_TOKEN push
+  # does not fire `push:`, so the `paths:` trigger above catches a human's pin
+  # commit and nothing else. site-release signals this event instead.
+  repository_dispatch:
+    types: [blueprint-site-pin]
   workflow_dispatch:
 
 permissions:
@@ -108,9 +117,21 @@ jobs:
         -verso-data/trust-provenance.json comparator/index.html Trust-model/index.html
 ```
 
-Note what `ci.yml` does **not** hold: no `pages:` scope and no `id-token:`. The
-workflow that can write to the repository and the workflow that can mint a Pages
-token are different files, called by different jobs.
+Note what `ci.yml` does **not** hold: no `pages:` scope, no `id-token:`, and no
+`actions: write`. The workflow that can write to the repository and the workflow
+that can mint a Pages token are different files, called by different jobs — and
+neither may start arbitrary workflows.
+
+`repository_dispatch` and `workflow_dispatch` are the documented exception to the
+rule that a GITHUB_TOKEN's own actions do not trigger workflows: GitHub starts
+runs for those two event types even when the event was created with the token.
+That exception is the whole deploy signal. One constraint comes with it — a
+`repository_dispatch` run always uses the repository's **default** branch, both
+for which workflow file runs and for the ref it runs on — so the signal reaches a
+consumer whose `publish_branch` is the default branch. Where it is not,
+`blueprint-deploy.yml`'s `deploy` job (`github.ref_name == inputs.publish_branch`)
+skips rather than publishing the wrong tree, and that consumer deploys by
+`workflow_dispatch`.
 
 **Never write `secrets: inherit`.** The pipeline needs no secret, and omitting
 the block is what keeps the untrusted comparator job provably secret-free.
@@ -141,6 +162,77 @@ edge is a warm-replay window (CX-075).
 
 **`formalization.yaml` is optional** — `formalization_yaml: ""` skips the schema
 check.
+
+### Bootstrap order — what the first run cannot be given
+
+Every item below was measured adopting a consumer, and each one costs a red build
+or a wasted run if taken in the wrong order.
+
+**A Lake `input_file` on a path that does not exist is a hard build failure**, not
+a skipped edge:
+
+```
+✖ Running missingThing
+error: no such file or directory
+```
+
+So an `input_file` edge is added *with* the file it tracks, never ahead of it.
+That single fact fixes the order of the next two.
+
+**`kernel_identity_pins` is bootstrapped by the FIRST publish run**, which writes
+the file and commits it back; from the second run on it is asserted and never
+rewritten (CX-064). A consumer therefore adds
+`verso.blueprint.trust.expectedKernelIdentities`, and its `input_file` edge, only
+*after* that file exists in the tree. Until then the site renders the second
+kernel as `labeled` rather than authenticated — not a gap to paper over, but the
+honest pre-bootstrap state, which the site says out loud.
+
+**`comparator/comparator-status.json` must be committed in its `configured` state
+before the first run**, because its `input_file` edge needs it and because the
+trust surfaces read it at elaboration. The publish job then overwrites it from
+that run's evidence record. The minimal honest record (lean_quine's, abridged):
+
+```json
+{
+  "status": "configured",
+  "config": "comparator/comparator.json",
+  "challenge_module": "Challenge",
+  "solution_module": "Solution",
+  "theorem_names": ["Challenge.out_eq_source"],
+  "permitted_axioms": ["propext"],
+  "note": "The comparator is configured in this repository but has not run here yet, so nothing on this site is comparator-certified. This file is checked in ahead of the first run in its pre-run state, and the publishing job of the CI workflow overwrites it from that run's evidence record; until then the fields beside `status` describe the configuration, not a result."
+}
+```
+
+`configured` is a config and no run: never `verified`, and never a verdict
+transcribed from somewhere else (CX-042). The `note` is where the pre-run state
+is spelled out in prose, because a status pill alone does not say it. lean_quine's
+real file continues the note with the `propext` explanation below — an allowlist
+that names an axiom the theorem does not reach is exactly the kind of thing a
+reader is owed a sentence about.
+
+**`permitted_axioms: []` cannot be combined with `enable_nanoda: true`** under the
+pinned comparator tool. The comparator always exports its primitive targets
+(`Nat.land`, `Nat.lor`, `Nat.xor`), whose declarations transitively *declare*
+`propext`, and nanoda checks the allowlist declaration-by-declaration over the
+export rather than by reachability from the certified theorem. So an empty
+allowlist is rejected at parse time even though the comparator's own reachability
+check reports that the theorem reaches no axiom at all. Two honest options:
+
+* `permitted_axioms: ["propext"]` with `enable_nanoda: true` — a second kernel
+  replays the export, and the allowlist names an axiom the theorem does not
+  reach. Say which, in the record's `note`.
+* `permitted_axioms: []` with nanoda off — the tighter claim, checked by one
+  kernel. The exact axiom set can still be asserted in the consumer's own
+  repository test (lean_quine's `Test.lean` does).
+
+**A comparator run does not fail fast on a mismatch when the proof is a large
+`rfl`.** Measured on lean_quine, whose certified theorem is a kernel `rfl` over a
+string literal: a mismatched solution ran past 600 s in *both* kernels before
+reporting anything, because the work is the reduction, not the comparison. There,
+the job timeout **is** the failure signal — which is why
+`comparator_timeout_minutes` is a per-consumer value and why lean_quine's first
+nanoda attempt was given 90.
 
 ---
 
@@ -270,7 +362,7 @@ a vacuous pass would be worse than an honest `false`.
 | `comparator` | `contents: read` | the FIRST elaboration of Challenge and Solution, inside landrun, under the AF_UNIX guard. No write token, no OIDC, no secrets. |
 | `publish` | `contents: write`, `actions: read` | validates the record against its own trusted inputs, writes the status and the identity pin, commits back. Computes the deploy predicate ONCE. Runs no Lean. |
 | `site-contents` / `site-generate` | `contents: read` | elaboration, rendering, every gate, packaging. |
-| `site-release` | `contents: write`, `actions: write` | the release, the pin commit-back, the deploy dispatch. |
+| `site-release` | `contents: write` | the release, the pin commit-back, and the deploy signal — a `repository_dispatch`, which is a contents-scope call. No job in this pipeline asks for `actions: write`. |
 | deploy `verify` | `contents: read`, `pages: write` | digest check, then authentication against the checkout, then the artifact upload. |
 | deploy `deploy` | `pages: write`, `id-token: write` | `actions/deploy-pages`, in the `github-pages` environment. |
 
@@ -298,7 +390,7 @@ run afterwards would remove `_showcase/`.
 | CX-052 | the record crosses the trust boundary through a strict, exact-key validator whose refusals are themselves tested | `ci/scripts/validate_comparator_result.py`; `ci/scripts/tests/test_validate_comparator_result.py` |
 | CX-053 | the comparator tool is built on the toolchain whose kernel replays the export | `lake-dep` by construction; `checkout` by the toolchain-override step; asserted again in `publish` |
 | CX-064 | the run's checker identity is authenticated against a consumer-committed pin, asserted and never rewritten | `Check the pinned checker identities`; `kernel_identity_pins` |
-| CX-066 | every project-local source link names the revision the site was generated from | the `Gates` step's source-link gate; again at deploy in `check_site_release.py` |
+| CX-066 | every project-local source link names the revision the site was generated from — in the declaration registry (bound at emission) **and** in the rendered HTML (baked at elaboration) | one implementation, `check_site_release.py`: `--links-only` from the `Gates` step, in full again at deploy |
 | CX-068 | the published status names WHICH project revision was checked | `ci/scripts/compose_status_record.sh` (`repository`, `commit`) |
 | CX-072 | a job that calls `lake` installs a toolchain | `publish` runs no Lean at all; the site jobs each set Lean up |
 | CX-075 | elaboration-time trust inputs are re-hashed against the checkout | `ci/scripts/check_trust_provenance.py`; again at deploy |
@@ -331,21 +423,23 @@ reader recomputes the predicate from the event name.
 | `validate_comparator_result.py` | what may become a dated verifier claim | `tests/test_validate_comparator_result.py` (19 cases) |
 | `comparator_status_unchanged.sh` | whether a run has anything new to say | `tests/test_comparator_status_unchanged.sh` (23 cases) |
 | `check_trust_provenance.py` | whether a generated evidence page is bound to bytes that are still there | `tests/test_trust_provenance_gate.py` (26 cases) |
-| `check_site_release.py` | whether a packaged site may be served | `tests/test_check_site_release.py` (12 cases) |
+| `check_site_release.py` | whether a packaged site may be served — and, as `--links-only`, whether a freshly generated one may be packaged | `tests/test_check_site_release.py` (21 cases) |
 | `site_offline_gates.sh` | eight off-origin asset rules | run identically at packaging and at deploy |
 | `package_site.sh` | the tarball, the pin, the size report — and refuses anything the deploy gate would refuse |  `check_site_release.py` is run on its own output |
 
-Run them all: `python3 -m unittest discover -s ci/scripts/tests` (58 tests).
+Run them all: `python3 -m unittest discover -s ci/scripts/tests` (67 tests).
 
 Three notes on what changed when these became shared:
 
-* **`permitted_axioms: []` is accepted.** An empty allowlist is a *stronger*
-  claim than the standard three — the certified theorem reaches no axiom at all —
-  and lean_quine makes it. Both the composer and the validator previously
-  rejected it as if the key were missing. They now distinguish absent from empty:
-  the key must be present in the checked-out config, be a list, and equal the
-  record's. `theorem_names` stays non-empty; a run that certifies nothing is not
-  a verdict.
+* **`permitted_axioms: []` is accepted *by this pipeline*.** An empty allowlist
+  is a *stronger* claim than the standard three — the certified theorem reaches
+  no axiom at all. Both the composer and the validator previously rejected it as
+  if the key were missing. They now distinguish absent from empty: the key must
+  be present in the checked-out config, be a list, and equal the record's.
+  `theorem_names` stays non-empty; a run that certifies nothing is not a verdict.
+  What accepts it is this pipeline, **not** the pinned comparator tool with
+  nanoda on — see §1's bootstrap notes. lean_quine wanted `[]` and ships
+  `["propext"]` for exactly that reason.
 * **The record carries `workflow_repository` / `workflow_ref` / `workflow_sha`.**
   With a reusable workflow, "my CI produced this" is a claim about a commit in
   another repository. The publish job reads `job.workflow_*` for itself and holds
@@ -357,6 +451,33 @@ Three notes on what changed when these became shared:
   three-hour regeneration for a claim that did not move. Say so on the trust-model
   page: `workflow_sha` names the CI code of the run that last *changed* the
   verdict, exactly as `commit` and `run_url` already do.
+
+### The source-link gate has one implementation
+
+A site publishes project-local `blob/<rev>/` links on two surfaces, sampled at
+two different moments:
+
+* the declaration registry's `sourceHref`, bound **late** — at emission, from the
+  same value the build stamp reads;
+* the rendered HTML — the comparator page's "View on GitHub" links — composed at
+  **elaboration** from the repository HEAD of that moment and baked into an
+  `.olean`, which a later generation replays verbatim.
+
+So a site whose contents were elaborated one commit before it was generated
+publishes a comparator page pointing at the previous commit while its registry,
+and its build stamp, name the current one. That is not hypothetical: it is what
+the lean_quine adoption measured — three stale links on `comparator/index.html`,
+thirteen current registry links, and a green gate, because the gate read only the
+registry. Both the generation-time step and the deploy-time gate now call
+`check_site_release.py`; the inline copy in the workflow is gone, which is how a
+gate and its twin stop being two things.
+
+The registry check keeps its **vacuity guard** (no project-local link means the
+registry moved, which is a failure). The HTML scan deliberately has none: a
+consumer may legitimately render no such link at all. Its count is printed either
+way, so a green log distinguishes "checked 2 000" from "checked 0". Links into
+other repositories — mathlib, any dependency checkout the lockfile pins — are out
+of scope by construction: their revision is not ours to be stale about.
 
 ### The site pin, schema 2
 

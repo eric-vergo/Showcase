@@ -146,6 +146,48 @@ class TrustBoundaryTopologyTests(unittest.TestCase):
         }
         self.assertEqual(writers, {"publish", "site-release"})
 
+    def test_no_job_requests_actions_write(self) -> None:
+        """A caller grants `contents: write` and `actions: read`, and nothing more.
+
+        A reusable workflow cannot raise its caller's grant: a job asking for a
+        scope the caller does not hold fails the whole run at STARTUP, before any
+        step. lean_quine's first live run failed exactly there -- "The nested job
+        'site-release' is requesting 'actions: write', but is only allowed
+        'actions: read'" -- because the deploy signal was `gh workflow run`, an
+        Actions API call. It is a repository_dispatch now, which is a
+        contents-scope call. Nothing here may reintroduce the larger grant: "may
+        start any workflow in this repository" is not what this pipeline needs.
+        """
+        for name, block in self.jobs.items():
+            self.assertNotEqual(
+                _permissions(block).get("actions"), "write",
+                msg=f"{name} requests `actions: write`; no consumer's thin caller grants it, "
+                    f"so the run would fail at startup. The deploy signal is a "
+                    f"repository_dispatch (contents scope), not `gh workflow run`.",
+            )
+
+    def test_the_deploy_signal_is_a_repository_dispatch(self) -> None:
+        """The signal and the permission are one decision; assert them together.
+
+        `POST /repos/{repo}/dispatches` needs `contents: write`, which site-release
+        already holds for the release and the pin commit-back. GitHub starts runs
+        for `repository_dispatch` and `workflow_dispatch` even when the event was
+        created with a GITHUB_TOKEN -- the documented exception to the rule that
+        keeps a token's own push from re-triggering CI.
+        """
+        block = self.jobs["site-release"]
+        # Comments stripped: the step's own comment explains what it is NOT, and
+        # an assertion that reads prose as code would fail on the explanation.
+        code = "\n".join(
+            line for line in block.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertIn("repos/${GITHUB_REPOSITORY}/dispatches", code)
+        self.assertIn("event_type=blueprint-site-pin", code)
+        self.assertNotIn(
+            "gh workflow run", code,
+            msg="the deploy signal is back on the Actions API, which needs `actions: write`",
+        )
+
     def test_the_verify_workflow_holds_no_pages_scope_and_no_oidc(self) -> None:
         # Deploying lives in blueprint-deploy.yml precisely so that the workflow
         # holding `contents: write` never holds a Pages token or an OIDC token.

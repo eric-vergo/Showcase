@@ -22,9 +22,12 @@ authenticates before it uploads a Pages artifact) and holds it to the checkout:
     still hashes, AT THE CHECKOUT, to what the generator read. This is the CX-075
     property: a site whose comparator page quotes a verdict master has since
     replaced does not deploy, it gets regenerated;
-  * every project-local "View source" link in the declaration registry names the
-    generation revision (a362583's CX-066 gate), so the links the trust model
-    promises are checkable;
+  * every project-local blob link names the generation revision (a362583's CX-066
+    gate), so the links the trust model promises are checkable. That is TWO
+    surfaces, not one: the declaration registry, whose links are bound late (at
+    emission, from the build stamp), and the rendered HTML, where the comparator
+    page's "View on GitHub" links are composed at ELABORATION and baked into an
+    `.olean` a later generation replays verbatim;
   * the surfaces that probe-and-degrade are on disk (index, manifest, the
     comparator page, the trust-model page) and the tree is neither trivially small
     nor over the size GitHub Pages will publish.
@@ -39,6 +42,12 @@ things are arguments rather than constants because consumers differ: the site
 package directory the recorded input paths resolve against (`--site-dir`: `site`
 for a nested site package, `.` for lean_quine) and the surfaces that must be on
 disk (`--required-file`, repeatable).
+
+The verify workflow's `Gates` step runs the source-link half of this gate alone,
+over the tree it has just generated, with `--links-only`. Same regex, same two
+surfaces, one implementation: a second copy inlined in the workflow is precisely
+how the generation-time gate stayed registry-only while the deploy-time one was
+meant to be its twin.
 
 Exit status 0 means "publish"; anything else prints every failed property and
 exits 1. Run: python3 ci/scripts/check_site_release.py --help
@@ -265,7 +274,27 @@ def check_provenance(site_root, revision, head, repo_root, site_dir, repository,
             failures.append("provenance: no input with role {!r}".format(role))
 
 
+# The one regex both source-link checks use, so the two surfaces cannot drift
+# apart in what they consider a project-local link. `repository` is `owner/name`;
+# the capture is the revision the link names. Links into OTHER repositories --
+# mathlib, a dependency checkout whose revision the lockfile pins -- are out of
+# scope by construction: their revision is not ours to be stale.
+PROJECT_BLOB_TEMPLATE = r"https://github\.com/{}/blob/([0-9a-f]{{40}})/"
+
+
+def project_blob_pattern(repository):
+    return re.compile(PROJECT_BLOB_TEMPLATE.format(re.escape(repository)))
+
+
 def check_source_links(site_root, revision, repository, failures):
+    """The declaration registry's `sourceHref` values.
+
+    These are bound at EMISSION from the same revision the build stamp reads, so
+    a stale one means the registry itself was replayed from a build warmed at
+    another commit. This check keeps its vacuity guard: a blueprint site with no
+    project-local registry link is a registry that moved, not a site with nothing
+    to say.
+    """
     if revision is None or not repository:
         return
     registry = load_json(
@@ -273,9 +302,7 @@ def check_source_links(site_root, revision, repository, failures):
     )
     if registry is None:
         return
-    pattern = re.compile(
-        r"\Ahttps://github\.com/" + re.escape(repository) + r"/blob/([0-9a-f]{40})/"
-    )
+    pattern = project_blob_pattern(repository)
     checked = 0
     stale = {}
 
@@ -309,6 +336,83 @@ def check_source_links(site_root, revision, repository, failures):
             "source links: {} of {} project-local source links do not name the generation "
             "revision {} ({})".format(sum(stale.values()), checked, revision, detail)
         )
+    # The count is the record of what the gate actually looked at; a run whose
+    # log says 13 and a run whose log says 0 mean very different things about a
+    # green result.
+    print("decl registry: {} project-local source link(s)".format(checked))
+
+
+def check_html_source_links(site_root, revision, repository, failures):
+    """Project-local blob links in the RENDERED HTML.
+
+    The registry is not the only surface that publishes source links, and it is
+    the only one bound late. The comparator page's "View on GitHub" links are
+    composed at ELABORATION from the repository HEAD of that moment
+    (`Git.repositoryInfoAtRoot?`), baked into the embedding module's `.olean`,
+    and replayed verbatim by any later generation that reuses it. So a site whose
+    contents were elaborated one commit before it was generated publishes a
+    comparator page pointing at the previous commit while its registry, and its
+    build stamp, name the current one -- measured during the lean_quine adoption,
+    three stale links, registry-only gate green.
+
+    Unlike the registry check this one has NO vacuity guard, deliberately: a
+    consumer may legitimately render no project-local blob link at all (no
+    comparator page, no repository remote). Zero is reported, not refused.
+    """
+    if revision is None or not repository:
+        return
+    # Matched over raw bytes: these URLs are ASCII, every page is read anyway,
+    # and decoding a multi-hundred-megabyte tree to find them is pure cost.
+    pattern = re.compile(project_blob_pattern(repository).pattern.encode("utf-8"))
+    wanted = revision.encode("utf-8")
+    checked = 0
+    pages = 0
+    stale = {}
+    stale_pages = []
+    for dirpath, _dirnames, filenames in os.walk(site_root):
+        for name in sorted(filenames):
+            if not name.endswith((".html", ".htm")):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                with open(path, "rb") as handle:
+                    body = handle.read()
+            except OSError as error:
+                failures.append("html source links: cannot read {}: {}".format(path, error))
+                continue
+            found = pattern.findall(body)
+            if not found:
+                continue
+            pages += 1
+            checked += len(found)
+            bad = [sha for sha in found if sha != wanted]
+            if bad:
+                stale_pages.append(os.path.relpath(path, site_root))
+                for sha in bad:
+                    key = sha.decode("utf-8")
+                    stale[key] = stale.get(key, 0) + 1
+    if stale:
+        detail = ", ".join(
+            "{} link(s) name {}".format(count, sha) for sha, count in sorted(stale.items())
+        )
+        listed = sorted(stale_pages)
+        shown = ", ".join(listed[:5])
+        if len(listed) > 5:
+            shown += ", and {} more page(s)".format(len(listed) - 5)
+        failures.append(
+            "html source links: {} of {} project-local blob links in the rendered HTML do not "
+            "name the generation revision {} ({}); on {}".format(
+                sum(stale.values()), checked, revision, detail, shown
+            )
+        )
+    if checked:
+        print(
+            "html source links: {} project-local blob link(s) across {} HTML page(s)".format(
+                checked, pages
+            )
+        )
+    else:
+        print("html source links: none in the rendered HTML (nothing to check)")
 
 
 def check_tree(site_root, required_files, min_files, max_bytes, failures):
@@ -332,16 +436,29 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Authenticate an out-of-band site build before publishing it."
     )
-    parser.add_argument("--pin", required=True, help="site/trust/site-build.json")
-    parser.add_argument("--tarball", required=True, help="the downloaded release asset")
+    parser.add_argument("--pin", help="site/trust/site-build.json")
+    parser.add_argument("--tarball", help="the downloaded release asset")
     parser.add_argument(
         "--site-root", required=True, help="the extracted html-multi directory"
     )
     parser.add_argument(
-        "--repo-root", required=True, help="the checkout the site is being published from"
+        "--repo-root", help="the checkout the site is being published from"
     )
     parser.add_argument(
-        "--head", required=True, help="the commit being published (git rev-parse HEAD)"
+        "--head", help="the commit being published (git rev-parse HEAD)"
+    )
+    parser.add_argument(
+        "--links-only",
+        action="store_true",
+        help="run ONLY the source-link revision gate (CX-066) over --site-root against"
+             " --revision, and exit. The mode the verify workflow's `Gates` step invokes,"
+             " so the gate a site is generated under and the gate the deploy path re-runs"
+             " are one implementation rather than two copies that drifted.",
+    )
+    parser.add_argument(
+        "--revision",
+        default="",
+        help="the generation revision, for --links-only; the full gate reads it off the pin",
     )
     parser.add_argument(
         "--repository",
@@ -380,6 +497,43 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    if args.links_only:
+        # Nothing here may be inferred from what is on disk: this gate is a
+        # declared capability of the calling workflow, and a run that skipped it
+        # because an argument was empty would be the probe-and-degrade weakness
+        # the standard rejects.
+        for flag, value in (("--repository", args.repository), ("--revision", args.revision)):
+            if not value:
+                parser.error("--links-only requires {}".format(flag))
+        if not HEX40.match(args.revision):
+            parser.error("--revision {!r} is not a full 40-hex commit".format(args.revision))
+        failures = []
+        check_source_links(args.site_root, args.revision, args.repository, failures)
+        check_html_source_links(args.site_root, args.revision, args.repository, failures)
+        if failures:
+            print("source-link gate: REFUSED")
+            for failure in failures:
+                print("  - " + failure)
+            print("the site publishes source links naming a revision it was not generated")
+            print("from; rebuild it under this commit rather than publishing a stamp its")
+            print("own links contradict.")
+            return 1
+        print("source-link gate: every project-local source link names " + args.revision)
+        return 0
+
+    missing = [
+        flag
+        for flag, value in (
+            ("--pin", args.pin),
+            ("--tarball", args.tarball),
+            ("--repo-root", args.repo_root),
+            ("--head", args.head),
+        )
+        if not value
+    ]
+    if missing:
+        parser.error("required unless --links-only: " + ", ".join(missing))
+
     required_files = tuple(args.required_file) or DEFAULT_REQUIRED_FILES
     required_roles = tuple(args.required_role) or DEFAULT_REQUIRED_ROLES
 
@@ -394,6 +548,7 @@ def main(argv=None):
         args.repository, required_roles, failures
     )
     check_source_links(args.site_root, revision, args.repository, failures)
+    check_html_source_links(args.site_root, revision, args.repository, failures)
 
     if failures:
         print("site release gate: REFUSED")
