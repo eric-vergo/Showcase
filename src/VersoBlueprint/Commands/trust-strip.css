@@ -47,18 +47,29 @@
   color: var(--bp-color-text-faint);
 }
 
-.bp_trust_strip_scope_flag_warn {
+/* Each tier is declared twice, and the second selector is the load-bearing one.
+   Wherever the document emits a Trust-model page the clause is a link, and
+   `a.bp_trust_strip_scope_audit` below (0,1,1) resets its colour to `inherit`; a bare
+   `.bp_trust_strip_scope_flag_*` class (0,1,0) loses to it, so a flagged clause rendered
+   muted-bold instead of in its accent token — in the normal case, and only there. The
+   compound form is 0,2,1 and wins regardless of source order. Both spellings are needed:
+   the plain one styles the `<span>` a document with no Trust-model page emits. */
+.bp_trust_strip_scope_flag_warn,
+a.bp_trust_strip_scope_audit.bp_trust_strip_scope_flag_warn {
   color: var(--bp-color-accent-warning);
   font-weight: 600;
 }
 
-.bp_trust_strip_scope_flag_error {
+.bp_trust_strip_scope_flag_error,
+a.bp_trust_strip_scope_audit.bp_trust_strip_scope_flag_error {
   color: var(--bp-color-accent-danger);
   font-weight: 600;
 }
 
 /* The audit clause links to the trust-model page's audit row. It is a sentence, not a
-   badge, so it keeps the line's colour and takes a quiet underline instead. */
+   badge, so it keeps the line's colour and takes a quiet underline instead. `inherit`
+   here is what the flag tiers above must outrank; keep their compound selectors in step
+   with any change to this one. */
 a.bp_trust_strip_scope_audit {
   color: inherit;
   text-decoration: underline;

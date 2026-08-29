@@ -135,6 +135,17 @@ that were not said "certifies" for a verdict that had certified nothing (F1).
   hasSubstr noAudit "bp_trust_strip_scope_flag_warn" &&
   -- The clause links to the trust-model row that carries the badge and the exclusions.
   hasSubstr clean "<a class=\"bp_trust_strip_scope_audit\" href=\"Trust-model/#bp-trust-audit\">" &&
+  -- …and when it is flagged, both classes sit on that one `<a>`. The colour comes from
+  -- the compound selector `a.bp_trust_strip_scope_audit.bp_trust_strip_scope_flag_*`,
+  -- since the link's own `color: inherit` outranks a bare flag class; a flag moved to a
+  -- wrapper, or a flag class emitted without the audit class beside it, renders muted.
+  -- The cascade is not testable from here — the markup the rule keys on is.
+  hasSubstr dirty
+    "<a class=\"bp_trust_strip_scope_audit bp_trust_strip_scope_flag_error\" \
+     href=\"Trust-model/#bp-trust-audit\">" &&
+  hasSubstr nonstd
+    "<a class=\"bp_trust_strip_scope_audit bp_trust_strip_scope_flag_warn\" \
+     href=\"Trust-model/#bp-trust-audit\">" &&
   -- No trust-model page ⇒ a plain span, not a dead link.
   hasSubstr unlinked "<span class=\"bp_trust_strip_scope_audit" &&
   !hasSubstr unlinked "href=\"Trust-model/"

@@ -2400,6 +2400,11 @@ def trustScopeLineHtml (trust : TrustData) (theoremLikeTotal : Option Nat)
     if trust.comparators.isEmpty then trustScopeText? trust.comparator theoremLikeTotal
     else trustAggregateScopeText trust.comparators theoremLikeTotal
   let (auditText, flag) := trustAuditClause trust.audit?
+  -- Both classes must land on the SAME element: trust-strip.css colours a flagged clause
+  -- through the compound selector `a.bp_trust_strip_scope_audit.bp_trust_strip_scope_flag_*`,
+  -- because the audit link's own `color: inherit` (0,1,1) outranks a bare flag class
+  -- (0,1,0). Splitting the flag onto a wrapper would silently mute every flagged strip
+  -- that has a Trust-model page to link to, which is all of them.
   let auditClass :=
     if flag.isEmpty then "bp_trust_strip_scope_audit"
     else s!"bp_trust_strip_scope_audit bp_trust_strip_scope_flag_{flag}"
