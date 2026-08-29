@@ -56,6 +56,10 @@ jobs:
     permissions:
       contents: write   # the status / kernel-identity / site-pin commit-backs
       actions: read     # the step-level CI deep link
+      # Exactly these two. A reusable workflow cannot raise its caller's grant:
+      # a job that asks for a scope the caller lacks fails the run at STARTUP,
+      # before any step. Nothing in the pipeline needs `actions: write` — the
+      # deploy signal is a repository_dispatch, which is a contents-scope call.
     uses: eric-vergo/Showcase/.github/workflows/blueprint-verify.yml@<SHOWCASE_SHA>
     with:
       showcase_sha: "<SHOWCASE_SHA>"   # asserted == job.workflow_sha in every job
@@ -84,6 +88,11 @@ on:
     # re-verified by hand, not by a run that would refuse an unchanged release.
     paths:
       - 'site/trust/site-build.json'
+  # How the pin commit-back actually reaches this workflow: a GITHUB_TOKEN push
+  # does not fire `push:`, so the `paths:` trigger above catches a human's pin
+  # commit and nothing else. site-release signals this event instead.
+  repository_dispatch:
+    types: [blueprint-site-pin]
   workflow_dispatch:
 
 permissions:
@@ -108,9 +117,21 @@ jobs:
         -verso-data/trust-provenance.json comparator/index.html Trust-model/index.html
 ```
 
-Note what `ci.yml` does **not** hold: no `pages:` scope and no `id-token:`. The
-workflow that can write to the repository and the workflow that can mint a Pages
-token are different files, called by different jobs.
+Note what `ci.yml` does **not** hold: no `pages:` scope, no `id-token:`, and no
+`actions: write`. The workflow that can write to the repository and the workflow
+that can mint a Pages token are different files, called by different jobs — and
+neither may start arbitrary workflows.
+
+`repository_dispatch` and `workflow_dispatch` are the documented exception to the
+rule that a GITHUB_TOKEN's own actions do not trigger workflows: GitHub starts
+runs for those two event types even when the event was created with the token.
+That exception is the whole deploy signal. One constraint comes with it — a
+`repository_dispatch` run always uses the repository's **default** branch, both
+for which workflow file runs and for the ref it runs on — so the signal reaches a
+consumer whose `publish_branch` is the default branch. Where it is not,
+`blueprint-deploy.yml`'s `deploy` job (`github.ref_name == inputs.publish_branch`)
+skips rather than publishing the wrong tree, and that consumer deploys by
+`workflow_dispatch`.
 
 **Never write `secrets: inherit`.** The pipeline needs no secret, and omitting
 the block is what keeps the untrusted comparator job provably secret-free.
@@ -335,7 +356,7 @@ reason (the gate requires all four comparator roles, and there is no
 | `comparator` | `contents: read` | the FIRST elaboration of Challenge and Solution, inside landrun, under the AF_UNIX guard. No write token, no OIDC, no secrets. |
 | `publish` | `contents: write`, `actions: read` | validates the record against its own trusted inputs, writes the status and the identity pin, commits back. Computes the deploy predicate ONCE. Runs no Lean. |
 | `site-contents` / `site-generate` | `contents: read` | elaboration, rendering, every gate, packaging. |
-| `site-release` | `contents: write`, `actions: write` | the release, the pin commit-back, the deploy dispatch. |
+| `site-release` | `contents: write` | the release, the pin commit-back, and the deploy signal — a `repository_dispatch`, which is a contents-scope call. No job in this pipeline asks for `actions: write`. |
 | deploy `verify` | `contents: read`, `pages: write` | digest check, then authentication against the checkout, then the artifact upload. |
 | deploy `deploy` | `pages: write`, `id-token: write` | `actions/deploy-pages`, in the `github-pages` environment. |
 

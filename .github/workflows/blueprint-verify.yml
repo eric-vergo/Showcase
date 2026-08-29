@@ -32,8 +32,9 @@ name: Blueprint Verify
 #                  what dissolves CX-079 structurally.
 #   site-contents  contents: read. The elaboration pass (`lake build Contents`)
 #   site-generate  contents: read. Rendering, every gate, and packaging.
-#   site-release   contents: write + actions: write. Cuts the release the pin
-#                  names, commits the pin back, and dispatches the deploy.
+#   site-release   contents: write. Cuts the release the pin names, commits the
+#                  pin back, and signals the deploy with a repository_dispatch --
+#                  which needs no scope beyond the one it already holds.
 #
 # Deploying is a SEPARATE workflow (blueprint-deploy.yml, called from the
 # consumer's `deploy.yml`), so this file holds no `pages:` scope and no OIDC at
@@ -1932,8 +1933,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
-      contents: write   # the release, and the pin commit-back (push events only)
-      actions: write    # dispatch the consumer's deploy.yml
+      # The release, the pin commit-back (push events only), AND the deploy
+      # signal: `POST /repos/{repo}/dispatches` is a contents-scope call. No job
+      # in this workflow asks for `actions: write`, and no caller grants it --
+      # lean_quine's first live run failed at startup on exactly that ("The
+      # nested job 'site-release' is requesting 'actions: write', but is only
+      # allowed 'actions: read'"), which is the permission model working.
+      contents: write
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       asset: ${{ steps.release.outputs.asset }}
@@ -2018,6 +2024,7 @@ jobs:
             echo "tag=$tag"
             echo "asset=$asset"
             echo "sha256=$sha256"
+            echo "generation_revision=$rev"
           } >> "$GITHUB_OUTPUT"
           echo "release: $tag"
 
@@ -2047,12 +2054,42 @@ jobs:
             "HEAD:${PUBLISH_BRANCH}"
 
       # A GITHUB_TOKEN push does not fire `push:`, so the pin commit above will
-      # not trigger the consumer's deploy workflow on its own; a workflow_dispatch
-      # it creates DOES run. The consumer's deploy.yml checks out the publish
+      # not trigger the consumer's deploy workflow on its own. `repository_dispatch`
+      # and `workflow_dispatch` are the documented exception to that rule: GitHub
+      # DOES start runs for those two event types even when the event was created
+      # with a GITHUB_TOKEN. The consumer's deploy.yml then checks out the publish
       # branch, reads the pin just pushed, and is the only path to Pages.
-      - name: Dispatch the deploy
+      #
+      # A repository_dispatch rather than `gh workflow run` because the latter is
+      # the Actions API and needs `actions: write` -- a scope no caller grants and
+      # none should: "may start any workflow in this repository" is a far larger
+      # grant than "may say the pin moved". `POST /repos/{repo}/dispatches` is a
+      # contents-scope call, and this job already holds `contents: write` for the
+      # release and the commit-back.
+      #
+      # The payload is PROVENANCE, not input. blueprint-deploy.yml reads the
+      # COMMITTED pin and never the event, so a dispatch cannot name a release the
+      # publish branch does not vouch for; the fields are carried so a deploy run
+      # can be matched to the release that signalled it without re-reading the pin.
+      #
+      # One constraint this trades for the permission: a repository_dispatch run
+      # always uses the repository's DEFAULT branch -- for which workflow file
+      # runs, and for the ref it runs on. So this signal reaches a consumer whose
+      # `publish_branch` IS the default branch. Where it is not, blueprint-deploy's
+      # `deploy` job (`github.ref_name == inputs.publish_branch`) skips rather than
+      # publishing the wrong tree, and that consumer deploys by workflow_dispatch.
+      - name: Signal the deploy
         if: steps.release_needed.outputs.needed == 'true' && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          PUBLISH_BRANCH: ${{ inputs.publish_branch }}
-        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref "$PUBLISH_BRANCH"
+          GENERATION_REVISION: ${{ steps.release.outputs.generation_revision }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA256: ${{ steps.release.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
+            -f event_type=blueprint-site-pin \
+            -f "client_payload[generation_revision]=${GENERATION_REVISION}" \
+            -f "client_payload[release_tag]=${RELEASE_TAG}" \
+            -f "client_payload[sha256]=${RELEASE_SHA256}"
+          echo "signalled blueprint-site-pin for ${RELEASE_TAG} (${GENERATION_REVISION})"
