@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "buildRevision": {
+    "commit": "2222222222222222222222222222222222222222",
+    "shortCommit": "2222222",
+    "dirty": false,
+    "repositoryUrl": "https://github.com/eric-vergo/OEIS-A362583-Irrationality"
+  },
+  "inputs": [
+    {
+      "role": "comparator-status",
+      "path": "../comparator/comparator-status.json",
+      "sha256": "a06dc528363b2e7c77b75ef06a2ef60ac872b5aab6d269e4f16ef74e43d60308"
+    },
+    {
+      "role": "comparator-config",
+      "path": "../comparator/comparator.json",
+      "sha256": "43d9d483e348997b28165d251638281044744b39fe9fa5d82c42db71fe9c0a58"
+    },
+    {
+      "role": "challenge",
+      "path": "../comparator/Challenge.lean",
+      "sha256": "444a030e634bd5eca6578610c37e516e896b8f1710921b3dcbad54cc140569b1"
+    },
+    {
+      "role": "solution",
+      "path": "../comparator/Solution.lean",
+      "sha256": "e11a96efea261d20b43254f33f1e5c6d2044c4747d42e9f18901addfcb4c1de2"
+    },
+    {
+      "role": "challenge",
+      "path": "../comparator/Challenge.lean",
+      "sha256": "444a030e634bd5eca6578610c37e516e896b8f1710921b3dcbad54cc140569b1"
+    },
+    {
+      "role": "formalization-yaml",
+      "path": "../formalization.yaml",
+      "sha256": "a02035041a34318fb912bffe75edc8952b9077f83c842c6da9d00ec21f0dd12f"
+    }
+  ]
+}

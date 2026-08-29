@@ -1,0 +1,73 @@
+{
+  "verdict": "verified",
+  "repository": "attacker/HopfProblem",
+  "commit": "1111111111111111111111111111111111111111",
+  "run_id": "11111111111",
+  "started_at": "2026-08-27T12:00:00Z",
+  "finished_at": "2026-08-27T12:30:00Z",
+  "config": "comparator/config.json",
+  "challenge_module": "Challenge",
+  "solution_module": "Solution",
+  "theorem_names": [
+    "Mathoverflow1973.stub_theorem"
+  ],
+  "permitted_axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "nanoda_replay": true,
+  "toolchain": "leanprover/lean4:v4.33.0",
+  "tool_ref": "v9.99.9",
+  "tool_sha": "0000000000000000000000000000000000000000",
+  "tool_toolchain": "leanprover/lean4:v4.29.0",
+  "landrun_ref": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "nanoda_ref": "feedfacefeedfacefeedfacefeedfacefeedface",
+  "af_unix_guard": "unavailable",
+  "workflow_repository": "eric-vergo/Showcase",
+  "workflow_ref": "eric-vergo/Showcase/.github/workflows/blueprint-verify.yml@refs/heads/blueprint",
+  "workflow_sha": "3333333333333333333333333333333333333333",
+  "kernel_identities": [
+    {
+      "label": "nanoda",
+      "repository": "https://github.com/ammkrn/nanoda_lib",
+      "source_commit": "05055695879dfebb6628a67da88ceca6cd6b0421",
+      "executable_sha256": "8ad799ba777aaa5cf9fb95defd1740f4d5285905ecdf03176a7999156975a0d2",
+      "replayed": true
+    }
+  ],
+  "inputs_sha256_before": {
+    "comparator": "0000000000000000000000000000000000000000000000000000000000000000",
+    "lean4export": "5278b2dc4d608d47e03b6c991aabb808d9df02d4d49f02d7480f98acb63d11d5",
+    "landrun": "0000000000000000000000000000000000000000000000000000000000000000",
+    "nanoda": "8ad799ba777aaa5cf9fb95defd1740f4d5285905ecdf03176a7999156975a0d2",
+    "comparator_config": "2ac8524e76afef3f5dd93958482cdd83185f8274f992813e89111783d8c76e81",
+    "challenge_lean": "36ba75e5bc55ae07ee3665fa7a8adb6932a0289f763aa308800ba741080d3245",
+    "solution_lean": "ee361e8cbb96f2a649ed79d8ead95b4fdda161a69b67c8a13e2ffcaef624866f"
+  },
+  "inputs_sha256_after": {
+    "comparator": "c45675578b1e7c1fc58b8c0a58459b3cf9dd4c3320081150105695371691dde5",
+    "lean4export": "5278b2dc4d608d47e03b6c991aabb808d9df02d4d49f02d7480f98acb63d11d5",
+    "landrun": "15d5827b92f96bdeae6e738b24f9934f7a1d050ee01cfa0fbbd1ecd079b8e3b6",
+    "nanoda": "8ad799ba777aaa5cf9fb95defd1740f4d5285905ecdf03176a7999156975a0d2",
+    "comparator_config": "2ac8524e76afef3f5dd93958482cdd83185f8274f992813e89111783d8c76e81",
+    "challenge_lean": "36ba75e5bc55ae07ee3665fa7a8adb6932a0289f763aa308800ba741080d3245",
+    "solution_lean": "ee361e8cbb96f2a649ed79d8ead95b4fdda161a69b67c8a13e2ffcaef624866f"
+  },
+  "sandbox_selftest": {
+    "tier": "self-reported",
+    "exit_code": 0,
+    "denied": true,
+    "sentinel_observed": true,
+    "targets": [
+      "/home/runner/work/_temp/selftest-canary-a-0f1e",
+      "/home/runner/selftest-canary-b-0f1e"
+    ]
+  },
+  "sandbox_write_probe": {
+    "config": "comparator/config.json",
+    "exit_code": 1,
+    "denied": true,
+    "tier": "defense-in-depth"
+  }
+}

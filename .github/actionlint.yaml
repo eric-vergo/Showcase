@@ -1,0 +1,21 @@
+# actionlint configuration.
+#
+# `job.workflow_ref`, `job.workflow_sha`, `job.workflow_repository` and
+# `job.workflow_file_path` are real properties of the `job` context — verified
+# against the live GitHub contexts reference, which documents all four (they are
+# unavailable on GitHub Enterprise Server only). actionlint 1.7.12's model of the
+# `job` context predates them and reports each use as an undefined property.
+#
+# They are load-bearing here: `blueprint-verify.yml` and `blueprint-deploy.yml`
+# are reusable workflows, and `job.workflow_sha` is the ONLY way a job can name
+# the commit of the workflow file that defines it (`github.workflow_sha` names
+# the CALLER's workflow). Every job checks the CI code out at that commit,
+# asserts the caller's stated pin against it, and records it in the evidence the
+# run publishes.
+#
+# Delete this block when actionlint learns the four properties, and confirm the
+# workflows still lint clean rather than assuming they do.
+paths:
+  .github/workflows/**:
+    ignore:
+      - 'property "workflow_(ref|sha|repository|file_path)" is not defined in object type'

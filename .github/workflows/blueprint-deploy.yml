@@ -1,0 +1,250 @@
+name: Blueprint Deploy
+
+# Serves a blueprint consumer's site from GitHub Pages, as a reusable workflow.
+# A consumer's own `deploy.yml` is a thin caller (see ci/README.md).
+#
+# The site is NOT generated here. It is generated, gated and packaged by
+# blueprint-verify.yml's site-generate job, shipped as a tarball on a GitHub
+# Release, and pinned by a file committed to the publish branch (`site_pin`,
+# default `site/trust/site-build.json`) that names the release asset and pins its
+# SHA-256. This workflow is the trust boundary between that build and the
+# published site:
+#
+#   verify   contents: read + pages: write. Reads the pin, downloads the pinned
+#            asset, refuses it unless its digest is the pinned one BEFORE
+#            unpacking a byte, then runs ci/scripts/check_site_release.py: the
+#            tree's own provenance record must name the pinned generation
+#            revision, be clean, and be on this branch's history; every
+#            elaboration-time trust input it lists must still hash, at this
+#            checkout, to what the generator read (CX-075); every project-local
+#            source link must name the generation revision (CX-066); the
+#            probe-and-degrade surfaces must be on disk; the pin must name WHICH
+#            run of WHICH CI code produced it. Then the off-origin asset gates,
+#            then the Pages artifact is uploaded.
+#   deploy   pages: write + id-token: write, publish branch only.
+#
+# What this does NOT establish: that the tarball is a faithful generation from
+# the pinned revision. The gate authenticates what the tree SAYS about itself
+# against the publish branch, not the act of generating it. Under this standard
+# the generating act is itself a CI job whose logs are public and whose packaging
+# is deterministic, which is more than the gate can prove but less than a
+# reproducible build. The trust-model page on the site says the same.
+#
+# Splitting deploy into its own reusable workflow is why blueprint-verify.yml
+# holds no `pages:` scope and no OIDC at all: the workflow that can write to the
+# repository and the workflow that can mint a Pages token are different files,
+# called by different consumer jobs, with different permission blocks.
+
+on:
+  workflow_call:
+    inputs:
+      publish_branch:
+        description: "The branch whose pin may be deployed."
+        type: string
+        default: main
+      showcase_sha:
+        description: >-
+          The Showcase commit the caller pinned; asserted equal to
+          `job.workflow_sha` when non-empty.
+        type: string
+        default: ""
+      site_pin:
+        description: "The committed pin naming the release asset to serve."
+        type: string
+        default: "site/trust/site-build.json"
+      site_dir:
+        description: >-
+          The site package directory the pin's recorded trust-input paths resolve
+          against. `.` when the site is the repository root.
+        type: string
+        default: "site"
+      site_out:
+        description: "The directory inside the tarball, i.e. the tarball's single top-level member."
+        type: string
+        default: "html-multi"
+      required_site_files:
+        description: "Space-separated paths under the unpacked tree that must exist."
+        type: string
+        default: "index.html -verso-data/blueprint-manifest.json"
+      min_site_files:
+        type: number
+        default: 50
+      max_site_bytes:
+        type: number
+        default: 900000000
+
+# Deny by default; every job re-declares exactly what it needs.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write      # actions/configure-pages
+    steps:
+      # A site tree can be several hundred megabytes and is unpacked twice over
+      # (asset + artifact). Reclaim first.
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      - name: Check out the consumer (pin + trust inputs)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          # The gate asks whether the generation revision is on this history.
+          fetch-depth: 0
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          echo "CI code: ${WORKFLOW_REPOSITORY} @ ${WORKFLOW_SHA}"
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+
+      # `ci/` is copied out of the workspace so that a Showcase checkout inside
+      # the consumer's tree cannot be walked by the gates or confused for part of
+      # the site.
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+
+      - name: Gate fixtures
+        run: python3 "$CI_DIR/scripts/tests/test_check_site_release.py"
+
+      - name: Read the site pin
+        id: pin
+        env:
+          SITE_PIN: ${{ inputs.site_pin }}
+        run: |
+          set -euo pipefail
+          python3 - "$SITE_PIN" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, sys
+          pin = json.load(open(sys.argv[1], encoding="utf-8"))
+          release = pin["release"]
+          for key in ("tag", "asset"):
+              value = release[key]
+              if not re.fullmatch(r"[A-Za-z0-9._-]+", value):
+                  raise SystemExit("pin: release.{} {!r} is not a plain name".format(key, value))
+          if not re.fullmatch(r"[0-9a-f]{64}", release["sha256"]):
+              raise SystemExit("pin: release.sha256 is not a SHA-256 hex digest")
+          print("tag=" + release["tag"])
+          print("asset=" + release["asset"])
+          print("sha256=" + release["sha256"])
+          print("revision=" + pin["generationRevision"])
+          PY
+
+      - name: Download the pinned release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pin.outputs.tag }}
+          ASSET: ${{ steps.pin.outputs.asset }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/site-release"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET" --dir "$RUNNER_TEMP/site-release"
+          ls -l "$RUNNER_TEMP/site-release"
+
+      # Digest first, unpack second: nothing below reads a byte the pin did not
+      # vouch for.
+      - name: Refuse the asset unless its digest is the pinned one
+        env:
+          ASSET: ${{ steps.pin.outputs.asset }}
+          SHA256: ${{ steps.pin.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/site-release"
+          echo "$SHA256  $ASSET" | sha256sum --check --strict
+
+      - name: Unpack
+        env:
+          ASSET: ${{ steps.pin.outputs.asset }}
+          SITE_OUT: ${{ inputs.site_out }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/site"
+          mkdir -p "$RUNNER_TEMP/site"
+          tar -C "$RUNNER_TEMP/site" -xzf "$RUNNER_TEMP/site-release/$ASSET"
+          test -d "$RUNNER_TEMP/site/$SITE_OUT"
+          du -sh "$RUNNER_TEMP/site/$SITE_OUT"
+
+      - name: Authenticate the build against this checkout
+        env:
+          ASSET: ${{ steps.pin.outputs.asset }}
+          SITE_PIN: ${{ inputs.site_pin }}
+          SITE_DIR: ${{ inputs.site_dir }}
+          SITE_OUT: ${{ inputs.site_out }}
+          REQUIRED_SITE_FILES: ${{ inputs.required_site_files }}
+          MIN_SITE_FILES: ${{ inputs.min_site_files }}
+          MAX_SITE_BYTES: ${{ inputs.max_site_bytes }}
+        run: |
+          set -euo pipefail
+          args=(--pin "$SITE_PIN"
+                --tarball "$RUNNER_TEMP/site-release/$ASSET"
+                --site-root "$RUNNER_TEMP/site/$SITE_OUT"
+                --repo-root "$PWD"
+                --site-dir "$SITE_DIR"
+                --head "$(git rev-parse HEAD)"
+                --repository "$GITHUB_REPOSITORY"
+                --min-files "$MIN_SITE_FILES"
+                --max-bytes "$MAX_SITE_BYTES")
+          for relative in $REQUIRED_SITE_FILES; do
+            args+=(--required-file "$relative")
+          done
+          python3 "$CI_DIR/scripts/check_site_release.py" "${args[@]}"
+
+      - name: Off-origin asset gates
+        env:
+          SITE_OUT: ${{ inputs.site_out }}
+        run: bash "$CI_DIR/scripts/site_offline_gates.sh" "$RUNNER_TEMP/site/$SITE_OUT"
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: ${{ runner.temp }}/site/${{ inputs.site_out }}
+
+  deploy:
+    needs: verify
+    if: github.ref_name == inputs.publish_branch
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # Declared HERE rather than in the caller: actions/deploy-pages fails without
+    # a `github-pages` environment, and a caller cannot forget what it does not
+    # have to write.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
