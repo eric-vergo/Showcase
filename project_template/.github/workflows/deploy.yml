@@ -1,0 +1,43 @@
+name: Deploy
+
+# Pages serves the release asset the committed pin names, and only after the deploy workflow
+# has verified the asset's digest against that pin and authenticated the pin against this
+# checkout. Pinned to the same Showcase commit as `ci.yml` and `lakefile.lean`.
+
+on:
+  push:
+    branches: [main]
+    # Only the pin. A change to the workflow or its scripts without a new pin is re-verified
+    # by hand, not by a run that would refuse an unchanged release.
+    paths:
+      - 'trust/site-build.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: eric-vergo/Showcase/.github/workflows/blueprint-deploy.yml@6dd4a5f812d0f4338dc432c5efebf8ce47e260a0
+    with:
+      showcase_sha: "6dd4a5f812d0f4338dc432c5efebf8ce47e260a0"
+      publish_branch: main
+      site_dir: "."
+      site_pin: trust/site-build.json
+      # Read off a real build (182 files), never copied: page slugs derive from page TITLES.
+      # Every path here is a surface that probes and degrades — the generator writes it only
+      # when its inputs were read — so its absence is a silent regression, not an error.
+      required_site_files: >-
+        index.html -verso-data/blueprint-manifest.json -verso-data/trust-provenance.json
+        Dependency-Graph/index.html Showcase-Summary/index.html
+        Formalization-Metadata/index.html Trust-model/index.html comparator/index.html
+        pm/index.html
+      min_site_files: 120

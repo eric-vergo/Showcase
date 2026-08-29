@@ -1,0 +1,15 @@
+{
+  "status": "configured",
+  "config": "comparator/comparator.json",
+  "challenge_module": "Challenge",
+  "solution_module": "Solution",
+  "theorem_names": [
+    "Challenge.add_assoc"
+  ],
+  "permitted_axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "note": "Configured, not yet run. No comparator has checked this challenge: this file is the configuration written by hand when the template was copied, not the record of a run. The first push to the publish branch runs the pipeline in .github/workflows/ci.yml and the publish job rewrites this file from that run's evidence record, adding the verdict, the date, the tool and sandbox revisions, the run URL and the content digests. Until then every surface on this site says 'configured - not yet run', which is what it is."
+}

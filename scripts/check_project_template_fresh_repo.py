@@ -163,15 +163,26 @@ def main() -> int:
 # The rendered site the starter's own CI script writes.
 SITE_SUBPATH = ("_out", "site", "html-multi")
 
-# Pages the starter's structure guarantees whatever its chapters say: the two rendered
-# overview surfaces come from `{blueprint_graph}` and `{blueprint_summary}` in
-# ProjectTemplate/Blueprint.lean, and their directory names are the fork's page titles rather
-# than the project's prose.
+# Pages the starter's structure guarantees whatever its chapters say: the rendered overview
+# surfaces come from `{blueprint_graph}` and `{blueprint_summary}` in
+# ProjectTemplate/Blueprint.lean, and the three trust surfaces from `{blueprint_formalization}`,
+# `{blueprint_trust_model}` and the comparator options in `lakefile.lean`. Their directory
+# names are the fork's page titles rather than the project's prose.
+#
+# The trust pages are here because every one of them probes and degrades: the comparator page
+# is written only when a dashboard block cached the trust payload, and the metadata page only
+# when `formalization.yaml` was read. Dropping the dashboard block, or repointing an option at
+# a path that no longer exists, takes the whole evidence surface with it and raises no error —
+# which is exactly the regression a starter must not ship.
 REQUIRED_SITE_PATHS = (
     "index.html",
     "-verso-data/blueprint-manifest.json",
+    "-verso-data/trust-provenance.json",
     "Dependency-Graph/index.html",
     "Showcase-Summary/index.html",
+    "Formalization-Metadata/index.html",
+    "Trust-model/index.html",
+    "comparator/index.html",
 )
 
 # A rendered starter is a few hundred files. The floor is a smoke value: it catches a

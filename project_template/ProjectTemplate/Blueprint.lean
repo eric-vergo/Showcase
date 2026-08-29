@@ -3,6 +3,8 @@ import VersoManual
 import VersoBlueprint
 import VersoBlueprint.Commands.Graph
 import VersoBlueprint.Commands.Summary
+import VersoBlueprint.Commands.Formalization
+import VersoBlueprint.Commands.TrustModel
 import ProjectTemplate.Chapters.Addition
 import ProjectTemplate.Chapters.Collatz
 import ProjectTemplate.Chapters.Multiplication
@@ -12,6 +14,8 @@ open Verso.Genre.Manual
 open Informal
 
 #doc (Manual) "Starter Showcase" =>
+
+{blueprint_dashboard}
 
 This small Blueprint tracks a few basic arithmetic facts on natural numbers,
 then ends with a separate Collatz chapter that is intentionally unfinished. It
@@ -23,6 +27,10 @@ is intentionally small, so it can serve as a starting point for a new project.
 
 {blueprint_graph}
 {blueprint_summary}
+
+{blueprint_formalization "formalization.yaml"}
+
+{blueprint_trust_model}
 
 # Third-party licenses
 

@@ -1,0 +1,63 @@
+# Formalization metadata (mathlib-initiative/formalization.yaml, spec v0.4).
+#
+# The site renders this file as its "Formalization Metadata" page, and the build-time axiom
+# audit checks the claims it makes about declarations against the environment it built. What
+# the audit CAN falsify it does: a `sorry_count: 0` on a declaration whose closure carries
+# `sorryAx`, or an axiom list its closure exceeds, is a build error. What no tool checks — the
+# scope prose, the review status, the source relationships — renders as a declared field with
+# a note saying so.
+#
+# Replace every value below with your project's own.
+version: "v0.4"
+
+project:
+  name: "Starter Showcase"
+  authors: ["Project Author"]
+  license: "Apache-2.0"
+
+# What was formalized. Use an `original-proof` entry when the theorem is first presented by
+# the formalization itself; use an article/book/preprint entry, with `relationship` and
+# `author_endorsement`, when you are formalizing someone else's result.
+sources:
+  - title: "Starter Showcase template"
+    authors: ["Project Author"]
+    type: "original-proof"
+    relationship: "formalizes"
+    author_endorsement: "n/a"
+    note: >-
+      The starter's arithmetic facts are Lean core lemmas restated as blueprint nodes; there
+      is no external source behind them.
+
+# How the formalization was produced: one entry per distinct phase, run or tool.
+automation:
+  methods:
+    - method: "manual"
+
+status:
+  scope: >-
+    Two small chapters of arithmetic sanity checks on the natural numbers, plus a separate
+    Collatz chapter that is deliberately unfinished.
+  # The Collatz conjecture theorem is `sorry`. Declaring it here is what lets this template
+  # build with `verso.blueprint.trust.requireAuditClean` on: the audit reports declarations
+  # that are incomplete AND undeclared, not declarations that are honestly labelled.
+  sorry_count: 1
+  sorry_in_definitions: 0
+  # Every axiom the audited declarations actually use, standard ones included. A declared list
+  # is CHECKED: the build fails if the audited closure contains an axiom this list omits. An
+  # EMPTY list is not "no axioms are used" as far as the check is concerned — it is no claim at
+  # all, and the check is skipped — so list the real ones rather than leaving `[]` behind.
+  axioms: ["propext", "Classical.choice", "Quot.sound"]
+  main_results:
+    - declaration: "nat_add_zero_right"
+      file: "ProjectTemplate/Chapters/Addition.lean"
+      sorry_count: 0
+    - declaration: "collatz_conjecture"
+      file: "ProjectTemplate/Chapters/Collatz.lean"
+      sorry_count: 1
+
+review:
+  status: "self-assessed"
+  notes: >-
+    No external review. This is a starter template; the review status is a declaration by
+    whoever copies it, and no build step checks it. What the build does check mechanically is
+    recorded on the site's statement-comparator and trust-model pages.

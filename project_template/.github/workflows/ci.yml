@@ -1,0 +1,72 @@
+name: CI
+
+# The verification pipeline lives in eric-vergo/Showcase and is called from here. This file
+# states only what is true of THIS repository; everything it runs — the trusted subject build,
+# the sandboxed comparator, the evidence record and its validator, the site build and its
+# gates, the release — is the same code every blueprint consumer runs. See
+# `ci/README.md` in Showcase at the pinned commit for the contract.
+#
+# The `uses:` ref and `showcase_sha:` below are the SAME commit `lakefile.lean` pins for
+# `require VersoBlueprint`. One number to bump: move all three together.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # The workflow's own commit-backs must not re-trigger it. A GITHUB_TOKEN push does not
+      # fire `push:` anyway; this is the second guard.
+      - 'comparator/comparator-status.json'
+      - 'trust/kernel-identities.json'
+      - 'trust/site-build.json'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel: a cancelled run can interrupt a commit-back or a release upload.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  blueprint:
+    permissions:
+      contents: write   # the status / kernel-identity / site-pin commit-backs
+      actions: read     # the step-level CI deep link
+    uses: eric-vergo/Showcase/.github/workflows/blueprint-verify.yml@6dd4a5f812d0f4338dc432c5efebf8ce47e260a0
+    with:
+      showcase_sha: "6dd4a5f812d0f4338dc432c5efebf8ce47e260a0"
+      publish_branch: main
+      # The starter has no Mathlib dependency; `lake exe cache get` would be a no-op that can
+      # still fail noisily.
+      mathlib: false
+      subject_build_target: ProjectTemplate
+      subject_olean_probe: .lake/build/lib/lean/ProjectTemplate.olean
+      # The comparator modules must never appear in the trusted job's oleans: if they did, the
+      # sandboxed build would be a no-op and the run would certify nothing (CX-012).
+      stale_olean_guard: Challenge Solution SolutionProbe
+      # No Mathlib, so the comparator tool is cloned and built on this project's toolchain
+      # rather than pulled in as a Lake dependency.
+      comparator_tool_mode: checkout
+      kernel_identity_pins: trust/kernel-identities.json
+      # The site IS the repository root here.
+      site_dir: "."
+      site_lakefile: lakefile.lean
+      site_pin: trust/site-build.json
+      site_contents_command: lake build ProjectTemplate
+      site_generate_command: rm -rf _out/site && lake exe vbp build
+      # Off by declaration, not by accident: the source-link gate reads the declaration
+      # registry, and this starter does not turn on `verso.blueprint.graph.includeAllDecls`,
+      # so there is no registry for it to check. Turn the option on in `lakefile.lean` and set
+      # this to `true` together.
+      source_link_gate: false
+      # Read off a real build (182 files), never copied: page slugs derive from page TITLES.
+      # Every path here is a surface that probes and degrades — the generator writes it only
+      # when its inputs were read — so its absence is a silent regression, not an error.
+      required_site_files: >-
+        index.html -verso-data/blueprint-manifest.json -verso-data/trust-provenance.json
+        Dependency-Graph/index.html Showcase-Summary/index.html
+        Formalization-Metadata/index.html Trust-model/index.html comparator/index.html
+        pm/index.html
+      min_site_files: 120

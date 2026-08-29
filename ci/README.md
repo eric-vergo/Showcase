@@ -216,27 +216,27 @@ consumer's toolchain moves.
 | `mathlib` | **`false`** | **`false`** | `true` | `true` |
 | `subject_build_target` | `Quine Test QuineFacts quine` | `ProjectTemplate` | `A362583` | `HopfProblem` |
 | `subject_olean_probe` | `.lake/build/lib/lean/Quine.olean` | `.lake/build/lib/lean/ProjectTemplate.olean` | `.lake/build/lib/lean/A362583` | `.lake/build/lib/lean/HopfProblem` |
-| `stale_olean_guard` | `Challenge Solution SolutionProbe` | — | `Challenge Solution SolutionProbe` | same |
+| `stale_olean_guard` | `Challenge Solution SolutionProbe` | `Challenge Solution SolutionProbe` | `Challenge Solution SolutionProbe` | same |
 | `build_check_script` | `scripts/verify.sh` | — | `scripts/check_shared_definitions.sh` | — |
 | `extra_build_env` | `PYTHONINTMAXSTRDIGITS=0` | — | — | — |
 | `formalization_yaml` | `formalization.yaml` | `formalization.yaml` | (default) | (default) |
-| `comparator_enabled` | `true` | **`false`** | `true` | `true` |
-| `comparator_tool_mode` | `checkout` | — | `checkout` | `lake-dep` |
-| `comparator_config` | (default) | — | (default) | `comparator/config.json` |
-| `comparator_probe_config` | (default) | — | (default) | `comparator/config-probe.json` |
-| `comparator_challenge` | (default) | — | (default) | `Challenge.lean` |
-| `comparator_solution` | (default) | — | (default) | `Solution.lean` |
-| `kernel_identity_pins` | `trust/kernel-identities.json` | — | (default) | (default) |
+| `comparator_enabled` | `true` | (default) | `true` | `true` |
+| `comparator_tool_mode` | `checkout` | `checkout` | `checkout` | `lake-dep` |
+| `comparator_config` | (default) | (default) | (default) | `comparator/config.json` |
+| `comparator_probe_config` | (default) | (default) | (default) | `comparator/config-probe.json` |
+| `comparator_challenge` | (default) | (default) | (default) | `Challenge.lean` |
+| `comparator_solution` | (default) | (default) | (default) | `Solution.lean` |
+| `kernel_identity_pins` | `trust/kernel-identities.json` | `trust/kernel-identities.json` | (default) | (default) |
 | `site_dir` | **`.`** | **`.`** | `site` | `site` |
 | `site_lakefile` | `lakefile.lean` | `lakefile.lean` | (default) | (default) |
 | `site_contents_command` | `lake build Site` | `lake build ProjectTemplate` | (default) | (default) |
-| `site_generate_command` | `rm -rf _out/site && lake env lean GenSite.lean` | `lake exe vbp build` | (default) | (default) |
+| `site_generate_command` | `rm -rf _out/site && lake env lean GenSite.lean` | `rm -rf _out/site && lake exe vbp build` | (default) | (default) |
 | `site_prebuild_command` | — | — | `lake build VersoBlueprint/statement-closure` | same |
 | `site_pin` | `trust/site-build.json` | `trust/site-build.json` | (default) | (default) |
-| `required_site_files` | read off the first real build | read off the first real build | + `-verso-data/decl-registry.json -verso-data/trust-provenance.json comparator/index.html Trust-model/index.html` | same |
-| `min_site_files` | ~60–70 % of the observed count | (default) | (default) | (default) |
-| `source_link_gate` | `true` | `true` | `true` | `true` |
-| `trust_provenance_gate` | `true` | `false` (no Solution, so no `solutionFile` option) | `true` | `true` |
+| `required_site_files` | read off the first real build | + `-verso-data/trust-provenance.json Dependency-Graph/ Showcase-Summary/ Formalization-Metadata/ Trust-model/ comparator/ pm/` (all `/index.html`) | + `-verso-data/decl-registry.json -verso-data/trust-provenance.json comparator/index.html Trust-model/index.html` | same |
+| `min_site_files` | ~60–70 % of the observed count | `120` (of 182 observed) | (default) | (default) |
+| `source_link_gate` | `true` | **`false`** (no declaration registry) | `true` | `true` |
+| `trust_provenance_gate` | `true` | (default `true`) | `true` | `true` |
 | `comparator_timeout_minutes` | `90` on the first nanoda attempt | — | (default) | (default) |
 | `stage_timeout_minutes` | (default) | (default) | (default) | `355` |
 | `build_timeout_minutes` | (default) | (default) | (default) | `150` |
@@ -247,12 +247,18 @@ copied: page slugs derive from page TITLES, so the summary page has been
 Guessing produces a gate that fails for the wrong reason or, worse, a gate on a
 path that never existed.
 
-`project_template` ships the comparator surfaces in their honest
-**configured-but-not-run** state — a config and a `sorry`-ed challenge with no
-solution — so `comparator_enabled: false` is the truthful setting: there is
-nothing for a run to certify. Its `trust_provenance_gate` is off for the same
-reason (the gate requires all four comparator roles, and there is no
-`solutionFile`).
+`project_template` ships a complete comparator — a `sorry`-ed challenge, a
+solution that proves it, a denied-write probe and both configs — with its status
+artifact in the honest **`configured`** state: nothing has run yet, and every
+surface says so until the first push rewrites the artifact from a run's evidence
+record. That is what makes the starter a working demonstration rather than a
+mock-up: a stranger who copies it gets a pipeline whose first run produces a real
+verdict.
+
+Its `source_link_gate` is the one gate off, by declaration: that gate reads the
+declaration registry, and the starter does not turn on
+`verso.blueprint.graph.includeAllDecls`, so there is nothing for it to check and
+a vacuous pass would be worse than an honest `false`.
 
 ---
 

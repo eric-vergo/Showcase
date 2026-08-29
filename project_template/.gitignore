@@ -1,3 +1,6 @@
 .lake/
 .build/
 _out/
+# Written by comparator/SolutionProbe.lean if a sandbox ever fails to refuse its writes.
+# Its presence in a working tree means something elaborated the probe outside confinement.
+comparator-probe-canary
