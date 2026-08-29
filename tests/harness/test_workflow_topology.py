@@ -171,8 +171,31 @@ class WorkflowRunTopologyTests(unittest.TestCase):
                             f"Known names: {sorted(names)}"
                         ),
                     )
-        # Guard the guard: the reference-deploy listener must actually be exercised.
-        self.assertGreaterEqual(checked, 1, "no workflow_run listeners were checked")
+        # `checked` may legitimately be 0: the repository's only `workflow_run`
+        # listener lived in `reference-blueprints-deploy.yml`, deleted with the rest of
+        # upstream's reference-catalog CI. The loop above is kept for the next workflow
+        # that listens for one; the guard-the-guard assertion moved to the extractor,
+        # below, so a parser that silently stopped finding listeners still fails.
+        del checked
+
+    def test_workflow_run_listener_extraction_still_reads_a_listener_block(self) -> None:
+        """Guard the guard, with no tracked listener left to exercise it.
+
+        If `_workflow_run_listeners` regressed to returning nothing, the check above
+        would pass vacuously on every future workflow too."""
+        sample = (
+            "name: Example\n"
+            "on:\n"
+            "  workflow_run:\n"
+            "    workflows:\n"
+            "      - Some Producer\n"
+            "      - 'Quoted Producer'\n"
+            "    types:\n"
+            "      - completed\n"
+        )
+        self.assertEqual(
+            _workflow_run_listeners(sample), ["Some Producer", "Quoted Producer"]
+        )
 
 
 class WorkflowScriptPathTests(unittest.TestCase):

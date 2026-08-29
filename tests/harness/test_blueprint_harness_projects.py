@@ -557,49 +557,19 @@ class BlueprintHarnessProjectsTests(unittest.TestCase):
             ],
         )
 
-    def test_reference_pages_workflow_stages_every_manifest_project(self) -> None:
+    def test_reference_build_matrix_names_every_manifest_project(self) -> None:
+        """The matrix the reference scripts emit, checked against the manifest.
+
+        This used to assert the shape of `.github/workflows/reference-blueprints.yml`
+        and `-deploy.yml` as well. Those two workflows were upstream's reference-catalog
+        CI; the fork never ran them (0 runs) and deleted them, while
+        `scripts/emit_reference_release_matrix.py` and the rest of the reference tooling
+        stay — so what a workflow used to consume is now checked at the producer.
+        """
         catalog = load_project_catalog(default_project_manifest(PACKAGE_ROOT))
         release = resolve_release_target(catalog, "v4.32.0", PACKAGE_ROOT)
         projects = resolve_projects_for_release(catalog, release.release_id, None)
         matrix = reference_build_matrix(projects, release)
-        workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints.yml").read_text(
-            encoding="utf-8"
-        )
-        deploy_workflow_text = (PACKAGE_ROOT / ".github" / "workflows" / "reference-blueprints-deploy.yml").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("emit_reference_release_matrix.py", workflow_text)
-        self.assertIn("pattern: reference-blueprints-*", workflow_text)
-        self.assertIn("path: _out/reference-blueprints-artifacts", workflow_text)
-        self.assertIn("--reference-root _out/reference-blueprints-artifacts", workflow_text)
-        self.assertNotIn("merge-multiple: true", workflow_text)
-        self.assertIn("--project ${{ matrix.project_id }}", workflow_text)
-        self.assertIn("matrix.reference_cache_key", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/packages", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", workflow_text)
-        self.assertIn("reference-deps-v2-${{ matrix.reference_cache_key }}", workflow_text)
-        self.assertIn(".worktrees/_reference-blueprints/deps/${{ matrix.reference_cache_key }}/path-builds", deploy_workflow_text)
-        self.assertIn("reference-deploy-deps-v2-${{ matrix.reference_cache_key }}", deploy_workflow_text)
-        self.assertIn(
-            "group: ${{ github.repository }}-reference-blueprints-pages",
-            deploy_workflow_text,
-        )
-        self.assertNotIn("reference-blueprints-pages-release-", deploy_workflow_text)
-        self.assertNotIn("reference-blueprints-pages-dispatch-", deploy_workflow_text)
-        self.assertIn("Generate release reference blueprints", deploy_workflow_text)
-        self.assertIn("uses: actions/cache/restore@v5", deploy_workflow_text)
-        self.assertIn("uses: actions/cache/save@v5", deploy_workflow_text)
-        self.assertIn(
-            "reference-site-v1-${{ steps.artifact-identity.outputs.sha256 }}",
-            deploy_workflow_text,
-        )
-        self.assertIn("reference_artifact_identity.py create", deploy_workflow_text)
-        self.assertIn("reference_artifact_identity.py install", deploy_workflow_text)
-        self.assertIn("reference_artifact_identity.py validate", deploy_workflow_text)
-        self.assertIn("reference_artifact_identity.py expected-matrix", deploy_workflow_text)
-        self.assertIn("--expected-identities _out/expected-reference-artifacts.json", deploy_workflow_text)
-        self.assertIn("steps.generated-site-cache.outputs.cache-hit != 'true'", deploy_workflow_text)
 
         for entry in matrix["include"]:
             self.assertEqual(entry["artifact_name"], f"reference-blueprints-{entry['project_id']}")

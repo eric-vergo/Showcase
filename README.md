@@ -52,7 +52,10 @@ by Eric Vergo with AI assistance from Anthropic's Claude models — Claude Fable
 and Claude Opus 4.8, per the git commit trailers, the record of
 which model did what. See [`NOTICE`](./NOTICE) for the full layered story;
 `scripts/check-header-provenance.sh` guards against fork-original files silently
-reacquiring the upstream header template.
+reacquiring the upstream header template. Divergence also runs the other way: some
+upstream files are deleted here rather than adapted —
+[`.github/workflows/README.md`](./.github/workflows/README.md) records which CI
+workflows left and why.
 
 ## What this fork changes vs upstream
 

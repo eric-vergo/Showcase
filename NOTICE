@@ -21,6 +21,9 @@ preserved verbatim — we do not remove a real prior author of code we build on.
 The upstream baseline is Verso / verso-blueprint v4.32.0, commit
 51ebcae4b3133f407807e581178d2dcc705ac683.
 
+Some upstream files are deleted here rather than adapted; .github/workflows/README.md
+records which of upstream's CI workflows were removed and on what evidence.
+
 Fork layer
 ----------
 The fork work in this repository is by Eric Vergo, with AI assistance from

@@ -157,7 +157,13 @@ jobs:
           # ships the two thin callers every consumer ships, which reference this
           # repository by SHA and nothing local, so they are linted here — the
           # starter's workflows are the ones a stranger receives.
-          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-verify.yml .github/workflows/blueprint-deploy.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml project_template/.github/workflows/ci.yml project_template/.github/workflows/deploy.yml
+          #
+          # `reference-blueprints.yml`, `reference-blueprints-deploy.yml` and
+          # `backport-discipline.yml` are gone too — upstream policies this fork does
+          # not operate, never run here. `.github/workflows/README.md` records which
+          # workflows are ours and why those three left; keep this list in step with
+          # the directory.
+          args: .github/workflows/ci.yml .github/workflows/blueprint-verify.yml .github/workflows/blueprint-deploy.yml project_template/.github/workflows/ci.yml project_template/.github/workflows/deploy.yml
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y

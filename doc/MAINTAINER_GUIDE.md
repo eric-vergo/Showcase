@@ -685,8 +685,11 @@ python3 -m scripts.blueprint_reference_harness bump-verso-blueprint --project <p
 The repository includes these GitHub Actions workflows:
 
 - `.github/workflows/ci.yml`
-- `.github/workflows/reference-blueprints.yml`
-- `.github/workflows/reference-blueprints-deploy.yml`
+- `.github/workflows/blueprint-verify.yml` (reusable; a consumer's CI calls it)
+- `.github/workflows/blueprint-deploy.yml` (reusable; a consumer's deploy calls it)
+
+See `.github/workflows/README.md` for what each is and which upstream workflows
+this fork deleted.
 
 `ci.yml` is the main verification workflow. It keeps the always-on checks for
 pull requests and pushes to release branches named like `v4.32.0`:
@@ -705,92 +708,13 @@ On pull requests it also runs `Project Template Fresh Repo`, which materializes
 the in-repo template as a fresh standalone repository and smoke-tests the
 template-owned CI path.
 
-`reference-blueprints.yml` is the shared build workflow. On pull requests,
-pushes to release branches named like `v4.32.0`, and manual dispatch, it:
-
-- resolves the current branch's release target from `branch-policy.json`
-- builds only project targets for that release that set
-  `publish_reference: true`
-- builds the local `test-blueprints/` artifact set, including
-  `preview_runtime_showcase`
-- stages a branch-local site artifact under `_site/` only when the selected
-  release target has `deploy_pages: true`
-- uploads that assembled site as a normal workflow artifact
-- generates external references from per-job local clones seeded by the keyed
-  dependency cache
-- restores and saves external reference dependency caches by the same
-  repository/project-root/ref key used locally, caching the external project's
-  `.lake/packages/` tree and `.lake/build` trees for external path dependencies
-  rather than the source checkout or generated Blueprint site's own output
-
-`reference-blueprints-deploy.yml` is the deployment workflow. It runs after a
-successful `reference-blueprints.yml` run on a release branch named like
-`v4.32.0`, checks out the repository default-development branch as the source
-of truth for deployment policy, resolves every release target with
-`deploy_pages: true`, selects project targets marked `publish_reference: true`,
-rebuilds those selected blueprints in isolation, and assembles one combined
-GitHub Pages artifact. The per-project target entry is the source of truth for
-the project id, release, pinned ref, and publication flag. For each deploy
-matrix entry, the workflow writes a small one-project manifest from that
-default-development catalog and passes it to the release-branch harness with
-`--manifest`; the deploy job therefore does not rely on stale branch-local
-`projects.json` refs. The per-project target entry also owns any RC override,
-so two projects in the same release line can deploy against different release
-candidate tags when needed. The published catalog is HTML-only; PDF export is
-not carried over in this fork (see the PDF note above).
-
-All runs of the deploy workflow share one repository-wide concurrency group
-because every run replaces the same combined Pages site. A deploy matrix entry
-first computes an exact generated-site identity from the release id, project
-id, complete generated one-project manifest, and checked-out release-branch
-commit. The workflow restores only the cache key for that exact identity; it
-does not use prefix or stale fallback keys. On a cache miss, normal generation
-runs and installs the identity metadata before saving the generated site. On a
-cache hit, toolchain installation, dependency restoration, external checkout,
-and generation are skipped.
-
-Before assembling Pages, the staging job independently recomputes the expected
-identities from the current catalog and fetched release-branch heads. It rejects
-missing, unexpected, tampered, or non-matching artifacts and removes the
-identity metadata from the public site. This permits a trusted last-known-good
-generated site to cover a temporary upstream outage only while every relevant
-pin and generator revision remains exactly unchanged.
-
-The current published project/release split is intentionally not duplicated
-here. Read `tests/harness/projects.json`; every project target marked
-`publish_reference: true` is part of the deployed catalog for that target's
-release.
-
-The branch-local site artifact produced by `reference-blueprints.yml` for one
-release includes:
-
-- `_site/index.html`
-- `_site/reference-blueprints/<project-id>/` for each deployable reference
-  target selected on that branch
-- `_site/test-blueprints/index.html`
-- `_site/test-blueprints/preview_runtime_showcase/`
-- `_site/test-blueprints/<slug>/`
-
-It intentionally does not include `_site/js-api/`; CI validates and uploads the
-generated JavaScript API docs as a review artifact, while the deploy workflow
-rebuilds the published copy for Pages.
-
-The combined Pages artifact produced by `reference-blueprints-deploy.yml`
-includes:
-
-- `_site/index.html`
-- `_site/js-api/`
-- `_site/reference-blueprints/<release-id>/<project-id>/` for each selected
-  reference target across all deployable release targets
-- `_site/test-blueprints/index.html`
-- `_site/test-blueprints/preview_runtime_showcase/`
-- `_site/test-blueprints/<slug>/`
-
-GitHub Pages deployments run through the `github-pages` environment. When the
-default-development branch advances to a new release line, update that
-environment's deployment branch policy to allow the new default branch before
-expecting Pages to publish. If the generated site artifact is correct but the
-`Deploy Pages` job fails immediately without step logs, check this policy first.
+The reference-catalog workflows are gone. `reference-blueprints.yml` and
+`reference-blueprints-deploy.yml` built and deployed upstream's reference-blueprint
+catalog from `v*` release branches; this fork never ran either (0 runs) and deleted
+both — see `.github/workflows/README.md`. Their *tooling* stays: the generation,
+validation and staging scripts below still run locally and are covered by the harness
+suite, so the artifact layouts they produce are described here as local outputs, not
+as CI ones.
 
 The shared staging helper understands both input shapes:
 
