@@ -137,12 +137,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # Pinned by DIGEST, not `:latest`: this was the last unpinned `uses:` in
+      # the workspace, and an image tag is a mutable pointer to whatever was
+      # pushed last. Resolved from the Docker Hub registry API; `latest` and
+      # `1.7.12` name the same manifest today. Bump deliberately.
+      #
+      # `.github/actionlint.yaml` suppresses exactly one diagnostic class: this
+      # actionlint's model of the `job` context predates `job.workflow_sha` and
+      # its three siblings, which the reusable workflows depend on. The config
+      # says why, and says what to check when removing it.
       - name: Lint GitHub workflows
-        uses: docker://rhysd/actionlint:latest
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667  # 1.7.12
         with:
-          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-pages.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml project_template/.github/workflows/blueprint-pages.yml project_template/.github/workflows/pages.yml
-      - name: Check reusable workflow copy stays in sync
-        run: cmp .github/workflows/blueprint-pages.yml project_template/.github/workflows/blueprint-pages.yml
+          # `blueprint-pages.yml` is gone (a dead `workflow_call` design with a
+          # local-path caller, references to a nonexistent tools/verso-harness/,
+          # zero gates and zero adopters); `blueprint-verify.yml` and
+          # `blueprint-deploy.yml` replace it. `project_template/.github/workflows/`
+          # still holds a copy of the dead file plus its `pages.yml` caller: those
+          # are replaced by the two thin callers in a later round, and are
+          # deliberately not linted here in the meantime rather than being linted
+          # into permanence.
+          args: .github/workflows/ci.yml .github/workflows/backport-discipline.yml .github/workflows/blueprint-verify.yml .github/workflows/blueprint-deploy.yml .github/workflows/reference-blueprints.yml .github/workflows/reference-blueprints-deploy.yml
       - name: Install elan
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y

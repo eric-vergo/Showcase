@@ -1,0 +1,2084 @@
+name: Blueprint Verify
+
+# The standard verification pipeline for a blueprint consumer, as a reusable
+# workflow. A consumer's own `ci.yml` is a thin caller (see ci/README.md); this
+# file is the pipeline, and it lives here so there is ONE of it.
+#
+# Six jobs, split along the trust boundary (codex-audit CX-012: Lean elaboration
+# is arbitrary code execution, so the untrusted comparator modules must not be
+# elaborated in a job that holds a write token, and must not be elaborated at all
+# before the sandbox confines them):
+#
+#   build          TRUSTED. Pin assertions, the gate fixtures, formalization.yaml
+#                  schema validation, an optional consumer check, and the subject
+#                  library build. Builds only the subject -- never Challenge or
+#                  Solution -- and hands its oleans on as an artifact.
+#                  contents: read.
+#   comparator     UNTRUSTED. The first elaboration of Challenge and Solution
+#                  happens here and happens inside landrun, driven by
+#                  leanprover/comparator. No write token, no OIDC. Fails closed
+#                  unless the AF_UNIX guard is available (CX-048), gates the
+#                  sandbox on a deterministic loopback network canary (CX-049),
+#                  establishes containment BEFORE any repository Lean is
+#                  elaborated with a workflow-owned probe (CX-050/CX-051), hashes
+#                  every executable and certified input immediately before and
+#                  after the run, and emits comparator-result.json as the sole
+#                  evidence record. contents: read.
+#   publish        TRUSTED. Validates the result record field by field against its
+#                  own trusted inputs (CX-052), writes the status artifact and the
+#                  checker-identity pin from that record, and commits them back on
+#                  push events. The ONLY job with contents: write. It also
+#                  computes the deploy predicate ONCE, as a job output, which is
+#                  what dissolves CX-079 structurally.
+#   site-contents  contents: read. The elaboration pass (`lake build Contents`)
+#   site-generate  contents: read. Rendering, every gate, and packaging.
+#   site-release   contents: write + actions: write. Cuts the release the pin
+#                  names, commits the pin back, and dispatches the deploy.
+#
+# Deploying is a SEPARATE workflow (blueprint-deploy.yml, called from the
+# consumer's `deploy.yml`), so this file holds no `pages:` scope and no OIDC at
+# all. What Pages serves is the release asset the committed pin names, verified
+# against the checkout before a byte of it is unpacked.
+#
+# ---------------------------------------------------------------------------
+# Two GitHub facts shape this design; both are load-bearing.
+#
+# 1. The reusable workflow's OWN identity is the `job` context: `job.workflow_sha`
+#    (its commit), `job.workflow_ref`, `job.workflow_repository`. Those are
+#    available in a step's `with:` and `env:` -- and NOT in `jobs.<id>.if` nor in
+#    workflow-level `env:`. So every job checks Showcase out at
+#    `job.workflow_sha` and captures the three values in steps; nothing here
+#    predicates on them. `github.workflow_sha` names the CALLER's workflow, which
+#    is not what any of this is about.
+#
+# 2. `jobs.<job_id>.uses` accepts no expressions, so a consumer pins this file by
+#    a literal SHA. The optional `showcase_sha` input is asserted equal to
+#    `job.workflow_sha` in every job: a consumer that states which CI code it
+#    meant to run is told when it got another (the CX-079 coupling pattern
+#    applied to the new field).
+#
+# There are deliberately NO composite actions. `uses: ./...` inside a reusable
+# workflow resolves against the CONSUMER's checkout, and a cross-repo `uses:`
+# cannot be pinned to `job.workflow_sha` because `uses:` takes no expressions.
+# Shared logic lives in `ci/scripts/`, obtained by the checkout above.
+
+on:
+  workflow_call:
+    inputs:
+      # --- what branch may be written to, and which CI code is running --------
+      publish_branch:
+        description: "The one branch this workflow may write to."
+        type: string
+        default: main
+      showcase_sha:
+        description: >-
+          The Showcase commit the caller pinned. When non-empty it is asserted
+          equal to `job.workflow_sha` in every job, so a caller that states what
+          it meant to run is told when it got something else. Empty skips the
+          assertion (the checkout still uses `job.workflow_sha`).
+        type: string
+        default: ""
+
+      # --- the subject build ---------------------------------------------------
+      mathlib:
+        description: >-
+          Whether this project depends on Mathlib. Drives lean-action's olean
+          cache and the site jobs' `lake exe cache get`. A `cache get` in a
+          Mathlib-free project is a no-op that can still fail noisily.
+        type: boolean
+        default: true
+      subject_build_target:
+        description: >-
+          The lake targets the trusted build job builds. REQUIRED and never a
+          bare `lake build`: a package whose defaultTargets include Challenge or
+          Solution would elaborate them here, in the job that is about to hand
+          its oleans to a job with a write token (CX-012).
+        type: string
+        required: true
+      subject_olean_probe:
+        description: >-
+          A path under the subject build that must exist after the build and
+          after every unpack of the oleans artifact. It is what turns a silently
+          empty artifact into a failure.
+        type: string
+        required: true
+      stale_olean_guard:
+        description: >-
+          Space-separated module names whose `.olean` must NOT be in the subject
+          artifact. CX-012 from the other side: if the artifact ever carried
+          Challenge/Solution oleans, the sandboxed build would be a no-op and the
+          run would certify nothing.
+        type: string
+        default: ""
+      build_check_script:
+        description: >-
+          A consumer-owned check run in the TRUSTED build job, after Lean is set
+          up (so it may call `lake`) and before anything is uploaded. Empty
+          skips it. This is where a consumer puts the assertions only it can
+          state -- a362583's byte-identity of the shared definitions,
+          lean_quine's generated-file fixpoint.
+        type: string
+        default: ""
+      extra_build_env:
+        description: >-
+          Newline-separated KEY=VALUE pairs appended to $GITHUB_ENV in the build
+          job. A caller's own `env:` is NOT visible inside a called workflow, so
+          this is how e.g. PYTHONINTMAXSTRDIGITS=0 reaches the build.
+        type: string
+        default: ""
+      prose_pin_files:
+        description: >-
+          Space-separated paths/globs whose prose must not state a toolchain
+          version other than the real one. Empty disables the check; a non-empty
+          value that matches no file FAILS, because a gate that quietly checks
+          nothing is worse than no gate.
+        type: string
+        default: "README.md"
+      formalization_yaml:
+        description: >-
+          Path to the project's formalization.yaml, validated against the pinned
+          schema. Empty means the project has none.
+        type: string
+        default: "formalization.yaml"
+
+      # --- the comparator ------------------------------------------------------
+      comparator_enabled:
+        description: "Whether this project has a comparator challenge to certify."
+        type: boolean
+        default: true
+      comparator_tool_mode:
+        description: >-
+          How leanprover/comparator is obtained: `lake-dep` (a `require
+          Comparator` in the consumer's lakefile, so the tool is built from the
+          project workspace with the project's own toolchain -- CX-053 holds by
+          construction) or `checkout` (cloned into `comparator-tool/` and given
+          the project's toolchain explicitly).
+        type: string
+        default: "lake-dep"
+      comparator_config:
+        type: string
+        default: "comparator/comparator.json"
+      comparator_probe_config:
+        description: "The same config with `solution_module` swapped for the denied-write fixture."
+        type: string
+        default: "comparator/comparator-probe.json"
+      comparator_challenge:
+        type: string
+        default: "comparator/Challenge.lean"
+      comparator_solution:
+        type: string
+        default: "comparator/Solution.lean"
+      comparator_status:
+        description: "The evidence artifact the blueprint site quotes."
+        type: string
+        default: "comparator/comparator-status.json"
+      kernel_identity_pins:
+        description: >-
+          The consumer-committed pin the run's own checker-identity record is
+          authenticated against (CX-064). Bootstrapped on the first run when
+          absent; asserted, never rewritten, thereafter.
+        type: string
+        default: "site/trust/kernel-identities.json"
+
+      # --- the site ------------------------------------------------------------
+      site_enabled:
+        type: boolean
+        default: true
+      site_dir:
+        description: "The site package directory. `.` when the site is the repository root."
+        type: string
+        default: "site"
+      site_out:
+        description: "The generated tree, relative to site_dir."
+        type: string
+        default: "_out/site/html-multi"
+      site_contents_command:
+        description: >-
+          The elaboration pass. Note the absence of `-R`: CI_RUN_URL is fed in
+          EMPTY so the generated bytes are a function of the commit, not of the
+          run id, which is what makes the release-unchanged skip meaningful.
+        type: string
+        default: "lake build Contents"
+      site_generate_command:
+        type: string
+        default: "lake env lean --run Main.lean --output _out/site"
+      site_prebuild_command:
+        description: >-
+          Run in site_dir before the contents command. For tools the generator
+          probes for during ELABORATION -- a362583 builds the statement-closure
+          executable here.
+        type: string
+        default: ""
+      site_pin:
+        description: "The committed pin naming the release asset Pages serves."
+        type: string
+        default: "site/trust/site-build.json"
+      site_lakefile:
+        description: "The site's lakefile: the configuration of record the trust-provenance gate reads."
+        type: string
+        default: "site/lakefile.lean"
+      required_site_files:
+        description: >-
+          Space-separated paths under site_out that must exist. These are the
+          probe-and-degrade surfaces: the generator writes them only when their
+          inputs were read, so their absence is a silent regression, not an error.
+        type: string
+        default: "index.html -verso-data/blueprint-manifest.json"
+      min_site_files:
+        type: number
+        default: 50
+      max_site_bytes:
+        description: "One repository, one GitHub Pages site. The documented limit is 1 GB; deployments near it time out."
+        type: number
+        default: 900000000
+      source_link_gate:
+        description: >-
+          Whether every project-local `sourceHref` in the declaration registry
+          must name the revision the site was generated from (CX-066). A
+          capability the caller declares, never file presence: a gate that skips
+          because a file is missing is the probe-and-degrade weakness the audit
+          rejected. When on, a vacuous result is a FAILURE.
+        type: boolean
+        default: true
+      trust_provenance_gate:
+        description: >-
+          Whether the generated trust-provenance record must authenticate against
+          the checkout (CX-075/CX-078). Same capability rule as above.
+        type: boolean
+        default: true
+
+      # --- budgets -------------------------------------------------------------
+      build_timeout_minutes:
+        type: number
+        default: 120
+      comparator_timeout_minutes:
+        type: number
+        default: 180
+      stage_timeout_minutes:
+        description: "Each of the two site jobs. The hosted-runner ceiling is 360."
+        type: number
+        default: 120
+
+    outputs:
+      verdict:
+        description: "`verified` when a comparator run certified this commit, `skipped` otherwise."
+        value: ${{ jobs.publish.outputs.verdict }}
+      site_ref:
+        description: "The revision the publish job left on the publish branch."
+        value: ${{ jobs.publish.outputs.site_ref }}
+      deployable:
+        description: "The single deploy predicate, computed once (CX-079)."
+        value: ${{ jobs.publish.outputs.deployable }}
+      release_tag:
+        value: ${{ jobs.site-release.outputs.tag }}
+      release_asset:
+        value: ${{ jobs.site-release.outputs.asset }}
+      release_sha256:
+        value: ${{ jobs.site-release.outputs.sha256 }}
+
+# Deny by default; every job re-declares exactly what it needs. A caller can only
+# REDUCE these, never widen them.
+permissions:
+  contents: read
+
+env:
+  # --- Verifier pins. Deliberately NOT consumer inputs. ----------------------
+  # In `lake-dep` mode the EFFECTIVE comparator pin is the `rev` in the
+  # consumer's lake-manifest.json, so the constant's whole job is to be asserted
+  # against that manifest. A consumer that could choose the constant would be
+  # asserting it against itself, which checks nothing.
+  #
+  # Zouuup/landrun v0.1.17. Bump deliberately; the verifier cache key derives
+  # from these SHAs, so a bump forces a rebuild.
+  LANDRUN_REF: "811cfff51ceaf3d9843708aa6d22e9b84ccac8b4"
+  # ammkrn/nanoda_lib. The Lean kernel that replays the export inside the
+  # comparator is the toolchain's own -- nanoda is the INDEPENDENT second kernel,
+  # and the only part of the replay that is not the same implementation checking
+  # its own work. Verifier currency is a standing invariant: this pin must
+  # postdate the newest Lean kernel fix and must be re-pinned deliberately
+  # whenever a consumer's lean-toolchain moves.
+  NANODA_REF: "05055695879dfebb6628a67da88ceca6cd6b0421"
+  # The repository nanoda is built from, as the identity record and the
+  # consumer's pin both spell it (codex-audit CX-064).
+  NANODA_REPOSITORY: "https://github.com/ammkrn/nanoda_lib"
+  # leanprover/comparator, pinned by COMMIT -- a tag is a mutable pointer, and
+  # what a consumer certifies must not change because someone upstream moved one.
+  # COMPARATOR_TOOL_REF is kept as the human-readable NAME of that commit: it is
+  # what the blueprint tells readers to clone and what `tool_ref` records, and the
+  # tool-pin assertion fails the run if the tag stops resolving to
+  # COMPARATOR_TOOL_SHA. Resolved with `git ls-remote
+  # https://github.com/leanprover/comparator.git refs/tags/v4.33.0` (lightweight
+  # tag; no peeled `^{}` entry). Bump together.
+  COMPARATOR_TOOL_REF: "v4.33.0"
+  COMPARATOR_TOOL_SHA: "3927ad383f208ae977c340a91c48ac9b497d2097"
+  # lean4export is a transitive dependency of the comparator, pinned in a
+  # `lake-dep` consumer's manifest at an `inputRev` of `master` -- i.e. an
+  # ordinary `lake update` would move it silently. It produces the kernel export
+  # both kernels then replay, so it is verifier machinery and is held to the same
+  # standard as the other three.
+  LEAN4EXPORT_REF: "15f6055e299ad5b89345e533cc2192f4cc00f659"
+  # mathlib-initiative/formalization.yaml, pinned by commit: a schema fetched from
+  # `main` could start or stop rejecting a consumer's file without a commit here.
+  # The version dispatcher carries an $id on `main`, so relative $refs inside it
+  # would resolve back to `main` and defeat the pin -- validate against the
+  # versioned schema directly instead, and assert separately that the file
+  # declares that version.
+  FORMALIZATION_SCHEMA_REF: "99c678e569c7c4c0772db297c5ddd5e4c9b6322e"
+  FORMALIZATION_SCHEMA_VERSION: "v0.4"
+  CHECK_JSONSCHEMA_VERSION: "0.38.0"
+
+jobs:
+  # =====================================================================
+  # 1. Trusted build: assertions + the subject library. No untrusted Lean.
+  # =====================================================================
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.build_timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      # Reclaim disk BEFORE anything else. Dropping the toolchains this job never
+      # touches (Android SDK/NDK, .NET, GHC/Haskell) plus large apt packages frees
+      # ~20-25 GB. Keep the hosted tool-cache (elan/go/cargo live outside it but
+      # removing it is slow for no gain here), Docker images (removal is slow),
+      # and swap (Mathlib elaboration is memory-heavy).
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      - name: Disk space after cleanup
+        run: df -h /
+
+      # Every third-party action below is pinned by commit SHA with the tag it
+      # corresponded to in a trailing comment (resolved via `git ls-remote
+      # https://github.com/<owner>/<repo>.git refs/tags/<tag>`; all lightweight
+      # tags, so the listed object IS the commit). Marketplace major-version tags
+      # are mutable pointers: `@v5` is a promise about compatibility, not code.
+      #
+      # The CONSUMER is checked out first and Showcase second, deliberately:
+      # actions/checkout cleans the directory it targets, and a default-path
+      # checkout run after `_showcase/` existed would remove it.
+      - name: Check out the consumer
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          echo "CI code: ${WORKFLOW_REPOSITORY} @ ${WORKFLOW_SHA}"
+          echo "ref:     ${WORKFLOW_REF}"
+          case "$WORKFLOW_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *)
+              echo "job.workflow_sha is '${WORKFLOW_SHA}', not a 40-character commit."
+              echo "Every record this run publishes names the CI code that produced it;"
+              echo "a run that cannot name its own code certifies nothing."
+              exit 1
+              ;;
+          esac
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running"
+            echo "${WORKFLOW_SHA}. The `uses:` line and the `showcase_sha:` input have"
+            echo "drifted apart; bump both together."
+            exit 1
+          fi
+
+      # `ci/` is copied OUT of the workspace and `_showcase/` removed, because a
+      # Showcase checkout sitting inside a consumer's tree is not inert: it
+      # carries a lakefile and Lean sources, so the declaration registry's
+      # source-path scan can see it as a sibling package root, `package_site.sh`
+      # would call the worktree dirty, and the site gates would walk it.
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+          ls "${RUNNER_TEMP}/ci/scripts"
+
+      # --- Pin assertions ----------------------------------------------------
+      - name: Assert the comparator tool pin
+        if: inputs.comparator_enabled
+        env:
+          MODE: ${{ inputs.comparator_tool_mode }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            lake-dep)
+              # What actually decides which tool runs is lake-manifest.json --
+              # not the `rev` in the lakefile, which Lake only consults when the
+              # manifest is absent.
+              rev="$(jq -r '.packages[] | select(.name == "Comparator") | .rev' lake-manifest.json)"
+              input="$(jq -r '.packages[] | select(.name == "Comparator") | .inputRev' lake-manifest.json)"
+              export_rev="$(jq -r '.packages[] | select(.name == "lean4export") | .rev' lake-manifest.json)"
+              if [ "$rev" != "$COMPARATOR_TOOL_SHA" ]; then
+                echo "lake-manifest.json pins Comparator at $rev, this workflow certifies $COMPARATOR_TOOL_SHA"
+                exit 1
+              fi
+              if [ "$input" != "$COMPARATOR_TOOL_REF" ]; then
+                echo "lake-manifest.json records Comparator inputRev '$input', expected ${COMPARATOR_TOOL_REF}"
+                exit 1
+              fi
+              if [ "$export_rev" != "$LEAN4EXPORT_REF" ]; then
+                echo "lake-manifest.json pins lean4export at $export_rev, this workflow certifies ${LEAN4EXPORT_REF}"
+                echo "(its inputRev is 'master', so an ordinary lake update moves it without saying so)"
+                exit 1
+              fi
+              ;;
+            checkout) ;;
+            *)
+              echo "comparator_tool_mode must be 'lake-dep' or 'checkout', got '${MODE}'"
+              exit 1
+              ;;
+          esac
+          # Both modes: the tag is what a consumer publishes as the NAME of that
+          # commit, so it has to keep naming it. Annotated tags report the commit
+          # under the peeled `^{}` ref, lightweight tags directly -- accept
+          # whichever is present, require the tag to exist.
+          refs="$(git ls-remote https://github.com/leanprover/comparator.git \
+                    "refs/tags/${COMPARATOR_TOOL_REF}" "refs/tags/${COMPARATOR_TOOL_REF}^{}")"
+          printf '%s\n' "$refs"
+          resolved="$(printf '%s\n' "$refs" \
+            | awk -v t="refs/tags/${COMPARATOR_TOOL_REF}^{}" '$2 == t { print $1 }')"
+          if [ -z "$resolved" ]; then
+            resolved="$(printf '%s\n' "$refs" \
+              | awk -v t="refs/tags/${COMPARATOR_TOOL_REF}" '$2 == t { print $1 }')"
+          fi
+          if [ -z "$resolved" ]; then
+            echo "tag ${COMPARATOR_TOOL_REF} no longer exists in leanprover/comparator"
+            exit 1
+          fi
+          if [ "$resolved" != "$COMPARATOR_TOOL_SHA" ]; then
+            echo "tag ${COMPARATOR_TOOL_REF} moved: it now names $resolved, we pin $COMPARATOR_TOOL_SHA"
+            exit 1
+          fi
+          # Both modes: the tool is built with THIS project's toolchain, so that
+          # the replay runs on the kernel of the release the project pins -- the
+          # kernel a reader reproducing the check would use (CX-053). The tool's
+          # sources are known to build on their own minor version.
+          toolchain="$(tr -d '[:space:]' < lean-toolchain)"
+          minor="${COMPARATOR_TOOL_REF%.*}"
+          case "$toolchain" in
+            *:"$minor".*) ;;
+            *)
+              echo "comparator ${COMPARATOR_TOOL_REF} is only known to build on ${minor}.x, but lean-toolchain is ${toolchain}"
+              exit 1
+              ;;
+          esac
+          echo "comparator pin OK: ${COMPARATOR_TOOL_REF} = ${COMPARATOR_TOOL_SHA} on ${toolchain}"
+
+      # A manifest that is not committed means CI resolves a different dependency
+      # graph than the workstation did: a lakefile typically pins only the
+      # handful of packages its author cares about, and everything transitive
+      # floats. The manifest is the pin of record.
+      - name: Assert every lake manifest is committed
+        env:
+          SITE_DIR: ${{ inputs.site_dir }}
+          SITE_ENABLED: ${{ inputs.site_enabled }}
+        run: |
+          set -euo pipefail
+          dirs=(".")
+          if [ "$SITE_ENABLED" = "true" ] && [ "$SITE_DIR" != "." ]; then
+            dirs+=("$SITE_DIR")
+          fi
+          for dir in "${dirs[@]}"; do
+            if [ ! -f "$dir/lakefile.lean" ] && [ ! -f "$dir/lakefile.toml" ]; then
+              echo "no lakefile under ${dir}/; nothing to pin there"
+              continue
+            fi
+            case "$dir" in
+              .) manifest="lake-manifest.json" ;;
+              *) manifest="${dir%/}/lake-manifest.json" ;;
+            esac
+            if [ ! -f "$manifest" ]; then
+              echo "${manifest} does not exist. Resolve the workspace once and commit it:"
+              echo "the lakefile pins the packages its author named; everything transitive"
+              echo "floats, so without the manifest this run builds a different graph."
+              exit 1
+            fi
+            if ! git ls-files --error-unmatch "$manifest" >/dev/null 2>&1; then
+              echo "${manifest} exists but is not tracked by git."
+              echo "It is the pin of record and a cache-key input; commit it."
+              exit 1
+            fi
+            echo "manifest committed: ${manifest}"
+          done
+
+      # Prose that states a pin must state the true one.
+      - name: Assert stated pins match lean-toolchain
+        env:
+          PROSE_PIN_FILES: ${{ inputs.prose_pin_files }}
+          SITE_DIR: ${{ inputs.site_dir }}
+          SITE_ENABLED: ${{ inputs.site_enabled }}
+        run: |
+          set -euo pipefail
+          # Compare the toolchain STRINGS, not the bytes: one file may carry a
+          # trailing blank line and the other not, which `cmp` would call a
+          # disagreement and elan does not.
+          root_tc="$(tr -d '[:space:]' < lean-toolchain)"
+          if [ "$SITE_ENABLED" = "true" ] && [ "$SITE_DIR" != "." ] && [ -f "$SITE_DIR/lean-toolchain" ]; then
+            site_tc="$(tr -d '[:space:]' < "$SITE_DIR/lean-toolchain")"
+            if [ "$root_tc" != "$site_tc" ]; then
+              echo "lean-toolchain ('$root_tc') and ${SITE_DIR}/lean-toolchain ('$site_tc') disagree."
+              echo "The site loads the subject's oleans directly, so a divergence here is not a"
+              echo "convention: it is a site that cannot read what it presents."
+              exit 1
+            fi
+          fi
+          if [ -z "$PROSE_PIN_FILES" ]; then
+            echo "prose_pin_files is empty; the stated-pin check is deliberately off."
+            exit 0
+          fi
+          toolchain="${root_tc#*:}"  # leanprover/lean4:v4.33.1 -> v4.33.1
+          files=()
+          for pattern in $PROSE_PIN_FILES; do
+            for match in $pattern; do
+              [ -e "$match" ] && files+=("$match")
+            done
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "prose_pin_files='${PROSE_PIN_FILES}' matched no file in this checkout."
+            echo "A gate that checks nothing is not a gate; fix the paths or set the input empty."
+            exit 1
+          fi
+          # (a) A version named in a "pinned ..." sentence must be the toolchain.
+          #     Whole-file match (`-0777`, `/s`): these sentences wrap across
+          #     lines, so a line-oriented grep would miss them.
+          bad="$(perl -0777 -ne 'while (/[Pp]inned.{0,120}?(v4\.\d+\.\d+)/gs) { print "$ARGV: $1\n" }' \
+                   "${files[@]}" | grep -v ": ${toolchain}\$" || true)"
+          if [ -n "$bad" ]; then
+            echo "stated pin disagrees with lean-toolchain (${toolchain}):"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          # (b) No stray toolchain-shaped version anywhere in those files. The
+          #     only legitimate ones are the toolchain and the comparator tag
+          #     (which the repro instructions quote).
+          stray="$(grep -RhoE 'v4\.[0-9]+\.[0-9]+' "${files[@]}" | sort -u \
+                   | grep -vxF -e "$toolchain" -e "$COMPARATOR_TOOL_REF" || true)"
+          if [ -n "$stray" ]; then
+            echo "unrecognised version token(s) in reader-facing prose:"
+            printf '%s\n' "$stray"
+            exit 1
+          fi
+          echo "stated pins agree with lean-toolchain (${toolchain})."
+
+      # --- The gates' own rejection behaviour, in seconds, before anything
+      #     expensive runs. Each of these decides what may be published; a gate
+      #     is only as good as the forgeries it refuses.
+      - name: Test the comparator result validator against forged records
+        if: inputs.comparator_enabled
+        run: python3 "$CI_DIR/scripts/tests/test_validate_comparator_result.py"
+
+      - name: Test the status-record change detector
+        if: inputs.comparator_enabled
+        run: bash "$CI_DIR/scripts/tests/test_comparator_status_unchanged.sh"
+
+      - name: Test the trust-provenance gate against forged records
+        if: inputs.trust_provenance_gate
+        run: python3 "$CI_DIR/scripts/tests/test_trust_provenance_gate.py"
+
+      # Moved forward from the deploy workflow: it costs seconds here and refuses
+      # in the build job what would otherwise be refused after a release was cut.
+      - name: Test the site-release gate against forged builds
+        if: inputs.site_enabled
+        run: python3 "$CI_DIR/scripts/tests/test_check_site_release.py"
+
+      # formalization.yaml is read by third parties (and by the blueprint's
+      # metadata page) as structured data, so it has to actually satisfy the
+      # published schema rather than merely look like it does.
+      - name: Validate formalization.yaml against the pinned schema
+        if: inputs.formalization_yaml != ''
+        env:
+          FORMALIZATION_YAML: ${{ inputs.formalization_yaml }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          declared="$(grep -m1 '^version:' "$FORMALIZATION_YAML" | tr -d ' "' | cut -d: -f2)"
+          if [ "$declared" != "$FORMALIZATION_SCHEMA_VERSION" ]; then
+            echo "${FORMALIZATION_YAML} declares version '$declared' but CI validates against ${FORMALIZATION_SCHEMA_VERSION}"
+            exit 1
+          fi
+          pipx install "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
+          check-jsonschema \
+            --schemafile "https://raw.githubusercontent.com/mathlib-initiative/formalization.yaml/${FORMALIZATION_SCHEMA_REF}/schema/${FORMALIZATION_SCHEMA_VERSION}.schema.json" \
+            "$FORMALIZATION_YAML"
+
+      # A caller's own `env:` is invisible inside a called workflow, so anything
+      # the build needs in the environment arrives here.
+      - name: Apply the caller's extra build environment
+        if: inputs.extra_build_env != ''
+        env:
+          EXTRA_BUILD_ENV: ${{ inputs.extra_build_env }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$EXTRA_BUILD_ENV" | while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in
+              *=*) echo "$line" >> "$GITHUB_ENV"; echo "exported: ${line%%=*}" ;;
+              *) echo "extra_build_env line is not KEY=VALUE: ${line}"; exit 1 ;;
+            esac
+          done
+
+      # Installs elan + the pinned toolchain, restores the Mathlib olean cache and
+      # builds the subject library. `build-args` is load-bearing and never empty:
+      # a plain `lake build` would elaborate a package whose defaultTargets
+      # include Challenge or Solution HERE (CX-012).
+      #
+      # `axiom-audit` is deliberately OFF. The two machine checks on axioms are
+      # the site's own build-time audit (`verso.blueprint.trust.requireAuditClean`,
+      # which audits every declaration the site presents) and the comparator's
+      # `permitted_axioms` containment check. A third partial audit here was a
+      # third surface for one fact. NOTE the claim this changes: a set-EQUALITY
+      # audit ("exactly these three axioms") is not what the comparator enforces
+      # -- it enforces containment. A consumer that wants "exactly" states it in
+      # its own repository test.
+      - name: Set up Lean and build the subject
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          lake-package-directory: .
+          build-args: ${{ inputs.subject_build_target }}
+          test: false
+          lint: false
+          axiom-audit: "false"
+          use-mathlib-cache: ${{ inputs.mathlib }}
+
+      - name: Assert the subject build produced its oleans
+        env:
+          PROBE: ${{ inputs.subject_olean_probe }}
+        run: |
+          set -euo pipefail
+          if [ ! -e "$PROBE" ]; then
+            echo "the subject build left nothing at ${PROBE}."
+            echo "An empty oleans artifact makes the sandboxed build a no-op and the site"
+            echo "build a recompile; neither is what this run reports."
+            exit 1
+          fi
+          echo "subject build OK: ${PROBE}"
+
+      # The consumer's own check, run here because this is the trusted job and
+      # because Lean is now on PATH (a generated-file fixpoint check needs it).
+      - name: Consumer build check
+        if: inputs.build_check_script != ''
+        env:
+          BUILD_CHECK_SCRIPT: ${{ inputs.build_check_script }}
+        run: bash "$BUILD_CHECK_SCRIPT"
+
+      # The subject oleans are a trusted input to every later job. Ship them as a
+      # tarball so the artifact roundtrip cannot drop hidden files or perturb the
+      # paths and mtimes Lake's traces rest on.
+      - name: Package the subject oleans
+        run: |
+          set -euo pipefail
+          tar -czf "${RUNNER_TEMP}/subject-oleans.tar.gz" .lake/build
+          ls -l "${RUNNER_TEMP}/subject-oleans.tar.gz"
+
+      - name: Upload the subject oleans
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: subject-oleans
+          path: ${{ runner.temp }}/subject-oleans.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Disk space after build
+        run: df -h /
+
+  # =====================================================================
+  # 2. Untrusted verification: the first elaboration of Challenge and
+  #    Solution, inside landrun, with no write token and no OIDC.
+  # =====================================================================
+  comparator:
+    needs: build
+    if: inputs.comparator_enabled
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.comparator_timeout_minutes }}
+    permissions:
+      # Read only, and nothing else: this is the job that runs code the
+      # comparator's threat model treats as hostile.
+      contents: read
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      - name: Disk space after cleanup
+        run: df -h /
+
+      # FIRST, before any checkout. The pinned comparator documents its guarantee
+      # under a systemd-run wrapper with RestrictAddressFamilies=~AF_UNIX, and
+      # says the restriction guards a known landrun escape. Whether the runner
+      # happens to have a user manager session must not silently change the
+      # security property behind an unchanged `verified` verdict (codex-audit
+      # CX-048), so the probe is a gate rather than a hint and nothing untrusted
+      # is elaborated in this job unless the guard is available. The result record
+      # carries af_unix_guard, and the publish validator requires it to be
+      # "active".
+      - name: Assert the AF_UNIX guard is available
+        run: |
+          set -euo pipefail
+          if ! timeout 30 systemd-run --user --pipe --wait --collect \
+                 -p RestrictAddressFamilies=~AF_UNIX -- true >/dev/null 2>&1; then
+            echo "systemd-run --user with RestrictAddressFamilies=~AF_UNIX is unavailable here."
+            echo "The comparator's documented guarantee assumes that guard; this job fails closed"
+            echo "rather than elaborating untrusted Lean without it."
+            exit 1
+          fi
+          echo "COMPARATOR_AF_UNIX_GUARD=active" >> "$GITHUB_ENV"
+          echo "systemd-run AF_UNIX guard: active"
+
+      - name: Check out the consumer (solution + challenge)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+          echo "CI code: ${WORKFLOW_SHA}"
+
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+
+      # The consumer's layout, exported once. Passed through step `env:` rather
+      # than interpolated into the scripts, so a caller's input text is data.
+      - name: Export the consumer's comparator layout
+        env:
+          IN_CONFIG: ${{ inputs.comparator_config }}
+          IN_PROBE_CONFIG: ${{ inputs.comparator_probe_config }}
+          IN_CHALLENGE: ${{ inputs.comparator_challenge }}
+          IN_SOLUTION: ${{ inputs.comparator_solution }}
+        run: |
+          set -euo pipefail
+          for pair in "COMPARATOR_CONFIG=$IN_CONFIG" \
+                      "COMPARATOR_PROBE_CONFIG=$IN_PROBE_CONFIG" \
+                      "COMPARATOR_CHALLENGE=$IN_CHALLENGE" \
+                      "COMPARATOR_SOLUTION=$IN_SOLUTION"; do
+            value="${pair#*=}"
+            [ -n "$value" ] || { echo "empty comparator path: ${pair%%=*}"; exit 1; }
+            [ -f "$value" ] || { echo "${pair%%=*} names ${value}, which is not in this checkout"; exit 1; }
+            echo "$pair" >> "$GITHUB_ENV"
+          done
+
+      - name: Check out leanprover/comparator (pinned commit)
+        if: inputs.comparator_tool_mode == 'checkout'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: leanprover/comparator
+          # The commit, not the tag; the build job asserted the tag names it.
+          ref: ${{ env.COMPARATOR_TOOL_SHA }}
+          # Check the tool out as `comparator-tool`, NOT `comparator`: consumers
+          # track a `comparator/` directory (Challenge/Solution + JSON), which
+          # `path: comparator` would have actions/checkout clobber.
+          path: comparator-tool
+          persist-credentials: false
+
+      # The tool must be built with THIS project's toolchain: lean4export and the
+      # comparator read the project's oleans, which carry a compiler stamp, and
+      # the replay then runs on the kernel of the release the project pins.
+      # (`lake-dep` mode gets this by construction -- the tool IS a workspace
+      # dependency -- which is why this step exists only for `checkout`.)
+      - name: Pin the comparator tool to this project's toolchain
+        if: inputs.comparator_tool_mode == 'checkout'
+        run: |
+          set -euo pipefail
+          head="$(git -C comparator-tool rev-parse HEAD)"
+          if [ "$head" != "$COMPARATOR_TOOL_SHA" ]; then
+            echo "comparator checkout is at $head, expected $COMPARATOR_TOOL_SHA"
+            exit 1
+          fi
+          toolchain="$(tr -d '[:space:]' < lean-toolchain)"
+          printf '%s\n' "$toolchain" > comparator-tool/lean-toolchain
+          cat comparator-tool/lean-toolchain
+
+      # --- Sandbox + second-kernel verifier binaries -------------------------
+      # Real landrun (Landlock) replaces the tool's fake-landrun.sh no-op shim,
+      # and nanoda_bin provides the independent second kernel for enable_nanoda.
+      # Both are SHA-pinned and cached; no restore-keys on purpose -- a binary at
+      # the wrong SHA must never be silently reused, a miss just rebuilds (~2-3
+      # min).
+      - name: Restore verifier binaries (landrun + nanoda)
+        id: verifier-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.verifier-bin
+          key: ${{ runner.os }}-verifiers-v1-${{ env.LANDRUN_REF }}-${{ env.NANODA_REF }}
+
+      - name: Build landrun (cache miss only)
+        if: steps.verifier-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.verifier-bin"
+          # Module path is lowercase (module github.com/zouuup/landrun); the
+          # proxy + sumdb verify the module zip and all deps at this exact SHA.
+          GOBIN="$HOME/.verifier-bin" go install "github.com/zouuup/landrun/cmd/landrun@${LANDRUN_REF}"
+
+      - name: Build nanoda_bin (cache miss only)
+        if: steps.verifier-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.verifier-bin"
+          git clone "$NANODA_REPOSITORY.git" "$RUNNER_TEMP/nanoda_lib"
+          git -C "$RUNNER_TEMP/nanoda_lib" checkout --detach "$NANODA_REF"
+          # nanoda_lib commits Cargo.lock, so --locked pins the crate graph.
+          cargo build --release --locked --manifest-path "$RUNNER_TEMP/nanoda_lib/Cargo.toml"
+          install -m 0755 "$RUNNER_TEMP/nanoda_lib/target/release/nanoda_bin" "$HOME/.verifier-bin/nanoda_bin"
+
+      - name: Expose verifier binaries
+        run: |
+          set -euo pipefail
+          test -x "$HOME/.verifier-bin/landrun"
+          test -x "$HOME/.verifier-bin/nanoda_bin"
+          echo "COMPARATOR_LANDRUN=$HOME/.verifier-bin/landrun" >> "$GITHUB_ENV"
+          echo "COMPARATOR_NANODA=$HOME/.verifier-bin/nanoda_bin" >> "$GITHUB_ENV"
+
+      # The landrun (go) + nanoda (cargo) binaries are now safely in
+      # ~/.verifier-bin (and cached); their multi-GB build trees are dead weight
+      # before the Mathlib-heavy phases. Everything here is tolerant of a
+      # cache-hit run where the build trees were never created.
+      - name: Prune verifier build trees
+        run: |
+          set -uo pipefail
+          rm -rf "$RUNNER_TEMP/nanoda_lib" || true          # cargo target/ + sources
+          go clean -cache 2>/dev/null || true               # $HOME/.cache/go-build
+          rm -rf "$HOME/go/pkg/mod" 2>/dev/null || true     # go module cache
+          df -h /
+
+      - name: Landlock sandbox self-test
+        run: bash "$CI_DIR/scripts/landlock_selftest.sh"
+
+      # elan + the Mathlib packages only. `build: false` is the whole point: no
+      # Lean of this repository is elaborated in this job outside the sandbox.
+      # (The comparator tool and lean4export ARE built below -- they are the
+      # verifier, not the subject, and they are pinned by commit.)
+      - name: Set up Lean and the dependency cache (no build)
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          lake-package-directory: .
+          build: "false"
+          test: false
+          lint: false
+          use-mathlib-cache: ${{ inputs.mathlib }}
+
+      # Inside the sandbox every path but the project's .lake is read-only and TCP
+      # is denied, so elan can neither download a toolchain nor install one. Have
+      # it on disk before landrun starts.
+      - name: Pre-install the pinned toolchain
+        run: |
+          set -euo pipefail
+          elan toolchain install "$(tr -d '[:space:]' < lean-toolchain)"
+          elan toolchain list
+
+      - name: Download the subject oleans
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: subject-oleans
+          path: ${{ runner.temp }}/subject-oleans
+
+      - name: Unpack the subject oleans
+        env:
+          PROBE: ${{ inputs.subject_olean_probe }}
+          STALE_GUARD: ${{ inputs.stale_olean_guard }}
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/subject-oleans/subject-oleans.tar.gz" -C .
+          test -e "$PROBE"
+          # CX-012 from the other side: the sandboxed build must be a real COLD
+          # build of the comparator modules. If the artifact ever carried their
+          # oleans, `lake build <solution>` inside landrun would be a no-op and
+          # the run would certify nothing.
+          for stale in $STALE_GUARD; do
+            if [ -e ".lake/build/lib/lean/${stale}.olean" ]; then
+              echo "the subject artifact contains ${stale}.olean: the sandboxed build would be a no-op"
+              exit 1
+            fi
+          done
+
+      - name: Build the comparator tool and lean4export
+        env:
+          MODE: ${{ inputs.comparator_tool_mode }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            lake-dep)
+              # `Comparator/comparator` is the package-qualified exe target;
+              # `lean4export` names a package and builds its default target.
+              # Neither pulls in Challenge or Solution.
+              lake build Comparator/comparator lean4export
+              comparator_bin="${GITHUB_WORKSPACE}/.lake/packages/Comparator/.lake/build/bin/comparator"
+              lean4export_bin="${GITHUB_WORKSPACE}/.lake/packages/lean4export/.lake/build/bin/lean4export"
+              tool_toolchain="$(tr -d '[:space:]' < lean-toolchain)"
+              ;;
+            checkout)
+              ( cd comparator-tool && lake build lean4export comparator )
+              comparator_bin="${GITHUB_WORKSPACE}/comparator-tool/.lake/build/bin/comparator"
+              lean4export_bin="${GITHUB_WORKSPACE}/comparator-tool/.lake/packages/lean4export/.lake/build/bin/lean4export"
+              tool_toolchain="$(tr -d '[:space:]' < comparator-tool/lean-toolchain)"
+              ;;
+          esac
+          test -x "$comparator_bin"
+          test -x "$lean4export_bin"
+          {
+            echo "COMPARATOR_BIN=$comparator_bin"
+            echo "COMPARATOR_LEAN4EXPORT=$lean4export_bin"
+            echo "COMPARATOR_TOOL_TOOLCHAIN=$tool_toolchain"
+          } >> "$GITHUB_ENV"
+
+      - name: Trusted pre-run sandbox self-test
+        run: bash "$CI_DIR/scripts/sandbox_selftest.sh"
+
+      # --- Integrity across the verification gap -----------------------------
+      - name: Hash the verification inputs (before)
+        run: |
+          set -euo pipefail
+          echo "COMPARATOR_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          bash "$CI_DIR/scripts/hash_inputs.sh" "${RUNNER_TEMP}/hashes-before.json"
+
+      # The step NAME is load-bearing: the publish job resolves the comparator
+      # page's "View CI run" deep link by looking this step up by name.
+      - name: Run comparator
+        run: |
+          set -euo pipefail
+          # Run from the consumer root so `lake env` supplies the workspace's
+          # LEAN_PATH to the comparator and its child `lake` invocations, and so
+          # the tool's `projectDir := cwd` is this checkout.
+          cmd=(lake env "${COMPARATOR_BIN}" "${COMPARATOR_CONFIG}")
+          # The AF_UNIX guard was asserted available at the top of this job and is
+          # applied unconditionally here. There is no unwrapped fallback: a run
+          # without the guard is a different security property and must not reach
+          # the same verdict (CX-048).
+          test "${COMPARATOR_AF_UNIX_GUARD}" = "active"
+          exec systemd-run --user --pipe --wait --collect \
+            -p RestrictAddressFamilies=~AF_UNIX \
+            --working-directory "$PWD" \
+            -E PATH="$PATH" \
+            -E COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+            -E COMPARATOR_NANODA="$COMPARATOR_NANODA" \
+            -E COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+            -- "${cmd[@]}"
+
+      - name: Hash the verification inputs (after)
+        run: |
+          set -euo pipefail
+          echo "COMPARATOR_FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          bash "$CI_DIR/scripts/hash_inputs.sh" "${RUNNER_TEMP}/hashes-after.json"
+
+      # DEFENSE IN DEPTH, not the containment evidence. The containment evidence
+      # is the trusted pre-run self-test above; this re-runs the same shape of
+      # check through the comparator's own driver and against the real solution's
+      # imports, which the scratch package deliberately does not have.
+      #
+      # Its known limitation (CX-051): the probe module is a REPOSITORY file, so a
+      # fixture edited to throw the sentinel without attempting anything would
+      # satisfy all three predicates below. That is precisely why it is no longer
+      # the first or the only evidence. The predicates are kept because they still
+      # detect a real regression in the driver, and they still fail closed.
+      - name: Denied-write probe (defense in depth)
+        run: |
+          set -uo pipefail
+          log="${RUNNER_TEMP}/probe.log"
+          set +e
+          lake env "${COMPARATOR_BIN}" "${COMPARATOR_PROBE_CONFIG}" > "$log" 2>&1
+          rc=$?
+          set -e
+          cat "$log"
+          for canary in "${GITHUB_WORKSPACE}/comparator-probe-canary" "${HOME}/comparator-probe-canary"; do
+            if [ -e "$canary" ]; then
+              echo "SANDBOX BREACH: the probe wrote $canary from inside the sandbox"
+              exit 1
+            fi
+          done
+          if [ "$rc" -eq 0 ]; then
+            echo "SANDBOX BREACH: the probe solution elaborated and verified; its write was not denied"
+            exit 1
+          fi
+          if ! grep -q 'COMPARATOR_PROBE_WRITES_DENIED' "$log"; then
+            echo "the probe run failed without the denial sentinel: cannot conclude the sandbox blocked the write"
+            exit 1
+          fi
+          echo "probe OK: the elaboration-time writes were denied (comparator exit ${rc})"
+          jq -n --arg config "$COMPARATOR_PROBE_CONFIG" --argjson rc "$rc" \
+                --arg tier "defense-in-depth" \
+            '{config: $config, exit_code: $rc, denied: true, tier: $tier}' > "${RUNNER_TEMP}/probe.json"
+
+      - name: Compose the comparator result record
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/result"
+          bash "$CI_DIR/scripts/compose_result_record.sh" "${RUNNER_TEMP}/result/comparator-result.json"
+          cp "${RUNNER_TEMP}/hashes-before.json" "${RUNNER_TEMP}/hashes-after.json" \
+             "${RUNNER_TEMP}/probe.log" "${RUNNER_TEMP}/selftest-unsandboxed.log" \
+             "${RUNNER_TEMP}/selftest-sandboxed.log" "${RUNNER_TEMP}/result/"
+
+      - name: Upload the comparator result record
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: comparator-result
+          path: ${{ runner.temp }}/result
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Disk space after verification
+        run: df -h /
+
+  # =====================================================================
+  # 3. Trusted publication. The only job that can write to the repository.
+  # =====================================================================
+  publish:
+    needs: [build, comparator]
+    # `inputs` IS available in a job-level `if:`, so the publish branch is
+    # single-sourced here. hopf's literal-plus-drift-assertion and a362583's
+    # duplicated DEPLOYABLE both become unnecessary.
+    if: >-
+      !cancelled()
+      && github.ref_name == inputs.publish_branch
+      && needs.build.result == 'success'
+      && (needs.comparator.result == 'success' || needs.comparator.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # commit the status artifact / pins back (push events only)
+      actions: read     # resolve the step-level deep link into the comparator job's log
+    outputs:
+      verdict: ${{ steps.verdict.outputs.verdict }}
+      site_ref: ${{ steps.site_ref.outputs.sha }}
+      # THE deploy predicate. Computed once, read by the trust-provenance gate
+      # (`--deployable`) and by site-release's `if:`. codex-audit CX-079 was
+      # about two spellings of this that could not share a reference; a job
+      # output can be referenced, so the finding dissolves structurally rather
+      # than being held together by a text assertion.
+      deployable: ${{ steps.deployable.outputs.deployable }}
+      site_pin_current: ${{ steps.deployable.outputs.site_pin_current }}
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      - name: Check out the consumer
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Do NOT leave the write-capable token in .git/config for the whole
+          # job. The commit-back step below authenticates its single push.
+          persist-credentials: false
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+          echo "CI code: ${WORKFLOW_SHA}"
+
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+
+      # A determinate negative is worth failing on; an indeterminate answer is
+      # not. `GET /repos/{owner}/{repo}` reports the token's own push permission
+      # on github.com, so a caller that forgot `contents: write` is told here,
+      # with the block it has to add, rather than at the push five minutes later.
+      # If the field is absent or the call fails, this step says so and continues:
+      # a probe that cannot tell must not pretend either way.
+      - name: Report the permissions this workflow needs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          push="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.permissions.push // empty' 2>/dev/null || true)"
+          if [ "$push" = "false" ]; then
+            echo "This job's token cannot write to ${GITHUB_REPOSITORY}."
+            echo "The calling job must declare:"
+            echo "    permissions:"
+            echo "      contents: write   # the status / pin commit-backs"
+            echo "      actions: read     # the step-level CI deep link"
+            exit 1
+          fi
+          if [ -z "$push" ]; then
+            echo "::notice::could not determine this token's push permission; continuing. A missing contents: write will surface at the commit-back."
+          else
+            echo "token push permission: ${push}"
+          fi
+
+      - name: Export the consumer's comparator layout
+        if: inputs.comparator_enabled
+        env:
+          IN_CONFIG: ${{ inputs.comparator_config }}
+          IN_PROBE_CONFIG: ${{ inputs.comparator_probe_config }}
+          IN_CHALLENGE: ${{ inputs.comparator_challenge }}
+          IN_SOLUTION: ${{ inputs.comparator_solution }}
+          IN_STATUS: ${{ inputs.comparator_status }}
+          IN_KERNEL_IDENTITY_PINS: ${{ inputs.kernel_identity_pins }}
+        run: |
+          set -euo pipefail
+          {
+            echo "COMPARATOR_CONFIG=$IN_CONFIG"
+            echo "COMPARATOR_PROBE_CONFIG=$IN_PROBE_CONFIG"
+            echo "COMPARATOR_CHALLENGE=$IN_CHALLENGE"
+            echo "COMPARATOR_SOLUTION=$IN_SOLUTION"
+            echo "COMPARATOR_STATUS=$IN_STATUS"
+            echo "KERNEL_IDENTITY_PINS=$IN_KERNEL_IDENTITY_PINS"
+          } >> "$GITHUB_ENV"
+
+      - name: Download the comparator result record
+        if: inputs.comparator_enabled
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: comparator-result
+          path: ${{ runner.temp }}/result
+
+      # Nothing downstream may take the result record on faith. The record is the
+      # sole input to the write-capable status refresh below, so every field it
+      # publishes is re-derived or compared here against something this job
+      # trusts: the workflow constants above, the checked-out comparator config,
+      # the GitHub context, this job's own `job.workflow_*`, this checkout's
+      # source digests, and this job's clock. Unknown keys are rejected too -- a
+      # validator that ignores the fields it was not taught about is how a record
+      # with correct public claims and forged provenance gets republished as
+      # verifier evidence (CX-052). The validator's rejection behaviour is itself
+      # tested, in the build job, against forged fixtures.
+      #
+      # No Lean runs in this job at all, so CX-072 (a publish job that called
+      # `lake` without ever installing a toolchain) has no counterpart here -- but
+      # the rule behind it does: a step that calls `lake` needs its own toolchain
+      # setup, because a job split does not inherit one.
+      - name: Validate the result record against this job's trusted inputs
+        if: inputs.comparator_enabled
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          cat "${RUNNER_TEMP}/result/comparator-result.json"
+          toolchain="$(tr -d '[:space:]' < lean-toolchain)"
+          tool_toolchain="$(jq -r '.tool_toolchain' "${RUNNER_TEMP}/result/comparator-result.json")"
+          # Both modes build the tool on the project's toolchain (CX-053), which
+          # is the property being asserted -- not a value read back out of the
+          # record and compared with itself.
+          if [ "$tool_toolchain" != "$toolchain" ]; then
+            echo "the record says the tool was built with '${tool_toolchain}', this project pins '${toolchain}'"
+            exit 1
+          fi
+          python3 "$CI_DIR/scripts/validate_comparator_result.py" \
+            --result "${RUNNER_TEMP}/result/comparator-result.json" \
+            --config-file "$COMPARATOR_CONFIG" \
+            --config-path "$COMPARATOR_CONFIG" \
+            --probe-config "$COMPARATOR_PROBE_CONFIG" \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --commit "$GITHUB_SHA" \
+            --toolchain "$toolchain" \
+            --tool-ref "$COMPARATOR_TOOL_REF" \
+            --tool-sha "$COMPARATOR_TOOL_SHA" \
+            --tool-toolchain "$toolchain" \
+            --landrun-ref "$LANDRUN_REF" \
+            --nanoda-ref "$NANODA_REF" \
+            --nanoda-repository "$NANODA_REPOSITORY" \
+            --workflow-repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --af-unix-guard active \
+            --selftest-tier pre-run-trusted \
+            --probe-tier defense-in-depth \
+            --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --max-age-seconds 43200 \
+            --hash-file "comparator_config=${COMPARATOR_CONFIG}" \
+            --hash-file "challenge_lean=${COMPARATOR_CHALLENGE}" \
+            --hash-file "solution_lean=${COMPARATOR_SOLUTION}"
+
+      # THE deploy predicate, and the "is this commit already published" answer,
+      # computed once and exported as job outputs.
+      - name: Compute the deploy predicate
+        id: deployable
+        env:
+          SITE_PIN: ${{ inputs.site_pin }}
+        run: |
+          set -euo pipefail
+          # This job only runs on the publish branch, so what remains to decide is
+          # whether the event can publish at all. A pull_request run builds,
+          # verifies and gates everything -- and writes nothing.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            deployable=false
+          else
+            deployable=true
+          fi
+          echo "deployable=${deployable}" >> "$GITHUB_OUTPUT"
+          echo "deploy predicate: ${deployable} (event ${GITHUB_EVENT_NAME}, branch ${GITHUB_REF_NAME})"
+          # Release-spam layer 1: a re-run or dispatch on a commit whose site is
+          # already published and pinned regenerates nothing.
+          current=false
+          if [ -f "$SITE_PIN" ]; then
+            pinned="$(jq -r '.generationRevision // ""' "$SITE_PIN" 2>/dev/null || true)"
+            if [ -n "$pinned" ] && [ "$pinned" = "$(git rev-parse HEAD)" ]; then
+              current=true
+              echo "::notice::${SITE_PIN} already names HEAD ($pinned); the site jobs are skipped."
+            fi
+          fi
+          echo "site_pin_current=${current}" >> "$GITHUB_OUTPUT"
+
+      # Resolve a STEP-level deep link to the "Run comparator" step, so the
+      # comparator page's "View CI run" link lands the reader on the kernel replay
+      # in the logs, not just the run summary. The lookup is by STEP name, so it
+      # does not care which job the step lives in. Best-effort: ANY failure of the
+      # API / jq lookup falls back to the run-level URL -- this step MUST never
+      # fail the job (hence `set -uo pipefail` without `-e`, and `|| true` on
+      # every lookup).
+      - name: Resolve CI run deep link
+        if: inputs.comparator_enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          fallback="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          deep=""
+          jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" 2>/dev/null || true)"
+          if [ -n "$jobs_json" ]; then
+            job="$(printf '%s' "$jobs_json" | jq -c 'first(.jobs[] | select(any(.steps[]?; .name == "Run comparator")))' 2>/dev/null || true)"
+            if [ -n "$job" ] && [ "$job" != "null" ]; then
+              job_id="$(printf '%s' "$job" | jq -r '.id // empty' 2>/dev/null || true)"
+              step_no="$(printf '%s' "$job" | jq -r 'first(.steps[]? | select(.name == "Run comparator") | .number) // empty' 2>/dev/null || true)"
+              if [ -n "$job_id" ] && [ -n "$step_no" ]; then
+                deep="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/job/${job_id}#step:${step_no}:1"
+              fi
+            fi
+          fi
+          url="${deep:-$fallback}"
+          echo "CI_RUN_URL=$url" >> "$GITHUB_ENV"
+          echo "Resolved CI_RUN_URL=$url"
+
+      # Composing the status is not the same as committing it. The status file is
+      # an ELABORATION-TIME trust input of the site -- an `input_file` freshness
+      # edge -- so rewriting it invalidates the warm build and costs a full
+      # regeneration. So the composed record is compared against the committed one
+      # first, by strict JSON equality over the verdict, the input hashes, the
+      # challenge chain, the certified claim and the verifier identities. Where
+      # those agree, this run re-verified the same bytes with the same verifiers
+      # and has nothing new to say. Missing, unreadable or incomplete committed
+      # records count as CHANGED -- the rewrite is suppressed only on positive
+      # evidence that it is unnecessary.
+      - name: Refresh the comparator status if this run changed it
+        if: inputs.comparator_enabled
+        env:
+          MODE: ${{ inputs.comparator_tool_mode }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          res="${RUNNER_TEMP}/result/comparator-result.json"
+          candidate="${RUNNER_TEMP}/comparator-status.json"
+          case "$MODE" in
+            lake-dep) export COMPARATOR_TOOL_ORIGIN="built from this project as a Lake dependency with " ;;
+            checkout) export COMPARATOR_TOOL_ORIGIN="built with " ;;
+          esac
+          bash "$CI_DIR/scripts/compose_status_record.sh" "$res" "$candidate"
+          # Exit 0 = the committed record already states this verdict for these
+          # inputs and these verifiers. Anything else means refresh.
+          if bash "$CI_DIR/scripts/comparator_status_unchanged.sh" "$COMPARATOR_STATUS" "$candidate"; then
+            prev_commit="$(jq -r '.commit // "an unrecorded commit"' "$COMPARATOR_STATUS")"
+            prev_run="$(jq -r '.run_url // "an unrecorded run"' "$COMPARATOR_STATUS")"
+            echo "::notice::comparator verdict unchanged: this run re-verified the same input hashes and verifier identities already certified at commit ${prev_commit} (${prev_run}), so ${COMPARATOR_STATUS} is left as it is and this run's record is uploaded as an artifact only."
+            exit 0
+          fi
+          mkdir -p "$(dirname "$COMPARATOR_STATUS")"
+          cp "$candidate" "$COMPARATOR_STATUS"
+          echo "refreshed ${COMPARATOR_STATUS} from this run."
+
+      # The second, consumer-controlled half of CX-064. The run's own identity
+      # record establishes nothing on its own -- a producer who writes sixty-four
+      # hex characters into a field named `executable_sha256` earns whatever tier
+      # reads it. The site therefore authenticates that record against a pin
+      # committed in the consumer's own tree.
+      #
+      # So this step ASSERTS, it does not refresh: a committed pin that disagrees
+      # with the run fails the job and asks for a deliberate re-pin. A pin
+      # regenerated from the same run it is supposed to authenticate would agree
+      # with it by construction and check nothing. The file is written only when
+      # it is absent, to bootstrap the first run, and that write is announced.
+      #
+      # Deliberately WITHOUT `executable_sha256`: nanoda is `cargo build`-ed on
+      # the runner, so its digest moves whenever the hosted image's Rust moves. A
+      # pin on a value neither the site author nor this workflow can reproduce
+      # would either red the build on unrelated image bumps or, if auto-refreshed,
+      # authenticate nothing. Repository and revision are the parts a human
+      # actually chose. The digest is still published, as run evidence, in the
+      # status record.
+      - name: Check the pinned checker identities
+        if: inputs.comparator_enabled
+        run: |
+          set -euo pipefail
+          res="${RUNNER_TEMP}/result/comparator-result.json"
+          recorded_repo="$(jq -r '.kernel_identities[0].repository' "$res")"
+          recorded_commit="$(jq -r '.kernel_identities[0].source_commit' "$res")"
+          if [ ! -f "$KERNEL_IDENTITY_PINS" ]; then
+            mkdir -p "$(dirname "$KERNEL_IDENTITY_PINS")"
+            jq -n --arg repo "$recorded_repo" --arg commit "$recorded_commit" \
+              '[{label: "nanoda", repository: $repo, source_commit: $commit}]' \
+              > "$KERNEL_IDENTITY_PINS"
+            echo "::notice::bootstrapped ${KERNEL_IDENTITY_PINS} from this run; review it — from here on it is a pin this workflow only checks, never rewrites"
+            cat "$KERNEL_IDENTITY_PINS"
+            exit 0
+          fi
+          pin_repo="$(jq -r 'map(select(.label == "nanoda")) | .[0].repository // ""' "$KERNEL_IDENTITY_PINS")"
+          pin_commit="$(jq -r 'map(select(.label == "nanoda")) | .[0].source_commit // ""' "$KERNEL_IDENTITY_PINS")"
+          if [ "$pin_repo" != "$recorded_repo" ] || [ "$pin_commit" != "$recorded_commit" ]; then
+            echo "${KERNEL_IDENTITY_PINS} disagrees with the checker this run used:"
+            echo "  pinned:   ${pin_repo} @ ${pin_commit}"
+            echo "  this run: ${recorded_repo} @ ${recorded_commit}"
+            echo "if NANODA_REF was bumped deliberately, update the pin in the SAME commit;"
+            echo "the pin is what makes the run's own identity record worth anything."
+            exit 1
+          fi
+          echo "checker identity pin OK: nanoda ${pin_repo} @ ${pin_commit}"
+
+      # What is in the tree -- i.e. what a commit-back would push. On a run that
+      # deliberately did not rewrite the status, this is the older record, which is
+      # the honest thing for an artifact named "published" to contain.
+      - name: Upload the published status artifact
+        if: inputs.comparator_enabled
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: comparator-status
+          path: |
+            ${{ inputs.comparator_status }}
+            ${{ inputs.kernel_identity_pins }}
+          retention-days: 30
+          if-no-files-found: error
+
+      # What THIS run would have written, always -- including the runs that leave
+      # the committed record alone. Otherwise a run that re-verified the same
+      # inputs would leave no machine-readable trace of what it checked, and the
+      # decision not to rewrite would rest on the log alone.
+      - name: Upload this run's status record
+        if: inputs.comparator_enabled
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: comparator-status-this-run
+          path: ${{ runner.temp }}/comparator-status.json
+          retention-days: 30
+          if-no-files-found: error
+
+      # Only on a real push. On PR / dispatch the refreshed files stay on disk and
+      # in the artifacts above, but nothing is pushed. The GITHUB_TOKEN push does
+      # not re-fire `push:` (and the caller's paths-ignore double-guards it). The
+      # token is supplied only to this step's single push -- persist-credentials
+      # is false on checkout, so nothing lives in .git/config.
+      #
+      # The author is github-actions[bot] and the trailer names the CI code, not a
+      # model: these commits are machine-authored, and three different model names
+      # for identical machine commits told a reader nothing true.
+      - name: Commit the status artifact back
+        if: inputs.comparator_enabled && github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_BRANCH: ${{ inputs.publish_branch }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          # `git add` first, then `--cached`: on the very first run these files are
+          # untracked, and `git diff` against the worktree reports no change for a
+          # path git does not know about.
+          git add -- "$COMPARATOR_STATUS" "$KERNEL_IDENTITY_PINS"
+          if git diff --cached --quiet; then
+            echo "No change to the status artifact; skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit \
+            -m "comparator: verified" \
+            -m "Generated-By: showcase-ci ${WORKFLOW_SHA}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${PUBLISH_BRANCH}"
+
+      - name: Record the verdict
+        id: verdict
+        env:
+          COMPARATOR_ENABLED: ${{ inputs.comparator_enabled }}
+        run: |
+          set -euo pipefail
+          if [ "$COMPARATOR_ENABLED" = "true" ]; then
+            echo "verdict=verified" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=skipped" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record the revision left on the publish branch
+        id: site_ref
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # =====================================================================
+  # 4. The blueprint site, staged. Two jobs because the hosted-runner job
+  #    limit is six hours and a large registry pass is a multi-hour job;
+  #    each restores the same environment and hands the next its product.
+  #
+  #    One topology for everyone: a small consumer pays a second Lean setup
+  #    and an artifact round-trip (a few minutes), and the ceiling that
+  #    cancelled hopf's 2026-08-28 run is structurally out of reach.
+  #
+  #    These run on EVERY branch, not only the publish branch. When `publish`
+  #    is predicate-skipped, the site is still built, gated and packaged --
+  #    it simply cannot be released. That is what makes a dry run on a
+  #    feature branch free and complete.
+  # =====================================================================
+  site-contents:
+    needs: [build, comparator, publish]
+    if: >-
+      !cancelled()
+      && inputs.site_enabled
+      && needs.build.result == 'success'
+      && (needs.comparator.result == 'success' || needs.comparator.result == 'skipped')
+      && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+      && needs.publish.outputs.site_pin_current != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.stage_timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      # The revision the publish job left on the publish branch: github.sha plus,
+      # on push events where the verdict moved, the status commit-back. The site
+      # reads that status at elaboration, so it is built from the commit that
+      # carries it. When publish was skipped there is no such commit and
+      # github.sha is the revision.
+      - name: Check out the revision the site is built from
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.publish.outputs.site_ref || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+
+      # Only the three forks are cached: they compile from source in ~10 minutes
+      # and change with the manifest. Mathlib is NOT cached -- it would churn the
+      # repository's cache budget -- and comes from the Mathlib olean cache server.
+      - name: Restore the fork packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ${{ inputs.site_dir }}/.lake/packages/verso
+            ${{ inputs.site_dir }}/.lake/packages/subverso
+            ${{ inputs.site_dir }}/.lake/packages/VersoBlueprint
+          key: ${{ runner.os }}-site-forks-v1-${{ hashFiles(format('{0}/lean-toolchain', inputs.site_dir), format('{0}/lake-manifest.json', inputs.site_dir)) }}
+
+      - name: Set up Lean for the site build
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          lake-package-directory: ${{ inputs.site_dir }}
+          build: "false"
+          test: false
+          lint: false
+
+      - name: Get the Mathlib olean cache
+        if: inputs.mathlib
+        working-directory: ${{ inputs.site_dir }}
+        run: lake exe cache get || true
+
+      - name: Download the subject oleans
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: subject-oleans
+          path: ${{ runner.temp }}/subject-oleans
+
+      - name: Unpack the subject oleans
+        env:
+          PROBE: ${{ inputs.subject_olean_probe }}
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/subject-oleans/subject-oleans.tar.gz" -C .
+          test -e "$PROBE"
+
+      - name: Disk space before the site build
+        run: df -h /
+
+      # For tools the generator probes for during ELABORATION rather than at
+      # generation -- they have to exist before the contents pass. NOT
+      # continue-on-error: the driver probe-and-degrades, so a failure here would
+      # otherwise publish the honest "tool unavailable" notice instead of the
+      # surface, quietly and forever.
+      - name: Site prebuild
+        if: inputs.site_prebuild_command != ''
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          SITE_PREBUILD_COMMAND: ${{ inputs.site_prebuild_command }}
+        run: eval "$SITE_PREBUILD_COMMAND"
+
+      # CI_RUN_URL is deliberately EMPTY. The comparator page's published link is
+      # `run_url` from the status record, which moves only when the verdict moves;
+      # `ciRunUrl` is merely its fallback. Baking a run id into the site made
+      # every run's bytes differ, which cut a release every run.
+      - name: Build the site contents
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          CI_RUN_URL: ""
+          SITE_CONTENTS_COMMAND: ${{ inputs.site_contents_command }}
+        run: eval "$SITE_CONTENTS_COMMAND"
+
+      - name: Package the site build
+        env:
+          SITE_DIR: ${{ inputs.site_dir }}
+        run: |
+          set -euo pipefail
+          tar -czf "${RUNNER_TEMP}/site-build.tar.gz" "${SITE_DIR%/}/.lake/build"
+          ls -l "${RUNNER_TEMP}/site-build.tar.gz"
+
+      - name: Upload the site build
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: site-build
+          path: ${{ runner.temp }}/site-build.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  site-generate:
+    needs: [build, comparator, publish, site-contents]
+    if: >-
+      !cancelled()
+      && needs.site-contents.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.stage_timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
+
+      - name: Check out the revision the site is built from
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.publish.outputs.site_ref || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out Showcase (the CI code)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: _showcase
+          persist-credentials: false
+
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+
+      - name: Stage the CI code outside the workspace
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ci"
+          cp -R _showcase/ci "${RUNNER_TEMP}/ci"
+          rm -rf _showcase
+          echo "CI_DIR=${RUNNER_TEMP}/ci" >> "$GITHUB_ENV"
+
+      - name: Restore the fork packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ${{ inputs.site_dir }}/.lake/packages/verso
+            ${{ inputs.site_dir }}/.lake/packages/subverso
+            ${{ inputs.site_dir }}/.lake/packages/VersoBlueprint
+          key: ${{ runner.os }}-site-forks-v1-${{ hashFiles(format('{0}/lean-toolchain', inputs.site_dir), format('{0}/lake-manifest.json', inputs.site_dir)) }}
+
+      - name: Set up Lean for the site build
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1.6.0
+        with:
+          lake-package-directory: ${{ inputs.site_dir }}
+          build: "false"
+          test: false
+          lint: false
+
+      - name: Get the Mathlib olean cache
+        if: inputs.mathlib
+        working-directory: ${{ inputs.site_dir }}
+        run: lake exe cache get || true
+
+      - name: Download the subject oleans
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: subject-oleans
+          path: ${{ runner.temp }}/subject-oleans
+
+      - name: Unpack the subject oleans
+        env:
+          PROBE: ${{ inputs.subject_olean_probe }}
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/subject-oleans/subject-oleans.tar.gz" -C .
+          test -e "$PROBE"
+
+      - name: Download the site build
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: site-build
+          path: ${{ runner.temp }}/site-build
+
+      - name: Unpack the site build
+        env:
+          SITE_DIR: ${{ inputs.site_dir }}
+        run: |
+          set -euo pipefail
+          tar -xzf "${RUNNER_TEMP}/site-build/site-build.tar.gz" -C .
+          # An empty artifact would not fail here, it would silently turn the
+          # completeness check below into a full cold rebuild inside this job's
+          # timeout. Say so instead.
+          test -d "${SITE_DIR%/}/.lake/build"
+
+      - name: Site prebuild
+        if: inputs.site_prebuild_command != ''
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          SITE_PREBUILD_COMMAND: ${{ inputs.site_prebuild_command }}
+        run: eval "$SITE_PREBUILD_COMMAND"
+
+      # A no-op against the unpacked build (Lake's traces are content hashes), and
+      # the safety net if the fork cache did not restore: the forks recompile to
+      # identical traces and the contents library stays up to date.
+      - name: Check the site build is complete
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          CI_RUN_URL: ""
+          SITE_CONTENTS_COMMAND: ${{ inputs.site_contents_command }}
+        run: eval "$SITE_CONTENTS_COMMAND"
+
+      - name: Generate the site
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          SITE_GENERATE_COMMAND: ${{ inputs.site_generate_command }}
+          SITE_OUT: ${{ inputs.site_out }}
+        run: |
+          set -euo pipefail
+          rm -rf "$(dirname "$SITE_OUT")"
+          eval "$SITE_GENERATE_COMMAND"
+          du -sh "$SITE_OUT"
+
+      - name: Gates
+        working-directory: ${{ inputs.site_dir }}
+        env:
+          SITE_OUT: ${{ inputs.site_out }}
+          SITE_LAKEFILE: ${{ inputs.site_lakefile }}
+          REQUIRED_SITE_FILES: ${{ inputs.required_site_files }}
+          MIN_SITE_FILES: ${{ inputs.min_site_files }}
+          SOURCE_LINK_GATE: ${{ inputs.source_link_gate }}
+          TRUST_PROVENANCE_GATE: ${{ inputs.trust_provenance_gate }}
+          # THE deploy predicate, computed once by the publish job and read here
+          # by reference (codex-audit CX-079). Empty when publish was skipped,
+          # which is not deployable.
+          DEPLOYABLE: ${{ needs.publish.outputs.deployable || 'false' }}
+        run: |
+          set -euo pipefail
+          # The trust surfaces have to be ON DISK, not merely configured. The
+          # generator probes-and-degrades throughout: the comparator page is only
+          # written when a dashboard block cached the trust payload, so dropping
+          # that block silently takes the whole evidence page with it, no error.
+          for relative in $REQUIRED_SITE_FILES; do
+            if [ ! -e "${SITE_OUT}/${relative}" ]; then
+              echo "required site file missing: ${relative}"
+              echo "(the generator writes these only when their inputs were read;"
+              echo " their absence is the quiet regression this gate exists for)"
+              exit 1
+            fi
+          done
+          count="$(find "$SITE_OUT" -type f | wc -l | tr -d ' ')"
+          [ "$count" -ge "$MIN_SITE_FILES" ] || { echo "only $count files (floor ${MIN_SITE_FILES})"; exit 1; }
+          echo "site: ${count} files"
+
+          # Compare against the revision the site was actually generated from --
+          # git HEAD in this workdir -- NOT github.sha: on push runs the status
+          # commit-back moves HEAD past github.sha before the site build, and the
+          # links (correctly) name the moved HEAD.
+          build_rev="$(git rev-parse HEAD)"
+
+          # --- Source-link revision gate (codex-audit CX-066) ------------------
+          # The declaration registry bakes its "View source" URLs at ELABORATION
+          # time; the build stamp on the project-management page is probed at
+          # GENERATION time. Those are two independently sampled revisions, and a
+          # warm site build carried across commits can replay a registry whose
+          # links all name an older commit under a clean current-HEAD stamp. The
+          # trust-model page promises, verbatim, that the source links point at
+          # the commit the site was built from; this gate is what makes that
+          # promise checkable before anything is uploaded. Byte-identical sources
+          # at the two revisions do not satisfy it: the published contract is
+          # revision identity.
+          if [ "$SOURCE_LINK_GATE" = "true" ]; then
+            registry="${SITE_OUT}/-verso-data/decl-registry.json"
+            test -f "$registry"
+            python3 - "$registry" "$GITHUB_REPOSITORY" "$build_rev" <<'PY'
+          import json, re, sys
+
+          path, repository, sha = sys.argv[1:4]
+          pattern = re.compile(
+              r"\Ahttps://github\.com/" + re.escape(repository) + r"/blob/([0-9a-f]{40})/"
+          )
+          with open(path, encoding="utf-8") as handle:
+              registry = json.load(handle)
+
+          checked = 0
+          stale = {}
+
+          def visit(node):
+              global checked
+              if isinstance(node, dict):
+                  href = node.get("sourceHref")
+                  if isinstance(href, str):
+                      found = pattern.match(href)
+                      if found:
+                          checked += 1
+                          if found.group(1) != sha:
+                              stale[found.group(1)] = stale.get(found.group(1), 0) + 1
+                  for value in node.values():
+                      visit(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      visit(value)
+
+          visit(registry)
+
+          if checked == 0:
+              print("source-link gate: no project-local sourceHref in the registry — the gate is vacuous,")
+              print("which means either the registry moved or the links stopped naming this repository.")
+              sys.exit(1)
+          if stale:
+              print("source-link gate: {} of {} project-local source links do not name this run's commit {}".format(
+                  sum(stale.values()), checked, sha))
+              for revision, occurrences in sorted(stale.items()):
+                  print("  {} link(s) name {}".format(occurrences, revision))
+              print("the registry was replayed from a build cache warmed at another revision;")
+              print("rebuild it under this commit rather than publishing a stamp it does not match.")
+              sys.exit(1)
+          print("source-link gate: {} project-local source links all name {}".format(checked, sha))
+          PY
+          else
+            echo "source-link gate: off by caller declaration (source_link_gate: false)"
+          fi
+
+          # --- Comparator-evidence provenance gate (CX-075, CX-078, CX-079) ----
+          # The trust surfaces are captured at ELABORATION from files Lake does
+          # not track: the comparator status artifact, its config, Challenge and
+          # Solution. Change only those four and rebuild, and a warm build replays
+          # the whole prior evidence page -- old verdict, old statement, old
+          # digests, old links -- under this run's revision, internally consistent
+          # and invisible on the page. The generator re-reads those files before
+          # emission and fails closed; this is the same comparison run
+          # independently here, against the CHECKOUT, so a regression in the
+          # generator's own gate does not take the check with it.
+          #
+          # Two values it is HANDED rather than allowed to read back out of the
+          # record it is authenticating: --build-revision, sampled from this
+          # worktree, and --deployable, THE deploy predicate the publish job
+          # computed once. Dirty provenance is admissible only for an artifact
+          # that cannot deploy.
+          if [ "$TRUST_PROVENANCE_GATE" = "true" ]; then
+            python3 "$CI_DIR/scripts/check_trust_provenance.py" \
+              --provenance "${SITE_OUT}/-verso-data/trust-provenance.json" \
+              --lakefile "$(basename "$SITE_LAKEFILE")" \
+              --build-revision "$build_rev" \
+              --deployable "$DEPLOYABLE" \
+              --event "$GITHUB_EVENT_NAME"
+          else
+            echo "trust-provenance gate: off by caller declaration (trust_provenance_gate: false)"
+          fi
+
+          # --- Off-origin asset gates ------------------------------------------
+          bash "$CI_DIR/scripts/site_offline_gates.sh" "$SITE_OUT"
+
+      # Tarball, pin, size report, and every deploy gate run against the result;
+      # refuses, in minutes, what the deploy workflow would refuse later.
+      - name: Package the site
+        env:
+          SITE_DIR: ${{ inputs.site_dir }}
+          SITE_OUT: ${{ inputs.site_out }}
+          SITE_PIN: ${{ inputs.site_pin }}
+          REQUIRED_SITE_FILES: ${{ inputs.required_site_files }}
+          MIN_SITE_FILES: ${{ inputs.min_site_files }}
+          MAX_SITE_BYTES: ${{ inputs.max_site_bytes }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          args=(--site-root "${SITE_DIR%/}/${SITE_OUT}"
+                --pin "$SITE_PIN"
+                --site-dir "$SITE_DIR"
+                --out "${RUNNER_TEMP}/site-release"
+                --min-files "$MIN_SITE_FILES"
+                --max-bytes "$MAX_SITE_BYTES")
+          for relative in $REQUIRED_SITE_FILES; do
+            args+=(--required-file "$relative")
+          done
+          bash "$CI_DIR/scripts/package_site.sh" "${args[@]}"
+
+      - name: Upload the site release
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: site-release
+          path: |
+            ${{ runner.temp }}/site-release/*.tar.gz
+            ${{ runner.temp }}/site-release/site-build.json
+            ${{ runner.temp }}/site-release/size-report.txt
+          retention-days: 7
+          if-no-files-found: error
+
+  # =====================================================================
+  # 5. Release + pin + dispatch. The other job that can write.
+  # =====================================================================
+  site-release:
+    needs: [publish, site-generate]
+    if: >-
+      !cancelled()
+      && needs.site-generate.result == 'success'
+      && needs.publish.result == 'success'
+      && needs.publish.outputs.deployable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write   # the release, and the pin commit-back (push events only)
+      actions: write    # dispatch the consumer's deploy.yml
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      asset: ${{ steps.release.outputs.asset }}
+      sha256: ${{ steps.release.outputs.sha256 }}
+    steps:
+      - name: Check out the revision the site was built from
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.publish.outputs.site_ref || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      # This job runs no CI script, so it needs no Showcase checkout -- but it
+      # DOES stamp `job.workflow_sha` into a commit, so it owes the same
+      # assertion as every other job that names the CI code.
+      - name: Assert the CI-code pin
+        env:
+          SHOWCASE_SHA: ${{ inputs.showcase_sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
+            echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running ${WORKFLOW_SHA}"
+            exit 1
+          fi
+          echo "CI code: ${WORKFLOW_SHA}"
+
+      - name: Download the site release
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: site-release
+          path: ${{ runner.temp }}/site-release
+
+      # Release-spam layer 2. The tarball is deterministic (sorted members, fixed
+      # metadata, `gzip -n`) and no run id is baked into the site, so an unchanged
+      # commit produces an unchanged digest. Suppress only on that positive
+      # evidence, exactly as the status-record detector does.
+      - name: Decide whether this release is new
+        id: release_needed
+        env:
+          SITE_PIN: ${{ inputs.site_pin }}
+        run: |
+          set -euo pipefail
+          fresh="$(jq -r '.release.sha256' "${RUNNER_TEMP}/site-release/site-build.json")"
+          committed=""
+          if [ -f "$SITE_PIN" ]; then
+            committed="$(jq -r '.release.sha256 // ""' "$SITE_PIN" 2>/dev/null || true)"
+          fi
+          if [ -n "$committed" ] && [ "$committed" = "$fresh" ]; then
+            echo "::notice::the packaged site is byte-identical to the one ${SITE_PIN} already names (${fresh}); no release is cut and no pin is committed."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The pin names this release; the tarball, the pin and the size report are
+      # its assets. A re-run for the same generation revision refreshes them in
+      # place.
+      - name: Cut the release
+        id: release
+        if: steps.release_needed.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/site-release"
+          tag="$(python3 -c 'import json;print(json.load(open("site-build.json"))["release"]["tag"])')"
+          asset="$(python3 -c 'import json;print(json.load(open("site-build.json"))["release"]["asset"])')"
+          sha256="$(python3 -c 'import json;print(json.load(open("site-build.json"))["release"]["sha256"])')"
+          rev="$(python3 -c 'import json;print(json.load(open("site-build.json"))["generationRevision"])')"
+          head="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          [ "$rev" = "$head" ] || { echo "the packaged site names $rev, this checkout is $head"; exit 1; }
+          notes="Blueprint site generated by CI run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} at ${rev}. Served by the deploy workflow after ci/scripts/check_site_release.py authenticates the asset against the committed site pin and the checkout. size-report.txt is the per-component size breakdown of the tree."
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber ./*.tar.gz ./site-build.json ./size-report.txt
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$rev" \
+              --title "Site build ${rev:0:7}" --notes "$notes" \
+              ./*.tar.gz ./site-build.json ./size-report.txt
+          fi
+          {
+            echo "tag=$tag"
+            echo "asset=$asset"
+            echo "sha256=$sha256"
+          } >> "$GITHUB_OUTPUT"
+          echo "release: $tag"
+
+      - name: Commit the site pin back
+        if: steps.release_needed.outputs.needed == 'true' && github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_BRANCH: ${{ inputs.publish_branch }}
+          SITE_PIN: ${{ inputs.site_pin }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$SITE_PIN")"
+          cp "${RUNNER_TEMP}/site-release/site-build.json" "$SITE_PIN"
+          git add -- "$SITE_PIN"
+          if git diff --cached --quiet; then
+            echo "No change to the site pin; skipping commit."
+            exit 0
+          fi
+          short="$(python3 -c 'import json,os,sys;print(json.load(open(os.environ["SITE_PIN"]))["generationRevision"][:7])')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit \
+            -m "site: publish the build generated at ${short}" \
+            -m "Generated-By: showcase-ci ${WORKFLOW_SHA}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${PUBLISH_BRANCH}"
+
+      # A GITHUB_TOKEN push does not fire `push:`, so the pin commit above will
+      # not trigger the consumer's deploy workflow on its own; a workflow_dispatch
+      # it creates DOES run. The consumer's deploy.yml checks out the publish
+      # branch, reads the pin just pushed, and is the only path to Pages.
+      - name: Dispatch the deploy
+        if: steps.release_needed.outputs.needed == 'true' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_BRANCH: ${{ inputs.publish_branch }}
+        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref "$PUBLISH_BRANCH"
