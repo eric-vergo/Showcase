@@ -81,6 +81,15 @@ Addition on the naturals commutes.
     hasSubstr html "code the registry records as syntactic or raw" &&
     hasSubstr html "How the Lean code on this page was rendered"
 
+-- The table is the canonical statement of these four verdicts, so the rows other surfaces
+-- link to (the strip's audit clause, the audit page's pointer) are addressable.
+/-- info: (true, true, true, true) -/
+#guard_msgs(info, drop warning) in
+#eval show IO (Bool × Bool × Bool × Bool) from do
+  let html ← renderManualDocHtmlString extension_impls% trustEvidenceDoc
+  return (hasSubstr html "id=\"bp-trust-kernel\"", hasSubstr html "id=\"bp-trust-audit\"",
+    hasSubstr html "id=\"bp-trust-graph\"", hasSubstr html "id=\"bp-trust-comparator\"")
+
 /-! ## No nanoda claim without a run record -/
 
 -- CX-011, on the trust-model page: `enable_nanoda` in the configuration must not put
@@ -91,9 +100,9 @@ Addition on the naturals commutes.
   let html ← renderManualDocHtmlString extension_impls% trustEvidenceDoc
   return !hasSubstr html "as the independent kernel the run recorded" &&
     !hasSubstr html "pins its independent kernel" &&
-    -- Section 5 used to make this point in nanoda-specific prose; it is now the currency
-    -- row's own sentence, which says the same thing per checker.
-    hasSubstr html "does not say a replay happened" &&
+    -- The per-checker sentence that says the same thing ("the record does not say a
+    -- replay happened") now renders beside the verdict it qualifies, on the comparator
+    -- page; it is asserted there, in the currency test below.
     -- CX-012: sandbox coverage is claimed for the replay step only.
     hasSubstr html "the sandbox the comparator replay ran under" &&
     hasSubstr html "happened outside the sandbox"
@@ -543,6 +552,9 @@ private def upstreamComparator : TrustComparator :=
   !hasSubstr html "CI-verified" &&
   !hasSubstr html "bp_summary_badge_success" &&
   !hasSubstr html "Certifies 1 theorem" &&
+  -- The verdict header asserted "built and axiom-audited" from a function that never
+  -- sees the audit. The audit fact has one home, and this page points at it.
+  !hasSubstr html "axiom-audited" &&
   !hasSubstr html "2026-08-04"
 
 -- The upstream record's own date, when it has one, is the only date it may show.
@@ -560,12 +572,15 @@ private def upstreamComparator : TrustComparator :=
 #guard_msgs in
 #eval
   let strip := (trustStripHtml { comparator := some upstreamComparator }
-    Option.none Option.none Option.none (some 9)).asString
+    Option.none Option.none (some 9)).asString
   let badge := (trustAggregateComparatorBadge
     [{ name := "A", comparator := fixtureComparator },
      { name := "B", comparator := upstreamComparator }]).asString
   (hasSubstr strip "comparator: reported upstream" && !hasSubstr strip "badge_success",
-   hasSubstr strip "reported verified upstream: 1 theorem of 9",
+   hasSubstr strip "reported verified upstream: 1 theorem of 9" &&
+     -- The payload carries no audit, and the strip says so rather than staying silent.
+     hasSubstr strip "no build-time axiom audit ran" &&
+     hasSubstr strip "bp_trust_strip_scope_flag_warn",
    hasSubstr badge "1/2 configs verified" && hasSubstr badge "badge_warn")
 
 /-! ## A local run is machine evidence; it is not CI -/
@@ -602,7 +617,7 @@ private def localComparator : TrustComparator :=
 #guard_msgs in
 #eval
   let strip := (trustStripHtml { comparator := some localComparator }
-    Option.none Option.none Option.none (some 9)).asString
+    Option.none Option.none (some 9)).asString
   let badge := (trustAggregateComparatorBadge
     [{ name := "A", comparator := fixtureComparator },
      { name := "B", comparator := localComparator }]).asString
@@ -753,7 +768,9 @@ page says that without claiming the replay the record never recorded.
   hasSubstr html "bp_trust_currency_stale" &&
   hasSubstr html "pins nanoda at 1111111111111111111111111111111111111111" &&
   hasSubstr html "a revision predating the fixes below" &&
-  -- The record never said a replay happened, so no assurance is called dated.
+  -- The record never said a replay happened, so no assurance is called dated — and the
+  -- sentence saying so lives here, beside the verdict it qualifies (CX-011).
+  hasSubstr html "does not say a replay happened" &&
   !hasSubstr html "second-kernel assurance" &&
   -- The advisory it was measured against is named and linked.
   hasSubstr html "https://github.com/ammkrn/nanoda_lib" &&
@@ -763,18 +780,27 @@ page says that without claiming the replay the record never recorded.
   -- A record with no currency rows renders exactly as it did before: no block at all.
   !hasSubstr (comparatorHtml fixtureComparator) "bp_trust_currency"
 
--- On the trust-model page, section 5 is driven by the same rows, over every config.
+-- On the trust-model page, section 5 keeps the policy and points at the assessment.
+--
+-- The per-verdict rows used to render here too, from the same `TrustComparator.currency`
+-- data — one computation, two surfaces, and the flattened list sat on a page carrying no
+-- verdicts. A currency verdict qualifies a claim; detached from the claim it qualifies it
+-- is a list of revisions. The assessment now renders once, on the comparator page.
 /-- info: true -/
 #guard_msgs in
 #eval show IO Bool from do
   let html ← renderManualDocHtmlString extension_impls% trustEvidenceDoc
   return hasSubstr html "Verifier currency" &&
-    -- The fixture's own pin, assessed, in the list rather than in nanoda-specific prose.
-    hasSubstr html "nanoda: not current" &&
-    hasSubstr html "a revision predating the fixes below" &&
-    hasSubstr html "Advisory table last updated 2026-08-25" &&
-    -- The record names no toolchain, so the gap is stated instead of assessed.
-    hasSubstr html "no verdict here records which Lean release the comparator was built on" &&
+    -- The policy survives; the assessment moved.
+    hasSubstr html "Pinning a verifier by revision and keeping a verifier current are in tension" &&
+    hasSubstr html "beside the verdict it qualifies" &&
+    hasSubstr html "href=\"comparator/\"" &&
+    -- No per-row assessment, no aging clause and no toolchain-gap clause here.
+    !hasSubstr html "nanoda: not current" &&
+    !hasSubstr html "a revision predating the fixes below" &&
+    !hasSubstr html "Advisory table last updated" &&
+    !hasSubstr html "bp_trust_currency" &&
+    !hasSubstr html "no verdict here records which Lean release the comparator was built on" &&
     !hasSubstr html "Lean toolchain:"
 
 end Verso.VersoBlueprintTests.TrustEvidence

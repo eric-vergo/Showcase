@@ -59,6 +59,7 @@ lean_lib VersoBlueprintTests where
   -- tree where the tool is broken.
   needs := #[`@/«statement-closure»:exe]
   roots := #[
+    `TrustAuditFixture,
     `VersoBlueprintTests.Blueprint.Support,
     `VersoBlueprintTests.BlueprintAssets,
     `VersoBlueprintTests.BlueprintAutoDeps,
@@ -101,6 +102,7 @@ lean_lib VersoBlueprintTests where
     `VersoBlueprintTests.StatementClosure,
     `VersoBlueprintTests.StatementClosureRender,
     `VersoBlueprintTests.StatementClosureWiring,
+    `VersoBlueprintTests.TrustConsolidation,
     `VersoBlueprintTests.TrustEvidence,
     `VersoBlueprintTests.TrustFreshness,
     `VersoBlueprintTests.Registry,

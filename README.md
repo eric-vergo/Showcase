@@ -88,9 +88,13 @@ The fork's feature program, layered over upstream's genre:
   matched from cached canonical entries and bind to a claim only through the challenge
   digest the verifying run recorded: a repository match, or an author-pasted permalink,
   renders as project-level provenance and an explicitly unverified link, never as a
-  badge. Configured through `verso.blueprint.trust.*` / `declNamePrefix` /
-  `graph.includeAllDecls` / `math.lint` / `externalCode.strictResolve` lakefile
-  options.
+  badge. Every soundness fact has one home: the homepage trust strip carries the verdict
+  badges plus a single scope line stating what the comparator covers and what the audit
+  found (linking to the trust-model row that is the canonical statement of it), and
+  declared `formalization.yaml` figures render as declarations with a cross-check note,
+  never as verdict badges. Configured through `verso.blueprint.trust.*` /
+  `declNamePrefix` / `graph.includeAllDecls` / `math.lint` /
+  `externalCode.strictResolve` lakefile options.
 - **Verbatim-source signatures & recorded rendering tiers.** Node signatures are the
   author's verbatim source, re-elaborated in the declaration's own namespace (with a
   delaborated fallback); proof bodies render without inline proof-state toggles so

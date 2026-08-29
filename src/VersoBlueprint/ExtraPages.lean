@@ -585,75 +585,78 @@ private def auditSummaryCards (data : Summary) : Output.Html :=
   </div>
 }}
 
-/-- The build-time axiom-audit section of the audit page.
+/-- The build-time axiom audit's **findings** on the audit page: the declarations it
+flagged, which have no other page to appear on, and a pointer to the verdict.
 
-Distinct from the "Sorries" list above it: that list is the *authored* view (nodes
-whose snapshot recorded a sorry), while this is the kernel's transitive verdict from
-`Lean.collectAxioms` over every wired and project declaration — it catches a theorem
-whose own body is clean but which invokes a sorried helper. Reads the audit findings
-cached in the trust payload; renders nothing when no audit ran. -/
+This page used to restate the whole audit — its own "Kernel axiom audit" heading, a
+provenance paragraph, a clean line, and the union of every axiom seen. That made four
+surfaces for one computation (strip badge, trust-model row, and these two blocks), each
+phrasing the verdict slightly differently. The verdict now has exactly one home, the
+trust-model page's audit row, and this page keeps what only it can carry: the names.
+
+Distinct from the "Sorries" list above it: that list is the *authored* view (nodes whose
+snapshot recorded a sorry), while these come from `Lean.collectAxioms` over every wired
+and project declaration — transitive, so a theorem whose own body is clean but which
+invokes a sorried helper appears here. -/
+def auditAxiomFindings (audit? : Option Informal.AxiomAudit.Summary)
+    (trustModelHref? : Option String) : Output.Html :=
+  let sorried := (audit?.map (·.sorried)).getD #[]
+  let nonstandard := (audit?.map (·.nonstandard)).getD #[]
+  let pointer : Output.Html :=
+    match trustModelHref? with
+    | some href =>
+      {{
+        <p class="bp_summary_note">
+          "What the build-time axiom audit enumerated, and what it found, is on the "
+          <a href={{Informal.Commands.trustAuditRowHref href}}>"Trust model"</a>
+          " page. Listed below are the declarations it flagged, which have no page of \
+           their own to carry them."
+        </p> }}
+    | none =>
+      if sorried.isEmpty && nonstandard.isEmpty then .empty
+      else {{
+        <p class="bp_summary_note">
+          {{Informal.NodeCard.withCodeSpans
+            "Declarations the build-time axiom audit flagged (`Lean.collectAxioms` over \
+             every wired and project declaration, transitively)."}}
+        </p> }}
+  let codeList := fun (names : Array String) =>
+    Output.Html.seq (names.map fun n => {{ <li><code>{{.text true n}}</code></li> }})
+  let sorriedBlock : Output.Html :=
+    if sorried.isEmpty then .empty
+    else {{
+      <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
+        <summary>{{Informal.NodeCard.withCodeSpans s!"Transitive `sorryAx` in closure ({sorried.size})"}}</summary>
+        <ul class="bp_summary_list">{{codeList sorried}}</ul>
+      </details> }}
+  let nonstandardBlock : Output.Html :=
+    if nonstandard.isEmpty then .empty
+    else
+      let rows := nonstandard.map fun d =>
+        {{ <li><code>{{.text true d.name}}</code>" — "
+             {{.text true (String.intercalate ", " d.nonstandard.toList)}}</li> }}
+      {{
+        <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
+          <summary>{{.text true s!"Nonstandard axioms ({nonstandard.size})"}}</summary>
+          <ul class="bp_summary_list">{{Output.Html.seq rows}}</ul>
+        </details> }}
+  if pointer.asString.isEmpty && sorried.isEmpty && nonstandard.isEmpty then .empty
+  else {{
+    <section class="bp_audit_axioms">
+      {{pointer}}
+      {{sorriedBlock}}
+      {{nonstandardBlock}}
+    </section>
+  }}
+
+/-- The audit findings for this document, from the trust payload the trust strip stashed
+during traversal. -/
 private def auditAxiomSection (state : TraverseState) : Output.Html :=
   let audit? : Option Informal.AxiomAudit.Summary := do
     let j ← Informal.TraversalIndex.TrustData.raw? state
     let trust ← (fromJson? (α := Informal.Commands.TrustData) j).toOption
     trust.audit?
-  match audit? with
-  | none => .empty
-  | some a =>
-    if !a.ran then .empty
-    else
-      let codeList := fun (names : Array String) =>
-        Output.Html.seq (names.map fun n => {{ <li><code>{{.text true n}}</code></li> }})
-      let sorriedBlock : Output.Html :=
-        if a.sorried.isEmpty then .empty
-        else {{
-          <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
-            <summary>{{Informal.NodeCard.withCodeSpans s!"Incomplete proofs — `sorryAx` in the closure ({a.sorried.size})"}}</summary>
-            <ul class="bp_summary_list">{{codeList a.sorried}}</ul>
-          </details> }}
-      let nonstandardBlock : Output.Html :=
-        if a.nonstandard.isEmpty then .empty
-        else
-          let rows := a.nonstandard.map fun d =>
-            {{ <li><code>{{.text true d.name}}</code>" — "
-                 {{.text true (String.intercalate ", " d.nonstandard.toList)}}</li> }}
-          {{
-            <details class="bp_summary_subsection bp_summary_subsection_warn" open="open">
-              <summary>{{.text true s!"Nonstandard axioms ({a.nonstandard.size})"}}</summary>
-              <ul class="bp_summary_list">{{Output.Html.seq rows}}</ul>
-            </details> }}
-      let clean : Output.Html :=
-        if !a.sorried.isEmpty || !a.nonstandard.isEmpty then .empty
-        else {{
-          <p class="bp_summary_empty">
-            {{Informal.NodeCard.withCodeSpans
-              s!"`Lean.collectAxioms` over {a.checked} declarations found no `sorryAx` in any \
-                 transitive closure and no axiom beyond propext, Classical.choice, and \
-                 Quot.sound."}}
-          </p> }}
-      let axiomList : Output.Html :=
-        if a.allAxioms.isEmpty then .empty
-        else {{
-          <p class="bp_summary_note">
-            "Axioms used across the development: "
-            {{.text true (String.intercalate ", " a.allAxioms.toList)}}"."
-          </p> }}
-      {{
-        <section class="bp_audit_axioms">
-          <h2>"Kernel axiom audit"</h2>
-          <p class="bp_summary_note">
-            {{Informal.NodeCard.withCodeSpans
-              s!"Computed at build time with `Lean.collectAxioms` over {a.checked} declarations \
-                 — every declaration a blueprint node wires plus every project declaration. \
-                 Unlike the sorry list above, this is transitive: a theorem that invokes a \
-                 sorried helper is reported even though its own body is clean."}}
-          </p>
-          {{clean}}
-          {{sorriedBlock}}
-          {{nonstandardBlock}}
-          {{axiomList}}
-        </section>
-      }}
+  auditAxiomFindings audit? (Informal.TraversalIndex.TrustModelPage.href? state)
 
 /-- Body of the audit / technical-debt page. -/
 private def auditBody (state : TraverseState) (data : Summary) (rows : SummaryRows) : Output.Html :=

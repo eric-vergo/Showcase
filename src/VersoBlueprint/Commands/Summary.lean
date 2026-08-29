@@ -81,14 +81,16 @@ public meta def blueprintDashboardCmd : PartCommand
       logInfo m!"Blueprint dashboard for {summary.totalEntries} entries"
     -- Trust strip: carries the comparator badge when the `verso.blueprint.trust.*`
     -- options name artifacts, plus the structural `uses`-graph badges (acyclicity /
-    -- connectivity) and the axiom-audit result. The strip renders nothing when it
-    -- would carry no signal, so unconfigured consumers see no change.
+    -- connectivity), and one scope line stating the comparator's coverage and the
+    -- axiom audit's result. The strip renders nothing when it would carry no signal,
+    -- so unconfigured consumers see no change.
     let mut trust := (← elabTrustData?).getD {}
     -- Build-time audits run HERE because this is where the environment is: the
     -- dashboard command elaborates inside the document, with every chapter's imports
     -- in scope, so `Lean.collectAxioms` and the const-level dependency inference both
     -- see the real project. Contradictions against `formalization.yaml` throw; softer
-    -- findings become warnings plus a dashboard badge.
+    -- findings become warnings, plus a flagged clause in the strip's scope line and the
+    -- trust-model page's audit row.
     let opts ← Lean.getOptions
     let requireAuditClean :=
       opts.get verso.blueprint.trust.requireAuditClean.name

@@ -95,6 +95,13 @@
   color: var(--bp-color-text-muted);
 }
 
+/* Rows other surfaces link to by fragment (the trust strip's audit clause, the audit
+   page's pointer). The site banner is fixed, so a raw anchor jump would land the row
+   underneath it. */
+.bp_trustmodel_table tr[id] {
+  scroll-margin-top: var(--bp-space-6);
+}
+
 @media (max-width: 45rem) {
   .bp_trustmodel_what {
     min-width: 0;

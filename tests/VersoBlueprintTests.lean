@@ -5,6 +5,7 @@ import VersoBlueprintTests.BlueprintProofOverview
 import VersoBlueprintTests.ExternalDeclRender
 import VersoBlueprintTests.RuntimeCache
 import VersoBlueprintTests.SourceLinkRevision
+import VersoBlueprintTests.TrustConsolidation
 import VersoBlueprintTests.TestBlueprintRegistry
 import VersoBlueprintTests.TestBlueprintRegistryChecks
 import VersoBlueprintTests.TestBlueprintRegistryCoverage

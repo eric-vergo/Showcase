@@ -910,6 +910,32 @@ they are different claims, so only one of them is a success:
 No tier is inferred from the configuration: an artifact that does not record a
 run says nothing about one, and the pages say so rather than filling the gap.
 
+### The trust strip
+
+The strip under the dashboard title carries at most four badges — the comparator
+verdict (or, for a multi-config site, the aggregate), `graph: acyclic`,
+`graph: connected` / `N components`, and a claim-bound registry record — followed by
+**one scope line** with two clauses separated by a middle dot:
+
+- *the comparator's coverage*, in the vocabulary of the status it actually has
+  (`certifies 1 theorem of 45` / `configured but not yet run: names 1 theorem of 45` /
+  `reported verified upstream: …` / `verified locally, not in CI: …` /
+  `recorded with status <s>, not certified: names …`), omitted when the site
+  configures no comparator; and
+- *the axiom audit's outcome*, always present — including the two states that report
+  nothing (`no build-time axiom audit ran`, `the axiom audit found no declarations to
+  check`), both flagged, because a strip that simply went quiet would look the same
+  whether the project was audited and clean or never audited at all. A finding is
+  flagged in the warning or danger token; a clean audit is quiet. The clause links to
+  the trust-model page's audit row, which is the canonical statement of the same
+  computation — the strip carries no axiom-audit badge of its own.
+
+`verso.blueprint.trust.requireAuditClean` is the **only** build-time gate on the audit:
+with it set, a declaration carrying `sorryAx` or a nonstandard axiom fails the build
+(unless `formalization.yaml` declares the sorry, which counts as covered); with it
+unset, the same finding is a build warning and a flagged clause. Contradictions between
+`formalization.yaml` and the environment are errors either way.
+
 ### Progress summary
 
 `blueprint_summary` renders a summary page for the current Blueprint document.

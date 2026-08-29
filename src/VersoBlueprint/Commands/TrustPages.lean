@@ -212,19 +212,40 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
           | some n =>
             s!"A run on the presenter's own machine certified {k} {noun} of the {n} \
                theorem-like results presented here. No CI run re-checked it, and everything \
-               else on this site is built and axiom-audited but not comparator-certified."
+               else on this site is outside this verdict; what the build itself checked is \
+               on the Trust model page."
           | none =>
             s!"A run on the presenter's own machine certified {k} named {noun}. No CI run \
-               re-checked it, and everything else on this site is built and axiom-audited \
-               but not comparator-certified."
-        else
+               re-checked it, and everything else on this site is outside this verdict; \
+               what the build itself checked is on the Trust model page."
+        else if cmp.status == "configured" then
+          -- Configured is not a weaker verification; it is no verification. The old
+          -- sentence fell through to "Certifies", beside a pill saying it had not run.
+          match theoremLikeTotal with
+          | some n =>
+            s!"Names {k} {noun} of the {n} theorem-like results presented here; the \
+               comparator is configured but has not run, so nothing here is certified."
+          | none =>
+            s!"Names {k} {noun}; the comparator is configured but has not run, so nothing \
+               here is certified."
+        else if cmp.isSuccessVerdict then
           match theoremLikeTotal with
           | some n =>
             s!"Certifies {k} {noun} of the {n} theorem-like results presented here. \
-               Everything else on this site is built and axiom-audited, but not comparator-certified."
+               Everything else on this site is outside this verdict; what the build itself \
+               checked is on the Trust model page."
           | none =>
-            s!"Certifies {k} named {noun}. Everything else on this site is built and \
-               axiom-audited, but not comparator-certified."
+            s!"Certifies {k} named {noun}. Everything else on this site is outside this \
+               verdict; what the build itself checked is on the Trust model page."
+        else
+          -- A failing or unrecognised record. It is a record, not a certification, and
+          -- the sentence names the status rather than papering over it.
+          match theoremLikeTotal with
+          | some n =>
+            s!"Names {k} {noun} of the {n} theorem-like results presented here, recorded \
+               with status '{cmp.status}'; not a certification."
+          | none =>
+            s!"Names {k} {noun}, recorded with status '{cmp.status}'; not a certification."
       {{ <p class="bp_trust_verdict_scope">{{.text true text}}</p> }}
   let localNote : Output.Html :=
     if !cmp.isLocalVerdict then .empty

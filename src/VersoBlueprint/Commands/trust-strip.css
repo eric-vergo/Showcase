@@ -1,8 +1,9 @@
-/* Dashboard trust strip (fed by a comparator-status artifact) + the standalone claim-first
-   comparator page (verdict header, prose sections, three-tier reproduce list). The strip only
-   ever renders alongside the dashboard block, whose asset bundle ships summary.css, so the
-   shared .bp_summary_badge* classes are always available. Token-driven; no raw colors, so both
-   light and dark are covered from Common.lean's dual token definitions. */
+/* Dashboard trust strip (badge row + one scope line, fed by a comparator-status artifact and
+   the build-time axiom audit) + the standalone claim-first comparator page (verdict header,
+   prose sections, three-tier reproduce list). The strip only ever renders alongside the
+   dashboard block, whose asset bundle ships summary.css, so the shared .bp_summary_badge*
+   classes are always available. Token-driven; no raw colors, so both light and dark are
+   covered from Common.lean's dual token definitions. */
 
 .bp_trust_strip {
   display: flex;
@@ -29,6 +30,45 @@
 
 .bp_trust_strip .bp_summary_badge_row {
   margin-top: 0;
+}
+
+/* The one scope line under the badges: what the comparator covers, then what the axiom
+   audit found. `flex-basis: 100%` puts it on its own row of the strip's flex container,
+   centred under the badges it qualifies. Muted by default; the audit clause takes an
+   accent token only when it has a finding to report, so a clean strip stays quiet. */
+.bp_trust_strip_scope {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: var(--bp-fs-caption);
+  color: var(--bp-color-text-muted);
+}
+
+.bp_trust_strip_scope_sep {
+  color: var(--bp-color-text-faint);
+}
+
+.bp_trust_strip_scope_flag_warn {
+  color: var(--bp-color-accent-warning);
+  font-weight: 600;
+}
+
+.bp_trust_strip_scope_flag_error {
+  color: var(--bp-color-accent-danger);
+  font-weight: 600;
+}
+
+/* The audit clause links to the trust-model page's audit row. It is a sentence, not a
+   badge, so it keeps the line's colour and takes a quiet underline instead. */
+a.bp_trust_strip_scope_audit {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+  text-decoration-color: var(--bp-color-border-strong);
+}
+
+a.bp_trust_strip_scope_audit:hover,
+a.bp_trust_strip_scope_audit:focus-visible {
+  text-decoration-color: currentColor;
 }
 
 /* Trust badges that link to a page render as <a>. Keep them visually identical at

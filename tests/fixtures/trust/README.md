@@ -1,5 +1,26 @@
 # Trust-evidence fixtures
 
+Two fixtures live here.
+
+## `formalization-declared-sorry.yaml`
+
+A project that is honest about being unfinished, for
+`tests/VersoBlueprintTests/TrustConsolidation.lean`'s audit-coverage document. It
+declares `sorry_count: 1` for `TrustAuditFixture.declaredSorryFixture` (a theorem in
+`tests/TrustAuditFixture.lean`, deliberately under its own module root so the audit
+enumerates it and nothing else), and the document sets
+`verso.blueprint.trust.requireAuditClean true`.
+
+**The document elaborating is the test.** `AxiomAudit.run` used to record a declaration
+as "claimed sorried" only on the *contradiction* path — `sorry_count: 0` against a
+`sorryAx` closure — so the honest case fell through to the "dirty but unclaimed" pass
+and was reported as undeclared, which under the strict gate is a build error. That made
+the gate unusable for exactly the projects most likely to want it. A declared sorry is
+now covered; change the fixture's `sorry_count` to `0` and the build fails, which is the
+contradiction check still working.
+
+## `comparator-status.json` and friends
+
 A minimal comparator record for `tests/VersoBlueprintTests/TrustEvidence.lean`.
 
 `comparator-status.json` is deliberately shaped to exercise the two rules the

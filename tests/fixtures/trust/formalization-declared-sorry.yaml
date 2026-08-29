@@ -1,0 +1,33 @@
+# A project that is honest about being unfinished.
+#
+# The audit fixture for `tests/VersoBlueprintTests/TrustConsolidation.lean`: one wired
+# declaration whose proof is `sorry`, declared as such here. Under
+# `verso.blueprint.trust.requireAuditClean` the document elaborating at all is the test —
+# a *declared* sorry must count as covered, or the strict gate fails the build of a
+# project that told the truth about itself.
+version: "v0.4"
+
+project:
+  name: "Declared-sorry audit fixture"
+  authors: ["Eric Vergo"]
+  license: "Apache-2.0"
+
+sources:
+  - title: "Declared-sorry audit fixture"
+    authors: ["Eric Vergo"]
+    id: "tests/fixtures/trust/formalization-declared-sorry.yaml"
+    type: "original-proof"
+    relationship: "formalizes"
+    author_endorsement: "n/a"
+
+status:
+  scope: >-
+    One deliberately unfinished theorem, declared as unfinished.
+  sorry_count: 1
+  main_results:
+    - declaration: "TrustAuditFixture.declaredSorryFixture"
+      file: "tests/TrustAuditFixture.lean"
+      sorry_count: 1
+
+review:
+  status: "self-assessed"

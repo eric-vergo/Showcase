@@ -153,7 +153,7 @@ register_option verso.blueprint.trust.ciRunUrl : String := {
 
 register_option verso.blueprint.trust.requireAuditClean : Bool := {
   defValue := false
-  descr := "Whether a build-time axiom-audit finding FAILS the site build. Default false: a declaration whose transitive axiom closure contains `sorryAx`, or an axiom beyond {propext, Classical.choice, Quot.sound}, is reported as a build warning plus a dashboard badge. Set true for a project that claims completeness (the finding becomes an error). Contradictions between `formalization.yaml` and the environment are ALWAYS errors, regardless of this option."
+  descr := "Whether a build-time axiom-audit finding FAILS the site build. Default false: a declaration whose transitive axiom closure contains `sorryAx`, or an axiom beyond {propext, Classical.choice, Quot.sound}, is reported as a build warning, plus a flagged clause in the trust strip's scope line and the trust-model page's audit row. Set true for a project that claims completeness (the finding becomes an error). This is the only build-time gate on the axiom audit. Contradictions between `formalization.yaml` and the environment are ALWAYS errors, regardless of this option."
 }
 
 register_option verso.blueprint.trust.comparatorLiveProject : String := {
@@ -762,8 +762,9 @@ structure TrustData where
   ciRunUrl : Option String := none
   /-- Findings of the build-time axiom audit (`Informal.AxiomAudit.run`, executed by
   `blueprint_dashboard` where the environment is available). This is *run evidence*:
-  the trust-model page, the audit page, and the dashboard badge all report this one
-  run rather than each recomputing or restating `formalization.yaml`. `none` ⇒ the
+  the trust-model page's audit row, the audit page's finding lists, and the dashboard
+  strip's scope line all report this one run rather than each recomputing or restating
+  `formalization.yaml`. `none` ⇒ the
   audit did not run (no dashboard block). -/
   audit? : Option Informal.AxiomAudit.Summary := none
   /-- Divergence between the authored `uses` edges and the const-level dependencies
@@ -2147,28 +2148,48 @@ def trustComparatorBadge (cmp : TrustComparator) : Output.Html :=
   else
     trustBadgeHtml s!"comparator: {cmp.status}" (href? := Option.some Informal.NodeRoute.comparatorHref)
 
-/-- The scope line under the badge row: how much of the site the comparator verdict
-actually covers. Omitted when no comparator names any theorem. -/
+/-- The comparator clause of the strip's scope line: how much of the site the verdict
+actually covers, in the vocabulary of the status it actually has.
+
+`none` when there is no comparator, or none that names a theorem. No "this site
+configures no comparator" preamble: the missing badge and the trust-model row already
+say that, and the busiest page on the site does not need it a third time.
+
+The status vocabulary is the one every other surface uses (`isSuccessVerdict`,
+`isReportedUpstream`, `isLocalVerdict`). It used to fall through to "certifies" for
+every status that was neither upstream nor local, so a `configured` record — one that
+has not run — told a reader on the landing page that it certified k theorems, directly
+beside a warn pill saying it had not. The aggregate line was corrected for exactly this
+(CX-042); this is the single-config half of the same correction. The sentences for the
+three statuses that were already right are unchanged to the byte. -/
+def trustScopeText? (cmp? : Option TrustComparator) (theoremLikeTotal : Option Nat) :
+    Option String := do
+  let cmp ← cmp?
+  if cmp.theoremNames.isEmpty then Option.none
+  else
+    let k := cmp.theoremNames.length
+    let noun := if k == 1 then "theorem" else "theorems"
+    let count :=
+      match theoremLikeTotal with
+      | Option.some n => s!"{k} {noun} of {n}"
+      | Option.none => s!"{k} named {noun}"
+    -- A transcribed verdict reports; it does not certify. A local run certified
+    -- something, but not where anyone else can see it happen. A configured one has not
+    -- run at all, and any other status is a record, not a certification.
+    Option.some <|
+      if cmp.isSuccessVerdict then s!"certifies {count}"
+      else if cmp.isReportedUpstream then s!"reported verified upstream: {count}"
+      else if cmp.isLocalVerdict then s!"verified locally, not in CI: {count}"
+      else if cmp.status == "configured" then s!"configured but not yet run: names {count}"
+      else s!"recorded with status {cmp.status}, not certified: names {count}"
+
+/-- The comparator clause on its own, for surfaces that want it without the audit clause
+beside it. The strip itself uses `trustScopeLineHtml`. -/
 def trustScopeHtml (cmp? : Option TrustComparator) (theoremLikeTotal : Option Nat) :
     Output.Html :=
-  match cmp? with
+  match trustScopeText? cmp? theoremLikeTotal with
   | Option.none => .empty
-  | Option.some cmp =>
-    if cmp.theoremNames.isEmpty then .empty
-    else
-      let k := cmp.theoremNames.length
-      let noun := if k == 1 then "theorem" else "theorems"
-      -- A transcribed verdict reports; it does not certify. A local run certified
-      -- something, but not where anyone else can see it happen.
-      let verb :=
-        if cmp.isReportedUpstream then "reported verified upstream:"
-        else if cmp.isLocalVerdict then "verified locally, not in CI:"
-        else "certifies"
-      let text :=
-        match theoremLikeTotal with
-        | Option.some n => s!"{verb} {k} {noun} of {n}"
-        | Option.none => s!"{verb} {k} named {noun}"
-      {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
+  | Option.some clause => {{ <span class="bp_trust_strip_scope">{{.text true clause}}</span> }}
 
 /-- What the topics that certified nothing actually are, in their own vocabulary rather
 than in the certified sentence's.
@@ -2203,9 +2224,9 @@ are still counted, in a clause that says what they are.
 
 The every-config-verified sentence is unchanged to the byte: that is every consumer that was
 telling the truth already. -/
-def trustAggregateScopeHtml (comparators : List ComparatorTopic)
-    (theoremLikeTotal : Option Nat) : Output.Html :=
-  if comparators.isEmpty then .empty
+def trustAggregateScopeText (comparators : List ComparatorTopic)
+    (theoremLikeTotal : Option Nat) : Option String :=
+  if comparators.isEmpty then Option.none
   else
     let m := comparators.length
     let verified := comparators.filter (·.comparator.isSuccessVerdict)
@@ -2239,7 +2260,15 @@ def trustAggregateScopeHtml (comparators : List ComparatorTopic)
           else
             s!"; a further {j} {jNoun} {jVerb} {uncertifiedStatusPhrase others}"
         lead ++ tail
-    {{ <span class="bp_trust_strip_scope">{{.text true text}}</span> }}
+    Option.some text
+
+/-- The aggregate comparator clause on its own. The strip itself uses
+`trustScopeLineHtml`. -/
+def trustAggregateScopeHtml (comparators : List ComparatorTopic)
+    (theoremLikeTotal : Option Nat) : Output.Html :=
+  match trustAggregateScopeText comparators theoremLikeTotal with
+  | Option.none => .empty
+  | Option.some clause => {{ <span class="bp_trust_strip_scope">{{.text true clause}}</span> }}
 
 /-- The multi-config comparator badge: how many of the M configs are verified,
 linking to the comparator page.
@@ -2299,30 +2328,94 @@ def trustGraphBadges (checks? : Option Informal.GraphChecks.Results) : Array Out
                  Reported, not gated (verso.blueprint.trust.requireConnected is false).")
       return out
 
-/-- The axiom-audit badge. Rendered only when the audit found something to report —
-a clean audit on an unconfigured consumer adds no badge, so nothing changes for
-projects that never opted in. -/
-def trustAuditBadge? (audit? : Option Informal.AxiomAudit.Summary) : Option Output.Html := do
-  let audit ← audit?
-  if !audit.ran then Option.none
-  else if !audit.sorried.isEmpty then
-    Option.some <|
-      trustBadgeHtml s!"axiom audit: {audit.sorried.size} incomplete" "error"
-        (Option.some
-          s!"`Lean.collectAxioms` found `sorryAx` in the transitive closure of \
-             {audit.sorried.size} of {audit.checked} audited declarations.")
-  else if !audit.nonstandard.isEmpty then
-    Option.some <|
-      trustBadgeHtml s!"axiom audit: {audit.nonstandard.size} nonstandard" "warn"
-        (Option.some
-          s!"{audit.nonstandard.size} of {audit.checked} audited declarations depend on axioms \
-             beyond propext, Classical.choice, and Quot.sound.")
-  else
-    Option.some <|
-      trustBadgeHtml s!"axiom audit: {audit.checked} clean" "success"
-        (Option.some
-          s!"`Lean.collectAxioms` over {audit.checked} declarations: no `sorryAx`, no axioms \
-             beyond propext, Classical.choice, and Quot.sound.")
+/-! ### The audit clause
+
+The axiom audit used to have its own badge here, its own row on the trust-model page, and
+two blocks on the audit page — one computation, four surfaces, each with its own phrasing
+of the same fact. The row on the trust-model page is now the canonical statement (it has
+the badge, the count, and the exclusions); the strip says the outcome in one clause of its
+scope line and links to that row.
+
+The clause is present in **every** state, including the two that report nothing. A strip
+that simply omits the audit when none ran is a strip that looks identical whether the
+project was audited and clean or never audited at all, and the first reading a reader
+takes from silence is the flattering one.
+-/
+
+/-- The trust-model page's audit row, addressed from the page's own resolved href.
+
+Rebuilds the fragment rather than appending one, so a resolved href that already carries
+a fragment still lands on the row rather than producing two. -/
+def trustAuditRowHref (trustModelHref : String) : String :=
+  ((trustModelHref.splitOn "#").headD trustModelHref) ++ "#bp-trust-audit"
+
+/-- The audit clause of the strip's scope line: its text, and the flag tier it carries
+(`""` — no flag, `"warn"`, or `"error"`).
+
+Population wording is deliberately **"audited declarations"**, not "presented
+declarations": the audit enumerates the declarations blueprint nodes wire plus the ones
+the registry finds in the project's own modules, which is not the same set as everything
+the site renders (an inline ```` ```lean ```` block is presented and is not necessarily
+audited). The population is defined once, on the trust-model page's kernel row; this
+clause reports the outcome over it. -/
+def trustAuditClause (audit? : Option Informal.AxiomAudit.Summary) : String × String :=
+  let standard := String.intercalate ", " Informal.AxiomAudit.standardAxioms
+  match audit? with
+  | Option.none => ("no build-time axiom audit ran", "warn")
+  | Option.some a =>
+    if !a.ran then ("the axiom audit found no declarations to check", "warn")
+    else
+      let n := a.checked
+      let declNoun := if n == 1 then "declaration" else "declarations"
+      let audited := s!"{n} audited {declNoun}"
+      let s := a.sorried.size
+      let m := a.nonstandard.size
+      let sorryClause :=
+        s!"{s} {if s == 1 then "carries" else "carry"} sorryAx in \
+           {if s == 1 then "its" else "their"} closure"
+      let nonstandardClause :=
+        s!"{m} {if m == 1 then "uses" else "use"} an axiom beyond {standard}"
+      if s == 0 && m == 0 then
+        (s!"{if n == 1 then s!"the {audited} is" else s!"all {audited} are"} kernel-built \
+            and axiom-audited: no sorryAx, no axiom beyond {standard}", "")
+      else if m == 0 then
+        (s!"{audited} kernel-built and axiom-audited; {sorryClause}", "error")
+      else if s == 0 then
+        (s!"{audited} kernel-built and axiom-audited: no sorryAx, but {nonstandardClause}",
+         "warn")
+      else
+        (s!"{audited} kernel-built and axiom-audited; {sorryClause} and {nonstandardClause}",
+         "error")
+
+/-- The strip's single scope line: the comparator's coverage, then the audit's outcome,
+separated by a middle dot.
+
+The audit clause links to the trust-model page's audit row when the document emits one —
+the canonical statement, with the badge and the exclusions — and is a plain `<span>`
+otherwise. The comparator clause is dropped when there is no comparator; the audit clause
+never is. -/
+def trustScopeLineHtml (trust : TrustData) (theoremLikeTotal : Option Nat)
+    (trustModelHref? : Option String) : Output.Html :=
+  let cmpText? :=
+    if trust.comparators.isEmpty then trustScopeText? trust.comparator theoremLikeTotal
+    else trustAggregateScopeText trust.comparators theoremLikeTotal
+  let (auditText, flag) := trustAuditClause trust.audit?
+  let auditClass :=
+    if flag.isEmpty then "bp_trust_strip_scope_audit"
+    else s!"bp_trust_strip_scope_audit bp_trust_strip_scope_flag_{flag}"
+  let auditNode : Output.Html :=
+    match trustModelHref? with
+    | Option.some href =>
+      {{ <a class={{auditClass}} href={{trustAuditRowHref href}}>{{.text true auditText}}</a> }}
+    | Option.none => {{ <span class={{auditClass}}>{{.text true auditText}}</span> }}
+  let cmpNode : Output.Html :=
+    match cmpText? with
+    | Option.some t =>
+      .seq #[
+        {{ <span class="bp_trust_strip_scope_cmp">{{.text true t}}</span> }},
+        {{ <span class="bp_trust_strip_scope_sep">" · "</span> }}]
+    | Option.none => .empty
+  {{ <span class="bp_trust_strip_scope">{{cmpNode}}{{auditNode}}</span> }}
 
 /-! ### Registry records
 
@@ -2377,22 +2470,28 @@ def trustRegistryBadge? (t : TrustData) : Option Output.Html :=
         (Option.some Informal.NodeRoute.comparatorHref)
 
 /--
-The rendered strip: a labeled badge row.
+The rendered strip: a labeled badge row, then one scope line.
 
-Carries the comparator verdict, the structural `uses`-graph gate verdicts, the
-axiom-audit result, and — when the document emits a formalization-metadata page or a
-trust-model page — accent badges linking to them, followed by a scope line saying how
-much of the site the comparator verdict actually covers.
+Badges: the comparator verdict (or the multi-config aggregate), the structural
+`uses`-graph gate verdicts, and a claim-bound registry record. Four at most, three
+typically. Then a single scope line — what the comparator covers, and what the axiom
+audit found (`trustScopeLineHtml`).
+
+Three surfaces used to live here that no longer do. The **axiom-audit badge** duplicated
+the trust-model page's audit row, which is the canonical statement of the same one
+computation; the audit is now a clause of the scope line, linking to that row. The two
+**accent cross-link badges** ("formalization.yaml", "trust model") were navigation
+wearing a trust badge's clothes — the project-management hub links both pages, and a blue
+pill in a row of verdicts reads as a verdict.
 
 `checks?` used to be accepted and ignored: the dashboard computed the acyclicity and
 connectivity verdicts and then threw them away, so the homepage showed no sign that
 the build had gated on them at all. It is now rendered.
 
-The strip renders only when it carries a real signal — a configured comparator, an
-axiom audit that actually ran, or a non-empty graph. An unconfigured consumer with no
-graph still sees nothing.
+The strip renders only when it carries a real signal — a badge, a comparator clause, or
+an audit that actually ran. An unconfigured consumer with no graph still sees nothing.
 -/
-def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.none)
+def trustStripHtml (trust : TrustData)
     (checks? : Option Informal.GraphChecks.Results := Option.none)
     (trustModelHref? : Option String := Option.none)
     (theoremLikeTotal : Option Nat := Option.none) :
@@ -2403,39 +2502,28 @@ def trustStripHtml (trust : TrustData) (detailsHref? : Option String := Option.n
       out := out.push (trustAggregateComparatorBadge trust.comparators)
     else if let some cmp := trust.comparator then
       out := out.push (trustComparatorBadge cmp)
-    if let some auditBadge := trustAuditBadge? trust.audit? then
-      out := out.push auditBadge
     out := out ++ trustGraphBadges checks?
     if let some registryBadge := trustRegistryBadge? trust then
       out := out.push registryBadge
     return out
-  if badges.isEmpty then
+  let cmpText? :=
+    if trust.comparators.isEmpty then trustScopeText? trust.comparator theoremLikeTotal
+    else trustAggregateScopeText trust.comparators theoremLikeTotal
+  let auditRan := (trust.audit?.map (·.ran)).getD false
+  if badges.isEmpty && cmpText?.isNone && !auditRan then
     .empty
   else
-    -- The cross-link badges attach only when the strip already carries a real signal,
-    -- preserving the "renders only with real trust data" rule.
-    let badges : Array Output.Html :=
-      match detailsHref? with
-      | Option.some href =>
-        badges.push <|
-          trustBadgeHtml "formalization.yaml" "accent"
-            (title? := Option.some "Project formalization.yaml metadata")
-            (href? := Option.some href)
-      | Option.none => badges
-    let badges : Array Output.Html :=
-      match trustModelHref? with
-      | Option.some href =>
-        badges.push <|
-          trustBadgeHtml "trust model" "accent"
-            (title? := Option.some "What is machine-checked here, and what is not")
-            (href? := Option.some href)
-      | Option.none => badges
+    -- A site with no comparator and no graph (the minimal starter) carries only the audit
+    -- clause. An empty badge row would still take its gap in the strip's flex layout, so
+    -- it is omitted rather than emitted empty.
+    let badgeRow : Output.Html :=
+      if badges.isEmpty then .empty
+      else {{ <div class="bp_summary_badge_row">{{badges}}</div> }}
     {{
       <section class="bp_trust_strip" "aria-label"="Trust signals">
         <span class="bp_trust_strip_label">"Trust"</span>
-        <div class="bp_summary_badge_row">{{badges}}</div>
-        {{if trust.comparators.isEmpty then trustScopeHtml trust.comparator theoremLikeTotal
-          else trustAggregateScopeHtml trust.comparators theoremLikeTotal}}
+        {{badgeRow}}
+        {{trustScopeLineHtml trust theoremLikeTotal trustModelHref?}}
       </section>
     }}
 
@@ -2470,7 +2558,7 @@ block_extension Block.trustStrip (trust : TrustData) where
       let theoremLikeTotal :=
         (Informal.TraversalIndex.Summary.cachedSummary? st).map fun s =>
           s.theorems + s.lemmas + s.propositions + s.corollaries
-      pure (trustStripHtml trust (Informal.TraversalIndex.FormalizationPage.href? st) (some checks)
+      pure (trustStripHtml trust (some checks)
         (Informal.TraversalIndex.TrustModelPage.href? st) theoremLikeTotal)
   extraCss := trustStripAssetBundle.css
   extraJs := trustStripAssetBundle.js

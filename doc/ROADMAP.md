@@ -47,8 +47,9 @@ Not implemented, and stated as such on every Showcase trust page:
    re-runs the comparator against the *latest* comparator / nanoda revisions and
    reports the result alongside the pinned verdict, so a soundness fix landing
    upstream after the pinned run becomes visible instead of invisible. Needs a
-   second status artifact shape (pinned verdict + currency check) and a strip
-   badge that degrades honestly when the currency check has not run recently.
+   second status artifact shape (pinned verdict + currency check) and a currency
+   clause on the comparator page that degrades honestly when the currency check
+   has not run recently.
 2. **Binding a verdict to the run that produced it.** `run_url` and `verified_at`
    are today opaque strings: nothing checks that the URL resolves, that the run
    corresponds to the commit the site was built from, or that the artifact was

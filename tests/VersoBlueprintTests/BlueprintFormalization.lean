@@ -355,22 +355,31 @@ private def comparatorJson := r##"{
     reviewStatus := "agent-reviewed"
     comparator := some { status := "configured", theoremNames := ["A362583.irrational_x"] }
   }
-  let strip := (trustStripHtml trust (some "Formalization-Metadata/")).asString
-  let empty := (trustStripHtml {} none).asString
-  let noComparator := (trustStripHtml { reviewStatus := "agent-reviewed" } (some "Formalization-Metadata/")).asString
+  let strip := (trustStripHtml trust).asString
+  let empty := (trustStripHtml {}).asString
+  let noComparator := (trustStripHtml { reviewStatus := "agent-reviewed" }).asString
   hasSubstr strip "bp_trust_strip" &&
-  -- The strip carries only the comparator verdict badge (linking to `comparator/`) plus
-  -- the blue `accent` formalization.yaml badge — two `<a class="bp_summary_badge…"`.
-  countSubstr strip "<a class=\"bp_summary_badge" == 2 &&
+  -- The strip carries the comparator verdict badge (linking to `comparator/`) and
+  -- nothing else: ONE `<a class="bp_summary_badge…"`. The two accent cross-link badges
+  -- ("formalization.yaml", "trust model") were navigation wearing a verdict's clothes
+  -- and are gone; the PM hub links both pages.
+  countSubstr strip "<a class=\"bp_summary_badge" == 1 &&
   hasSubstr strip "href=\"comparator/\"" &&
-  hasSubstr strip "bp_summary_badge_accent" &&
-  hasSubstr strip "href=\"Formalization-Metadata/\"" &&
-  hasSubstr strip "formalization.yaml" &&
+  !hasSubstr strip "bp_summary_badge_accent" &&
+  !hasSubstr strip "href=\"Formalization-Metadata/\"" &&
+  !hasSubstr strip "formalization.yaml" &&
+  -- The audit has no badge either: it is one clause of the single scope line.
+  !hasSubstr strip "axiom audit:" &&
+  hasSubstr strip "no build-time axiom audit ran" &&
+  -- F1: a `configured` record has not run, so the scope line says so rather than
+  -- falling through to "certifies".
+  hasSubstr strip "configured but not yet run: names 1 named theorem" &&
+  !hasSubstr strip "certifies" &&
   -- The deprecated "All checks" affordance and review badge are gone.
   !hasSubstr strip "All checks" &&
   !hasSubstr strip "review:" &&
-  -- "Renders only with real trust data": no comparator ⇒ no strip (the accent badge
-  -- alone never triggers it).
+  -- "Renders only with real trust data": no comparator, no graph and no audit ⇒ no
+  -- strip at all.
   noComparator == "" &&
   empty == ""
 
@@ -1728,8 +1737,8 @@ private def renderedV03 : String :=
   hasSubstr broken "requires at least one entry under" &&
   !hasSubstr v03 "bp_formalization_warning"
 
--- The two Phase-4 cosmetic findings: the badge under a "Review" heading no longer says
--- "review", and a fields container with no rows in it is not emitted.
+-- The two Phase-4 cosmetic findings: the review status no longer says "review" twice,
+-- and a fields container with no rows in it is not emitted.
 /-- info: true -/
 #guard_msgs in
 #eval
@@ -1739,6 +1748,26 @@ private def renderedV03 : String :=
   hasSubstr v03 ">agent-reviewed<" &&
   !hasSubstr v04 "<div class=\"bp_formalization_fields\"></div>" &&
   !hasSubstr v03 "<div class=\"bp_formalization_fields\"></div>"
+
+-- Declared figures render as declarations, never as verdicts. `yamlRealWorld` declares
+-- 0 sorries and the standard three axioms; `yamlV04` declares `["propext"]`. Both used
+-- to render green `bp_summary_badge_success` chips, visually identical to the
+-- comparator's CI verdict — a figure a person typed wearing a machine's colour.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let v03 := renderedV03
+  let v04 := renderedV04
+  !hasSubstr v03 "bp_summary_badge_success" &&
+  !hasSubstr v03 "bp_summary_badge_error" &&
+  !hasSubstr v03 "bp_summary_badge_warn" &&
+  !hasSubstr v04 "bp_summary_badge_success" &&
+  hasSubstr v03 "Declared sorry count" &&
+  -- No audit payload reaches these renders, so the honest state is "not cross-checked".
+  hasSubstr v03 "data-bp-crosscheck=\"not-run\"" &&
+  hasSubstr v03 "no build-time axiom audit ran for this build" &&
+  -- `review.status` is never cross-checked, in any build.
+  hasSubstr v03 "no build step checks it"
 
 /-! ## Two identity records for one checker have no reading (CX-071)
 

@@ -42,7 +42,9 @@ Six sections:
 3. **What you are trusting** — the concrete artifacts, by revision where known.
 4. **Why independent verification, and its limits** — including the 2026 Lean
    kernel soundness bug and the fact that a stale second checker shared it.
-5. **Verifier currency** — the policy, and the honest gap that remains.
+5. **Verifier currency** — the policy and the honest gap that remains; the
+   per-verdict assessment renders on the comparator page, beside the verdict it
+   qualifies.
 6. **How this exposition was produced** — the automation disclosure from
    `formalization.yaml`'s `automation` section plus the consumer's own note.
 
@@ -107,15 +109,21 @@ private def outLink (href label : String) : Output.Html :=
   {{ <a class="bp_trust_out_link" href={{href}} target="_blank" rel="noopener">{{.text true label}}</a> }}
 
 /-- One row of the machine-checked table: what was checked, the verdict badge, and
-what the verdict does *not* cover. -/
-private def checkRow (what : String) (verdict : Output.Html) (detail : String) : Output.Html :=
-  {{
-    <tr>
-      <td class="bp_trustmodel_what">{{.text true what}}</td>
-      <td class="bp_trustmodel_verdict">{{verdict}}</td>
-      <td class="bp_trustmodel_detail">{{Informal.NodeCard.withCodeSpans detail}}</td>
-    </tr>
-  }}
+what the verdict does *not* cover.
+
+`id?` gives a row a link target. This table is the canonical statement of each of these
+facts — the strip's scope line and the audit page's finding lists both point back here
+rather than restating the verdict — so the rows a surface elsewhere links to are
+addressable rather than "somewhere on that page". -/
+private def checkRow (what : String) (verdict : Output.Html) (detail : String)
+    (id? : Option String := none) : Output.Html :=
+  let attrs := match id? with
+    | Option.some anchor => #[("id", anchor)]
+    | Option.none => #[]
+  .tag "tr" attrs <| .seq #[
+    {{ <td class="bp_trustmodel_what">{{.text true what}}</td> }},
+    {{ <td class="bp_trustmodel_verdict">{{verdict}}</td> }},
+    {{ <td class="bp_trustmodel_detail">{{Informal.NodeCard.withCodeSpans detail}}</td> }}]
 
 private def notCheckedBadge : Output.Html :=
   trustBadgeHtml "not checked" "warn"
@@ -179,7 +187,10 @@ private def registryProse (trust? : Option TrustData) : Output.Html :=
              describes this project, or concerns any claim here. Those appear as cards on \
              the statement comparator page, never as a verdict."]
 
-private def machineCheckedSection (data : TrustModelData) (trust? : Option TrustData)
+/-- Section 1: the canonical table. Public so the row copy can be unit-tested against
+constructed payloads — the alternative is a `#docs` per comparator status, and this table
+is the single home of four verdicts that other surfaces link to rather than restate. -/
+def machineCheckedSection (data : TrustModelData) (trust? : Option TrustData)
     (checks : Informal.GraphChecks.Results) (autoDepsActive : Bool) : Output.Html :=
   let audit? := trust?.bind (·.audit?)
   let cmp? := trust?.bind (·.comparator)
@@ -203,6 +214,7 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
         environment), so no kernel-coverage count can be shown. Whatever this site imported \
         was necessarily elaborated to be imported, but that is not a measurement and this \
         row will not present it as one." ++ kernelExclusion)
+      (id? := some "bp-trust-kernel")
   let kernelRow :=
     match audit? with
     | Option.some a =>
@@ -215,6 +227,7 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
               were present in the environment this site was generated from, so the Lean \
               {data.leanVersion} kernel accepted them during this build. That is a check of \
               the proofs, not of whether the statements say what you want." ++ kernelExclusion)
+          (id? := some "bp-trust-kernel")
       else kernelNotMeasured
     | Option.none => kernelNotMeasured
   -- Axiom audit.
@@ -224,23 +237,28 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
       checkRow "Axiom audit" notCheckedBadge
         "No axiom audit ran for this build (the site carries no dashboard block, so \
          `Lean.collectAxioms` was never invoked). Treat any sorry-freedom claim elsewhere on \
-         this site as author-asserted."
+         this site — including the declared figures on the formalization-metadata page — as \
+         author-asserted."
+        (id? := some "bp-trust-audit")
     | Option.some a =>
       if !a.ran then
         checkRow "Axiom audit" notCheckedBadge
           "The audit found no declarations in scope, so nothing was checked."
+          (id? := some "bp-trust-audit")
       else if !a.sorried.isEmpty then
         checkRow "Axiom audit"
           (trustBadgeHtml s!"{a.sorried.size} incomplete" "error")
           s!"`Lean.collectAxioms` over {a.checked} declarations found `sorryAx` in the \
              transitive closure of {a.sorried.size} of them. Those proofs are incomplete, \
              directly or through a helper."
+          (id? := some "bp-trust-audit")
       else if !a.nonstandard.isEmpty then
         checkRow "Axiom audit"
           (trustBadgeHtml s!"{a.nonstandard.size} nonstandard" "warn")
           s!"`Lean.collectAxioms` over {a.checked} declarations found no `sorryAx`, but \
              {a.nonstandard.size} declaration(s) depend on axioms beyond propext, \
              Classical.choice, and Quot.sound."
+          (id? := some "bp-trust-audit")
       else
         checkRow "Axiom audit"
           (trustBadgeHtml s!"{a.checked} clean" "success")
@@ -248,12 +266,14 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
              transitive closure, and no axiom beyond propext, Classical.choice, and \
              Quot.sound. This subsumes transitive sorry detection — a theorem invoking a \
              sorried lemma is caught even though its own body is clean."
+          (id? := some "bp-trust-audit")
   -- Structural graph gates.
   let graphRow :=
     if checks.graphEmpty then
       checkRow "Dependency-graph structure" notCheckedBadge
         "This document renders no dependency graph, so the structural gates had nothing to \
          check."
+        (id? := some "bp-trust-graph")
     else
       let verdict :=
         if checks.acyclic.ok && checks.connected.ok then
@@ -273,17 +293,40 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
            {checks.acyclic.edgeCount} {if checks.acyclic.edgeCount == 1 then "edge" else "edges"}) \
            was gated before this site was written: no \
            dependency cycle, no unresolvable `uses` label." ++ edgeProvenance)
+        (id? := some "bp-trust-graph")
   -- Comparator.
   let comparators := (trust?.map (·.comparators)).getD []
   let comparatorRow :=
+    -- The tail every certified variant ends on. It used to say "everything else here is
+    -- built and audited but not comparator-certified", which made this row assert the
+    -- audit's outcome as well as the comparator's — two computations in one sentence, one
+    -- of which has its own row directly above.
+    let outOfScopeTail :=
+      " Scope is the named theorems only — everything else here is outside the comparator's \
+        scope; the axiom-audit row above says what the build checked."
     if !comparators.isEmpty then
       -- Multi-config trust surface: aggregate across the configured topics.
+      --
+      -- `k` counts the theorems of the **verified** topics only, and the detail describes
+      -- the rest in their own vocabulary. It used to sum every topic's `theoremNames`
+      -- whatever the status and then say "A CI run reported that each solution proves
+      -- exactly its named challenge statement(s)" — on a site where no run had happened at
+      -- all, that sentence was simply false, and this page is the one a reader comes to for
+      -- the boundary. Same predicate and same phrasing as the strip and the comparator page
+      -- (CX-042).
       let m := comparators.length
-      let k := (comparators.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
-      let verifiedCount := (comparators.filter (·.comparator.status == "verified")).length
+      let verified := comparators.filter (·.comparator.isSuccessVerdict)
+      let others := comparators.filter (fun t => !t.comparator.isSuccessVerdict)
+      let verifiedCount := verified.length
+      let k := (verified.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
+      let j := (others.map (·.comparator.theoremNames.length)).foldl (· + ·) 0
       -- Counted beside the CI count, never inside it: a locally-run verdict is machine
       -- evidence produced by the party publishing the page.
       let localCount := (comparators.filter (·.comparator.isLocalVerdict)).length
+      let cfgNoun := if m == 1 then "config" else "configs"
+      let kNoun := if k == 1 then "theorem" else "theorems"
+      let jNoun := if j == 1 then "theorem" else "theorems"
+      let jVerb := if j == 1 then "is" else "are"
       let verdict :=
         if verifiedCount == m then
           trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success"
@@ -296,43 +339,69 @@ private def machineCheckedSection (data : TrustModelData) (trust? : Option Trust
           s!" {localCount} of those {if localCount == 1 then "config was" else "configs were"} \
              verified locally rather than in CI: the checkers ran, but on the presenter's own \
              machine, with no sandbox and no run record to follow."
-      checkRow "Independent statement comparator" verdict
-        (s!"A CI run reported that each solution proves exactly its named challenge \
-           statement(s), across {m} comparator {if m == 1 then "config" else "configs"} \
-           ({k} certified {if k == 1 then "theorem" else "theorems"} in total). This page reads \
-           those runs' artifacts back; it does not re-run the checks. Scope is the named \
-           theorems only — everything else here is built and audited but not \
-           comparator-certified." ++ localClause)
+      let othersClause :=
+        if others.isEmpty then ""
+        else s!" A further {j} named {jNoun} {jVerb} {uncertifiedStatusPhrase others}."
+      let detail :=
+        if verifiedCount == 0 then
+          s!"No CI run recorded here certified anything: none of the {m} comparator \
+             {cfgNoun} carries a `verified` record, and the {j} {jNoun} they name \
+             {jVerb} {uncertifiedStatusPhrase others}. Nothing here has been independently \
+             re-checked; the axiom-audit row above says what the build checked." ++ localClause
+        else
+          s!"A CI run reported that each solution proves exactly its named challenge \
+             statement(s), across {verifiedCount} of {m} comparator {cfgNoun} \
+             ({k} certified {kNoun} in total). This page reads those runs' artifacts back; \
+             it does not re-run the checks." ++ othersClause ++ outOfScopeTail ++ localClause
+      checkRow "Independent statement comparator" verdict detail
+        (id? := some "bp-trust-comparator")
     else match cmp? with
     | Option.none =>
       checkRow "Independent statement comparator" notCheckedBadge
         "This project configures no statement comparator, so no theorem here has been \
          independently re-checked against a separately-elaborated challenge statement."
+        (id? := some "bp-trust-comparator")
     | Option.some cmp =>
       let k := cmp.theoremNames.length
-      let verdict :=
-        if cmp.status == "verified" then
-          trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success"
-        else if cmp.isLocalVerdict then
-          trustBadgeHtml
-            (if k == 1 then "1 theorem, locally" else s!"{k} theorems, locally") "accent"
-        else trustBadgeHtml cmp.status "warn"
+      let kNoun := if k == 1 then "theorem" else "theorems"
       let toolNote :=
         if !cmp.toolSha.isEmpty then s!" using comparator {cmp.toolSha}"
         else if !cmp.toolRef.isEmpty then s!" using comparator {cmp.toolRef} (a mutable tag)"
         else ""
-      let detail :=
-        if cmp.isLocalVerdict then
-          s!"A run{toolNote} on the presenter's own machine reported that the solution proves \
-             exactly the named challenge statement(s). The checkers ran; CI did not. \
-             {cmp.localVerdictNote} Scope is the named theorems only — everything else here \
-             is built and audited but not comparator-certified."
+      -- One branch per status, because they are different claims. `configured` and
+      -- `reported-upstream` used to fall through to a warn badge carrying the raw status
+      -- beside the detail sentence "A CI run reported that the solution proves exactly the
+      -- named challenge statement(s)" — a sentence about a run that, in the first case,
+      -- had not happened and in the second had happened somewhere else.
+      let (verdict, detail) :=
+        if cmp.isSuccessVerdict then
+          (trustBadgeHtml (if k == 1 then "1 theorem" else s!"{k} theorems") "success",
+           s!"A CI run{toolNote} reported that the solution proves exactly the named challenge \
+              statement(s). This page reads that run's artifact back; it does not re-run the \
+              check." ++ outOfScopeTail)
+        else if cmp.isLocalVerdict then
+          (trustBadgeHtml
+             (if k == 1 then "1 theorem, locally" else s!"{k} theorems, locally") "accent",
+           s!"A run{toolNote} on the presenter's own machine reported that the solution proves \
+              exactly the named challenge statement(s). The checkers ran; CI did not. \
+              {cmp.localVerdictNote}" ++ outOfScopeTail)
+        else if cmp.status == "configured" then
+          (trustBadgeHtml "configured" "warn",
+           s!"The comparator is configured, naming {k} {kNoun}, but has not run; nothing here \
+              has been independently re-checked. The axiom-audit row above says what the \
+              build checked.")
+        else if cmp.isReportedUpstream then
+          -- Neutral, not warn: somebody else's record is provenance, not a fault.
+          (trustBadgeHtml "reported upstream" "",
+           s!"{cmp.reportedUpstreamNote} It names {k} {kNoun}. Nothing on this site \
+              re-checked them; the axiom-audit row above says what the build checked.")
         else
-          s!"A CI run{toolNote} reported that the solution proves exactly the named challenge \
-             statement(s). This page reads that run's artifact back; it does not re-run the \
-             check. Scope is the named theorems only — everything else here is built and \
-             audited but not comparator-certified."
+          (trustBadgeHtml cmp.status "warn",
+           s!"The comparator record carries status `{cmp.status}`, naming {k} {kNoun}; that is \
+              a record, not a certification. Nothing here has been independently re-checked; \
+              the axiom-audit row above says what the build checked.")
       checkRow "Independent statement comparator" verdict detail
+        (id? := some "bp-trust-comparator")
   -- Math lint.
   let lintRow :=
     if data.mathLintEnabled then
@@ -709,86 +778,43 @@ private def independenceSection : Output.Html :=
 
 /-! ### Section 5 — verifier currency
 
-Driven by the same assessments the comparator page renders (`TrustComparator.currency`,
-computed at elaboration from the recorded revisions against the fork's advisory table), so
-the two surfaces cannot disagree about whether a pin is current. One line per verifier
-build any verdict on this site names — every comparator config, not only the first — and
-the self-aging clause under all of them, because a verdict read off a hand-maintained
-table is a claim about the table.
+The **policy**, and the gap it does not close. The per-verdict *assessment* — which
+recorded verifier build is current, against which advisories, and the clause that ages the
+advisory table itself — renders once, on the comparator page, beside the verdict it
+qualifies.
+
+It used to render in both places, from the same `TrustComparator.currency` rows, which put
+a flattened list of every config's verifiers on a page with no verdicts on it while the
+multi-topic sites that need per-verdict rows had them on the comparator page anyway. A
+currency verdict is a qualifier on a claim; detached from the claim it qualifies it is
+just a list of revisions.
 -/
 
-/-- Every currency assessment this site computed, labelled by the config that produced it
-(empty label ⇒ the single-pair surface, which has no topic name). -/
-private def currencyRowsOf (trust? : Option TrustData) : Array (String × VerifierCurrency) :=
-  match trust? with
-  | Option.none => #[]
-  | Option.some trust =>
-    let single : Array (String × VerifierCurrency) :=
-      match trust.comparator with
-      | Option.some cmp => cmp.currency.map fun r => ("", r)
-      | Option.none => #[]
-    trust.comparators.foldl (init := single) fun acc topic =>
-      acc ++ topic.comparator.currency.map fun r => (topic.name, r)
-
 private def currencySection (trust? : Option TrustData) : Output.Html :=
-  let rows := currencyRowsOf trust?
   let comparators : List TrustComparator :=
     match trust? with
     | Option.none => []
     | Option.some trust =>
       (trust.comparator.toList) ++ trust.comparators.map (·.comparator)
-  -- Which Lean release a run's kernel was is recorded in one place only: the comparator's
-  -- own toolchain field. A record without it leaves the primary kernel's currency
-  -- unassessable, which is a gap worth naming rather than an absence worth passing over.
-  let toolchainRecorded := comparators.any fun c => !c.toolToolchain.isEmpty
-  -- The payload's own field, not a row's: the clause that ages the table is exactly what
-  -- a page with nothing to assess still owes the reader.
-  let advisoriesUpdated :=
-    let fromPayload := (trust?.map (·.advisoriesUpdated)).getD ""
-    if fromPayload.isEmpty then ((rows[0]?).map (·.2.advisoriesUpdated)).getD ""
-    else fromPayload
-  let item (label detail : String) : Output.Html :=
-    {{ <li><strong>{{.text true label}}</strong>" — "{{.text true detail}}</li> }}
-  let verdictWord (r : VerifierCurrency) : String :=
-    if r.verdict == "stale" then "not current" else r.verdict
-  let rowItems : Array Output.Html := rows.map fun (topic, r) =>
-    let label :=
-      let tool := if r.tool == "lean4" then "Lean toolchain" else r.tool
-      if topic.isEmpty then s!"{tool}: {verdictWord r}"
-      else s!"{tool} ({topic}): {verdictWord r}"
-    item label r.detail
-  let assessed : Array Output.Html :=
-    if rows.isEmpty then
-      #[prose
-          (if comparators.isEmpty then
-            "This site publishes no statement-comparator verdict, so there is no recorded \
-             verifier build here whose currency could be assessed."
-           else
-            "No verdict on this site records a verifier build to assess: no revision for an \
-             independent kernel, and no Lean release for the comparator that produced the \
-             verdict. A configuration that enables a second kernel is not such a record — it \
-             describes the next run — so there is nothing here whose currency this site could \
-             check."),
-        {{ <p class="bp_trust_note">{{.text true (currencyAgingClause advisoriesUpdated)}}</p> }}]
+  -- Where the assessment is, or why there is none. Not a currency claim: this page makes
+  -- none, which is why it does not carry the aging clause either.
+  let pointer : Output.Html :=
+    if comparators.isEmpty then
+      prose
+        "This site publishes no statement-comparator verdict, so there is no recorded \
+         verifier build here whose currency could be assessed."
     else
-      #[prose
-          "Against the advisories this site records, the builds behind its verdicts stand as \
-           follows. `current` means the recorded revision is one the table resolves as \
-           carrying every fix it knows of; `unknown` means the table settled nothing, in \
-           either direction, and is not a clean bill.",
-        {{ <ul class="bp_trustmodel_list">{{.seq rowItems}}</ul> }},
-        {{ <p class="bp_trust_note">{{.text true (currencyAgingClause advisoriesUpdated)}}</p> }}]
+      {{
+        <p class="bp_trust_prose">
+          "Each verifier build a verdict on this site records is assessed against that table on the "
+          <a href={{Informal.NodeRoute.comparatorHref}}>"statement comparator page"</a>
+          ", beside the verdict it qualifies; that block also dates the table."
+        </p> }}
   let gap :=
-    let toolchainGap :=
-      if toolchainRecorded then ""
-      else
-        " no verdict here records which Lean release the comparator was built on, so the \
-         currency of the primary kernel — the one that accepted every proof on this site — \
-         cannot be assessed at all;"
-    s!"Known gap: no scheduled re-verification job;{toolchainGap} no binding between a \
-       displayed verdict and a specific CI run beyond the recorded URL; and the advisory \
-       table above is maintained by hand rather than tracked from upstream."
-  section' "Verifier currency" (#[
+    "Known gap: no scheduled re-verification job; no binding between a displayed verdict \
+     and a specific CI run beyond the recorded URL; and the advisory table is maintained \
+     by hand rather than tracked from upstream."
+  section' "Verifier currency" #[
     prose
       "Pinning a verifier by revision and keeping a verifier current are in tension. A pinned \
        verifier gives a reproducible result: anyone can re-run exactly what CI ran. A current \
@@ -810,8 +836,8 @@ private def currencySection (trust? : Option TrustData) : Output.Html :=
        own pins (`verso.blueprint.trust.expectedKernelIdentities`). Nothing here re-runs a \
        checker, fetches a source tree, or hashes a binary; what is checked is that two \
        sources say the same thing, and a checker with no pin behind it is reported as an \
-       unauthenticated label rather than assessed."
-  ] ++ assessed ++ #[
+       unauthenticated label rather than assessed.",
+    pointer,
     prose
       "The policy this project follows is to pin for reproducibility and to re-verify against \
        current tooling on a schedule, reporting both. The scheduled re-verification is not yet \
@@ -819,7 +845,7 @@ private def currencySection (trust? : Option TrustData) : Output.Html :=
        re-checks it against today's kernels. This is tracked as future work rather than \
        presented as done.",
     {{ <p class="bp_trust_note">{{.text true gap}}</p> }}
-  ])
+  ]
 
 /-! ### Section 6 — how this was produced -/
 

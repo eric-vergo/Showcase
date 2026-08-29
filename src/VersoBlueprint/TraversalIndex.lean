@@ -823,7 +823,7 @@ def spec : StoreSpec := {
   kind := .runtimeCache
   key := "singleton trust key"
   value := "raw trust-strip JSON payload (sorry count, axioms, review status, comparator verdict)"
-  summary := "Carries the elaboration-time trust-strip data (`Commands.TrustData`, saved by `Block.trustStrip`'s traverse) — comparator verdict, `requireConnected`, and the build-time axiom-audit findings — to the generation-time consumers: `Informal.GraphGate` (run between traversal and emission) reads `requireConnected`, `emitBlueprintComparatorPage` reads the comparator verdict to emit the `comparator/` page, and the audit/trust-model pages report the audit summary. Absent when no `verso.blueprint.trust.*` option is configured."
+  summary := "Carries the elaboration-time trust-strip data (`Commands.TrustData`, saved by `Block.trustStrip`'s traverse) — comparator verdict, `requireConnected`, and the build-time axiom-audit findings — to the generation-time consumers: `Informal.GraphGate` (run between traversal and emission) reads `requireConnected`, `emitBlueprintComparatorPage` reads the comparator verdict to emit the `comparator/` page, the trust-model page's audit row reports the audit's verdict and the audit page lists its findings, and the formalization-metadata page reads the audit plus the `formalization.yaml` input digest to say whether this build's audit cross-checked the figures it displays. Absent when no `verso.blueprint.trust.*` option is configured."
 }
 
 def domainName : Name := spec.name

@@ -53,6 +53,16 @@ and says nothing at all when it did not, which is the honest reading of an unset
 structure FormalizationData where
   jsonText : String := "null"
   validated : Bool := false
+  /-- SHA-256 of the bytes this page was rendered from, as `Informal.TrustInputs`
+  records them.
+
+  The page renders figures a person typed. The build-time axiom audit is the only thing
+  on this site that can contradict them — and only when it was handed *this* document
+  (`verso.blueprint.trust.formalizationYaml`). Matching this digest against the
+  `formalization-yaml` input the trust payload recorded is how the page tells "the audit
+  cross-checked these figures" from "an audit ran, against something else". Empty on a
+  payload written before this field existed, which reads as the second. -/
+  sourceDigest : String := ""
 deriving Inhabited, FromJson, ToJson, Quote
 
 /-- The parsed document carried by the payload. -/
@@ -152,10 +162,6 @@ private def linkedText (href text : String) : Output.Html :=
   else
     .text true text
 
-private def badgeRow (badges : Array Output.Html) : Output.Html :=
-  if badges.isEmpty then .empty
-  else {{ <div class="bp_summary_badge_row bp_formalization_badges">{{badges}}</div> }}
-
 /-- Badge chips inside a field value, where a `<div>` badge row would not be valid markup.
 The chips are inline (`trustBadgeHtml` renders a `<span>`, or an `<a>` when it links). -/
 private def chipRow (chips : Array Output.Html) : Output.Html :=
@@ -213,16 +219,6 @@ private def declListHtml (st : TraverseState) (declMap : Lean.NameMap (Array Lea
     |>.filter (fun s => !s.isEmpty)
   let nodes := decls.map (declLinkHtml st declMap)
   .seq (nodes.intersperse {{ <span>", "</span> }}).toArray
-
-private def alignmentStatusBadge (status : String) : Output.Html :=
-  if status == "proved" || status == "verified" || status == "complete" then
-    trustBadgeHtml status "success"
-  else if (status.splitOn "sorry").length > 1 then
-    trustBadgeHtml status "error"
-  else if status == "stated" || status == "in-progress" || status == "partial" || status == "wip" then
-    trustBadgeHtml status "warn"
-  else
-    trustBadgeHtml status
 
 private def projectSection (doc : Json) : Output.Html :=
   match objVal? doc "project" with
@@ -359,58 +355,138 @@ private def classificationSection (doc : Json) : Output.Html :=
         ]
       ]
 
-/-! Plain (non-linking) status badges for the formalization-metadata page. They mirror
-the `formalization.yaml`-declared sorry/axiom/review figures; unlike the former trust
-strip badges they carry no href (the standalone trust-evidence pages were removed). -/
+/-! ### Declared figures and their cross-check
 
-/-- A sorry-count badge (green at zero, red otherwise). -/
-private def sorryBadge (n : Nat) : Output.Html :=
-  trustBadgeHtml s!"{n} {if n == 1 then "sorry" else "sorries"}" (if n == 0 then "success" else "error")
+Everything under `status`, `review` and `alignment` is a figure a person typed into
+`formalization.yaml`. It used to render as `bp_summary_badge_success` / `_error` /
+`_warn` chips — visually identical to the badges the trust strip uses for machine
+verdicts, so a declared "0 sorries" and a comparator's "CI-verified" wore the same green.
+They are now plain labelled fields, and each section carries one note saying whether
+anything in this build compared them with the environment.
 
-/-- An axioms badge: green when only the standard axioms are declared, amber when the
-declared set includes nonstandard axioms. -/
-private def axiomsBadge (axioms : List String) : Output.Html :=
-  if axioms.isEmpty then
-    trustBadgeHtml "axioms: none recorded"
+The note is not decoration: the audit *can* falsify some of these fields, and where it
+did the reader should know which ones. So the note enumerates what would have failed the
+build rather than asserting a general "consistent".
+-/
+
+/-- Whether this build's axiom audit examined *this* document.
+
+Three states, because "an audit ran" and "the audit read this document" are different
+facts and only the second licenses the word *cross-checked*. -/
+inductive CrossCheck where
+  /-- No build-time axiom audit ran at all (the site carries no dashboard block). -/
+  | notRun
+  /-- An audit ran, but against a different `formalization.yaml` — or against none. -/
+  | otherDocument
+  /-- The audit ran against the bytes this page renders. -/
+  | checked (audit : Informal.AxiomAudit.Summary)
+deriving Inhabited
+
+/-- Which of the three states this build is in, from the trust payload the trust strip
+stashed during traversal.
+
+`.checked` requires a digest match against the payload's `formalization-yaml` input
+record: an audit that ran against a *different* document has compared nothing about this
+one, and the word "cross-checked" beside a figure it never read would be exactly the
+overstatement this page is being cut back from. -/
+def crossCheckOf (st : TraverseState) (sourceDigest : String) : CrossCheck :=
+  let trust? : Option TrustData := do
+    let j ← Informal.TraversalIndex.TrustData.raw? st
+    (fromJson? (α := TrustData) j).toOption
+  match trust?.bind (·.audit?) with
+  | Option.none => .notRun
+  | Option.some audit =>
+    let inputs := (trust?.map (·.inputs)).getD #[]
+    let matched :=
+      !sourceDigest.isEmpty &&
+        inputs.any fun i =>
+          i.role == Informal.TrustInputs.roleFormalization && i.sha256 == sourceDigest
+    if matched then .checked audit else .otherDocument
+
+/-- The `data-bp-crosscheck` value for a state. The attribute is the stable hook the
+tests (and anyone grepping a rendered site) use to tell the three apart. -/
+private def crossCheckAttr : CrossCheck → String
+  | .notRun => "not-run"
+  | .otherDocument => "other-document"
+  | .checked _ => "checked"
+
+/-- One cross-check note. `extra` appends section-specific qualifications to the
+`checked` sentence; the other two states say the same thing everywhere, because in them
+nothing about this document was compared with anything. -/
+private def crossCheckNote (cross : CrossCheck) (auditHref? : Option String)
+    (extra : String := "") : Output.Html :=
+  let auditLink : Output.Html :=
+    match auditHref? with
+    | Option.some href => {{ <a href={{href}}>"axiom audit"</a> }}
+    | Option.none => .text true "axiom audit"
+  let body : Output.Html :=
+    match cross with
+    | .checked a =>
+      let over :=
+        if a.checked == 0 then " compared these declared figures with the environment"
+        else s!" (`Lean.collectAxioms` over {a.checked} declarations) compared these declared \
+                figures with the environment"
+      .seq #[
+        .text true "Cross-checked: this build's ",
+        auditLink,
+        Informal.NodeCard.withCodeSpans <|
+          over ++ ". A declared sorry count of 0, or a declared axiom list the closure \
+                  exceeds, would have failed this build." ++ extra]
+    | .otherDocument =>
+      Informal.NodeCard.withCodeSpans
+        "Not cross-checked: this build's axiom audit was given a different \
+         `formalization.yaml`, or none (`verso.blueprint.trust.formalizationYaml`), so \
+         nothing compared these figures with the environment."
+    | .notRun =>
+      Informal.NodeCard.withCodeSpans
+        "Not cross-checked: no build-time axiom audit ran for this build, so these figures \
+         are the project's own declaration."
+  {{
+    <p class="bp_formalization_note" "data-bp-crosscheck"={{crossCheckAttr cross}}>{{body}}</p>
+  }}
+
+/-- The declared axiom list as inline `<code>` spans, or "none" for a declared-empty
+list. Plain text throughout: whether a listed axiom is standard is a judgement the
+trust-model page's audit row makes from the environment, not one this page may colour a
+declaration with. -/
+private def declaredAxiomsValue (axioms : Array String) : Output.Html :=
+  if axioms.isEmpty then .text true "none"
   else
-    let nonstandard := nonstandardAxioms axioms
-    let title := s!"Axioms: {String.intercalate ", " axioms}"
-    if nonstandard.isEmpty then
-      trustBadgeHtml s!"axioms: standard {axioms.length}" "success" (Option.some title)
-    else
-      trustBadgeHtml s!"axioms: {axioms.length} ({nonstandard.length} nonstandard)" "warn"
-        (Option.some title)
+    let chips := axioms.toList.map fun a => ({{ <code>{{.text true a}}</code> }} : Output.Html)
+    .seq (chips.intersperse {{ ", " }}).toArray
 
-/-- A review-status badge. The label is the status alone: the badge sits directly under a
-"Review" heading, and "review: self-assessed" there says "review" twice. -/
-private def reviewBadge (status : String) : Output.Html :=
-  trustBadgeHtml status "" (Option.some s!"Review status declared in formalization.yaml: {status}")
+/-- A "Declared axioms" row, rendered whenever the key is present — a declared empty list
+says something ("this project claims no axioms"), and dropping the row would make it
+indistinguishable from a document that never mentioned axioms. -/
+private def declaredAxiomsRow (j : Json) : Output.Html :=
+  match objVal? j "axioms" with
+  | Option.none => .empty
+  | Option.some _ => fieldRow "Declared axioms" (declaredAxiomsValue (strArrField j "axioms"))
 
 private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Lean.Name))
-    (doc : Json) : Output.Html :=
+    (doc : Json) (cross : CrossCheck) (auditHref? : Option String) : Output.Html :=
   match objVal? doc "status" with
   | Option.none => .empty
   | Option.some stj =>
-    let badges : Array Output.Html := Id.run do
-      let mut out : Array Output.Html := #[]
-      if let some n := natField? stj "sorry_count" then
-        out := out.push (sorryBadge n)
-      if let some n := natField? stj "sorry_in_definitions" then
-        out := out.push
-          (trustBadgeHtml s!"sorries in definitions: {n}" (if n == 0 then "success" else "error"))
-      let axs := strArrField stj "axioms"
-      if !axs.isEmpty then
-        out := out.push (axiomsBadge axs.toList)
-      return out
+    let fields := fieldsBlock #[
+      textFieldRow "Declared sorry count" ((natField? stj "sorry_count").map toString),
+      textFieldRow "Declared sorries in definitions"
+        ((natField? stj "sorry_in_definitions").map toString),
+      declaredAxiomsRow stj
+    ]
+    -- What the audit does *not* check about this section, named rather than left to be
+    -- inferred from the general sentence.
+    let extra :=
+      let inDefs :=
+        if (natField? stj "sorry_in_definitions").isSome then
+          " `sorry_in_definitions` is declared only."
+        else ""
+      let nonZero :=
+        if (natField? stj "sorry_count").getD 0 > 0 then
+          " A non-zero sorry count is declared, not cross-checked."
+        else ""
+      inDefs ++ nonZero
     let resultItems := arrField stj "main_results" |>.map fun r =>
-      let rBadges : Array Output.Html := Id.run do
-        let mut out : Array Output.Html := #[]
-        if let some n := natField? r "sorry_count" then
-          out := out.push (sorryBadge n)
-        let axs := strArrField r "axioms"
-        if !axs.isEmpty then
-          out := out.push (axiomsBadge axs.toList)
-        return out
       let litDepsRow :=
         match objVal? r "literature_dependencies" with
         | Option.some _ =>
@@ -426,9 +502,10 @@ private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Le
           {{fieldsBlock #[
             codeFieldRow "File" (strField? r "file"),
             codeFieldRow "Comparator config" (strField? r "comparator_config"),
-            litDepsRow
+            litDepsRow,
+            textFieldRow "Declared sorry count" ((natField? r "sorry_count").map toString),
+            declaredAxiomsRow r
           ]}}
-          {{badgeRow rBadges}}
         </li>
       }}
     let mainResults : Array Output.Html :=
@@ -438,7 +515,8 @@ private def statusSection (st : TraverseState) (declMap : Lean.NameMap (Array Le
         {{ <ul class="bp_formalization_list">{{resultItems}}</ul> }}
       ]
     sectionHtml "Status"
-      (#[proseParagraph (strField? stj "scope"), badgeRow badges] ++ mainResults)
+      (#[proseParagraph (strField? stj "scope"), fields,
+         crossCheckNote cross auditHref? extra] ++ mainResults)
 
 private def automationSection (doc : Json) : Output.Html :=
   match objVal? doc "automation" with
@@ -477,14 +555,14 @@ private def fidelitySection (doc : Json) : Output.Html :=
   | Option.none => .empty
   | Option.some f => sectionHtml "Fidelity" #[proseParagraph (strField? f "divergences")]
 
+/-- Review status is plain text with a fixed annotation in **every** state.
+
+No branch on `cross`: the audit never reads `review.status`, so there is no build in
+which it could be cross-checked, and a state-dependent note would suggest otherwise. -/
 private def reviewSection (doc : Json) : Output.Html :=
   match objVal? doc "review" with
   | Option.none => .empty
   | Option.some r =>
-    let statusBadge :=
-      match strField? r "status" with
-      | Option.some s => badgeRow #[reviewBadge s]
-      | Option.none => .empty
     let reviewers :=
       match objVal? r "reviewers" with
       | Option.some _ =>
@@ -493,13 +571,19 @@ private def reviewSection (doc : Json) : Output.Html :=
           (Option.some (if names.isEmpty then "none recorded" else String.intercalate ", " names.toList))
       | Option.none => .empty
     sectionHtml "Review" #[
-      statusBadge,
-      fieldsBlock #[reviewers],
+      fieldsBlock #[
+        textFieldRow "Declared status" (strField? r "status"),
+        reviewers
+      ],
+      {{
+        <p class="bp_formalization_note">
+          "Declared by the project; no build step checks it."
+        </p> }},
       proseParagraph (strField? r "notes")
     ]
 
 private def alignmentSection (st : TraverseState) (declMap : Lean.NameMap (Array Lean.Name))
-    (doc : Json) : Output.Html :=
+    (doc : Json) (cross : CrossCheck) (auditHref? : Option String) : Output.Html :=
   match objVal? doc "alignment" with
   | Option.none => .empty
   | Option.some al =>
@@ -508,9 +592,12 @@ private def alignmentSection (st : TraverseState) (declMap : Lean.NameMap (Array
         match strField? s "note" with
         | Option.some n => {{ <div class="bp_formalization_note">{{.text true n}}</div> }}
         | Option.none => .empty
+      -- Plain text, not a tiered badge: `proved` here is a word the author typed. The
+      -- audit contradicts it when the closure carries `sorryAx` (that is a build error),
+      -- but it cannot confirm it, and a green pill claims confirmation.
       let statusHtml : Output.Html :=
         match strField? s "status" with
-        | Option.some v => alignmentStatusBadge v
+        | Option.some v => .text true v
         | Option.none => .empty
       {{
         <tr>
@@ -530,9 +617,21 @@ private def alignmentSection (st : TraverseState) (declMap : Lean.NameMap (Array
           </table>
         </div>
       }}
+    let note : Output.Html :=
+      match cross with
+      | .checked _ =>
+        {{
+          <p class="bp_formalization_note" "data-bp-crosscheck"="checked">
+            {{Informal.NodeCard.withCodeSpans
+              "Statuses are declared in `formalization.yaml`. A row marked `proved`, \
+               `verified` or `complete` whose declaration carries `sorryAx` would have \
+               failed this build's axiom audit; other statuses are not cross-checked."}}
+          </p> }}
+      | other => crossCheckNote other auditHref?
     sectionHtml "Alignment" #[
       fieldsBlock #[codeFieldRow "Namespace" (strField? al "namespace")],
-      table
+      table,
+      note
     ]
 
 private def acknowledgementsSection (doc : Json) : Output.Html :=
@@ -577,10 +676,18 @@ private def validationNote (validated : Bool) : Output.Html :=
     </p>
   }}
 
-/-- Render the whole formalization-metadata document. -/
-def renderFormalization (st : TraverseState) (doc : Json) (validated : Bool := false) :
-    Output.Html :=
+/-- Render the whole formalization-metadata document.
+
+`cross` is a parameter rather than something this function derives, so the three
+cross-check states are unit-testable without standing up a site. `Block.formalization`'s
+`toHtml` computes it from the traversal state. -/
+def renderFormalization (st : TraverseState) (doc : Json) (validated : Bool := false)
+    (cross : CrossCheck := .notRun) : Output.Html :=
   let declMap := Informal.NodeRoute.declNodeLabels st
+  -- The canonical statement of what the audit enumerated and found. Absent when the
+  -- document emits no trust-model page, in which case the note names the audit in text.
+  let auditHref? :=
+    (Informal.TraversalIndex.TrustModelPage.href? st).map trustAuditRowHref
   let versionSuffix :=
     match strField? doc "version" with
     | Option.some v => s!" standard ({v})."
@@ -599,11 +706,11 @@ def renderFormalization (st : TraverseState) (doc : Json) (validated : Bool := f
       {{sourcesSection doc}}
       {{relatedSection doc}}
       {{classificationSection doc}}
-      {{statusSection st declMap doc}}
+      {{statusSection st declMap doc cross auditHref?}}
       {{automationSection doc}}
       {{fidelitySection doc}}
       {{reviewSection doc}}
-      {{alignmentSection st declMap doc}}
+      {{alignmentSection st declMap doc cross auditHref?}}
       {{acknowledgementsSection doc}}
     </div>
   }}
@@ -625,7 +732,7 @@ block_extension Block.formalization (data : FormalizationData) where
           (fun err => s!"Malformed data in Block.formalization.toHtml ({err})")
         | pure .empty
       let st ← HtmlT.state
-      pure (renderFormalization st data.doc data.validated)
+      pure (renderFormalization st data.doc data.validated (crossCheckOf st data.sourceDigest))
   extraCss := formalizationAssetBundle.css
   extraJs := formalizationAssetBundle.js
 
@@ -646,7 +753,8 @@ def mkFormalizationPart (stx : Syntax) (endPos : String.Pos.Raw) (data : Formali
   let metadata : Option (TSyntax `term) := some (← `(term| { number := false }))
   let block ← ``(Verso.Doc.Block.other
     (Informal.Commands.Block.formalization
-      (FormalizationData.mk $(quote data.jsonText) $(quote data.validated))) #[])
+      (FormalizationData.mk $(quote data.jsonText) $(quote data.validated)
+        $(quote data.sourceDigest))) #[])
   let subParts := #[]
   pure <| FinishedPart.mk stx stx expandedTitle titlePreview metadata #[block] subParts endPos
 
@@ -660,7 +768,11 @@ public meta def blueprintFormalizationCmd : PartCommand
     -- consumer package root), matching the lakefile path-dep convention.
     if !(← System.FilePath.pathExists path) then
       throwErrorAt cfg.path "blueprint_formalization: no such file (resolved against the build directory): {path}"
-    match Informal.FormalizationYaml.parse (← IO.FS.readFile path) with
+    -- One read, one digest, over the bytes this page is about to render — the same
+    -- discipline (and the same helper) the trust payload's input ledger uses, so the two
+    -- digests are comparable at render time.
+    let (sourceDigest, raw) ← Informal.TrustInputs.readWithDigest path
+    match Informal.FormalizationYaml.parse raw with
     | .error err => throwErrorAt cfg.path "blueprint_formalization: {path}: {err}"
     | .ok json =>
       let opts ← Lean.getOptions
@@ -673,7 +785,8 @@ public meta def blueprintFormalizationCmd : PartCommand
         logInfo m!"Blueprint formalization metadata from {path}"
       let endPos := stx.getTailPos?.get!
       closePartsUntil 1 endPos
-      addPart (← mkFormalizationPart stx endPos { jsonText := json.compress, validated })
+      addPart (← mkFormalizationPart stx endPos
+        { jsonText := json.compress, validated, sourceDigest })
   | _ => (Lean.Elab.throwUnsupportedSyntax : PartElabM Unit)
 
 end Informal.Commands
