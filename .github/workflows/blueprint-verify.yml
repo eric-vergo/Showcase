@@ -233,11 +233,14 @@ on:
         default: 900000000
       source_link_gate:
         description: >-
-          Whether every project-local `sourceHref` in the declaration registry
-          must name the revision the site was generated from (CX-066). A
-          capability the caller declares, never file presence: a gate that skips
-          because a file is missing is the probe-and-degrade weakness the audit
-          rejected. When on, a vacuous result is a FAILURE.
+          Whether every project-local source link must name the revision the site
+          was generated from (CX-066) -- both the declaration registry's
+          `sourceHref` values and the `blob/<rev>/` links in the rendered HTML,
+          which are baked at elaboration and can be a commit behind. A capability
+          the caller declares, never file presence: a gate that skips because a
+          file is missing is the probe-and-degrade weakness the audit rejected.
+          When on, an empty REGISTRY result is a FAILURE; an empty HTML result is
+          reported, since a consumer may legitimately render no such link.
         type: boolean
         default: true
       trust_provenance_gate:
@@ -1816,64 +1819,35 @@ jobs:
           build_rev="$(git rev-parse HEAD)"
 
           # --- Source-link revision gate (codex-audit CX-066) ------------------
-          # The declaration registry bakes its "View source" URLs at ELABORATION
-          # time; the build stamp on the project-management page is probed at
-          # GENERATION time. Those are two independently sampled revisions, and a
-          # warm site build carried across commits can replay a registry whose
-          # links all name an older commit under a clean current-HEAD stamp. The
-          # trust-model page promises, verbatim, that the source links point at
-          # the commit the site was built from; this gate is what makes that
-          # promise checkable before anything is uploaded. Byte-identical sources
-          # at the two revisions do not satisfy it: the published contract is
-          # revision identity.
+          # The site publishes project-local `blob/<rev>/` links on two surfaces,
+          # and BOTH are sampled at a revision that is not necessarily the one
+          # the site is generated at:
+          #
+          #   * the declaration registry's `sourceHref`, bound late (at emission,
+          #     from the same value the build stamp reads) but replayed wholesale
+          #     when a warm `.lake` carries a registry across commits;
+          #   * the rendered HTML -- the comparator page's "View on GitHub" links
+          #     -- composed at ELABORATION from the repository HEAD of that
+          #     moment and baked into an `.olean`, so a contents build one commit
+          #     behind this job publishes links to the previous commit under a
+          #     clean current-HEAD stamp. Measured during the lean_quine
+          #     adoption: three stale links on comparator/index.html, thirteen
+          #     current registry links, registry-only gate green.
+          #
+          # The trust-model page promises, verbatim, that the source links point
+          # at the commit the site was built from; this is what makes the promise
+          # checkable before anything is uploaded. Byte-identical sources at the
+          # two revisions do not satisfy it: the published contract is revision
+          # identity.
+          #
+          # ONE implementation, invoked here and again at deploy time: the gate
+          # that ran registry-only for a release is exactly what happens when a
+          # workflow keeps its own copy of a script's logic.
           if [ "$SOURCE_LINK_GATE" = "true" ]; then
-            registry="${SITE_OUT}/-verso-data/decl-registry.json"
-            test -f "$registry"
-            python3 - "$registry" "$GITHUB_REPOSITORY" "$build_rev" <<'PY'
-          import json, re, sys
-
-          path, repository, sha = sys.argv[1:4]
-          pattern = re.compile(
-              r"\Ahttps://github\.com/" + re.escape(repository) + r"/blob/([0-9a-f]{40})/"
-          )
-          with open(path, encoding="utf-8") as handle:
-              registry = json.load(handle)
-
-          checked = 0
-          stale = {}
-
-          def visit(node):
-              global checked
-              if isinstance(node, dict):
-                  href = node.get("sourceHref")
-                  if isinstance(href, str):
-                      found = pattern.match(href)
-                      if found:
-                          checked += 1
-                          if found.group(1) != sha:
-                              stale[found.group(1)] = stale.get(found.group(1), 0) + 1
-                  for value in node.values():
-                      visit(value)
-              elif isinstance(node, list):
-                  for value in node:
-                      visit(value)
-
-          visit(registry)
-
-          if checked == 0:
-              print("source-link gate: no project-local sourceHref in the registry — the gate is vacuous,")
-              print("which means either the registry moved or the links stopped naming this repository.")
-              sys.exit(1)
-          if stale:
-              print("source-link gate: {} of {} project-local source links do not name this run's commit {}".format(
-                  sum(stale.values()), checked, sha))
-              for revision, occurrences in sorted(stale.items()):
-                  print("  {} link(s) name {}".format(occurrences, revision))
-              print("the registry was replayed from a build cache warmed at another revision;")
-              print("rebuild it under this commit rather than publishing a stamp it does not match.")
-              sys.exit(1)
-          print("source-link gate: {} project-local source links all name {}".format(checked, sha))
-          PY
+            python3 "$CI_DIR/scripts/check_site_release.py" --links-only \
+              --site-root "$SITE_OUT" \
+              --repository "$GITHUB_REPOSITORY" \
+              --revision "$build_rev"
           else
             echo "source-link gate: off by caller declaration (source_link_gate: false)"
           fi
