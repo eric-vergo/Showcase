@@ -30,8 +30,13 @@ The results are then checked against the YAML's claims. A claim the environment
 **contradicts** is a hard build error: a page asserting "0 sorries, standard axioms
 only" over a development that carries `sorryAx` is worse than no page at all.
 A declaration the audit finds *dirty* but the YAML never mentions is a build
-**warning** plus a badge — unless `verso.blueprint.trust.requireAuditClean` is set,
-which promotes it to an error for projects that want the stricter contract.
+**warning**, plus a flagged clause in the trust strip's scope line and the
+trust-model page's audit row — unless `verso.blueprint.trust.requireAuditClean` is
+set, which promotes it to an error for projects that want the stricter contract.
+
+A declaration the YAML *does* mention as incomplete is **covered**: a project that
+declares its sorry honestly is not the case this module is looking for, and saying
+so is what lets a deliberately in-progress project run with the strict gate on.
 
 Over-claiming a defect (declaring more sorries or more axioms than exist) is only
 ever a warning: it is stale bookkeeping, not a false assurance.
@@ -203,6 +208,17 @@ private def declClaims (doc : Json) : Array DeclClaim := Id.run do
 private def fmtAxioms (a : Array String) : String :=
   if a.isEmpty then "(none)" else String.intercalate ", " a.toList
 
+/-- Alignment statuses that *admit* the declaration is incomplete.
+
+A row marked `stated` or `in-progress` says the Lean side is not finished; finding
+`sorryAx` there confirms the row rather than contradicting it. Treated as coverage for
+the same reason a declared `sorry_count` is: the finding this module reports is a
+declaration that is dirty and **undeclared**, and these rows declare it. -/
+private def statusAdmitsIncompleteness (status : String) : Bool :=
+  let s := (Informal.FormalizationYaml.trim status).toLower
+  s == "stated" || s == "in-progress" || s == "in progress" || s == "partial" ||
+    s == "wip" || s == "todo" || (s.splitOn "sorry").length > 1
+
 /--
 Run the axiom audit.
 
@@ -262,6 +278,13 @@ def run (yaml? : Option Json) (requireAuditClean : Bool := false) : CoreM Summar
           errors := errors.push
             s!"`formalization.yaml` ({claim.origin}) declares sorry_count 0 for '{claim.decl}', \
                but its axiom closure contains `sorryAx` (transitively). Axioms: {fmtAxioms d.axioms}."
+        else if declared > 0 && d.sorried then
+          -- The honest case: the document declares this declaration incomplete and the
+          -- environment agrees. That is coverage, not a finding — without this insert the
+          -- "dirty but unclaimed" pass below reported a *declared* sorry as undeclared,
+          -- which under `requireAuditClean` failed the build of a project that had told
+          -- the truth about itself.
+          claimedSorried := claimedSorried.insert name
         else if declared > 0 && !d.sorried then
           warnings := warnings.push
             s!"`formalization.yaml` ({claim.origin}) declares sorry_count {declared} for \
@@ -285,6 +308,10 @@ def run (yaml? : Option Json) (requireAuditClean : Bool := false) : CoreM Summar
           errors := errors.push
             s!"`formalization.yaml` ({claim.origin}) marks '{claim.decl}' as \"{st}\", but its \
                axiom closure contains `sorryAx` (transitively)."
+        else if d.sorried && statusAdmitsIncompleteness st then
+          -- The row says the Lean side is unfinished; the closure agrees. Declared, so
+          -- not a finding.
+          claimedSorried := claimedSorried.insert name
     -- Project-wide `status.sorry_count`: only the over-claiming direction is an error.
     if let some status := (doc.getObjVal? "status").toOption then
       if let some declared := natOf? status "sorry_count" then
