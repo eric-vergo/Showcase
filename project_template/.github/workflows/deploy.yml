@@ -11,6 +11,15 @@ on:
     # by hand, not by a run that would refuse an unchanged release.
     paths:
       - 'trust/site-build.json'
+  # How the verify workflow's `site-release` job hands off. Dispatching a run of this
+  # file directly (`gh workflow run deploy.yml`) needs `actions: write`, which no caller
+  # grants it, so that route failed at startup before a step ever ran; a
+  # `repository_dispatch` needs only `contents: write`, which the release step already
+  # holds. GitHub serves `repository_dispatch` from the DEFAULT branch's copy of this
+  # workflow, so the pin it deploys is the one on `main` — the same one the `push`
+  # trigger above would deploy.
+  repository_dispatch:
+    types: [blueprint-site-pin]
   workflow_dispatch:
 
 permissions:
