@@ -259,9 +259,18 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
   let theoremRow : Output.Html :=
     if cmp.theoremNames.isEmpty then .empty
     else {{ <div><dt>"Certified theorem(s)"</dt><dd>{{inlineCodeList cmp.theoremNames}}</dd></div> }}
+  -- `permitted_axioms: []` is the strongest allowlist a record can state, and omitting
+  -- the row for it published the strongest claim as silence — indistinguishable from a
+  -- record that never mentioned axioms. It gets a row saying so; a record that declared
+  -- nothing still gets none, because there is nothing to report.
+  let axiomRowShown := !cmp.permittedAxioms.isEmpty || cmp.permittedAxiomsDeclared
   let axiomRow : Output.Html :=
-    if cmp.permittedAxioms.isEmpty then .empty
-    else {{ <div><dt>"Permitted axioms"</dt><dd>{{inlineCodeList cmp.permittedAxioms}}</dd></div> }}
+    if !cmp.permittedAxioms.isEmpty then
+      {{ <div><dt>"Permitted axioms"</dt><dd>{{inlineCodeList cmp.permittedAxioms}}</dd></div> }}
+    else if cmp.permittedAxiomsDeclared then
+      {{ <div><dt>"Permitted axioms"</dt>
+              <dd>"none — the solution may use no axiom at all"</dd></div> }}
+    else .empty
   let toolRow : Output.Html :=
     -- "Checked with" is a statement about the linked run, so a checker appears here only
     -- when the run recorded that it replayed, recorded which revision, and recorded
@@ -288,7 +297,7 @@ private def comparatorVerdictHeader (cmp : TrustComparator) (ciUrl? : Option Str
     if cmp.toolToolchain.isEmpty then .empty
     else {{ <div><dt>"Tool built on"</dt><dd>{{inlineCodeList [cmp.toolToolchain]}}</dd></div> }}
   let metaHtml : Output.Html :=
-    if cmp.theoremNames.isEmpty && cmp.permittedAxioms.isEmpty
+    if cmp.theoremNames.isEmpty && !axiomRowShown
         && cmp.toolSha.isEmpty && cmp.toolRef.isEmpty && cmp.toolToolchain.isEmpty
         && (cmp.recordedKernelRef "nanoda").isEmpty && cmp.kernelRefs.isEmpty
         && cmp.landrunRef.isEmpty then .empty

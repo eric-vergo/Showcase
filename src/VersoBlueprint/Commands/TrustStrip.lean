@@ -489,9 +489,16 @@ structure TrustComparator where
   note : String := ""
   runUrl : String := ""
   /-- The permitted axioms recorded in the comparator status artifact
-  (`permitted_axioms`); rendered as the verdict header's axiom list. Empty ⇒ the row is
-  omitted. -/
+  (`permitted_axioms`); rendered as the verdict header's axiom list. -/
   permittedAxioms : List String := []
+  /-- Whether the artifact carried a `permitted_axioms` list at all. ABSENT is not EMPTY:
+  `[]` is the *strongest* allowlist a record can state — the certified theorem's closure
+  may contain no axiom whatsoever — while a record that never mentions the key has said
+  nothing about axioms. Both used to arrive here as `[]` and render as silence, which
+  turned the strongest claim into the weakest one. The verdict header states "none" for
+  the former and omits the row for the latter; `ci/scripts/compose_result_record.sh` and
+  `validate_comparator_result.py` refuse to conflate the two on the writing side. -/
+  permittedAxiomsDeclared : Bool := false
   /-- The comparator tool version the verdict was produced with (the status artifact's
   `tool_ref`, written by CI alongside the pinned checkout tag). Drives the `--branch` flag
   in the tier-3 reproduce commands; empty ⇒ no pinned version (the section shows a
@@ -1141,13 +1148,17 @@ def TrustComparator.ofJson (j : Json) : TrustComparator :=
   -- they are a compatibility spelling of the same fact, not a second opinion about it.
   let nanodaReplay := (kernelOf "nanoda").bind (·.2.1)
   let nanodaRef := ((kernelOf "nanoda").map (·.2.2)).getD ""
+  -- Parsed once, so the list and the fact that it was stated cannot disagree. A key
+  -- present but not a list of strings is not a statement about axioms either.
+  let permittedAxioms? := (j.getObjValAs? (List String) "permitted_axioms").toOption
   {
     status := (j.getObjValAs? String "status").toOption.getD ""
     verifiedAt := (j.getObjValAs? String "verified_at").toOption.getD ""
     theoremNames := (j.getObjValAs? (List String) "theorem_names").toOption.getD []
     note := (j.getObjValAs? String "note").toOption.getD ""
     runUrl := (j.getObjValAs? String "run_url").toOption.getD ""
-    permittedAxioms := (j.getObjValAs? (List String) "permitted_axioms").toOption.getD []
+    permittedAxioms := permittedAxioms?.getD []
+    permittedAxiomsDeclared := permittedAxioms?.isSome
     toolRef := (j.getObjValAs? String "tool_ref").toOption.getD ""
     configArgPath := (j.getObjValAs? String "config").toOption.getD ""
     toolSha := (j.getObjValAs? String "tool_sha").toOption.getD ""

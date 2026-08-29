@@ -299,6 +299,28 @@ private def pageHtml (cmp : TrustComparator) : String :=
   -- The clause that ages the hand-maintained table travels with the assessment.
   hasSubstr html "Advisory table last updated"
 
+-- Permitted axioms. `[]` is the STRONGEST allowlist a record can state — the certified
+-- theorem's closure may contain no axiom at all — and the row used to be omitted for any
+-- empty list, so the strongest claim published as silence, indistinguishable from a
+-- record that never mentioned axioms. ABSENT is not EMPTY on the reading side either.
+/-- info: true -/
+#guard_msgs in
+#eval
+  let ofStatus := fun (j : String) =>
+    pageHtml (TrustComparator.ofJson ((Json.parse j).toOption.getD Json.null))
+  let stated := ofStatus r##"{"status": "verified", "theorem_names": ["A.thm"],
+    "permitted_axioms": []}"##
+  let silent := ofStatus r##"{"status": "verified", "theorem_names": ["A.thm"]}"##
+  let listed := ofStatus r##"{"status": "verified", "theorem_names": ["A.thm"],
+    "permitted_axioms": ["propext"]}"##
+  hasSubstr stated "Permitted axioms" &&
+  hasSubstr stated "none — the solution may use no axiom at all" &&
+  -- A record that never declared the key claims nothing, so the page claims nothing.
+  !hasSubstr silent "Permitted axioms" &&
+  -- A stated list still renders as the list, and never as the empty-allowlist sentence.
+  hasSubstr listed "<code>propext</code>" &&
+  !hasSubstr listed "no axiom at all"
+
 /-! ## The audit page: findings, not a second verdict -/
 
 /-- info: true -/
