@@ -399,7 +399,7 @@ jobs:
           esac
           if [ -n "$SHOWCASE_SHA" ] && [ "$SHOWCASE_SHA" != "$WORKFLOW_SHA" ]; then
             echo "the caller pinned showcase_sha=${SHOWCASE_SHA} but this job is running"
-            echo "${WORKFLOW_SHA}. The `uses:` line and the `showcase_sha:` input have"
+            echo "${WORKFLOW_SHA}. The uses: line and the showcase_sha: input have"
             echo "drifted apart; bump both together."
             exit 1
           fi
