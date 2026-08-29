@@ -218,7 +218,8 @@ jobs:
                 --min-files "$MIN_SITE_FILES"
                 --max-bytes "$MAX_SITE_BYTES")
           for relative in $REQUIRED_SITE_FILES; do
-            args+=(--required-file "$relative")
+            # `=` form: a path starting with `-` (-verso-data/...) is otherwise read as an option.
+            args+=("--required-file=$relative")
           done
           python3 "$CI_DIR/scripts/check_site_release.py" "${args[@]}"
 

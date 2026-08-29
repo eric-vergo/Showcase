@@ -68,6 +68,7 @@ while [ "$#" -gt 0 ]; do
     --max-bytes) max_bytes="$2"; shift 2 ;;
     --min-files) min_files="$2"; shift 2 ;;
     --required-file) required_files+=("$2"); shift 2 ;;
+    --required-file=*) required_files+=("${1#--required-file=}"); shift ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -229,7 +230,10 @@ gate=("python3" "$(dirname "${BASH_SOURCE[0]}")/check_site_release.py"
       --repo-root "$root" --site-dir "$site_dir" --head "$head"
       --repository "$repository" --min-files "$min_files" --max-bytes "$max_bytes")
 for f in ${required_files+"${required_files[@]}"}; do
-  gate+=(--required-file "$f")
+  # `--required-file=VALUE`, never two tokens: a required path may start with `-`
+  # (`-verso-data/blueprint-manifest.json`), and argparse reads a bare `-verso-data/...`
+  # after `--required-file` as the next option ("expected one argument").
+  gate+=("--required-file=$f")
 done
 "${gate[@]}"
 

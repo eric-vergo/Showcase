@@ -1905,7 +1905,7 @@ jobs:
                 --min-files "$MIN_SITE_FILES"
                 --max-bytes "$MAX_SITE_BYTES")
           for relative in $REQUIRED_SITE_FILES; do
-            args+=(--required-file "$relative")
+            args+=("--required-file=$relative")
           done
           bash "$CI_DIR/scripts/package_site.sh" "${args[@]}"
 

@@ -37,6 +37,7 @@ Run: python3 ci/scripts/tests/test_check_site_release.py
 """
 
 import hashlib
+import contextlib
 import io
 import json
 import os
@@ -252,6 +253,44 @@ class SiteReleaseGateTests(unittest.TestCase):
         code, output = self.fixture.run()
         self.assertEqual(code, 0, output)
         self.assertIn("is vouched for by", output)
+
+    def test_required_file_with_a_leading_dash_is_passed_in_equals_form(self):
+        # `-verso-data/blueprint-manifest.json` starts with `-`; as a separate token
+        # argparse reads it as the next option and refuses with "expected one argument"
+        # (lean_quine run 33264689171, Package the site). The `=` form is what every
+        # caller must use; this pins both facts.
+        self.fixture.write_tree()
+        self.fixture.package()
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = check_site_release.main(
+                [
+                    "--pin", self.fixture.pin,
+                    "--tarball", self.fixture.tarball,
+                    "--site-root", self.fixture.site,
+                    "--repo-root", self.fixture.repo,
+                    "--head", self.fixture.head,
+                    "--repository", REPOSITORY,
+                    "--min-files", "5",
+                    "--required-file=index.html",
+                    "--required-file=-verso-data/blueprint-manifest.json",
+                ]
+            )
+        self.assertEqual(code, 0, out.getvalue())
+        with self.assertRaises(SystemExit) as raised:
+            with redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                check_site_release.main(
+                    [
+                        "--pin", self.fixture.pin,
+                        "--tarball", self.fixture.tarball,
+                        "--site-root", self.fixture.site,
+                        "--repo-root", self.fixture.repo,
+                        "--head", self.fixture.head,
+                        "--repository", REPOSITORY,
+                        "--required-file", "-verso-data/blueprint-manifest.json",
+                    ]
+                )
+        self.assertEqual(raised.exception.code, 2)
 
     def test_forged_digest(self):
         self.fixture.write_tree()
