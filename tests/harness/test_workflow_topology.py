@@ -13,6 +13,13 @@ Two recurrence checks introduced with the CITOPO audit batch:
   tracked path. A wrapper invoking an absent checker aborts the whole job under
   ``set -euo pipefail`` (the removed ``tests/integration/check_lean_run_external_markup.py``).
 
+  A reusable workflow's *consumer-side* paths cannot be resolved here, which is why the
+  root-context check skips those files — but its ``ci/`` paths can be, because they are
+  OURS: ``ci/`` is the subtree a reusable workflow materialises on the runner by checking
+  this repository out at ``job.workflow_sha``. A reference to a script that moved is the
+  same silent-abort failure, in a job that has already been dispatched into somebody
+  else's repository, so it gets its own check below.
+
 Both checks parse the YAML textually rather than importing PyYAML: the harness has no
 third-party dependencies and the CI ``harness-tests`` job runs under the runner's bare
 ``python3``. The constructs inspected here (a top-level ``name:``, a ``workflow_run``
@@ -39,6 +46,14 @@ WORKFLOW_ROOTS = (
 # Reference targets provided by a *consumer's* checkout of the shared harness tooling,
 # never by this repository. Root-context path resolution must ignore them.
 CONSUMER_PROVIDED_PREFIXES = ("tools/verso-harness/",)
+
+# How a reusable workflow names a script in this repository's `ci/` subtree. The
+# workflows stage that subtree outside the consumer's workspace and address it through
+# `$CI_DIR`; the literal `ci/scripts/...` spelling appears in prose and is checked too.
+_CI_SCRIPT_PATTERNS = (
+    re.compile(r"\$CI_DIR/(scripts/[A-Za-z0-9_][A-Za-z0-9_./-]*)"),
+    re.compile(r"(?<![\w./$-])(?:ci/)(scripts/[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:py|sh))"),
+)
 
 
 def _iter_workflow_files(root: Path) -> list[Path]:
@@ -181,6 +196,37 @@ class WorkflowScriptPathTests(unittest.TestCase):
                     # Reusable (`workflow_call`) workflows run in a consumer checkout.
                     continue
                 self._assert_paths_exist(root, f, text)
+
+    def test_reusable_workflows_reference_only_existing_ci_scripts(self) -> None:
+        """CX-039 for the ``workflow_call`` half the check above deliberately skips."""
+        checked = 0
+        reusable = 0
+        for root in WORKFLOW_ROOTS:
+            ci_root = root / "ci"
+            for f in _iter_workflow_files(root):
+                text = f.read_text(encoding="utf-8")
+                if not _is_reusable_workflow(text):
+                    continue
+                reusable += 1
+                for pattern in _CI_SCRIPT_PATTERNS:
+                    for match in pattern.finditer(text):
+                        rel = match.group(1)
+                        checked += 1
+                        self.assertTrue(
+                            (ci_root / rel).exists(),
+                            msg=(
+                                f"{f.relative_to(PACKAGE_ROOT)} invokes `ci/{rel}`, which does "
+                                f"not exist under {root.name}. A reusable workflow runs in a "
+                                f"consumer's repository, so this aborts a job that has already "
+                                f"been dispatched there (see CX-039)."
+                            ),
+                        )
+        if reusable:
+            self.assertGreaterEqual(
+                checked, 1,
+                "a reusable workflow is tracked but references no ci/ script; either the "
+                "workflows stopped using the shared scripts or the patterns above moved",
+            )
 
     def test_shell_wrappers_reference_only_existing_scripts(self) -> None:
         wrappers = sorted((PACKAGE_ROOT / "scripts").glob("*.sh"))
