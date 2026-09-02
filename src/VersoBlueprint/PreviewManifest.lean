@@ -1035,7 +1035,9 @@ private def selectionBusModuleMjs : String := include_str "Commands/selection-bu
 -- bytes to re-embed. Touched for: dashboard.mjs per-chapter bar titles + tooltips
 -- and metadata-rail.mjs "Open page" self-link suppression (UI review round); and
 -- graph.mjs + graph-runtime-core.mjs "Show all edges" toggle (graph declutter round);
--- and metadata-rail.mjs "Known caveat patterns" section (registry v3 caveat scan).
+-- and metadata-rail.mjs "Known caveat patterns" section (registry v3 caveat scan);
+-- and metadata-rail.mjs REMOVAL of the "Known caveat patterns" and "Metrics" rail
+-- sections (scope drift — the rail is properties, dependencies and navigation).
 private def metadataRailModuleMjs : String := include_str "Commands/metadata-rail.mjs"
 
 private def topNavModuleMjs : String := include_str "Commands/top-nav.mjs"

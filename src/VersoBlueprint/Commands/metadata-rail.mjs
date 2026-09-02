@@ -650,17 +650,6 @@ function metaRow(key, value, title) {
   ]);
 }
 
-// A metric row whose key carries a dotted-underline "help" affordance and reveals a
-// themed gloss tooltip on hover / keyboard focus (see attachTooltip).
-function metricRow(key, value, gloss) {
-  const keyEl = el("span", { class: "bp-rail-meta-key bp-rail-metric-key", text: key });
-  attachTooltip(keyEl, gloss);
-  return el("div", { class: "bp-rail-meta-row" }, [
-    keyEl,
-    el("span", { class: "bp-rail-meta-val", text: value })
-  ]);
-}
-
 function depItem(name, axis) {
   const wired = isWired(name);
   // The dependency name is itself the link to its canonical page: the node page
@@ -704,89 +693,6 @@ function depSection(title, items, cap) {
     );
   }
   return collapsibleSection(title, children);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Known caveat patterns (registry v3)                                        */
-/* -------------------------------------------------------------------------- */
-
-// The three guard sentences, verbatim from CaveatsRender.guardCopy. Kept in step
-// with the Lean copy by hand: the same fact must not be worded two ways depending
-// on which surface a reader is looking at. None of them says "guarded".
-function guardSentence(m) {
-  const guard = m && m.guard;
-  if (guard === "candidate-present") {
-    return "A guard-shaped hypothesis occurs; this presence scan did not relate it to the flagged operand.";
-  }
-  if (guard === "not-detected") {
-    const base =
-      "No hypothesis of the guarding shape was detected. This is a presence check: the statement may be guarded another way, or may not need a guard.";
-    return m.guardHint ? base + " A guard would look like: " + m.guardHint : base;
-  }
-  return "No guard shape is recorded for this symbol, so nothing was looked for.";
-}
-
-// A scan report as a collapsed rail section. Branches explicitly on every state
-// the report can be in; the caller has already established that a report exists,
-// because "no report" is not one of these states and renders nothing at all.
-function caveatsSection(scan) {
-  const status = scan.status || "";
-  const hits = Array.isArray(scan.matches) ? scan.matches : [];
-  const version = scan.tableVersion || "unversioned";
-  const digest = scan.tableDigest || "unknown";
-  const children = [];
-  if (status === "unavailable" || status === "disabled") {
-    children.push(
-      el("p", {
-        class: "bp-rail-note",
-        text:
-          status === "disabled"
-            ? "The caveat scan is switched off for this site, so no symbols were looked for."
-            : "No caveat scan is available here" + (scan.reason ? ": " + scan.reason : "") + "."
-      })
-    );
-  } else if (hits.length === 0) {
-    children.push(
-      el("p", {
-        class: "bp-rail-note",
-        text:
-          "No matches in the configured partial table (version " + version + ", digest " + digest +
-          "); this is not evidence that no total-function caveat applies."
-      })
-    );
-  } else {
-    const list = el("div", { class: "bp-rail-caveats" });
-    hits.forEach(function (m) {
-      const chip = el("span", {
-        class: "bp-rail-caveat",
-        attrs: { "data-guard": m.guard || "", tabindex: "0" },
-        text: m.symbol || ""
-      });
-      attachTooltip(chip, (m.behavior ? m.behavior + " " : "") + guardSentence(m));
-      list.appendChild(chip);
-    });
-    children.push(list);
-    if (status === "partial") {
-      children.push(
-        el("p", {
-          class: "bp-rail-note",
-          text: "The scan stopped at this site's configured cap, so this is a lower bound."
-        })
-      );
-    }
-    children.push(
-      el("p", {
-        class: "bp-rail-note",
-        text:
-          "Caveats to check, not findings of error. The table is partial (version " + version +
-          ", digest " + digest + "): a symbol it does not list is a symbol nobody looked for."
-      })
-    );
-  }
-  if (scan.coverage) {
-    children.push(el("p", { class: "bp-rail-note", text: "Scanned: " + scan.coverage + "." }));
-  }
-  return collapsibleSection("Known caveat patterns", children);
 }
 
 function pendingNote() {
@@ -893,39 +799,6 @@ function renderRail(name, hintMeta) {
     }
   } else {
     frag.appendChild(el("div", { class: "bp-rail-section" }, [sectionTitle("Parameters"), pendingNote()]));
-  }
-
-  // --- Known caveat patterns (registry v3) --------------------------------
-  // Rendered only when the entry carries a scan. An entry with no `scan` was not
-  // scanned, which is not the same as a scan that found nothing, and a section
-  // saying "nothing found" on a page that never looked would be the one thing
-  // this surface must not do.
-  if (vm.scan && vm.scan.status) {
-    frag.appendChild(caveatsSection(vm.scan));
-  }
-
-  // --- Metrics (fan-in/out client-side; depth/height from the registry) ----
-  // A collapsed disclosure (like Uses / Used By); each metric label carries a
-  // hover/focus tooltip glossing its exact meaning (code-verified semantics).
-  const hasDeps = Array.isArray(vm.statementDeps) || Array.isArray(vm.proofDeps);
-  if (hasDeps || Array.isArray(vm.usedBy) || vm.depth != null || vm.height != null) {
-    const metricRows = [];
-    if (hasDeps) {
-      const outSet = new Set();
-      (vm.statementDeps || []).forEach(function (n) { outSet.add(n); });
-      (vm.proofDeps || []).forEach(function (n) { outSet.add(n); });
-      metricRows.push(metricRow("Fan-out", String(outSet.size),
-        "Distinct project declarations this one directly references, in its statement or proof."));
-    }
-    if (Array.isArray(vm.usedBy)) {
-      metricRows.push(metricRow("Fan-in", String(vm.usedBy.length),
-        "Distinct project declarations that directly reference this one."));
-    }
-    if (vm.depth != null) metricRows.push(metricRow("Depth", String(vm.depth),
-      "Length in edges of the longest dependency chain below this declaration; 0 = no project dependencies."));
-    if (vm.height != null) metricRows.push(metricRow("Height", String(vm.height),
-      "Length in edges of the longest chain of dependents above this declaration; 0 = nothing builds on it."));
-    frag.appendChild(collapsibleSection("Metrics", metricRows));
   }
 
   // --- Uses (statement + proof axes) --------------------------------------

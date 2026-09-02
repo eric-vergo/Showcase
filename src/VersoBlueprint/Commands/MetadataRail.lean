@@ -310,25 +310,10 @@ def css : String := r##"
   }
 }
 
-/* ---- Metric labels + shared tooltip -------------------------------------- */
-/* The four Metrics rows (Fan-out / Fan-in / Depth / Height) gloss their meaning in
-   a hover/focus tooltip (metadata-rail.mjs `attachTooltip`). The label carries a
-   dotted-underline "help" affordance; the bubble is `position: fixed` so it escapes
-   the rail body's `overflow-y: auto` clipping. Existing `--bp-*` tokens only, so
-   both color schemes come for free. */
-.bp-rail-metric-key {
-  text-decoration: underline dotted;
-  text-decoration-color: var(--bp-color-border-strong);
-  text-underline-offset: 0.18em;
-  cursor: help;
-}
-
-.bp-rail-metric-key:focus-visible {
-  outline: 2px solid var(--bp-color-accent);
-  outline-offset: 2px;
-  border-radius: var(--bp-radius-sm);
-}
-
+/* ---- Shared rail tooltip ------------------------------------------------- */
+/* A hover/focus gloss bubble (metadata-rail.mjs `attachTooltip`), `position: fixed`
+   so it escapes the rail body's `overflow-y: auto` clipping. Existing `--bp-*`
+   tokens only, so both color schemes come for free. */
 .bp-rail-tooltip {
   position: fixed;
   top: 0;
@@ -549,34 +534,6 @@ def css : String := r##"
   font-size: var(--bp-fs-badge, 0.72rem);
   font-style: italic;
   line-height: 1.5;
-}
-
-/* ---- Known caveat patterns (registry v3) ---------------------------------- */
-/* One quiet chip per matched symbol, glossed through the shared rail tooltip.
-   Deliberately not colour-coded by guard state: colouring a presence check would
-   say what the copy refuses to say. */
-.bp-rail-caveats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--bp-space-1);
-}
-
-.bp-rail-caveat {
-  padding: 0.1rem 0.4rem;
-  border: 1px solid var(--bp-color-border);
-  border-radius: var(--bp-radius-pill);
-  background: var(--bp-color-surface-subtle);
-  color: var(--bp-color-text-muted);
-  font-family: var(--font-mono-ui, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-  font-size: var(--bp-fs-badge, 0.72rem);
-  line-height: 1.6;
-  cursor: help;
-  overflow-wrap: anywhere;
-}
-
-.bp-rail-caveat:focus-visible {
-  outline: 2px solid var(--bp-color-accent);
-  outline-offset: 1px;
 }
 
 /* ---- Pinned footer (absorbed theme + proofs controls) ---------------------- */
